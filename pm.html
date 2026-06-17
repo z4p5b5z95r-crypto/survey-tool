@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>旅行時間調查 — PM 任務派發</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;background:#f1f5f9;color:#1e293b;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── Top bar ── */
+.topbar{background:#1e293b;padding:10px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0}
+.topbar h1{color:white;font-size:16px;font-weight:800}
+.topbar p{color:#94a3b8;font-size:12px}
+.topbar-btns{margin-left:auto;display:flex;gap:8px}
+.btn-sm{padding:7px 14px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}
+.btn-sm.outline{background:transparent;border:1.5px solid #475569;color:#94a3b8}
+.btn-sm.green{background:#16a34a;color:white}
+
+/* ── Layout ── */
+.layout{display:flex;flex:1;overflow:hidden}
+.sidebar{width:360px;min-width:300px;background:white;border-right:1px solid #e2e8f0;overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
+.map-area{flex:1;position:relative}
+#map{width:100%;height:100%}
+
+/* ── Sidebar ── */
+.sec{padding:14px 16px;border-bottom:1px solid #f1f5f9}
+.sec-title{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.field{margin-bottom:9px}
+.field:last-child{margin-bottom:0}
+.field label{display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px}
+.field input{width:100%;padding:8px 11px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:14px;outline:none;background:white}
+.field input:focus{border-color:#3b82f6}
+.row2{display:flex;gap:8px}.row2 .field{flex:1}
+
+/* ── Map toolbar (left) ── */
+.map-toolbar{position:absolute;top:10px;left:10px;z-index:999;display:flex;flex-direction:column;gap:6px}
+.tool-btn{padding:8px 14px;background:white;border:1.5px solid #cbd5e1;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.12);color:#374151;white-space:nowrap;display:flex;align-items:center;gap:6px;transition:all .15s}
+.tool-btn:hover{box-shadow:0 3px 10px rgba(0,0,0,.15)}
+.tool-btn.active{background:#1d4ed8;border-color:#1d4ed8;color:white}
+.tool-btn.active-measure{background:#d97706;border-color:#d97706;color:white}
+.tool-btn.danger{background:#dc2626;border-color:#dc2626;color:white}
+
+/* ── Satellite button (top-right) ── */
+.sat-btn{position:absolute;top:10px;right:10px;z-index:999;padding:8px 14px;background:white;border:1.5px solid #cbd5e1;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.12);color:#374151;display:flex;align-items:center;gap:6px;transition:all .15s}
+.sat-btn:hover{box-shadow:0 3px 10px rgba(0,0,0,.18)}
+.sat-btn.active{background:#0f172a;border-color:#0f172a;color:white}
+
+/* ── Measure badge ── */
+.measure-badge{position:absolute;top:52px;right:10px;z-index:999;background:rgba(217,119,6,.95);color:white;padding:8px 14px;border-radius:12px;font-size:14px;font-weight:700;display:none;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.measure-badge .hint{font-size:11px;font-weight:400;opacity:.85;display:block;margin-top:1px}
+
+/* ── Route loading ── */
+.route-loading{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);background:rgba(30,41,59,.9);color:#60a5fa;padding:7px 16px;border-radius:20px;font-size:12px;z-index:999;display:none;pointer-events:none}
+
+/* ── Map hint ── */
+.map-hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:white;padding:8px 18px;border-radius:20px;font-size:13px;z-index:999;pointer-events:none;display:none}
+
+/* ── Node dialog ── */
+.node-dialog{position:fixed;z-index:2000;background:white;border-radius:12px;padding:14px;box-shadow:0 8px 28px rgba(0,0,0,.22);border:2px solid #3b82f6;min-width:220px;display:none}
+.node-dialog h4{font-size:13px;font-weight:700;color:#1e293b;margin-bottom:8px}
+.node-dialog input{width:100%;padding:9px 11px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;outline:none;margin-bottom:9px}
+.node-dialog input:focus{border-color:#3b82f6}
+.nd-btns{display:flex;gap:6px}
+.nd-btn-ok{flex:1;padding:8px;background:#2563eb;color:white;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}
+.nd-btn-cancel{padding:8px 12px;background:#f1f5f9;border:none;border-radius:7px;font-size:13px;cursor:pointer}
+
+/* ── Node list ── */
+.node-list{display:flex;flex-direction:column;gap:5px}
+.node-item{background:#f8fafc;border-radius:9px;padding:8px 12px;border:1px solid #e2e8f0;display:flex;align-items:center;gap:8px}
+.node-num{width:22px;height:22px;border-radius:50%;background:#3b82f6;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.node-num.start{background:#16a34a}
+.node-num.end{background:#dc2626}
+.node-info{flex:1}
+.node-name-text{font-size:13px;font-weight:600;color:#1e293b}
+.node-coords{font-size:10px;color:#94a3b8;margin-top:1px}
+.node-del{background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;flex-shrink:0}
+.node-hint{font-size:11px;color:#60a5fa;margin-top:4px}
+
+/* ── Segment table ── */
+.seg-table{width:100%;border-collapse:collapse;font-size:12px}
+.seg-table th{background:#f1f5f9;color:#475569;padding:6px 7px;text-align:left;font-weight:600;border-bottom:2px solid #e2e8f0}
+.seg-table td{padding:5px 5px;border-bottom:1px solid #f1f5f9}
+.seg-table tr:last-child td{border:none}
+.seg-input{width:100%;padding:4px 5px;border:1px solid #e2e8f0;border-radius:5px;font-size:12px;outline:none;text-align:center}
+.seg-input:focus{border-color:#3b82f6}
+.dist-auto{color:#16a34a;font-size:9px;margin-left:1px}
+.dist-manual{color:#94a3b8;font-size:9px;margin-left:1px}
+
+/* ── QR section ── */
+.qr-url-row input{width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;margin-bottom:8px}
+.qr-url-row input:focus{border-color:#3b82f6}
+#qr-box{display:flex;justify-content:center;padding:12px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:10px;min-height:60px;align-items:center}
+/* Only show canvas, hide duplicate img that qrcodejs generates */
+#qr-box canvas{display:block!important;max-width:100%}
+#qr-box img{display:none!important}
+.qr-placeholder{color:#94a3b8;font-size:13px}
+.btn-gen{width:100%;padding:13px;background:#7c3aed;color:white;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:8px}
+.btn-gen:hover{background:#6d28d9}
+.copy-row{display:flex;gap:6px}
+.copy-btn{flex:1;padding:10px;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer}
+.copy-btn.link{background:#e0e7ff;color:#3730a3}
+.copy-btn.png{background:#f0fdf4;color:#166534}
+.qr-info{font-size:11px;color:#94a3b8;margin-top:6px;text-align:center}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:white;padding:9px 18px;border-radius:20px;font-size:14px;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
+
+/* ── Saved tasks ── */
+.task-list{display:flex;flex-direction:column;gap:7px}
+.task-card{background:#f8fafc;border-radius:10px;padding:10px 12px;border:1px solid #e2e8f0;transition:border-color .15s}
+.task-card:hover{border-color:#3b82f6}
+.task-card-name{font-size:14px;font-weight:700;color:#1e293b}
+.task-card-meta{font-size:11px;color:#94a3b8;margin-top:3px}
+.task-card-btns{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap}
+.tc-btn{padding:5px 10px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer}
+.tc-btn.load{background:#e0f2fe;color:#0369a1}
+.tc-btn.qr{background:#7c3aed;color:white}
+.tc-btn.del{background:#fee2e2;color:#dc2626}
+
+/* ── Leaflet popup override ── */
+.leaflet-popup-content{margin:10px 12px!important;min-width:150px}
+.node-popup-name{width:100%;padding:6px 8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;outline:none;margin-bottom:8px;display:block}
+.node-popup-name:focus{border-color:#3b82f6}
+.node-popup-btns{display:flex;gap:6px}
+.node-popup-save{flex:1;padding:6px;background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer}
+.node-popup-del{padding:6px 10px;background:#fee2e2;color:#dc2626;border:1.5px solid #fecaca;border-radius:7px;font-size:12px;cursor:pointer}
+
+@media(max-width:768px){
+  .layout{flex-direction:column}
+  .sidebar{width:100%;max-height:45vh}
+  .map-area{flex:1}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>🗺 旅行時間調查 — PM 任務派發</h1>
+    <p>建立路線、設定節點、派發 QR Code 給調查員</p>
+  </div>
+  <div class="topbar-btns">
+    <button class="btn-sm outline" onclick="newTask()">＋ 新增任務</button>
+    <button class="btn-sm green" onclick="saveTask()">💾 儲存任務</button>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- ══ 左側欄 ══ -->
+  <div class="sidebar">
+
+    <!-- 路線資訊 -->
+    <div class="sec">
+      <div class="sec-title">📋 路線資訊</div>
+      <div class="field"><label>路線名稱</label><input id="rn" placeholder="台二省道轉新市二路到港子平"/></div>
+      <div class="field"><label>起迄點</label><input id="ft" placeholder="港子平 ↔ 台二線"/></div>
+      <div class="row2">
+        <div class="field"><label>全長（公尺）</label><input id="tl" type="number" placeholder="自動計算"/></div>
+        <div class="field"><label>日期</label><input id="survey-date" type="date"/></div>
+      </div>
+    </div>
+
+    <!-- 調查時間 -->
+    <div class="sec">
+      <div class="sec-title">⏰ 調查時間區間</div>
+      <div class="row2">
+        <div class="field"><label>離峰時間</label><input id="op" value="14:00~16:00"/></div>
+        <div class="field"><label>尖峰時間</label><input id="pk" value="17:00~19:00"/></div>
+      </div>
+      <p style="font-size:11px;color:#94a3b8;margin-top:6px">去程：節點1→最後節點　回程：自動逆向</p>
+    </div>
+
+    <!-- 節點 -->
+    <div class="sec">
+      <div class="sec-title">
+        📍 節點清單
+        <span style="font-size:10px;color:#94a3b8;font-weight:400;text-transform:none">（共 <span id="node-count">0</span> 個）</span>
+      </div>
+      <p style="font-size:12px;color:#64748b;margin-bottom:8px">點「新增節點」按鈕後，點擊地圖放置節點<br>
+        <span class="node-hint">拖曳節點可移動位置，點擊可改名或刪除</span>
+      </p>
+      <div id="node-list" class="node-list"></div>
+    </div>
+
+    <!-- 路段設定 -->
+    <div class="sec">
+      <div class="sec-title">
+        🛣 路段資訊
+        <span style="font-size:10px;color:#94a3b8;font-weight:400;text-transform:none">（自動由節點產生）</span>
+      </div>
+      <div id="seg-wrap" style="overflow-x:auto">
+        <table class="seg-table">
+          <thead><tr><th style="min-width:110px">路段</th><th>車道</th><th>路寬</th><th>長度(m)</th></tr></thead>
+          <tbody id="seg-tbody"></tbody>
+        </table>
+      </div>
+      <p id="seg-hint" style="font-size:12px;color:#94a3b8;margin-top:6px">新增 2 個以上節點後自動產生</p>
+      <p style="font-size:10px;color:#16a34a;margin-top:3px">🟢 長度由道路路徑自動計算</p>
+    </div>
+
+    <!-- QR Code -->
+    <div class="sec">
+      <div class="sec-title">📱 QR Code 派發</div>
+      <div class="qr-url-row">
+        <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px">監測者 App 網址</label>
+        <input id="app-url" value="https://z4p5b5z95r-crypto.github.io/survey-tool/"/>
+      </div>
+      <button class="btn-gen" onclick="generateQR()">🔲 產生 QR Code</button>
+      <div id="qr-box"><span class="qr-placeholder">按上方按鈕產生</span></div>
+      <div class="copy-row">
+        <button class="copy-btn link" onclick="copyLink()">🔗 複製連結</button>
+        <button class="copy-btn png" onclick="downloadQR()">⬇ 下載 QR</button>
+      </div>
+      <div class="qr-info" id="qr-info"></div>
+    </div>
+
+    <!-- 已儲存任務 -->
+    <div class="sec">
+      <div class="sec-title">💾 已儲存的任務</div>
+      <div id="saved-tasks" class="task-list"></div>
+      <p id="no-tasks-hint" style="font-size:12px;color:#94a3b8">尚無已儲存的任務</p>
+    </div>
+
+  </div>
+
+  <!-- ══ 地圖 ══ -->
+  <div class="map-area">
+    <div id="map"></div>
+
+    <!-- 左側工具列 -->
+    <div class="map-toolbar">
+      <button class="tool-btn" id="tool-node"    onclick="setMode('node')">📍 新增節點</button>
+      <button class="tool-btn" id="tool-pan"     onclick="setMode('pan')">🖱 瀏覽地圖</button>
+      <button class="tool-btn" id="tool-measure" onclick="toggleMeasure()">📐 量測距離</button>
+      <div style="height:1px;background:#e2e8f0;margin:2px 0"></div>
+      <button class="tool-btn danger"            onclick="clearAll()">🗑 清除全部</button>
+    </div>
+
+    <!-- 衛星影像（右上） -->
+    <button class="sat-btn" id="sat-btn" onclick="toggleSat()">🛰 衛星影像</button>
+
+    <!-- 量測結果 -->
+    <div class="measure-badge" id="measure-badge">
+      <span id="measure-dist">0 m</span>
+      <span class="hint">雙擊或 Esc 結束量測</span>
+    </div>
+
+    <!-- 路徑計算中 -->
+    <div class="route-loading" id="route-loading">⏳ 計算道路路徑...</div>
+
+    <div class="map-hint" id="map-hint">點擊地圖放置節點，Esc 取消</div>
+
+    <!-- 節點放置對話框 -->
+    <div class="node-dialog" id="node-dialog">
+      <h4>🏷 節點名稱</h4>
+      <input id="nd-name" placeholder="例：中山一路-永安南路" autocomplete="off"/>
+      <div class="nd-btns">
+        <button class="nd-btn-ok" onclick="confirmNode()">確認放置</button>
+        <button class="nd-btn-cancel" onclick="cancelNode()">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════
+//  TILE LAYERS
+// ════════════════════════════════════
+const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 })
+const satLayer = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19 }
+)
+const satLabels = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19, opacity: 0.85 }
+)
+
+const map = L.map('map', { zoomControl: false, attributionControl: false })
+L.control.zoom({ position: 'bottomright' }).addTo(map)
+osmLayer.addTo(map)
+map.setView([25.04776, 121.51755], 14)
+
+let isSat = false
+function toggleSat() {
+  isSat = !isSat
+  const btn = document.getElementById('sat-btn')
+  btn.classList.toggle('active', isSat)
+  btn.textContent = isSat ? '🗺 街道地圖' : '🛰 衛星影像'
+  if (isSat) { map.removeLayer(osmLayer); satLayer.addTo(map); satLabels.addTo(map) }
+  else { map.removeLayer(satLayer); map.removeLayer(satLabels); osmLayer.addTo(map) }
+}
+
+// ════════════════════════════════════
+//  STATE
+// ════════════════════════════════════
+let mode      = 'pan'
+let nodes     = []        // [{lat, lng, name}]
+let nodeMarkers = []      // L.marker[]
+let segPolylines = []     // L.polyline[] per segment
+let pendingLatLng = null
+
+let segData   = []        // [{name, lanes, width, length, _auto}]
+
+// Measure
+let measuring = false, measurePts = [], measurePolyline = null
+let measureMarkers = [], measureTooltipMarker = null
+
+let savedTasks = JSON.parse(localStorage.getItem('pm_tasks') || '[]')
+
+// ════════════════════════════════════
+//  UTILS
+// ════════════════════════════════════
+function toast(msg) {
+  const t = document.getElementById('toast')
+  t.textContent = msg; t.classList.add('show')
+  setTimeout(() => t.classList.remove('show'), 2200)
+}
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371000, dLat = (lat2-lat1)*Math.PI/180, dLng = (lng2-lng1)*Math.PI/180
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)))
+}
+function fmtDist(m) { return m >= 1000 ? (m/1000).toFixed(2)+' km' : m+' m' }
+function getNodeColor(i) {
+  return i === 0 ? '#16a34a' : i === nodes.length-1 ? '#dc2626' : '#3b82f6'
+}
+
+// ════════════════════════════════════
+//  NODE ICON (div icon, draggable-compatible)
+// ════════════════════════════════════
+function createNodeIcon(num, color) {
+  return L.divIcon({
+    html: `<div style="width:26px;height:26px;background:${color};border:3px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:white;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:grab;user-select:none">${num}</div>`,
+    className: '',
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -16]
+  })
+}
+
+// ════════════════════════════════════
+//  OSRM ROUTING
+// ════════════════════════════════════
+async function fetchRoute(lat1, lng1, lat2, lng2) {
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${lng1},${lat1};${lng2},${lat2}?overview=full&geometries=geojson`
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) })
+    const data = await res.json()
+    if (data.code === 'Ok' && data.routes?.length > 0) {
+      const route = data.routes[0]
+      return { latlngs: route.geometry.coordinates.map(c => [c[1], c[0]]), distance: Math.round(route.distance), source: 'osrm' }
+    }
+  } catch {}
+  return { latlngs: [[lat1,lng1],[lat2,lng2]], distance: haversine(lat1,lng1,lat2,lng2), source: 'straight' }
+}
+
+// Refresh a specific segment (used after drag)
+async function refreshSegment(segIdx) {
+  if (segIdx < 0 || segIdx >= nodes.length - 1) return
+  if (segPolylines[segIdx]) { map.removeLayer(segPolylines[segIdx]); segPolylines[segIdx] = null }
+  const n1 = nodes[segIdx], n2 = nodes[segIdx + 1]
+  const result = await fetchRoute(n1.lat, n1.lng, n2.lat, n2.lng)
+  segPolylines[segIdx] = L.polyline(result.latlngs, { color: '#3b82f6', weight: 4, opacity: .85 }).addTo(map)
+  if (!segData[segIdx]) segData[segIdx] = { name:'', lanes:2, width:8, length:0, _auto:true }
+  if (segData[segIdx]._auto !== false) {
+    segData[segIdx].length = result.distance
+    segData[segIdx]._source = result.source
+    updateTotalLength()
+    renderSegTable()
+  }
+  if (result.source === 'straight') toast('⚠️ 使用直線距離（OSRM 無回應）')
+}
+
+// ════════════════════════════════════
+//  MODE
+// ════════════════════════════════════
+function setMode(m) {
+  if (m !== 'measure' && measuring) stopMeasure()
+  mode = m
+  document.getElementById('tool-node').classList.toggle('active', m === 'node')
+  document.getElementById('tool-pan').classList.toggle('active', m === 'pan')
+  document.getElementById('map-hint').style.display = m === 'node' ? 'block' : 'none'
+  map.getContainer().style.cursor = m === 'node' ? 'crosshair' : m === 'measure' ? 'cell' : ''
+}
+setMode('pan')
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { cancelNode(); stopMeasure(); setMode('pan') } })
+
+// ════════════════════════════════════
+//  MEASURE TOOL
+// ════════════════════════════════════
+function toggleMeasure() {
+  if (measuring) { stopMeasure(); setMode('pan') }
+  else { measuring = true; mode = 'measure'; document.getElementById('tool-measure').classList.add('active-measure'); document.getElementById('tool-measure').textContent = '✕ 結束量測'; document.getElementById('measure-badge').style.display = 'block'; map.getContainer().style.cursor = 'cell' }
+}
+function stopMeasure() {
+  measuring = false; mode = 'pan'
+  document.getElementById('tool-measure').classList.remove('active-measure'); document.getElementById('tool-measure').textContent = '📐 量測距離'
+  document.getElementById('measure-badge').style.display = 'none'
+  if (measurePolyline) { map.removeLayer(measurePolyline); measurePolyline = null }
+  measureMarkers.forEach(m => map.removeLayer(m)); measureMarkers = []
+  if (measureTooltipMarker) { map.removeLayer(measureTooltipMarker); measureTooltipMarker = null }
+  measurePts = []
+}
+function getMeasureTotal() {
+  let t = 0
+  for (let i = 1; i < measurePts.length; i++) t += haversine(measurePts[i-1][0],measurePts[i-1][1],measurePts[i][0],measurePts[i][1])
+  return t
+}
+
+// ════════════════════════════════════
+//  MAP EVENTS
+// ════════════════════════════════════
+map.on('click', e => {
+  if (mode === 'measure') {
+    measurePts.push([e.latlng.lat, e.latlng.lng])
+    if (measurePolyline) map.removeLayer(measurePolyline)
+    measureMarkers.forEach(m => map.removeLayer(m)); measureMarkers = []
+    if (measureTooltipMarker) { map.removeLayer(measureTooltipMarker); measureTooltipMarker = null }
+    if (measurePts.length >= 2) {
+      measurePolyline = L.polyline(measurePts, { color:'#f59e0b', weight:3, dashArray:'6,4', opacity:.9 }).addTo(map)
+      const total = getMeasureTotal()
+      const last = measurePts[measurePts.length-1]
+      measureTooltipMarker = L.marker(last, { icon: L.divIcon({ html: `<div style="background:#1e293b;color:white;padding:3px 8px;border-radius:8px;font-size:12px;font-weight:700;white-space:nowrap">${fmtDist(total)}</div>`, className:'', iconAnchor:[0,0] }) }).addTo(map)
+      document.getElementById('measure-dist').textContent = '📏 ' + fmtDist(total)
+    }
+    measurePts.forEach((p, i) => {
+      const m = L.circleMarker(p, { radius:5, fillColor:i===0?'#16a34a':'#f59e0b', color:'#fff', weight:2, fillOpacity:1 }).addTo(map)
+      measureMarkers.push(m)
+    })
+    return
+  }
+
+  if (mode !== 'node') return
+  pendingLatLng = e.latlng
+
+  const pt = map.latLngToContainerPoint(e.latlng)
+  const mapRect = document.getElementById('map').getBoundingClientRect()
+  const dialog = document.getElementById('node-dialog')
+  const dw = 240, dh = 115
+  let dx = pt.x + mapRect.left + 12
+  let dy = pt.y + mapRect.top - 10
+  if (dx + dw > window.innerWidth)  dx = window.innerWidth - dw - 12
+  if (dy + dh > window.innerHeight) dy = window.innerHeight - dh - 12
+  if (dy < 60) dy = 70
+  dialog.style.left = dx + 'px'; dialog.style.top = dy + 'px'; dialog.style.display = 'block'
+
+  const inp = document.getElementById('nd-name')
+  inp.value = `節點${nodes.length + 1}`; inp.focus(); inp.select()
+})
+
+map.on('dblclick', e => { if (mode === 'measure') { L.DomEvent.stopPropagation(e); stopMeasure(); setMode('pan') } })
+
+// ════════════════════════════════════
+//  NODE DIALOG
+// ════════════════════════════════════
+function confirmNode() {
+  if (!pendingLatLng) return
+  const name = document.getElementById('nd-name').value.trim() || `節點${nodes.length + 1}`
+  addNode(pendingLatLng.lat, pendingLatLng.lng, name)
+  cancelNode()
+}
+function cancelNode() {
+  pendingLatLng = null
+  document.getElementById('node-dialog').style.display = 'none'
+  document.getElementById('nd-name').value = ''
+}
+document.getElementById('nd-name').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmNode()
+  if (e.key === 'Escape') cancelNode()
+})
+
+// ════════════════════════════════════
+//  ADD NODE
+// ════════════════════════════════════
+async function addNode(lat, lng, name) {
+  const idx = nodes.length
+  nodes.push({ lat, lng, name })
+
+  const color = getNodeColor(idx)
+  const marker = L.marker([lat, lng], {
+    draggable: true,
+    icon: createNodeIcon(idx + 1, color),
+    autoPan: true
+  }).addTo(map)
+  nodeMarkers.push(marker)
+  updateAllIcons()
+
+  // Popup for rename/delete
+  marker.on('click', function() {
+    const i = nodeMarkers.indexOf(this)
+    if (i < 0 || mode === 'node') return
+    const n = nodes[i]
+    this.unbindPopup()
+    this.bindPopup(
+      `<div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:5px">節點 ${i+1}</div>
+        <input class="node-popup-name" id="popup-inp" value="${n.name}"/>
+        <div class="node-popup-btns">
+          <button class="node-popup-save" onclick="popupSave(${i})">✓ 更名</button>
+          <button class="node-popup-del" onclick="popupDelete(${i})">🗑</button>
+        </div>
+      </div>`,
+      { maxWidth: 220 }
+    ).openPopup()
+    // Auto-focus input after popup renders
+    setTimeout(() => { const el = document.getElementById('popup-inp'); if(el){el.focus();el.select()} }, 80)
+  })
+
+  // Live drag: redraw adjacent segments as straight lines
+  marker.on('drag', function() {
+    const i = nodeMarkers.indexOf(this)
+    const latlng = this.getLatLng()
+    if (i < 0) return
+    nodes[i].lat = latlng.lat; nodes[i].lng = latlng.lng
+    if (i > 0 && segPolylines[i-1]) segPolylines[i-1].setLatLngs([[nodes[i-1].lat,nodes[i-1].lng],[latlng.lat,latlng.lng]])
+    if (i < nodes.length-1 && segPolylines[i]) segPolylines[i].setLatLngs([[latlng.lat,latlng.lng],[nodes[i+1].lat,nodes[i+1].lng]])
+  })
+
+  // Drag end: re-fetch OSRM route
+  marker.on('dragend', async function() {
+    const i = nodeMarkers.indexOf(this)
+    if (i < 0) return
+    const latlng = this.getLatLng()
+    nodes[i].lat = latlng.lat; nodes[i].lng = latlng.lng
+    renderNodeList()
+    document.getElementById('route-loading').style.display = 'block'
+    if (i > 0) await refreshSegment(i - 1)
+    if (i < nodes.length - 1) await refreshSegment(i)
+    document.getElementById('route-loading').style.display = 'none'
+  })
+
+  // Segment routing (for all nodes except first)
+  if (idx > 0) {
+    const prev = nodes[idx - 1]
+    document.getElementById('route-loading').style.display = 'block'
+    const result = await fetchRoute(prev.lat, prev.lng, lat, lng)
+    document.getElementById('route-loading').style.display = 'none'
+    segPolylines.push(L.polyline(result.latlngs, { color:'#3b82f6', weight:4, opacity:.85 }).addTo(map))
+    if (!segData[idx-1]) segData[idx-1] = { name:'', lanes:2, width:8, length:0, _auto:true }
+    if (segData[idx-1]._auto !== false) {
+      segData[idx-1].length = result.distance
+      segData[idx-1]._source = result.source
+    }
+    if (result.source === 'straight') toast('⚠️ 使用直線距離（OSRM 無回應）')
+    updateTotalLength()
+  }
+
+  // Fit map
+  if (nodes.length === 1) map.setView([lat, lng], 16)
+  else if (nodes.length === 2) map.fitBounds([[nodes[0].lat,nodes[0].lng],[lat,lng]], { padding:[60,60] })
+
+  renderNodeList()
+  renderSegTable()
+}
+
+function updateAllIcons() {
+  nodeMarkers.forEach((m, i) => m.setIcon(createNodeIcon(i + 1, getNodeColor(i))))
+}
+
+function updateTotalLength() {
+  const total = segData.reduce((s, d) => s + (d.length || 0), 0)
+  if (total > 0) document.getElementById('tl').value = total
+}
+
+// ════════════════════════════════════
+//  POPUP ACTIONS (called from inline HTML)
+// ════════════════════════════════════
+window.popupSave = function(i) {
+  const inp = document.getElementById('popup-inp')
+  if (!inp || !nodes[i]) return
+  nodes[i].name = inp.value.trim() || nodes[i].name
+  map.closePopup()
+  renderNodeList()
+  renderSegTable()
+  toast('✅ 節點名稱已更新')
+}
+window.popupDelete = async function(i) {
+  map.closePopup()
+  await removeNode(i)
+}
+
+// ════════════════════════════════════
+//  REMOVE NODE
+// ════════════════════════════════════
+async function removeNode(idx) {
+  const remaining = nodes.filter((_, i) => i !== idx)
+  // Clear all map layers
+  nodeMarkers.forEach(m => map.removeLayer(m)); nodeMarkers = []
+  segPolylines.forEach(p => map.removeLayer(p)); segPolylines = []
+  nodes = []; segData = []
+  // Re-add remaining (re-fetches routes)
+  for (const n of remaining) await addNode(n.lat, n.lng, n.name)
+}
+
+// ════════════════════════════════════
+//  RENDER NODE LIST
+// ════════════════════════════════════
+function renderNodeList() {
+  document.getElementById('node-count').textContent = nodes.length
+  document.getElementById('node-list').innerHTML = nodes.map((n, i) => `
+    <div class="node-item">
+      <div class="node-num${i===0?' start':i===nodes.length-1?' end':''}">${i+1}</div>
+      <div class="node-info">
+        <div class="node-name-text">${n.name}</div>
+        <div class="node-coords">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}</div>
+      </div>
+      <button class="node-del" onclick="removeNode(${i})">✕</button>
+    </div>`).join('')
+}
+
+// ════════════════════════════════════
+//  RENDER SEGMENT TABLE
+// ════════════════════════════════════
+function renderSegTable() {
+  const tbody = document.getElementById('seg-tbody')
+  const hint  = document.getElementById('seg-hint')
+  if (nodes.length < 2) { tbody.innerHTML = ''; hint.style.display='block'; return }
+  hint.style.display = 'none'
+  const needed = nodes.length - 1
+  while (segData.length < needed) segData.push({ name:'', lanes:2, width:8, length:0, _auto:true })
+  segData.length = needed
+  tbody.innerHTML = nodes.slice(0,-1).map((n, i) => {
+    const defName = segData[i].name || `${n.name}→${nodes[i+1].name}`
+    segData[i].name = defName
+    const badge = segData[i]._source==='straight'
+      ? '<span class="dist-manual">直線</span>'
+      : segData[i]._auto!==false ? '<span class="dist-auto">✓</span>' : '<span class="dist-manual">手動</span>'
+    return `<tr>
+      <td><input class="seg-input" style="text-align:left;min-width:100px" value="${defName}" onchange="segData[${i}].name=this.value"/></td>
+      <td><input class="seg-input" style="width:38px" type="number" value="${segData[i].lanes}" min="1" max="10" onchange="segData[${i}].lanes=+this.value||2"/></td>
+      <td><input class="seg-input" style="width:42px" type="number" value="${segData[i].width}" onchange="segData[${i}].width=+this.value||8"/></td>
+      <td style="white-space:nowrap"><input class="seg-input" style="width:54px" type="number" value="${segData[i].length}" onchange="segData[${i}].length=+this.value||0;segData[${i}]._auto=false;updateTotalLength()"/>${badge}</td>
+    </tr>`
+  }).join('')
+}
+
+// ════════════════════════════════════
+//  CLEAR ALL
+// ════════════════════════════════════
+function clearAll() {
+  if (!confirm('清除所有節點與路線？')) return
+  nodeMarkers.forEach(m => map.removeLayer(m)); nodeMarkers = []
+  segPolylines.forEach(p => map.removeLayer(p)); segPolylines = []
+  nodes = []; segData = []
+  stopMeasure()
+  renderNodeList(); renderSegTable()
+}
+
+// ════════════════════════════════════
+//  ENCODE CONFIG
+// ════════════════════════════════════
+function syncSegDataFromDOM() {
+  document.querySelectorAll('#seg-tbody tr').forEach((tr, i) => {
+    const ins = tr.querySelectorAll('input')
+    if (ins.length >= 4 && segData[i]) {
+      segData[i].name   = ins[0].value
+      segData[i].lanes  = parseInt(ins[1].value)||2
+      segData[i].width  = parseInt(ins[2].value)||8
+      segData[i].length = parseInt(ins[3].value)||0
+    }
+  })
+}
+
+function buildConfig() {
+  syncSegDataFromDOM()
+  return {
+    v: 1,
+    rn: document.getElementById('rn').value.trim(),
+    ft: document.getElementById('ft').value.trim(),
+    tl: parseInt(document.getElementById('tl').value)||0,
+    op: document.getElementById('op').value.trim()||'14:00~16:00',
+    pk: document.getElementById('pk').value.trim()||'17:00~19:00',
+    nd: nodes.map(n => ({ n: n.name, a: parseFloat(n.lat.toFixed(6)), o: parseFloat(n.lng.toFixed(6)) })),
+    sg: segData.map(s => ({ n: s.name, l: s.lanes||2, w: s.width||8, d: s.length||0 }))
+  }
+}
+
+function encodeConfig(cfg) {
+  const json = JSON.stringify(cfg)
+  return btoa(unescape(encodeURIComponent(json))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'')
+}
+
+function buildURL() {
+  const cfg = buildConfig()
+  if (!cfg.rn) { toast('請先填寫路線名稱'); return null }
+  if (nodes.length < 2) { toast('請至少在地圖上放置 2 個節點'); return null }
+  const base = document.getElementById('app-url').value.trim().replace(/\/$/, '')
+  const encoded = encodeConfig(cfg)
+  document.getElementById('qr-info').textContent =
+    `包含 ${cfg.nd.length} 個節點、${cfg.sg.length} 個路段（${encoded.length} 字元）`
+  // 使用 ?c= 避免 LINE 截掉 # hash
+  return `${base}/?c=${encoded}`
+}
+
+// ════════════════════════════════════
+//  QR CODE
+// ════════════════════════════════════
+let lastURL = ''
+function generateQR() {
+  const url = buildURL(); if (!url) return
+  lastURL = url
+  const box = document.getElementById('qr-box')
+  box.innerHTML = ''
+  new QRCode(box, { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M, colorDark: '#1e293b', colorLight: '#ffffff' })
+  toast('✅ QR Code 已產生')
+}
+
+function copyLink() {
+  const url = buildURL(); if (!url) return
+  navigator.clipboard.writeText(url).then(() => toast('✅ 連結已複製')).catch(() => prompt('複製連結：', url))
+}
+
+function downloadQR() {
+  if (!lastURL) { generateQR(); return }
+  const canvas = document.querySelector('#qr-box canvas')
+  if (!canvas) { toast('請先產生 QR Code'); return }
+  const a = document.createElement('a')
+  a.href = canvas.toDataURL('image/png')
+  a.download = `QR_${document.getElementById('rn').value||'survey'}.png`
+  a.click()
+}
+
+// ════════════════════════════════════
+//  SAVE / LOAD TASKS
+// ════════════════════════════════════
+function saveTask() {
+  const cfg = buildConfig()
+  if (!cfg.rn) { toast('請先填寫路線名稱'); return }
+  if (nodes.length < 2) { toast('請至少放置 2 個節點'); return }
+  const id = Date.now().toString(36)
+  savedTasks.unshift({ id, cfg, savedAt: new Date().toLocaleDateString('zh-TW') })
+  if (savedTasks.length > 20) savedTasks.pop()
+  localStorage.setItem('pm_tasks', JSON.stringify(savedTasks))
+  renderSavedTasks()
+  toast('✅ 任務已儲存')
+}
+
+function newTask() {
+  if (!confirm('清除目前設定，開始新任務？')) return
+  document.getElementById('rn').value = ''
+  document.getElementById('ft').value = ''
+  document.getElementById('tl').value = ''
+  clearAll()
+}
+
+async function loadTask(id) {
+  const task = savedTasks.find(t => t.id === id); if (!task) return
+  const cfg = task.cfg
+  document.getElementById('rn').value = cfg.rn||''
+  document.getElementById('ft').value = cfg.ft||''
+  document.getElementById('tl').value = cfg.tl||''
+  document.getElementById('op').value = cfg.op||'14:00~16:00'
+  document.getElementById('pk').value = cfg.pk||'17:00~19:00'
+
+  nodeMarkers.forEach(m => map.removeLayer(m)); nodeMarkers = []
+  segPolylines.forEach(p => map.removeLayer(p)); segPolylines = []
+  nodes = []
+
+  // Preset segment data so lengths aren't re-fetched from OSRM
+  segData = cfg.sg ? cfg.sg.map(s => ({ name:s.n, lanes:s.l, width:s.w, length:s.d, _auto:false })) : []
+
+  if (cfg.nd) {
+    for (const n of cfg.nd) await addNode(n.a, n.o, n.n || n.r1 || '節點')
+  }
+
+  if (nodes.length >= 2) map.fitBounds(L.polyline(nodes.map(n=>[n.lat,n.lng])).getBounds(), { padding:[40,40] })
+  toast('✅ 任務已載入')
+}
+
+function deleteTask(id) {
+  if (!confirm('刪除此任務？')) return
+  savedTasks = savedTasks.filter(t => t.id !== id)
+  localStorage.setItem('pm_tasks', JSON.stringify(savedTasks))
+  renderSavedTasks()
+}
+
+async function loadAndQR(id) {
+  await loadTask(id)
+  generateQR()
+}
+
+function renderSavedTasks() {
+  const el = document.getElementById('saved-tasks')
+  const hint = document.getElementById('no-tasks-hint')
+  if (!savedTasks.length) { el.innerHTML=''; hint.style.display='block'; return }
+  hint.style.display = 'none'
+  el.innerHTML = savedTasks.map(t => `
+    <div class="task-card">
+      <div class="task-card-name">${t.cfg.rn||'未命名路線'}</div>
+      <div class="task-card-meta">${t.cfg.ft||''}　${t.savedAt}　節點 ${t.cfg.nd?.length||0} 個</div>
+      <div class="task-card-btns">
+        <button class="tc-btn load" onclick="loadTask('${t.id}')">✏️ 載入編輯</button>
+        <button class="tc-btn qr" onclick="loadAndQR('${t.id}')">🔲 QR</button>
+        <button class="tc-btn del" onclick="deleteTask('${t.id}')">刪除</button>
+      </div>
+    </div>`).join('')
+}
+
+// ════════════════════════════════════
+//  INIT
+// ════════════════════════════════════
+document.getElementById('survey-date').value = new Date().toISOString().slice(0,10)
+renderSavedTasks()
+</script>
+</body>
+</html>
