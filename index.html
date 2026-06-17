@@ -1,910 +1,945 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no,viewport-fit=cover"/>
 <title>旅行時間調查</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; background: #0f172a; font-family: -apple-system, 'PingFang TC', sans-serif; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC',sans-serif}
+.screen{display:none;height:100dvh;flex-direction:column}
+.screen.active{display:flex}
 
-  /* ── 畫面切換 ── */
-  .screen { display: none; height: 100dvh; flex-direction: column; }
-  .screen.active { display: flex; }
+/* ── Setup ── */
+#screen-setup{background:#f1f5f9}
+.page-header{background:#1e293b;padding:15px 16px;color:white;flex-shrink:0}
+.page-header h2{font-size:18px;font-weight:800}
+.page-header p{font-size:12px;color:#94a3b8;margin-top:2px}
+.scroll-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.card{background:white;border-radius:14px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.card-title{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.field{margin-bottom:10px}
+.field:last-child{margin-bottom:0}
+.field label{display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:4px}
+.field input,.field select{width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:15px;outline:none;background:white}
+.field input:focus,.field select:focus{border-color:#3b82f6}
+.row2{display:flex;gap:8px}
+.row2 .field{flex:1}
+.w-row{display:flex;gap:8px}
+.w-btn{flex:1;padding:10px 6px;border:2px solid #e2e8f0;border-radius:10px;background:white;font-size:18px;cursor:pointer;text-align:center}
+.w-btn.sel{border-color:#3b82f6;background:#eff6ff}
+.seg-list{display:flex;flex-direction:column;gap:7px;margin-bottom:10px}
+.seg-item{background:#f8fafc;border-radius:10px;padding:10px 12px;border:1px solid #e2e8f0;display:flex;align-items:center;gap:8px}
+.seg-info{flex:1}
+.seg-name{font-size:13px;font-weight:600;color:#1e293b}
+.seg-meta{font-size:11px;color:#94a3b8;margin-top:1px}
+.seg-del{background:#fee2e2;color:#dc2626;border:none;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer}
+.btn-add{width:100%;padding:11px;border:2px dashed #cbd5e1;border-radius:10px;background:transparent;color:#64748b;font-size:14px;cursor:pointer;margin-bottom:10px}
+.seg-form{background:#eff6ff;border-radius:12px;padding:12px;border:2px solid #3b82f6;margin-bottom:10px;display:none}
+.seg-form.open{display:block}
+.seg-form-title{font-size:12px;font-weight:700;color:#2563eb;margin-bottom:8px}
+.seg-form-row{display:flex;gap:8px;margin-bottom:8px}
+.seg-form-row input{flex:1;padding:9px 10px;border:1.5px solid #bfdbfe;border-radius:8px;font-size:14px;outline:none;background:white}
+.seg-form-btns{display:flex;gap:8px}
+.btn-seg-ok{flex:1;padding:10px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.btn-seg-cancel{padding:10px 14px;background:#e2e8f0;border:none;border-radius:8px;font-size:14px;cursor:pointer}
+.btn-primary{width:100%;padding:17px;background:#16a34a;color:white;border:none;border-radius:16px;font-size:17px;font-weight:800;cursor:pointer;flex-shrink:0}
 
-  /* ══════════════════════════════════════
-     畫面 A：準備（地圖 45% + 控制面板 55%）
-  ══════════════════════════════════════ */
-  #screen-ready { background: #0f172a; }
-  #map-ready { height: 45%; flex-shrink: 0; }
+/* ── Ready ── */
+#screen-ready{background:#0f172a}
+#map-ready{height:40%;flex-shrink:0}
+.ready-panel{flex:1;background:#1e293b;padding:12px 16px 20px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #334155;overflow-y:auto}
+.ready-title{color:white;font-size:16px;font-weight:800;text-align:center}
+.gps-status{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.07);padding:8px 14px;border-radius:20px;color:#94a3b8;font-size:13px;justify-content:center}
+.gps-dot{width:9px;height:9px;border-radius:50%;background:#94a3b8;flex-shrink:0}
+.gps-dot.good{background:#4ade80;animation:blink 1.5s infinite}
+.gps-dot.poor{background:#fbbf24}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+.combo-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#475569;margin-bottom:5px}
+.combo-row{display:flex;gap:8px;margin-bottom:8px}
+.combo-btn{flex:1;padding:11px 6px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:#94a3b8;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s}
+.combo-btn.pk{background:#450a0a;border-color:#ef4444;color:#fca5a5}
+.combo-btn.dr{background:#0c2a4e;border-color:#3b82f6;color:#93c5fd}
+.sel-badge{text-align:center;font-size:13px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,.12);padding:6px 12px;border-radius:10px;display:none}
+.progress-chips{display:flex;gap:5px;flex-wrap:wrap;justify-content:center}
+.chip{font-size:11px;padding:3px 9px;border-radius:20px;background:#0f172a;color:#475569;font-weight:600}
+.chip.done{background:#14532d;color:#4ade80}
+.btn-start{width:100%;padding:16px;background:#16a34a;color:white;border:none;border-radius:16px;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(22,163,74,.3);margin-top:auto;flex-shrink:0}
+.btn-start:disabled{background:#374151;box-shadow:none;cursor:default}
 
-  .ready-panel {
-    flex: 1; background: #1e293b;
-    padding: 14px 16px 24px;
-    display: flex; flex-direction: column;
-    gap: 10px; border-top: 1px solid #334155;
-    overflow-y: auto;
-  }
-  .ready-title { color: white; font-size: 18px; font-weight: 800; text-align: center; }
+/* ── Survey ── */
+#screen-survey{position:relative}
+.map-wrap{height:32%;position:relative;flex-shrink:0}
+#map-survey{width:100%;height:100%}
+.gps-badge{position:absolute;bottom:6px;right:8px;background:rgba(0,0,0,.65);color:#4ade80;padding:3px 8px;border-radius:10px;font-size:11px;z-index:999}
+.status-bar{background:#0f172a;padding:6px 14px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.status-left{color:#4ade80;font-size:12px;font-weight:700}
+.status-right{color:#94a3b8;font-size:13px;font-family:monospace}
+.tab-bar{display:flex;background:#0f172a;border-bottom:1px solid #1e293b;flex-shrink:0}
+.tab{flex:1;padding:8px 4px;text-align:center;font-size:12px;font-weight:700;color:#475569;cursor:pointer;border-bottom:2px solid transparent}
+.tab.active{color:#60a5fa;border-bottom-color:#3b82f6}
+.tab-pane{display:none;flex:1;overflow-y:auto;padding:10px 12px;background:#1e293b;flex-direction:column;gap:8px}
+.tab-pane.active{display:flex}
 
-  .gps-status {
-    display: flex; align-items: center; gap: 8px;
-    background: rgba(255,255,255,0.07);
-    padding: 9px 16px; border-radius: 20px;
-    color: #94a3b8; font-size: 13px; justify-content: center;
-  }
-  .gps-dot { width: 9px; height: 9px; border-radius: 50%; background: #94a3b8; flex-shrink: 0; }
-  .gps-dot.good { background: #4ade80; animation: blink 1.5s infinite; }
-  .gps-dot.poor { background: #fbbf24; }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+/* Node tab */
+.node-progress{display:flex;align-items:center;padding:4px 0 8px;overflow-x:auto}
+.nd{width:26px;height:26px;border-radius:50%;background:#334155;border:2px solid #475569;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#94a3b8;flex-shrink:0;cursor:pointer;transition:all .15s}
+.nd.done{background:#14532d;border-color:#4ade80;color:#4ade80}
+.nd.cur{background:#1d4ed8;border-color:#60a5fa;color:white;animation:pu 1.5s infinite}
+@keyframes pu{0%,100%{box-shadow:0 0 0 0 rgba(96,165,250,.4)}50%{box-shadow:0 0 0 5px rgba(96,165,250,0)}}
+.nd-line{height:2px;background:#334155;flex:1;min-width:8px}
+.nd-line.done{background:#4ade80}
+.node-items{display:flex;flex-direction:column;gap:6px}
+.node-btn{width:100%;padding:11px 14px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:#94a3b8;font-size:13px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;transition:all .15s}
+.node-btn.done{background:#0a1f0f;border-color:#15803d;color:#4ade80;cursor:default}
+.node-btn.cur{border-color:#3b82f6;color:white;background:#0c2a4e}
+.node-btn .nt{margin-left:auto;font-size:11px;font-family:monospace}
+.node-btn.done .nt{color:#4ade80}
 
-  /* ── 組合選擇 ── */
-  .combo-section { width: 100%; }
-  .combo-label {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
-    color: #475569; margin-bottom: 6px;
-  }
-  .combo-row { display: flex; gap: 8px; margin-bottom: 8px; }
-  .combo-btn {
-    flex: 1; padding: 11px 6px;
-    background: #0f172a; border: 2px solid #334155;
-    border-radius: 12px; color: #94a3b8;
-    font-size: 14px; font-weight: 600; cursor: pointer;
-    transition: all .15s; line-height: 1.3;
-  }
-  .combo-btn:active { transform: scale(.97); }
-  .combo-btn.peak-sel   { background: #450a0a; border-color: #ef4444; color: #fca5a5; }
-  .combo-btn.bound-sel  { background: #0c2a4e; border-color: #3b82f6; color: #93c5fd; }
+/* Delay buttons */
+.dl-group-label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#475569;margin-bottom:4px}
+.dl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+.btn-dl{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 4px;min-height:60px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:#94a3b8;cursor:pointer;transition:all .15s}
+.btn-dl.active{background:#450a0a;border-color:#ef4444;color:#fca5a5}
+.btn-dl .di{font-size:17px}
+.btn-dl .dn{font-size:10px;margin-top:2px;text-align:center;line-height:1.2}
+.btn-dl .dt{font-size:10px;font-family:monospace;color:#f87171;margin-top:1px}
+.btn-end{width:100%;padding:14px;background:#dc2626;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;flex-shrink:0;margin:8px 12px 8px;width:calc(100% - 24px)}
 
-  .selected-combo-badge {
-    text-align: center; font-size: 13px; font-weight: 700;
-    color: #a78bfa; background: rgba(167,139,250,.12);
-    padding: 7px 12px; border-radius: 10px;
-    display: none;
-  }
+/* ── Trip Done ── */
+#screen-tripdone{background:#f1f5f9}
+.td-header{background:#16a34a;padding:18px 16px;color:white;text-align:center;flex-shrink:0}
+.td-header h2{font-size:20px;font-weight:800}
+.td-header p{font-size:13px;color:rgba(255,255,255,.8);margin-top:3px}
+.stat-row{display:flex;gap:8px}
+.stat-card{flex:1;background:white;border-radius:12px;padding:11px 8px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.stat-card .si{font-size:18px}
+.stat-card .sl{font-size:10px;color:#94a3b8;margin:2px 0;display:block}
+.stat-card .sv{font-size:13px;font-weight:800;color:#1e293b}
+.prog-card{background:white;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.prog-card h3{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.prog-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
+.prog-row:last-child{border:none}
+.badge-done{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:#dcfce7;color:#16a34a}
+.badge-todo{font-size:11px;padding:3px 9px;border-radius:20px;background:#f1f5f9;color:#94a3b8}
+.btn-blue{width:100%;padding:16px;background:#2563eb;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer}
+.btn-purple{width:100%;padding:16px;background:#7c3aed;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer}
 
-  .btn-start {
-    width: 100%; padding: 18px;
-    background: #16a34a; color: white;
-    border: none; border-radius: 16px;
-    font-size: 18px; font-weight: 800; cursor: pointer;
-    box-shadow: 0 4px 20px rgba(22,163,74,.35);
-    margin-top: auto; flex-shrink: 0;
-  }
-  .btn-start:disabled { background: #374151; box-shadow: none; cursor: default; }
-  .btn-start:not(:disabled):active { transform: scale(.97); }
+/* ── Report ── */
+#screen-report{background:#f1f5f9}
+.report-wrap{overflow-x:auto;background:white;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.rt{width:100%;border-collapse:collapse;font-size:11px;min-width:380px}
+.rt th{background:#1e293b;color:white;padding:6px 7px;text-align:center;font-size:10px;font-weight:600;white-space:nowrap}
+.rt td{padding:5px 7px;border:1px solid #e2e8f0;text-align:center;white-space:nowrap}
+.rtl{text-align:left;background:#f8fafc;font-weight:600;color:#374151}
+.rts{background:#334155;color:white;font-weight:700;text-align:center}
+.rth{background:#e2e8f0;color:#1e293b;font-weight:700}
+.export-row{display:flex;gap:8px}
+.btn-ex{flex:1;padding:14px;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer}
+.btn-ex.html{background:#7c3aed;color:white}
+.btn-ex.csv{background:#2563eb;color:white}
+.sec-title{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:6px}
 
-  /* ══════════════════════════════════════
-     畫面 B：調查中
-  ══════════════════════════════════════ */
-  #screen-survey { position: relative; }
-  .map-wrap { height: 40%; position: relative; flex-shrink: 0; }
-  #map-survey { width: 100%; height: 100%; }
-  .off-route {
-    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-    background: #ef4444; color: white;
-    padding: 6px 16px; border-radius: 20px;
-    font-size: 13px; font-weight: 700; z-index: 999;
-    pointer-events: none; display: none;
-  }
-  .gps-badge {
-    position: absolute; bottom: 8px; right: 8px;
-    background: rgba(0,0,0,.6); color: #4ade80;
-    padding: 3px 9px; border-radius: 10px; font-size: 11px; z-index: 999;
-  }
-
-  .status-bar {
-    background: #1e293b; padding: 7px 14px;
-    display: flex; justify-content: space-between; align-items: center;
-    border-top: 1px solid #334155; flex-shrink: 0;
-  }
-  .status-left  { color: #4ade80; font-size: 12px; font-weight: 700; }
-  .status-right { color: #94a3b8; font-size: 13px; font-family: monospace; }
-
-  .action-area {
-    flex: 1; background: #1e293b;
-    padding: 10px 12px; overflow-y: auto;
-    display: flex; flex-direction: column; gap: 8px;
-  }
-  .delay-label {
-    font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
-    color: #475569; margin-bottom: 2px;
-  }
-  .delay-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; }
-  .btn-delay {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    padding: 9px 4px; min-height: 66px;
-    background: #0f172a; border: 2px solid #334155;
-    border-radius: 12px; color: #94a3b8; cursor: pointer; transition: all .15s;
-  }
-  .btn-delay.active { background: #450a0a; border-color: #ef4444; color: #fca5a5; }
-  .btn-delay .di { font-size: 20px; }
-  .btn-delay .dn { font-size: 11px; margin-top: 2px; }
-  .btn-delay .dt { font-size: 11px; font-family: monospace; color: #f87171; margin-top: 1px; }
-
-  .btn-end {
-    width: 100%; padding: 16px;
-    background: #dc2626; color: white;
-    border: none; border-radius: 14px;
-    font-size: 16px; font-weight: 800; cursor: pointer; flex-shrink: 0;
-  }
-  .btn-end:active { background: #b91c1c; }
-
-  /* ══════════════════════════════════════
-     畫面 C：結果報表
-  ══════════════════════════════════════ */
-  #screen-result { background: #f1f5f9; overflow-y: auto; }
-
-  .result-header {
-    background: #1e293b; padding: 18px 16px;
-    color: white; flex-shrink: 0;
-  }
-  .result-header h2 { font-size: 18px; font-weight: 800; margin-bottom: 3px; }
-  .result-header p  { font-size: 13px; color: #94a3b8; }
-  .combo-tag {
-    display: inline-block; margin-top: 6px;
-    font-size: 12px; font-weight: 700; padding: 3px 10px;
-    border-radius: 20px; background: rgba(167,139,250,.2); color: #a78bfa;
-  }
-
-  .result-body { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
-
-  .section-title {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
-    color: #94a3b8; margin-bottom: 6px;
-  }
-  .stat-row { display: flex; gap: 8px; }
-  .stat-card {
-    flex: 1; background: white; border-radius: 12px;
-    padding: 12px 8px; text-align: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,.07);
-  }
-  .stat-card .si { font-size: 20px; }
-  .stat-card .sl { font-size: 10px; color: #94a3b8; margin: 2px 0; display: block; }
-  .stat-card .sv { font-size: 14px; font-weight: 800; color: #1e293b; }
-
-  /* 結果地圖 */
-  #map-result {
-    height: 260px; border-radius: 14px; overflow: hidden;
-    box-shadow: 0 1px 4px rgba(0,0,0,.1);
-  }
-
-  /* 延滯明細表 */
-  .delay-table {
-    width: 100%; border-collapse: collapse;
-    background: white; border-radius: 12px; overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,.07); font-size: 13px;
-  }
-  .delay-table th {
-    background: #f1f5f9; color: #475569;
-    padding: 9px 11px; text-align: left; font-weight: 600;
-  }
-  .delay-table td { padding: 9px 11px; border-top: 1px solid #f1f5f9; }
-  .delay-table tr:last-child td { border: none; }
-
-  /* 匯出按鈕 */
-  .export-btns { display: flex; gap: 8px; }
-  .btn-export {
-    flex: 1; padding: 14px; border: none; border-radius: 12px;
-    font-size: 14px; font-weight: 700; cursor: pointer;
-  }
-  .btn-export.csv    { background: #2563eb; color: white; }
-  .btn-export.report { background: #7c3aed; color: white; }
-  .btn-export.copy   { background: #e2e8f0; color: #1e293b; }
-  .btn-restart {
-    width: 100%; padding: 16px;
-    background: #16a34a; color: white;
-    border: none; border-radius: 14px;
-    font-size: 16px; font-weight: 800; cursor: pointer;
-  }
-
-  /* Toast */
-  .toast {
-    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
-    background: #1e293b; color: white;
-    padding: 9px 18px; border-radius: 20px; font-size: 14px;
-    z-index: 9999; opacity: 0; transition: opacity .3s; pointer-events: none;
-    white-space: nowrap;
-  }
-  .toast.show { opacity: 1; }
-
-  /* 延滯圖例 */
-  .map-legend {
-    background: white; border-radius: 10px; padding: 8px 12px;
-    font-size: 12px; color: #475569;
-    box-shadow: 0 1px 3px rgba(0,0,0,.07);
-    display: flex; flex-wrap: wrap; gap: 6px 12px;
-  }
-  .legend-item { display: flex; align-items: center; gap: 4px; }
+/* Toast */
+.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#1e293b;color:white;padding:9px 18px;border-radius:20px;font-size:14px;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
 </style>
 </head>
 <body>
 
-<!-- ══════════════════════════════════
-     畫面 A：準備
-══════════════════════════════════ -->
-<div id="screen-ready" class="screen active">
+<!-- ══ Screen 0: Setup ══ -->
+<div id="screen-setup" class="screen active">
+  <div class="page-header">
+    <h2>⚙️ 調查設定</h2>
+    <p>填寫後可重複使用，每次調查前確認即可</p>
+  </div>
+  <div class="scroll-body">
+
+    <div class="card">
+      <div class="card-title">路線資訊</div>
+      <div class="field"><label>路線名稱</label><input id="s-route-name" placeholder="台二省道轉新市二路到港子平"/></div>
+      <div class="field"><label>起迄點位置</label><input id="s-route-fromto" placeholder="港子平-新市二路-台二線"/></div>
+      <div class="row2">
+        <div class="field"><label>全長（公尺）</label><input id="s-length" type="number" placeholder="3050"/></div>
+        <div class="field"><label>日期</label><input id="s-date" type="date"/></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">調查人員與天氣</div>
+      <div class="field"><label>調查員姓名</label><input id="s-surveyor" placeholder="張佑聖"/></div>
+      <div class="field">
+        <label>天氣</label>
+        <div class="w-row">
+          <button class="w-btn" id="w-sunny"  onclick="selWeather('sunny')">☀️<br><span style="font-size:11px">晴</span></button>
+          <button class="w-btn" id="w-cloudy" onclick="selWeather('cloudy')">☁️<br><span style="font-size:11px">陰</span></button>
+          <button class="w-btn" id="w-rainy"  onclick="selWeather('rainy')">🌧️<br><span style="font-size:11px">雨</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">調查時間區間</div>
+      <div class="row2">
+        <div class="field"><label>離峰時間</label><input id="s-offpeak" placeholder="14:00~16:00"/></div>
+        <div class="field"><label>尖峰時間</label><input id="s-peak" placeholder="17:00~19:00"/></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">路段設定（依行進順序）</div>
+      <div id="seg-list" class="seg-list"></div>
+      <button class="btn-add" onclick="openSegForm()">＋ 新增路段</button>
+      <div class="seg-form" id="seg-form">
+        <div class="seg-form-title">新增路段</div>
+        <div class="seg-form-row">
+          <input id="sf-name" placeholder="路段名稱（例：濱海路三段-新市二路二段）" style="flex:2"/>
+        </div>
+        <div class="seg-form-row">
+          <input id="sf-lanes"  type="number" placeholder="車道數" min="1"/>
+          <input id="sf-width"  type="number" placeholder="路寬(m)" min="1"/>
+          <input id="sf-length" type="number" placeholder="長度(m)" min="1"/>
+        </div>
+        <div class="seg-form-btns">
+          <button class="btn-seg-ok" onclick="addSeg()">確認新增</button>
+          <button class="btn-seg-cancel" onclick="closeSegForm()">取消</button>
+        </div>
+      </div>
+      <p style="font-size:11px;color:#94a3b8">共 <span id="seg-count">0</span> 個路段</p>
+    </div>
+
+    <button class="btn-primary" onclick="saveSetup()">✓ 儲存設定，開始調查</button>
+  </div>
+</div>
+
+<!-- ══ Screen A: Ready ══ -->
+<div id="screen-ready" class="screen">
   <div id="map-ready"></div>
   <div class="ready-panel">
     <div class="ready-title">🚗 旅行時間調查</div>
-
     <div class="gps-status">
-      <div class="gps-dot" id="gps-dot-ready"></div>
-      <span id="gps-text-ready">等待 GPS 訊號...</span>
+      <div class="gps-dot" id="gps-dot"></div>
+      <span id="gps-text">等待 GPS 訊號...</span>
     </div>
-
-    <!-- 時段選擇 -->
-    <div class="combo-section">
+    <div>
       <div class="combo-label">時段</div>
       <div class="combo-row">
-        <button class="combo-btn" id="btn-peak"    onclick="selectPeak('peak')">🔴 尖峰</button>
-        <button class="combo-btn" id="btn-offpeak" onclick="selectPeak('off_peak')">🟢 離峰</button>
+        <button class="combo-btn" id="btn-peak"    onclick="selPeak('peak')">🔴 尖峰</button>
+        <button class="combo-btn" id="btn-offpeak" onclick="selPeak('off_peak')">🟢 離峰</button>
       </div>
-    </div>
-
-    <!-- 方向選擇 -->
-    <div class="combo-section">
       <div class="combo-label">方向</div>
       <div class="combo-row">
-        <button class="combo-btn" id="btn-bound"  onclick="selectDir('bound')">→ 去程</button>
-        <button class="combo-btn" id="btn-return" onclick="selectDir('return')">← 回程</button>
+        <button class="combo-btn" id="btn-bound"  onclick="selDir('bound')">→ 去程</button>
+        <button class="combo-btn" id="btn-return" onclick="selDir('return')">← 回程</button>
       </div>
     </div>
-
-    <!-- 已選組合顯示 -->
-    <div class="selected-combo-badge" id="combo-badge">—</div>
-
-    <button class="btn-start" id="btn-start" disabled onclick="startSurvey()">
-      ▶ 開始調查
-    </button>
+    <div class="sel-badge" id="sel-badge"></div>
+    <div class="progress-chips" id="progress-chips"></div>
+    <button class="btn-start" id="btn-start" disabled onclick="startSurvey()">▶ 開始調查</button>
   </div>
 </div>
 
-<!-- ══════════════════════════════════
-     畫面 B：調查進行中
-══════════════════════════════════ -->
+<!-- ══ Screen B: Survey ══ -->
 <div id="screen-survey" class="screen">
   <div class="map-wrap">
     <div id="map-survey"></div>
-    <div class="off-route" id="off-route-alert">⚠️ 偏離路線</div>
-    <div class="gps-badge" id="gps-badge">📡 定位中...</div>
+    <div class="gps-badge" id="gps-badge">📡</div>
   </div>
-
   <div class="status-bar">
-    <span class="status-left" id="status-label">● 調查中</span>
+    <span class="status-left" id="status-combo">● 調查中</span>
     <span class="status-right" id="status-timer">00:00</span>
   </div>
-
-  <div class="action-area">
-    <div>
-      <p class="delay-label">延滯（點一下開始計時，再點停止）</p>
-      <div class="delay-grid" id="delay-grid"></div>
-    </div>
-    <button class="btn-end" onclick="endSurvey()">🔴 結束調查</button>
+  <div class="tab-bar">
+    <div class="tab active" id="tab-node"   onclick="showTab('node')">📍 節點</div>
+    <div class="tab"        id="tab-road"   onclick="showTab('road')">🛣 路段延滯</div>
+    <div class="tab"        id="tab-inter"  onclick="showTab('inter')">🚦 交叉口延滯</div>
   </div>
+  <div class="tab-pane active" id="pane-node">
+    <div class="node-progress" id="node-progress"></div>
+    <div class="node-items" id="node-items"></div>
+  </div>
+  <div class="tab-pane" id="pane-road">
+    <div class="dl-group-label">路段延滯（點一下開始計時，再點停止）</div>
+    <div class="dl-grid" id="grid-road"></div>
+  </div>
+  <div class="tab-pane" id="pane-inter">
+    <div class="dl-group-label">交叉口延滯（點一下開始計時，再點停止）</div>
+    <div class="dl-grid" id="grid-inter"></div>
+  </div>
+  <button class="btn-end" onclick="endSurvey()">🔴 結束調查</button>
 </div>
 
-<!-- ══════════════════════════════════
-     畫面 C：結果報表
-══════════════════════════════════ -->
-<div id="screen-result" class="screen">
-  <div class="result-header">
-    <h2>✅ 調查完成</h2>
-    <p id="result-datetime"></p>
-    <span class="combo-tag" id="result-combo-tag"></span>
+<!-- ══ Screen C: Trip Done ══ -->
+<div id="screen-tripdone" class="screen">
+  <div class="td-header">
+    <h2 id="td-title">✅ 旅次完成</h2>
+    <p id="td-subtitle"></p>
   </div>
-  <div class="result-body">
-
-    <!-- 統計卡 -->
+  <div class="scroll-body">
     <div>
-      <p class="section-title">總覽</p>
+      <div class="sec-title">本次統計</div>
       <div class="stat-row">
-        <div class="stat-card">
-          <div class="si">⏱</div>
-          <span class="sl">旅行時間</span>
-          <span class="sv" id="r-travel-time">--</span>
-        </div>
-        <div class="stat-card">
-          <div class="si">🚦</div>
-          <span class="sl">總延滯</span>
-          <span class="sv" id="r-total-delay">--</span>
-        </div>
-        <div class="stat-card">
-          <div class="si">🏃</div>
-          <span class="sl">行駛時間</span>
-          <span class="sv" id="r-run-time">--</span>
-        </div>
+        <div class="stat-card"><div class="si">⏱</div><span class="sl">旅行時間</span><span class="sv" id="td-travel">--</span></div>
+        <div class="stat-card"><div class="si">🚦</div><span class="sl">總延滯</span><span class="sv" id="td-delay">--</span></div>
+        <div class="stat-card"><div class="si">🏃</div><span class="sl">行駛時間</span><span class="sv" id="td-run">--</span></div>
       </div>
     </div>
-
-    <!-- 行駛路徑地圖 -->
-    <div>
-      <p class="section-title">行駛路徑與延滯位置</p>
-      <div id="map-result"></div>
+    <div class="prog-card">
+      <h3>調查進度</h3>
+      <div id="combo-progress-list"></div>
     </div>
-
-    <!-- 延滯圖例 -->
-    <div class="map-legend" id="map-legend"></div>
-
-    <!-- 延滯明細 -->
-    <div id="delay-section">
-      <p class="section-title">延滯明細</p>
-      <table class="delay-table">
-        <thead>
-          <tr>
-            <th>原因</th>
-            <th>開始</th>
-            <th>秒數</th>
-            <th>位置</th>
-          </tr>
-        </thead>
-        <tbody id="delay-tbody"></tbody>
-      </table>
-    </div>
-
-    <!-- 匯出 -->
-    <div>
-      <p class="section-title">匯出資料</p>
-      <div class="export-btns">
-        <button class="btn-export csv"    onclick="exportCSV()">⬇ CSV</button>
-        <button class="btn-export report" onclick="exportReport()">📄 報告</button>
-        <button class="btn-export copy"   onclick="copyJSON()">📋 JSON</button>
-      </div>
-    </div>
-
-    <button class="btn-restart" onclick="restartApp()">🔄 新增旅次</button>
+    <button class="btn-blue" id="btn-next-combo" onclick="goNextCombo()">繼續下一個組合 →</button>
+    <button class="btn-purple" onclick="goReport()">📊 產出調查報告</button>
   </div>
 </div>
 
-<!-- Toast -->
+<!-- ══ Screen D: Report ══ -->
+<div id="screen-report" class="screen">
+  <div class="page-header">
+    <h2>📊 調查報告</h2>
+    <p id="report-subtitle"></p>
+  </div>
+  <div class="scroll-body">
+    <div>
+      <div class="sec-title">總覽統計表（第1頁）</div>
+      <div class="report-wrap"><table class="rt" id="table1"></table></div>
+    </div>
+    <div>
+      <div class="sec-title">各路段統計表（第2頁）</div>
+      <div class="report-wrap"><table class="rt" id="table2"></table></div>
+    </div>
+    <div>
+      <div class="sec-title">速率統計表</div>
+      <div class="report-wrap"><table class="rt" id="table3"></table></div>
+    </div>
+    <div class="export-row">
+      <button class="btn-ex html" onclick="exportReport()">📄 下載 HTML 報告</button>
+      <button class="btn-ex csv"  onclick="exportCSV()">⬇ 下載 CSV</button>
+    </div>
+    <button style="width:100%;padding:15px;background:#e2e8f0;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer" onclick="goReady()">🔄 繼續補充旅次</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
-// ════════════════════════════════════════════════
-//  常數
-// ════════════════════════════════════════════════
-const DELAY_TYPES = [
-  { cause: 'red_light',  label: '紅燈',    icon: '🔴', color: '#ef4444' },
-  { cause: 'bus_stop',   label: '公車站',   icon: '🚌', color: '#f97316' },
-  { cause: 'parking',    label: '路邊停車', icon: '🅿️', color: '#eab308' },
-  { cause: 'congestion', label: '交通阻塞', icon: '🚦', color: '#8b5cf6' },
-  { cause: 'pedestrian', label: '行人穿越', icon: '🚶', color: '#06b6d4' },
-  { cause: 'other',      label: '其他',    icon: '❓', color: '#94a3b8' },
+// ════════════════════════════════════
+//  CONSTANTS
+// ════════════════════════════════════
+const ROAD_DELAYS = [
+  {cause:'congestion',  label:'阻塞',    icon:'🚧'},
+  {cause:'bus_stop',    label:'公車停靠', icon:'🚌'},
+  {cause:'taxi_stop',   label:'計程車停靠',icon:'🚕'},
+  {cause:'parking',     label:'路邊停靠', icon:'🅿️'},
+  {cause:'ped_cross',   label:'行人穿越', icon:'🚶'},
+  {cause:'road_other',  label:'其他',     icon:'❓'},
 ]
+const INT_DELAYS = [
+  {cause:'red_light',   label:'紅燈',    icon:'🔴'},
+  {cause:'left_same',   label:'左轉同向', icon:'↰'},
+  {cause:'left_opp',    label:'左轉對向', icon:'↱'},
+  {cause:'right_turn',  label:'右轉',    icon:'↳'},
+  {cause:'cross_veh',   label:'橫越車輛', icon:'↔️'},
+  {cause:'ped_int',     label:'行人',    icon:'🚶'},
+  {cause:'int_other',   label:'其他',    icon:'❓'},
+]
+const PEAK_LABEL = {peak:'尖峰', off_peak:'離峰'}
+const DIR_LABEL  = {bound:'去程', return:'回程'}
+const COMBO_KEYS = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
 
-const PEAK_LABELS = { peak: '🔴 尖峰', off_peak: '🟢 離峰' }
-const DIR_LABELS  = { bound: '→ 去程', return: '← 回程' }
+// ════════════════════════════════════
+//  STATE
+// ════════════════════════════════════
+let config = {
+  routeName:'', routeFromTo:'', totalLength:0,
+  surveyor:'', weather:'', date:'',
+  offPeakLabel:'14:00~16:00', peakLabel:'17:00~19:00',
+  segments:[]
+}
+let weather = ''
+let allTrips = {}   // key = 'off_peak_bound' etc, value = tripResult
+let cur = null      // current trip state
 
-// ════════════════════════════════════════════════
-//  狀態
-// ════════════════════════════════════════════════
-let watchId       = null
-let mapReady      = null
-let mapSurvey     = null
-let mapResult     = null
-let markerReady   = null
-let markerSurvey  = null
-let lastPos       = null
-let lastRaw       = null
+// GPS
+let watchId=null, mapReady=null, mapSurvey=null, markerReady=null, markerSurvey=null
+let lastPos=null, clockTimer=null, elapsedSec=0
 
-let selectedPeakType  = null   // 'peak' | 'off_peak'
-let selectedDirection = null   // 'bound' | 'return'
+// Delay tracking
+let activeDelay = null   // {cause, group, startedAt, timerId, startPos}
+let roadDelayTotals = {}
+let intDelayTotals  = {}
+let delayLog = []        // [{cause,group,label,icon,startedAt,endedAt,durationS,pos}]
 
-let surveyStartTime = null
-let surveyEndTime   = null
-let gpsTrack        = []   // [{ lat, lng, speed_ms, accuracy_m, ts }]
-let delayRecords    = []   // [{ cause, label, icon, color, startedAt, endedAt, durationS, pos }]
-let activeDelay     = null  // { cause, startedAt, timerId, startPos }
+// Node tracking
+let nodeTimestamps = []  // timestamps when each node reached
+let currentNodeIdx = 0   // which node we're heading to next (0=start already done)
 
-let clockTimer = null
-let elapsedSec = 0
+// ════════════════════════════════════
+//  UTILS
+// ════════════════════════════════════
+function fmtSec(s){const m=Math.floor(s/60),r=s%60;return`${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`}
+function fmtTime(s){if(!s&&s!==0)return'--';const m=Math.floor(s/60),r=s%60;return`${m}分${String(r).padStart(2,'0')}秒`}
+function fmtHMS(d){return d?d.toTimeString().slice(0,8):''}
+function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');setTimeout(()=>{if(id==='screen-survey'&&mapSurvey)mapSurvey.invalidateSize()},80)}
+function v(id){return document.getElementById(id)}
+function $(id){return document.getElementById(id)}
 
-// ════════════════════════════════════════════════
-//  工具
-// ════════════════════════════════════════════════
-function fmtSec(s) {
-  const m = Math.floor(s / 60), r = s % 60
-  return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`
+// ════════════════════════════════════
+//  SETUP SCREEN
+// ════════════════════════════════════
+function selWeather(w){
+  weather=w
+  ;['sunny','cloudy','rainy'].forEach(x=>$('w-'+x).classList.toggle('sel',x===w))
 }
-function fmtTime(s) {
-  if (!s && s !== 0) return '--'
-  const m = Math.floor(s / 60), r = s % 60
-  return `${m}分${String(r).padStart(2,'0')}秒`
+function openSegForm(){$('seg-form').classList.add('open');$('sf-name').focus()}
+function closeSegForm(){$('seg-form').classList.remove('open');['sf-name','sf-lanes','sf-width','sf-length'].forEach(id=>$(id).value='')}
+function addSeg(){
+  const name=$('sf-name').value.trim()
+  const lanes=parseInt($('sf-lanes').value)||0
+  const width=parseInt($('sf-width').value)||0
+  const length=parseInt($('sf-length').value)||0
+  if(!name||!length){showToast('請填寫路段名稱和長度');return}
+  config.segments.push({name,lanes,width,length})
+  renderSegList()
+  closeSegForm()
 }
-function fmtHMS(date) {
-  return date ? date.toTimeString().slice(0,8) : ''
+function delSeg(i){config.segments.splice(i,1);renderSegList()}
+function renderSegList(){
+  const list=$('seg-list')
+  list.innerHTML=config.segments.map((s,i)=>`
+    <div class="seg-item">
+      <div class="seg-info">
+        <div class="seg-name">${i+1}. ${s.name}</div>
+        <div class="seg-meta">${s.lanes}車道 · ${s.width}m寬 · ${s.length}m</div>
+      </div>
+      <button class="seg-del" onclick="delSeg(${i})">✕</button>
+    </div>`).join('')
+  $('seg-count').textContent=config.segments.length
 }
-function showToast(msg) {
-  const t = document.getElementById('toast')
-  t.textContent = msg; t.classList.add('show')
-  setTimeout(() => t.classList.remove('show'), 2200)
-}
-function switchScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'))
-  document.getElementById(id).classList.add('active')
-  setTimeout(() => {
-    if (id === 'screen-survey' && mapSurvey) mapSurvey.invalidateSize()
-    if (id === 'screen-result' && mapResult) mapResult.invalidateSize()
-  }, 80)
-}
-
-// ════════════════════════════════════════════════
-//  組合選擇
-// ════════════════════════════════════════════════
-function selectPeak(type) {
-  selectedPeakType = type
-  document.getElementById('btn-peak').classList.toggle('peak-sel', type === 'peak')
-  document.getElementById('btn-offpeak').classList.toggle('peak-sel', type === 'off_peak')
-  updateComboBadge()
-}
-function selectDir(dir) {
-  selectedDirection = dir
-  document.getElementById('btn-bound').classList.toggle('bound-sel', dir === 'bound')
-  document.getElementById('btn-return').classList.toggle('bound-sel', dir === 'return')
-  updateComboBadge()
-}
-function updateComboBadge() {
-  const badge = document.getElementById('combo-badge')
-  if (selectedPeakType && selectedDirection) {
-    badge.style.display = 'block'
-    badge.textContent = `${PEAK_LABELS[selectedPeakType]}　${DIR_LABELS[selectedDirection]}`
-  } else {
-    badge.style.display = 'none'
-  }
-  checkStartReady()
-}
-function checkStartReady() {
-  const btn = document.getElementById('btn-start')
-  const gpsOk = document.getElementById('gps-dot-ready').classList.contains('good') ||
-                document.getElementById('gps-dot-ready').classList.contains('poor')
-  btn.disabled = !(selectedPeakType && selectedDirection && gpsOk)
+function saveSetup(){
+  config.routeName   = $('s-route-name').value.trim()
+  config.routeFromTo = $('s-route-fromto').value.trim()
+  config.totalLength = parseInt($('s-length').value)||0
+  config.date        = $('s-date').value||new Date().toLocaleDateString('zh-TW')
+  config.surveyor    = $('s-surveyor').value.trim()
+  config.weather     = weather
+  config.offPeakLabel= $('s-offpeak').value.trim()||'14:00~16:00'
+  config.peakLabel   = $('s-peak').value.trim()||'17:00~19:00'
+  if(!config.routeName){showToast('請填寫路線名稱');return}
+  if(config.segments.length===0){showToast('請至少新增一個路段');return}
+  if(!config.weather){showToast('請選擇天氣');return}
+  initReadyMap()
+  startGPS()
+  updateProgressChips()
+  showScreen('screen-ready')
+  // 3s fallback GPS enable
+  setTimeout(()=>{const d=$('gps-dot');if(!d.classList.contains('good')&&!d.classList.contains('poor')){d.className='gps-dot poor';$('gps-text').textContent='GPS訊號弱，可嘗試開始';checkStart()}},5000)
 }
 
-// ════════════════════════════════════════════════
+// ════════════════════════════════════
+//  READY SCREEN
+// ════════════════════════════════════
+let selPeakType=null, selDirection=null
+function selPeak(t){selPeakType=t;$('btn-peak').classList.toggle('pk',t==='peak');$('btn-offpeak').classList.toggle('pk',t==='off_peak');updateBadge()}
+function selDir(d){selDirection=d;$('btn-bound').classList.toggle('dr',d==='bound');$('btn-return').classList.toggle('dr',d==='return');updateBadge()}
+function updateBadge(){
+  const b=$('sel-badge')
+  if(selPeakType&&selDirection){b.style.display='block';b.textContent=`${PEAK_LABEL[selPeakType]}  ${DIR_LABEL[selDirection]}`}
+  else b.style.display='none'
+  checkStart()
+}
+function checkStart(){
+  const gpsOk=$('gps-dot').classList.contains('good')||$('gps-dot').classList.contains('poor')
+  const key=`${selPeakType}_${selDirection}`
+  const alreadyDone=allTrips[key]
+  const ok=selPeakType&&selDirection&&gpsOk&&!alreadyDone
+  $('btn-start').disabled=!ok
+  $('btn-start').textContent=alreadyDone?'此組合已完成':'▶ 開始調查'
+}
+function updateProgressChips(){
+  const el=$('progress-chips')
+  el.innerHTML=COMBO_KEYS.map(k=>{
+    const [pt,dir]=k.split('_').reduce((a,c,i)=>i===0?[c,a[1]]:i===1?[a[0]+`_${c}`,a[1]]:[a[0],a[1]+(a[1]?'_':'')+c],['',[]])
+    // parse combo key properly
+    const parts=k.split('_')
+    const peakT=parts[0]==='off'?'off_peak':'peak'
+    const dirT=parts[parts.length-1]
+    const label=`${peakT==='peak'?'尖':'離'}${dirT==='bound'?'去':'回'}`
+    return`<span class="chip${allTrips[k]?' done':''}">${label}</span>`
+  }).join('')
+}
+
+// ════════════════════════════════════
 //  GPS
-// ════════════════════════════════════════════════
-function smooth(lat, lng, alpha = 0.25) {
-  if (!lastPos) return { lat, lng }
-  return {
-    lat: lastPos.lat * (1 - alpha) + lat * alpha,
-    lng: lastPos.lng * (1 - alpha) + lng * alpha,
+// ════════════════════════════════════
+function smooth(lat,lng,alpha=0.25){
+  if(!lastPos)return{lat,lng}
+  return{lat:lastPos.lat*(1-alpha)+lat*alpha,lng:lastPos.lng*(1-alpha)+lng*alpha}
+}
+function startGPS(){
+  if(!navigator.geolocation)return
+  watchId=navigator.geolocation.watchPosition(onPos,onGPSErr,{enableHighAccuracy:true,timeout:10000,maximumAge:2000})
+}
+function onPos(p){
+  const{latitude:rlat,longitude:rlng,accuracy,speed}=p.coords
+  const{lat,lng}=smooth(rlat,rlng)
+  lastPos={lat,lng}
+  const dot=$('gps-dot'),txt=$('gps-text')
+  if(accuracy<30){dot.className='gps-dot good';txt.textContent=`GPS良好 ±${Math.round(accuracy)}m`}
+  else{dot.className='gps-dot poor';txt.textContent=`GPS ±${Math.round(accuracy)}m`}
+  const b=$('gps-badge');if(b)b.textContent=`📡 ±${Math.round(accuracy)}m`
+  checkStart()
+  updateMap(mapReady,markerReady,lat,lng,false)
+  if(cur&&cur.startTime){
+    updateMap(mapSurvey,markerSurvey,lat,lng,true)
+    cur.gpsTrack.push({lat,lng,speed_ms:speed,accuracy_m:accuracy,ts:new Date().toISOString()})
   }
 }
-
-function startGPS() {
-  if (!navigator.geolocation) { alert('此裝置不支援 GPS'); return }
-  watchId = navigator.geolocation.watchPosition(
-    onPosition, onGPSError,
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
-  )
+function onGPSErr(e){const t=$('gps-text');if(t)t.textContent=`GPS錯誤:${e.message}`}
+function updateMap(map,marker,lat,lng,follow){
+  if(!map||!marker)return
+  marker.setLatLng([lat,lng])
+  if(follow)map.setView([lat,lng],map.getZoom()||16,{animate:true,duration:0.5})
+  else if(!map._loaded||map.getZoom()===undefined)map.setView([lat,lng],16)
+  else map.panTo([lat,lng],{animate:true,duration:0.3})
+}
+function initReadyMap(){
+  mapReady=L.map('map-ready',{zoomControl:true,attributionControl:false})
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapReady)
+  mapReady.setView([25.04776,121.51755],14)
+  markerReady=L.circleMarker([25.04776,121.51755],{radius:10,fillColor:'#3B82F6',color:'#fff',weight:3,fillOpacity:.95}).addTo(mapReady)
 }
 
-function onPosition(pos) {
-  lastRaw = pos
-  const { latitude: rawLat, longitude: rawLng, accuracy, speed } = pos.coords
-  const { lat, lng } = smooth(rawLat, rawLng)
-  lastPos = { lat, lng }
+// ════════════════════════════════════
+//  START SURVEY
+// ════════════════════════════════════
+function startSurvey(){
+  const key=`${selPeakType}_${selDirection}`
+  cur={
+    peakType:selPeakType, direction:selDirection, key,
+    startTime:new Date(), endTime:null,
+    gpsTrack:[], nodeTimestamps:[], roadDelays:{}, intDelays:{},
+  }
+  // init delay totals
+  ROAD_DELAYS.forEach(d=>{cur.roadDelays[d.cause]=0})
+  INT_DELAYS.forEach(d=>{cur.intDelays[d.cause]=0})
+  roadDelayTotals={}; ROAD_DELAYS.forEach(d=>{roadDelayTotals[d.cause]=0})
+  intDelayTotals={};  INT_DELAYS.forEach(d=>{intDelayTotals[d.cause]=0})
+  delayLog=[]
+  activeDelay=null
+  elapsedSec=0
 
-  const dot  = document.getElementById('gps-dot-ready')
-  const text = document.getElementById('gps-text-ready')
-  if (accuracy < 30) {
-    dot.className = 'gps-dot good'
-    text.textContent = `GPS 良好 ±${Math.round(accuracy)}m`
+  // node tracking: nodeTimestamps[0] = start
+  nodeTimestamps=[cur.startTime]
+  currentNodeIdx=1  // next node to reach
+
+  $('status-combo').textContent=`● ${PEAK_LABEL[selPeakType]} ${DIR_LABEL[selDirection]}`
+  showScreen('screen-survey')
+
+  if(!mapSurvey){
+    mapSurvey=L.map('map-survey',{zoomControl:false,attributionControl:false})
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapSurvey)
+    const ip=lastPos?[lastPos.lat,lastPos.lng]:[25.04776,121.51755]
+    mapSurvey.setView(ip,16)
+    markerSurvey=L.circleMarker(ip,{radius:11,fillColor:'#3B82F6',color:'#fff',weight:3,fillOpacity:.95}).addTo(mapSurvey)
+  }
+
+  clockTimer=setInterval(()=>{elapsedSec++;$('status-timer').textContent=fmtSec(elapsedSec)},1000)
+  buildNodeUI()
+  buildDelayGrids()
+  showTab('node')
+}
+
+// ════════════════════════════════════
+//  NODE UI
+// ════════════════════════════════════
+function getNodes(){
+  // nodes are endpoints of segments: n+1 nodes for n segments
+  const segs=config.segments
+  const nodes=['起點',...segs.map(s=>s.name.split(/[-→至]/)[1]||s.name)]
+  // For return direction, reverse display but keep same array (we track idx forward)
+  return cur.direction==='return'?[...nodes].reverse():nodes
+}
+function buildNodeUI(){
+  const nodes=getNodes()
+  const total=nodes.length  // = segments+1
+
+  // Progress dots
+  const pp=$('node-progress')
+  pp.innerHTML=''
+  nodes.forEach((n,i)=>{
+    if(i>0){const line=document.createElement('div');line.className='nd-line';line.id=`ndl-${i}`;pp.appendChild(line)}
+    const dot=document.createElement('div')
+    dot.className='nd'+(i===0?' done':'')+(i===1?' cur':'')
+    dot.id=`nd-${i}`
+    dot.textContent=i+1
+    dot.title=n
+    pp.appendChild(dot)
+  })
+
+  // Node list
+  const ni=$('node-items')
+  ni.innerHTML=nodes.map((n,i)=>`
+    <button class="node-btn${i===0?' done':i===1?' cur':''}" id="nbtn-${i}" onclick="tapNode(${i})">
+      <span style="font-size:14px">${i===0?'🟢':i===nodes.length-1?'🏁':'📍'}</span>
+      <span>${n}</span>
+      <span class="nt" id="nt-${i}">${i===0?fmtHMS(cur.startTime):''}</span>
+    </button>`).join('')
+}
+function tapNode(i){
+  const nodes=getNodes()
+  const total=nodes.length
+  if(i!==currentNodeIdx)return  // must tap in order
+  const now=new Date()
+  nodeTimestamps.push(now)
+  $(`nt-${i}`).textContent=fmtHMS(now)
+  $(`nbtn-${i}`).className='node-btn done'
+  $(`nd-${i}`).className='nd done'
+  $(`ndl-${i}`) && ($(`ndl-${i}`).className='nd-line done')
+
+  currentNodeIdx++
+  if(currentNodeIdx<total){
+    $(`nbtn-${currentNodeIdx}`).className='node-btn cur'
+    $(`nd-${currentNodeIdx}`).className='nd cur'
   } else {
-    dot.className = 'gps-dot poor'
-    text.textContent = `GPS 精度 ±${Math.round(accuracy)}m`
-  }
-  checkStartReady()
-
-  const badge = document.getElementById('gps-badge')
-  if (badge) badge.textContent = `📡 ±${Math.round(accuracy)}m`
-
-  updateMap(mapReady, markerReady, lat, lng, false)
-
-  if (surveyStartTime) {
-    updateMap(mapSurvey, markerSurvey, lat, lng, true)
-    gpsTrack.push({ lat, lng, speed_ms: speed, accuracy_m: accuracy, ts: new Date().toISOString() })
+    showToast('已到達終點，可結束調查')
   }
 }
 
-function onGPSError(err) {
-  const text = document.getElementById('gps-text-ready')
-  if (text) text.textContent = `GPS 錯誤：${err.message}`
+// ════════════════════════════════════
+//  DELAY GRIDS
+// ════════════════════════════════════
+function buildDelayGrids(){
+  buildGrid('grid-road', ROAD_DELAYS, 'road')
+  buildGrid('grid-inter', INT_DELAYS, 'int')
 }
-
-function updateMap(map, marker, lat, lng, follow) {
-  if (!map || !marker) return
-  marker.setLatLng([lat, lng])
-  if (follow) {
-    map.setView([lat, lng], map.getZoom() || 16, { animate: true, duration: 0.5 })
-  } else if (!map._loaded || map.getZoom() === undefined) {
-    map.setView([lat, lng], 16)
-  } else {
-    map.panTo([lat, lng], { animate: true, duration: 0.3 })
-  }
-}
-
-// ════════════════════════════════════════════════
-//  初始化地圖 A
-// ════════════════════════════════════════════════
-function initReadyMap() {
-  mapReady = L.map('map-ready', { zoomControl: true, attributionControl: false })
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, keepBuffer: 4 }).addTo(mapReady)
-  mapReady.setView([25.04776, 121.51755], 14)
-  markerReady = L.circleMarker([25.04776, 121.51755], {
-    radius: 10, fillColor: '#3B82F6', color: '#fff', weight: 3, fillOpacity: .95,
-  }).bindTooltip('你在這裡').addTo(mapReady)
-}
-
-// ════════════════════════════════════════════════
-//  開始調查
-// ════════════════════════════════════════════════
-function startSurvey() {
-  surveyStartTime = new Date()
-  gpsTrack = []; delayRecords = []; elapsedSec = 0
-
-  // 狀態列顯示組合
-  document.getElementById('status-label').textContent =
-    `● ${PEAK_LABELS[selectedPeakType]} ${DIR_LABELS[selectedDirection]}`
-
-  switchScreen('screen-survey')
-
-  if (!mapSurvey) {
-    mapSurvey = L.map('map-survey', { zoomControl: false, attributionControl: false })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, keepBuffer: 4 }).addTo(mapSurvey)
-    const initPos = lastPos ? [lastPos.lat, lastPos.lng] : [25.04776, 121.51755]
-    mapSurvey.setView(initPos, 16)
-    markerSurvey = L.circleMarker(initPos, {
-      radius: 11, fillColor: '#3B82F6', color: '#fff', weight: 3, fillOpacity: .95,
-    }).addTo(mapSurvey)
-  }
-
-  clockTimer = setInterval(() => {
-    elapsedSec++
-    document.getElementById('status-timer').textContent = fmtSec(elapsedSec)
-  }, 1000)
-
-  buildDelayButtons()
-}
-
-// ════════════════════════════════════════════════
-//  延滯按鈕
-// ════════════════════════════════════════════════
-function buildDelayButtons() {
-  const grid = document.getElementById('delay-grid')
-  grid.innerHTML = ''
-  DELAY_TYPES.forEach(d => {
-    const btn = document.createElement('button')
-    btn.className = 'btn-delay'
-    btn.id = `dbtn-${d.cause}`
-    btn.innerHTML = `<span class="di">${d.icon}</span><span class="dn">${d.label}</span><span class="dt" id="dtimer-${d.cause}"></span>`
-    btn.onclick = () => toggleDelay(d)
+function buildGrid(gridId, types, group){
+  const grid=$(gridId)
+  grid.innerHTML=''
+  types.forEach(d=>{
+    const btn=document.createElement('button')
+    btn.className='btn-dl'
+    btn.id=`dbtn-${d.cause}`
+    btn.innerHTML=`<span class="di">${d.icon}</span><span class="dn">${d.label}</span><span class="dt" id="dtime-${d.cause}"></span>`
+    btn.onclick=()=>toggleDelay(d,group)
     grid.appendChild(btn)
   })
 }
-
-function toggleDelay(d) {
-  if (activeDelay && activeDelay.cause === d.cause) {
+function toggleDelay(d,group){
+  if(activeDelay&&activeDelay.cause===d.cause){
     clearInterval(activeDelay.timerId)
-    const endedAt   = new Date()
-    const durationS = Math.round((endedAt - activeDelay.startedAt) / 1000)
-    delayRecords.push({
-      cause: d.cause, label: d.label, icon: d.icon, color: d.color,
-      startedAt: activeDelay.startedAt, endedAt, durationS,
-      pos: activeDelay.startPos,
-    })
-    document.getElementById(`dbtn-${d.cause}`).classList.remove('active')
-    document.getElementById(`dtimer-${d.cause}`).textContent = ''
-    activeDelay = null
+    const endedAt=new Date()
+    const durationS=Math.round((endedAt-activeDelay.startedAt)/1000)
+    if(group==='road')cur.roadDelays[d.cause]=(cur.roadDelays[d.cause]||0)+durationS
+    else cur.intDelays[d.cause]=(cur.intDelays[d.cause]||0)+durationS
+    delayLog.push({cause:d.cause,group,label:d.label,icon:d.icon,startedAt:activeDelay.startedAt,endedAt,durationS,pos:activeDelay.startPos})
+    $(`dbtn-${d.cause}`).classList.remove('active')
+    $(`dtime-${d.cause}`).textContent=''
+    activeDelay=null
   } else {
-    if (activeDelay) {
-      const prev = DELAY_TYPES.find(x => x.cause === activeDelay.cause)
-      if (prev) toggleDelay(prev)
-    }
-    const startedAt  = new Date()
-    const startPos   = lastPos ? { ...lastPos } : null
-    let elapsed = 0
-    const timerId = setInterval(() => {
-      elapsed++
-      const el = document.getElementById(`dtimer-${d.cause}`)
-      if (el) el.textContent = fmtSec(elapsed)
-    }, 1000)
-    activeDelay = { cause: d.cause, startedAt, timerId, startPos }
-    document.getElementById(`dbtn-${d.cause}`).classList.add('active')
+    if(activeDelay){const prev=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(prev)toggleDelay(prev,activeDelay.group)}
+    const startedAt=new Date(), startPos=lastPos?{...lastPos}:null
+    let el2=0
+    const timerId=setInterval(()=>{el2++;const e=$(`dtime-${d.cause}`);if(e)e.textContent=fmtSec(el2)},1000)
+    activeDelay={cause:d.cause,group,startedAt,timerId,startPos}
+    $(`dbtn-${d.cause}`).classList.add('active')
   }
 }
+function showTab(tab){
+  ;['node','road','inter'].forEach(t=>{
+    $(`tab-${t}`).classList.toggle('active',t===tab)
+    $(`pane-${t}`).classList.toggle('active',t===tab)
+  })
+}
 
-// ════════════════════════════════════════════════
-//  結束調查
-// ════════════════════════════════════════════════
-function endSurvey() {
-  if (!confirm('確定結束調查？')) return
-  surveyEndTime = new Date()
-  if (activeDelay) {
-    const prev = DELAY_TYPES.find(x => x.cause === activeDelay.cause)
-    if (prev) toggleDelay(prev)
-  }
+// ════════════════════════════════════
+//  END SURVEY
+// ════════════════════════════════════
+function endSurvey(){
+  if(!confirm('確定結束調查？'))return
+  cur.endTime=new Date()
+  // stop active delay
+  if(activeDelay){const prev=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(prev)toggleDelay(prev,activeDelay.group)}
   clearInterval(clockTimer)
-  buildResult()
-  switchScreen('screen-result')
-}
+  // record final node if not yet
+  if(nodeTimestamps.length<config.segments.length+1)nodeTimestamps.push(cur.endTime)
 
-// ════════════════════════════════════════════════
-//  建立結果頁
-// ════════════════════════════════════════════════
-function buildResult() {
-  const travelS     = Math.round((surveyEndTime - surveyStartTime) / 1000)
-  const totalDelayS = delayRecords.reduce((s, r) => s + r.durationS, 0)
-  const runS        = Math.max(0, travelS - totalDelayS)
+  // compute stats
+  const travelS=Math.round((cur.endTime-cur.startTime)/1000)
+  const roadTotalS=Object.values(cur.roadDelays).reduce((a,b)=>a+b,0)
+  const intTotalS=Object.values(cur.intDelays).reduce((a,b)=>a+b,0)
+  const totalDelayS=roadTotalS+intTotalS
+  const runS=Math.max(0,travelS-totalDelayS)
 
-  // 標頭
-  document.getElementById('result-datetime').textContent =
-    `${surveyStartTime.toLocaleDateString('zh-TW')}  ${fmtHMS(surveyStartTime)} → ${fmtHMS(surveyEndTime)}`
-  document.getElementById('result-combo-tag').textContent =
-    `${PEAK_LABELS[selectedPeakType]}  ${DIR_LABELS[selectedDirection]}`
-
-  // 統計
-  document.getElementById('r-travel-time').textContent = fmtTime(travelS)
-  document.getElementById('r-total-delay').textContent = fmtTime(totalDelayS)
-  document.getElementById('r-run-time').textContent    = fmtTime(runS)
-
-  // ── 結果地圖 ──
-  if (mapResult) { mapResult.remove(); mapResult = null }
-  mapResult = L.map('map-result', { zoomControl: true, attributionControl: false })
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapResult)
-
-  const latlngs = gpsTrack.map(p => [p.lat, p.lng])
-  if (latlngs.length >= 2) {
-    // 行駛路徑（藍色線）
-    const polyline = L.polyline(latlngs, { color: '#3b82f6', weight: 4, opacity: .85 }).addTo(mapResult)
-    mapResult.fitBounds(polyline.getBounds(), { padding: [24, 24] })
-
-    // 起點（綠）
-    L.circleMarker(latlngs[0], { radius: 9, fillColor: '#16a34a', color: '#fff', weight: 2.5, fillOpacity: 1 })
-      .bindPopup('起點').addTo(mapResult)
-
-    // 終點（紅）
-    L.circleMarker(latlngs[latlngs.length - 1], { radius: 9, fillColor: '#dc2626', color: '#fff', weight: 2.5, fillOpacity: 1 })
-      .bindPopup('終點').addTo(mapResult)
-  } else if (latlngs.length === 1) {
-    mapResult.setView(latlngs[0], 16)
-  } else if (lastPos) {
-    mapResult.setView([lastPos.lat, lastPos.lng], 14)
+  // segment times
+  const segTimes=[]
+  for(let i=0;i<config.segments.length;i++){
+    const t0=nodeTimestamps[i], t1=nodeTimestamps[i+1]
+    const segS=t0&&t1?Math.round((t1-t0)/1000):null
+    const runRatio=travelS>0?runS/travelS:1
+    segTimes.push({travelS:segS, runS:segS?Math.round(segS*runRatio):null})
   }
 
-  // 延滯標記
-  const seenCauses = new Set()
-  delayRecords.forEach((r, i) => {
-    if (!r.pos) return
-    seenCauses.add(r.cause)
-    const icon = L.divIcon({
-      html: `<div style="font-size:20px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))">${r.icon}</div>`,
-      className: '', iconSize: [24, 24], iconAnchor: [12, 12],
-    })
-    L.marker([r.pos.lat, r.pos.lng], { icon })
-      .bindPopup(`<b>${r.icon} ${r.label}</b><br>${fmtHMS(r.startedAt)}<br>持續 ${r.durationS} 秒`)
-      .addTo(mapResult)
-  })
+  // For return direction, segment times are reversed (we drove reverse order)
+  const segsForTable=cur.direction==='return'?[...segTimes].reverse():segTimes
 
-  // 圖例
-  const legend = document.getElementById('map-legend')
-  legend.innerHTML = ''
-  if (latlngs.length > 0) {
-    legend.innerHTML += `<div class="legend-item"><span style="display:inline-block;width:24px;height:4px;background:#3b82f6;border-radius:2px"></span> 行駛路徑</div>`
-    legend.innerHTML += `<div class="legend-item">🟢 起點</div>`
-    legend.innerHTML += `<div class="legend-item">🔴 終點</div>`
+  allTrips[cur.key]={
+    peakType:cur.peakType, direction:cur.direction,
+    travelS, runS, totalDelayS, roadTotalS, intTotalS,
+    roadDelays:{...cur.roadDelays}, intDelays:{...cur.intDelays},
+    segTimes:segsForTable, delayLog:[...delayLog],
+    gpsTrack:[...cur.gpsTrack],
+    startTime:cur.startTime, endTime:cur.endTime,
   }
-  DELAY_TYPES.filter(d => seenCauses.has(d.cause)).forEach(d => {
-    legend.innerHTML += `<div class="legend-item">${d.icon} ${d.label}</div>`
-  })
-  legend.style.display = seenCauses.size > 0 || latlngs.length > 0 ? 'flex' : 'none'
 
-  // 延滯明細表
-  const tbody = document.getElementById('delay-tbody')
-  tbody.innerHTML = ''
-  if (delayRecords.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="color:#94a3b8;text-align:center;padding:12px">無延滯記錄</td></tr>'
-  } else {
-    delayRecords.forEach(r => {
-      const posStr = r.pos ? `${r.pos.lat.toFixed(5)}, ${r.pos.lng.toFixed(5)}` : '—'
-      const tr = document.createElement('tr')
-      tr.innerHTML = `<td>${r.icon} ${r.label}</td><td>${fmtHMS(r.startedAt)}</td><td>${r.durationS}s</td><td style="font-size:11px;color:#94a3b8">${posStr}</td>`
-      tbody.appendChild(tr)
-    })
-    const total = document.createElement('tr')
-    total.style.fontWeight = '700'
-    total.innerHTML = `<td>合計</td><td></td><td>${totalDelayS}s</td><td></td>`
-    tbody.appendChild(total)
-  }
+  buildTripDoneUI(travelS, totalDelayS, runS)
+  showScreen('screen-tripdone')
 }
 
-// ════════════════════════════════════════════════
-//  匯出 CSV
-// ════════════════════════════════════════════════
-function exportCSV() {
-  const travelS     = Math.round((surveyEndTime - surveyStartTime) / 1000)
-  const totalDelayS = delayRecords.reduce((s, r) => s + r.durationS, 0)
-  const runS        = Math.max(0, travelS - totalDelayS)
+// ════════════════════════════════════
+//  TRIP DONE SCREEN
+// ════════════════════════════════════
+function buildTripDoneUI(travelS, totalDelayS, runS){
+  $('td-title').textContent=`✅ ${PEAK_LABEL[cur.peakType]} ${DIR_LABEL[cur.direction]} 完成`
+  $('td-subtitle').textContent=`${fmtHMS(cur.startTime)} → ${fmtHMS(cur.endTime)}`
+  $('td-travel').textContent=fmtTime(travelS)
+  $('td-delay').textContent=fmtTime(totalDelayS)
+  $('td-run').textContent=fmtTime(runS)
 
-  let csv = '旅行時間調查報告\n'
-  csv += `調查日期,${surveyStartTime.toLocaleDateString('zh-TW')}\n`
-  csv += `時段,${selectedPeakType === 'peak' ? '尖峰' : '離峰'}\n`
-  csv += `方向,${selectedDirection === 'bound' ? '去程' : '回程'}\n`
-  csv += `開始時間,${fmtHMS(surveyStartTime)}\n`
-  csv += `結束時間,${fmtHMS(surveyEndTime)}\n`
-  csv += `旅行時間（秒）,${travelS}\n`
-  csv += `總延滯（秒）,${totalDelayS}\n`
-  csv += `行駛時間（秒）,${runS}\n`
-  csv += `GPS軌跡點數,${gpsTrack.length}\n`
-  csv += '\n延滯明細\n原因,開始時間,結束時間,持續秒數,緯度,經度\n'
-  delayRecords.forEach(r => {
-    csv += `${r.label},${fmtHMS(r.startedAt)},${fmtHMS(r.endedAt)},${r.durationS},${r.pos ? r.pos.lat : ''},${r.pos ? r.pos.lng : ''}\n`
-  })
-  csv += '\nGPS軌跡\n緯度,經度,速度(m/s),精度(m),時間\n'
-  gpsTrack.forEach(p => {
-    csv += `${p.lat},${p.lng},${p.speed_ms ?? ''},${p.accuracy_m ?? ''},${p.ts}\n`
-  })
+  const list=$('combo-progress-list')
+  list.innerHTML=COMBO_KEYS.map(k=>{
+    const [pt,dir]=parseComboKey(k)
+    const done=!!allTrips[k]
+    return`<div class="prog-row">
+      <span>${PEAK_LABEL[pt]} ${DIR_LABEL[dir]}</span>
+      <span class="${done?'badge-done':'badge-todo'}">${done?'✓ 完成':'待執行'}</span>
+    </div>`
+  }).join('')
 
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `survey_${surveyStartTime.toISOString().slice(0,10)}_${selectedPeakType}_${selectedDirection}.csv`
-  a.click()
-  showToast('✅ CSV 已下載')
+  const remaining=COMBO_KEYS.filter(k=>!allTrips[k])
+  $('btn-next-combo').style.display=remaining.length>0?'block':'none'
+  updateProgressChips()
+}
+function parseComboKey(k){
+  if(k.startsWith('off_peak'))return['off_peak',k.replace('off_peak_','')]
+  return['peak',k.replace('peak_','')]
+}
+function goNextCombo(){showScreen('screen-ready');checkStart()}
+function goReport(){buildReport();showScreen('screen-report')}
+function goReady(){showScreen('screen-ready');checkStart()}
+
+// ════════════════════════════════════
+//  REPORT BUILDING
+// ════════════════════════════════════
+const WEATHER_ZH={sunny:'晴',cloudy:'陰',rainy:'雨'}
+function getTrip(pt,dir){return allTrips[`${pt}_${dir}`]||null}
+function val(t,fn,fallback='—'){return t?fn(t):fallback}
+function spd(len,secs){return secs>0?Math.round(len/secs*3.6):'—'}
+
+function buildReport(){
+  $('report-subtitle').textContent=`${config.routeName}  ${config.date}`
+  buildTable1()
+  buildTable2()
+  buildTable3()
 }
 
-// ════════════════════════════════════════════════
-//  下載 HTML 報告（可列印）
-// ════════════════════════════════════════════════
-function exportReport() {
-  const travelS     = Math.round((surveyEndTime - surveyStartTime) / 1000)
-  const totalDelayS = delayRecords.reduce((s, r) => s + r.durationS, 0)
-  const runS        = Math.max(0, travelS - totalDelayS)
-  const peakLabel   = selectedPeakType === 'peak' ? '尖峰' : '離峰'
-  const dirLabel    = selectedDirection === 'bound' ? '去程' : '回程'
-  const dateStr     = surveyStartTime.toLocaleDateString('zh-TW')
+function buildTable1(){
+  const ob=getTrip('off_peak','bound'),or_=getTrip('off_peak','return')
+  const pb=getTrip('peak','bound'),    pr=getTrip('peak','return')
+  const trips=[ob,or_,pb,pr]
+  const len=config.totalLength
 
-  const delayRows = delayRecords.length === 0
-    ? '<tr><td colspan="5" style="text-align:center;color:#888">無延滯記錄</td></tr>'
-    : delayRecords.map((r, i) => `
-        <tr>
-          <td>${i+1}</td>
-          <td>${r.icon} ${r.label}</td>
-          <td>${fmtHMS(r.startedAt)}</td>
-          <td>${fmtHMS(r.endedAt)}</td>
-          <td>${r.durationS}</td>
-        </tr>`).join('')
-    + `<tr style="font-weight:700;background:#f9f9f9">
-        <td colspan="4">合計延滯</td><td>${totalDelayS} 秒</td></tr>`
+  function r(label,...vals){
+    return`<tr><td class="rtl">${label}</td>${vals.map(v=>`<td>${v??'—'}</td>`).join('')}</tr>`
+  }
+  function pct(part,total){return total>0?Math.round(part/total*100)+'%':'—'}
 
-  const trackRows = gpsTrack.slice(0, 200).map(p =>
-    `<tr><td>${p.lat.toFixed(6)}</td><td>${p.lng.toFixed(6)}</td><td>${p.speed_ms != null ? p.speed_ms.toFixed(2) : ''}</td><td>${p.accuracy_m != null ? Math.round(p.accuracy_m) : ''}</td><td>${p.ts.slice(11,19)}</td></tr>`
-  ).join('')
-  const trackNote = gpsTrack.length > 200 ? `<p style="color:#888;font-size:12px">（僅顯示前 200 筆，共 ${gpsTrack.length} 筆）</p>` : ''
+  let html=`
+  <tr><th colspan="5" style="text-align:left;padding:8px 10px">路名：${config.routeName}　　日期：${config.date}</th></tr>
+  <tr><th colspan="3" style="text-align:left;padding:4px 10px">起迄點：${config.routeFromTo}</th><th colspan="2">天氣：${WEATHER_ZH[config.weather]||'—'}</th></tr>
+  <tr><th colspan="3" style="text-align:left;padding:4px 10px">全長：${config.totalLength} 公尺</th><th colspan="2">調查員：${config.surveyor}</th></tr>
+  <tr>
+    <th rowspan="2">調查時間</th>
+    <th colspan="2">離峰 ${config.offPeakLabel}</th>
+    <th colspan="2">下午尖峰 ${config.peakLabel}</th>
+  </tr>
+  <tr>
+    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
+  </tr>
+  ${r('平均總旅行速率(km/h)',...trips.map(t=>t?spd(len,t.travelS):'—'))}
+  ${r('平均總行駛速率(km/h)',...trips.map(t=>t?spd(len,t.runS):'—'))}
+  <tr><td class="rtl" rowspan="2">行駛時間</td>${trips.map(t=>`<td>${t?t.runS:'—'}</td>`).join('')}</tr>
+  <tr>${trips.map(t=>`<td>${t?pct(t.runS,t.travelS):'—'}</td>`).join('')}</tr>
+  <tr><td class="rtl" rowspan="2">路段延滯</td>${trips.map(t=>`<td>${t?t.roadTotalS:'—'}</td>`).join('')}</tr>
+  <tr>${trips.map(t=>`<td>${t?pct(t.roadTotalS,t.travelS):'—'}</td>`).join('')}</tr>
+  <tr><td class="rtl" rowspan="2">交叉口延滯</td>${trips.map(t=>`<td>${t?t.intTotalS:'—'}</td>`).join('')}</tr>
+  <tr>${trips.map(t=>`<td>${t?pct(t.intTotalS,t.travelS):'—'}</td>`).join('')}</tr>
+  ${r('合計(秒)',...trips.map(t=>t?t.travelS:'—'))}
+  <tr><td class="rts" colspan="5">路段延滯</td></tr>
+  ${ROAD_DELAYS.map(d=>r(d.label,...trips.map(t=>t?t.roadDelays[d.cause]||0:'—'))).join('')}
+  ${r('小計',...trips.map(t=>t?t.roadTotalS:'—'))}
+  <tr><td class="rts" colspan="5">交叉口延滯</td></tr>
+  ${INT_DELAYS.map(d=>r(d.label,...trips.map(t=>t?t.intDelays[d.cause]||0:'—'))).join('')}
+  ${r('小計',...trips.map(t=>t?t.intTotalS:'—'))}
+  ${r('合計',...trips.map(t=>t?t.totalDelayS:'—'))}
+  `
+  $('table1').innerHTML=html
+}
 
-  const html = `<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-<meta charset="UTF-8">
-<title>旅行時間調查報告 ${dateStr}</title>
+function buildTable2(){
+  // Per segment travel & running time
+  const ob=getTrip('off_peak','bound'),or_=getTrip('off_peak','return')
+  const pb=getTrip('peak','bound'),    pr=getTrip('peak','return')
+  const trips=[ob,or_,pb,pr]
+  const segs=config.segments
+
+  let html=`
+  <tr><th colspan="${4+6}" style="text-align:center;padding:8px">各路段平均旅行時間及平均行駛時間統計表</th></tr>
+  <tr>
+    <th rowspan="3">路段位置</th>
+    <th rowspan="3">車道數</th><th rowspan="3">路寬(m)</th><th rowspan="3">長度(m)</th>
+    <th colspan="4">平均旅行時間(秒)</th>
+    <th colspan="4">平均行駛時間(秒)</th>
+  </tr>
+  <tr>
+    <th colspan="2">離峰 ${config.offPeakLabel}</th>
+    <th colspan="2">下午尖峰 ${config.peakLabel}</th>
+    <th colspan="2">離峰</th>
+    <th colspan="2">下午尖峰</th>
+  </tr>
+  <tr>
+    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
+    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
+  </tr>`
+
+  segs.forEach((s,i)=>{
+    const tVals=trips.map(t=>t&&t.segTimes[i]?t.segTimes[i].travelS:'—')
+    const rVals=trips.map(t=>t&&t.segTimes[i]?t.segTimes[i].runS:'—')
+    html+=`<tr>
+      <td class="rtl">${s.name}</td>
+      <td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
+      ${tVals.map(v=>`<td>${v}</td>`).join('')}
+      ${rVals.map(v=>`<td>${v}</td>`).join('')}
+    </tr>`
+  })
+
+  // Total row
+  const totT=trips.map(t=>t?t.travelS:'—')
+  const totR=trips.map(t=>t?t.runS:'—')
+  html+=`<tr><td class="rth" colspan="3">總計</td><td class="rth">${config.totalLength}</td>
+    ${totT.map(v=>`<td class="rth">${v}</td>`).join('')}
+    ${totR.map(v=>`<td class="rth">${v}</td>`).join('')}
+  </tr>`
+
+  $('table2').innerHTML=html
+}
+
+function buildTable3(){
+  const ob=getTrip('off_peak','bound'),or_=getTrip('off_peak','return')
+  const pb=getTrip('peak','bound'),    pr=getTrip('peak','return')
+  const trips=[ob,or_,pb,pr]
+  const segs=config.segments
+
+  let html=`
+  <tr><th colspan="${4+8}" style="text-align:center;padding:8px">各路段平均旅行速率及平均行駛速率統計表(km/h)</th></tr>
+  <tr>
+    <th rowspan="3">路段位置</th>
+    <th rowspan="3">車道數</th><th rowspan="3">路寬(m)</th><th rowspan="3">長度(m)</th>
+    <th colspan="4">平均旅行速率(km/h)</th>
+    <th colspan="4">平均行駛速率(km/h)</th>
+  </tr>
+  <tr>
+    <th colspan="2">離峰</th><th colspan="2">下午尖峰</th>
+    <th colspan="2">離峰</th><th colspan="2">下午尖峰</th>
+  </tr>
+  <tr>
+    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
+    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
+  </tr>`
+
+  segs.forEach((s,i)=>{
+    const tv=trips.map(t=>t&&t.segTimes[i]?spd(s.length,t.segTimes[i].travelS):'—')
+    const rv=trips.map(t=>t&&t.segTimes[i]?spd(s.length,t.segTimes[i].runS):'—')
+    html+=`<tr>
+      <td class="rtl">${s.name}</td>
+      <td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
+      ${tv.map(v=>`<td>${v}</td>`).join('')}
+      ${rv.map(v=>`<td>${v}</td>`).join('')}
+    </tr>`
+  })
+
+  const totTV=trips.map(t=>t?spd(config.totalLength,t.travelS):'—')
+  const totRV=trips.map(t=>t?spd(config.totalLength,t.runS):'—')
+  html+=`<tr><td class="rth" colspan="3">總計</td><td class="rth">${config.totalLength}</td>
+    ${totTV.map(v=>`<td class="rth">${v}</td>`).join('')}
+    ${totRV.map(v=>`<td class="rth">${v}</td>`).join('')}
+  </tr>`
+
+  $('table3').innerHTML=html
+}
+
+// ════════════════════════════════════
+//  EXPORT
+// ════════════════════════════════════
+function exportReport(){
+  const t1=$('table1').outerHTML
+  const t2=$('table2').outerHTML
+  const t3=$('table3').outerHTML
+  const WEATHER_ZH2={sunny:'晴',cloudy:'陰',rainy:'雨'}
+  const html=`<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8">
+<title>旅行時間調查報告 ${config.date}</title>
 <style>
-  body { font-family: '標楷體', 'Noto Serif TC', serif; font-size: 14px; margin: 20mm 15mm; color: #111; }
-  h1 { font-size: 20px; text-align: center; margin-bottom: 4px; }
-  .subtitle { text-align: center; color: #555; margin-bottom: 20px; }
-  .info-table, .delay-table, .track-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-  .info-table td { padding: 6px 10px; border: 1px solid #ccc; }
-  .info-table td:first-child { background: #f5f5f5; font-weight: bold; width: 40%; }
-  th { background: #334155; color: white; padding: 7px 10px; text-align: left; }
-  .delay-table td, .track-table td { padding: 6px 10px; border: 1px solid #ddd; }
-  .delay-table tr:nth-child(even), .track-table tr:nth-child(even) { background: #fafafa; }
-  h2 { font-size: 15px; border-left: 4px solid #3b82f6; padding-left: 8px; margin-top: 24px; margin-bottom: 8px; }
-  .stat-row { display: flex; gap: 10px; margin-bottom: 16px; }
-  .stat-box { flex: 1; border: 1px solid #ccc; border-radius: 6px; padding: 10px; text-align: center; }
-  .stat-box .sv { font-size: 18px; font-weight: bold; color: #1e3a5f; display: block; margin-top: 4px; }
-  @media print { @page { margin: 15mm; } }
-</style>
-</head>
-<body>
+body{font-family:'標楷體','Noto Serif TC',sans-serif;margin:15mm 12mm;font-size:13px}
+h1{text-align:center;font-size:18px;margin-bottom:16px}
+table{width:100%;border-collapse:collapse;margin-bottom:24px;page-break-inside:avoid}
+th{background:#1e293b;color:white;padding:6px 8px;text-align:center;font-size:11px}
+td{padding:5px 8px;border:1px solid #ccc;text-align:center}
+.rtl{text-align:left;background:#f5f5f5;font-weight:bold}
+.rts{background:#334155;color:white;font-weight:700}
+.rth{background:#e8e8e8;font-weight:700}
+@media print{@page{margin:10mm}}
+</style></head><body>
 <h1>旅行時間與延滯調查報告</h1>
-<p class="subtitle">${dateStr}　${peakLabel}　${dirLabel}</p>
-
-<h2>調查基本資訊</h2>
-<table class="info-table">
-  <tr><td>調查日期</td><td>${dateStr}</td></tr>
-  <tr><td>時段</td><td>${peakLabel}</td></tr>
-  <tr><td>方向</td><td>${dirLabel}</td></tr>
-  <tr><td>開始時間</td><td>${fmtHMS(surveyStartTime)}</td></tr>
-  <tr><td>結束時間</td><td>${fmtHMS(surveyEndTime)}</td></tr>
-  <tr><td>GPS 軌跡點數</td><td>${gpsTrack.length} 個</td></tr>
-</table>
-
-<h2>時間統計</h2>
-<div class="stat-row">
-  <div class="stat-box">旅行時間<span class="sv">${fmtTime(travelS)}</span></div>
-  <div class="stat-box">總延滯時間<span class="sv">${fmtTime(totalDelayS)}</span></div>
-  <div class="stat-box">行駛時間<span class="sv">${fmtTime(runS)}</span></div>
-  <div class="stat-box">延滯比例<span class="sv">${travelS > 0 ? Math.round(totalDelayS/travelS*100) : 0}%</span></div>
-</div>
-
-<h2>延滯明細</h2>
-<table class="delay-table">
-  <thead><tr><th>#</th><th>延滯原因</th><th>開始時間</th><th>結束時間</th><th>持續秒數</th></tr></thead>
-  <tbody>${delayRows}</tbody>
-</table>
-
-<h2>GPS 軌跡記錄</h2>
-${trackNote}
-<table class="track-table">
-  <thead><tr><th>緯度</th><th>經度</th><th>速度(m/s)</th><th>精度(m)</th><th>時間</th></tr></thead>
-  <tbody>${trackRows}</tbody>
-</table>
-</body>
-</html>`
-
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `調查報告_${dateStr}_${peakLabel}${dirLabel}.html`
+${t1}<br>${t2}<br>${t3}
+</body></html>`
+  const a=document.createElement('a')
+  a.href=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}))
+  a.download=`調查報告_${config.date}_${config.routeName||'survey'}.html`
   a.click()
   showToast('✅ 報告已下載')
 }
 
-// ════════════════════════════════════════════════
-//  複製 JSON
-// ════════════════════════════════════════════════
-function copyJSON() {
-  const data = {
-    peakType:   selectedPeakType,
-    direction:  selectedDirection,
-    startedAt:  surveyStartTime.toISOString(),
-    endedAt:    surveyEndTime.toISOString(),
-    travelTimeS: Math.round((surveyEndTime - surveyStartTime) / 1000),
-    totalDelayS: delayRecords.reduce((s, r) => s + r.durationS, 0),
-    delayRecords: delayRecords.map(r => ({
-      cause: r.cause, label: r.label,
-      startedAt: r.startedAt.toISOString(),
-      endedAt: r.endedAt.toISOString(),
-      durationS: r.durationS,
-      pos: r.pos,
-    })),
-    gpsTrack,
-  }
-  navigator.clipboard.writeText(JSON.stringify(data, null, 2))
-    .then(() => showToast('✅ JSON 已複製'))
-    .catch(() => showToast('❌ 複製失敗'))
+function exportCSV(){
+  let csv=`路線名稱,${config.routeName}\n起迄點,${config.routeFromTo}\n全長(m),${config.totalLength}\n日期,${config.date}\n調查員,${config.surveyor}\n天氣,${WEATHER_ZH[config.weather]||''}\n\n`
+  csv+='組合,旅行時間(秒),行駛時間(秒),總延滯(秒),旅行速率(km/h),行駛速率(km/h)\n'
+  COMBO_KEYS.forEach(k=>{
+    const [pt,dir]=parseComboKey(k)
+    const t=allTrips[k]
+    if(t)csv+=`${PEAK_LABEL[pt]}${DIR_LABEL[dir]},${t.travelS},${t.runS},${t.totalDelayS},${spd(config.totalLength,t.travelS)},${spd(config.totalLength,t.runS)}\n`
+  })
+  csv+='\n各路段旅行時間(秒)\n路段,長度(m)'
+  COMBO_KEYS.forEach(k=>{const[pt,dir]=parseComboKey(k);csv+=`,${PEAK_LABEL[pt]}${DIR_LABEL[dir]}`})
+  csv+='\n'
+  config.segments.forEach((s,i)=>{
+    csv+=`${s.name},${s.length}`
+    COMBO_KEYS.forEach(k=>{const t=allTrips[k];csv+=`,${t&&t.segTimes[i]?t.segTimes[i].travelS:''}`})
+    csv+='\n'
+  })
+  const a=document.createElement('a')
+  a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}))
+  a.download=`調查數據_${config.date||'survey'}.csv`
+  a.click()
+  showToast('✅ CSV 已下載')
 }
 
-// ════════════════════════════════════════════════
-//  重新開始
-// ════════════════════════════════════════════════
-function restartApp() {
-  surveyStartTime = surveyEndTime = null
-  gpsTrack = []; delayRecords = []; activeDelay = null; elapsedSec = 0
-  document.getElementById('status-timer').textContent = '00:00'
-  if (mapSurvey && lastPos) {
-    markerSurvey.setLatLng([lastPos.lat, lastPos.lng])
-    mapSurvey.setView([lastPos.lat, lastPos.lng], 16)
-  }
-  switchScreen('screen-ready')
-}
-
-// ════════════════════════════════════════════════
-//  啟動
-// ════════════════════════════════════════════════
-window.addEventListener('load', () => {
-  initReadyMap()
-  startGPS()
-  // 3 秒後若 GPS 仍未回應，允許選完組合就開始
-  setTimeout(() => {
-    const dot = document.getElementById('gps-dot-ready')
-    if (!dot.classList.contains('good') && !dot.classList.contains('poor')) {
-      dot.className = 'gps-dot poor'
-      document.getElementById('gps-text-ready').textContent = 'GPS 訊號弱，可嘗試開始'
-    }
-    checkStartReady()
-  }, 5000)
+// ════════════════════════════════════
+//  INIT
+// ════════════════════════════════════
+window.addEventListener('load',()=>{
+  $('s-date').value=new Date().toISOString().slice(0,10)
 })
 </script>
 </body>
