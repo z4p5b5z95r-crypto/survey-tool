@@ -105,12 +105,12 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .status-right{color:#94a3b8;font-size:13px;font-family:monospace}
 
 /* Node progress */
-.node-progress{display:flex;align-items:center;padding:10px 14px 6px;overflow-x:auto;flex-shrink:0;background:#1e293b}
-.nd{width:28px;height:28px;border-radius:50%;background:#334155;border:2px solid #475569;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#94a3b8;flex-shrink:0;transition:all .2s}
+.node-progress{display:flex;align-items:center;padding:6px 12px 4px;overflow-x:auto;flex-shrink:0;background:#1e293b}
+.nd{width:20px;height:20px;border-radius:50%;background:#334155;border:2px solid #475569;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#94a3b8;flex-shrink:0;transition:all .2s}
 .nd.done{background:#14532d;border-color:#4ade80;color:#4ade80}
 .nd.cur{background:#1d4ed8;border-color:#60a5fa;color:white;animation:pu 1.5s infinite}
-@keyframes pu{0%,100%{box-shadow:0 0 0 0 rgba(96,165,250,.5)}50%{box-shadow:0 0 0 6px rgba(96,165,250,0)}}
-.nd-line{height:2px;background:#334155;flex:1;min-width:10px}
+@keyframes pu{0%,100%{box-shadow:0 0 0 0 rgba(96,165,250,.5)}50%{box-shadow:0 0 0 5px rgba(96,165,250,0)}}
+.nd-line{height:2px;background:#334155;flex:1;min-width:8px}
 .nd-line.done{background:#4ade80}
 
 /* Next-node card */
@@ -125,16 +125,16 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .nnc-manual{position:absolute;right:12px;top:50%;transform:translateY(-50%);padding:10px 14px;background:rgba(255,255,255,.2);border:2px solid rgba(255,255,255,.4);border-radius:12px;color:white;font-size:13px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px)}
 .nnc-manual:active{background:rgba(255,255,255,.35)}
 
-/* Scrollable delay area */
-.survey-scroll{flex:1;overflow-y:auto;background:#1e293b;padding:10px 12px 4px}
-.dl-group-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#475569;margin-bottom:8px;margin-top:4px;font-weight:700}
-.dl-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
-.btn-dl{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 8px;min-height:76px;background:#0f172a;border:2px solid #334155;border-radius:14px;color:#94a3b8;cursor:pointer;transition:all .15s}
+/* Scrollable delay area — side-by-side columns */
+.delay-columns{flex:1;overflow-y:auto;background:#1e293b;display:flex;gap:8px;padding:8px 10px 6px}
+.delay-col{flex:1;display:flex;flex-direction:column;gap:7px;min-width:0}
+.dl-col-label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#475569;font-weight:700;text-align:center;padding:3px 0 4px;border-bottom:1px solid #334155;margin-bottom:2px}
+.btn-dl{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 6px;min-height:68px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:#94a3b8;cursor:pointer;transition:all .15s;width:100%}
 .btn-dl:active{transform:scale(.96)}
 .btn-dl.active{background:#450a0a;border-color:#ef4444;color:#fca5a5}
-.btn-dl .di{font-size:24px}
-.btn-dl .dn{font-size:12px;margin-top:5px;text-align:center;line-height:1.2;font-weight:600}
-.btn-dl .dt{font-size:11px;font-family:monospace;color:#f87171;margin-top:2px}
+.btn-dl .di{font-size:22px}
+.btn-dl .dn{font-size:11px;margin-top:4px;text-align:center;line-height:1.2;font-weight:600}
+.btn-dl .dt{font-size:10px;font-family:monospace;color:#f87171;margin-top:2px}
 .btn-end{width:calc(100% - 24px);margin:6px 12px;padding:16px;background:#dc2626;color:white;border:none;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer;flex-shrink:0}
 
 /* ── Trip Done ── */
@@ -175,6 +175,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 /* ── Toast ── */
 .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#1e293b;color:white;padding:9px 18px;border-radius:20px;font-size:14px;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 .toast.show{opacity:1}
+.toast.node-toast{background:#15803d;font-size:16px;font-weight:700;padding:12px 22px;border-radius:24px;box-shadow:0 4px 18px rgba(0,0,0,.35)}
 </style>
 </head>
 <body>
@@ -197,10 +198,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
     <div class="signin-card">
       <h3>📍 路線地圖</h3>
       <div id="map-signin"></div>
-      <div class="route-legend">
-        <span><svg width="20" height="4"><rect width="20" height="4" rx="2" fill="#3b82f6"/></svg> 去程（節點順序）</span>
-        <span><svg width="20" height="4"><rect width="20" height="4" rx="2" fill="#f59e0b"/></svg> 回程（逆向）</span>
-      </div>
+      <div id="route-dir-text" style="font-size:12px;color:#64748b;margin-top:6px;text-align:center;line-height:1.8"></div>
     </div>
 
     <!-- Surveyor info -->
@@ -339,12 +337,16 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
     </div>
     <button class="nnc-manual" id="nnc-manual-btn" onclick="manualRecordNode()">手動記錄</button>
   </div>
-  <!-- Scrollable delay buttons -->
-  <div class="survey-scroll">
-    <div class="dl-group-label">🛣 路段延滯（點開始，再點停止）</div>
-    <div class="dl-grid" id="grid-road"></div>
-    <div class="dl-group-label">🚦 交叉口延滯</div>
-    <div class="dl-grid" id="grid-inter"></div>
+  <!-- Side-by-side delay columns -->
+  <div class="delay-columns">
+    <div class="delay-col">
+      <div class="dl-col-label">🛣 路段延滯</div>
+      <div id="grid-road"></div>
+    </div>
+    <div class="delay-col">
+      <div class="dl-col-label">🚦 交叉口延滯</div>
+      <div id="grid-inter"></div>
+    </div>
   </div>
   <button class="btn-end" onclick="endSurvey()">🔴 結束調查</button>
 </div>
@@ -398,18 +400,18 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 const ROAD_DELAYS = [
   {cause:'congestion', label:'阻塞',     icon:'🚧'},
   {cause:'bus_stop',   label:'公車停靠',  icon:'🚌'},
+  {cause:'ped_cross',  label:'行人穿越',  icon:'🚶'},
   {cause:'taxi_stop',  label:'計程車停靠',icon:'🚕'},
   {cause:'parking',    label:'路邊停靠',  icon:'🅿️'},
-  {cause:'ped_cross',  label:'行人穿越',  icon:'🚶'},
   {cause:'road_other', label:'其他',      icon:'❓'},
 ]
 const INT_DELAYS = [
   {cause:'red_light',  label:'紅燈',    icon:'🔴'},
+  {cause:'ped_int',    label:'行人',    icon:'🚶'},
+  {cause:'cross_veh',  label:'橫越車輛', icon:'↔️'},
   {cause:'left_same',  label:'左轉同向', icon:'↰'},
   {cause:'left_opp',   label:'左轉對向', icon:'↱'},
   {cause:'right_turn', label:'右轉',    icon:'↳'},
-  {cause:'cross_veh',  label:'橫越車輛', icon:'↔️'},
-  {cause:'ped_int',    label:'行人',    icon:'🚶'},
   {cause:'int_other',  label:'其他',    icon:'❓'},
 ]
 const PEAK_LABEL  = {peak:'尖峰', off_peak:'離峰'}
@@ -454,7 +456,7 @@ let setupWeather='', manualSegs=[]
 function fmtSec(s){const m=Math.floor(s/60),r=s%60;return`${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`}
 function fmtTime(s){if(!s&&s!==0)return'--';const m=Math.floor(s/60),r=s%60;return`${m}分${String(r).padStart(2,'0')}秒`}
 function fmtHMS(d){return d?d.toTimeString().slice(0,8):''}
-function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500)}
+function showToast(m,isNode=false){const t=document.getElementById('toast');t.textContent=m;t.className='toast'+(isNode?' node-toast':'');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),isNode?3000:2500)}
 function $(id){return document.getElementById(id)}
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'))
@@ -511,7 +513,7 @@ function loadFromHash(){
   config.offPeakLabel=cfg.op||'14:00~16:00'
   config.peakLabel   =cfg.pk||'17:00~19:00'
   config.date        =new Date().toLocaleDateString('zh-TW')
-  config.nodes=(cfg.nd||[]).map(n=>({name:n.n||n.r1||'節點',lat:n.a,lng:n.o}))
+  config.nodes=(cfg.nd||[]).map(n=>({name:n.n||n.r1||'節點',lat:n.a,lng:n.o,radius:n.r||15}))
   config.segments=(cfg.sg||[]).map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d}))
   return true
 }
@@ -525,24 +527,25 @@ function initSigninMap(){
   mapSignin=L.map('map-signin',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,touchZoom:false})
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(mapSignin)
 
-  // Bound route (blue)
-  const boundLls=routePolylines.length>0?routePolylines.flat():config.nodes.map(n=>[n.lat,n.lng])
-  const bPoly=L.polyline(boundLls,{color:'#3b82f6',weight:5,opacity:.85}).addTo(mapSignin)
+  // Single route line
+  const lls=routePolylines.length>0?routePolylines.flat():config.nodes.map(n=>[n.lat,n.lng])
+  const poly=L.polyline(lls,{color:'#3b82f6',weight:5,opacity:.85}).addTo(mapSignin)
 
-  // Return route (orange, reversed)
-  const retLls=routePolylines.length>0
-    ?[...routePolylines].reverse().map(seg=>[...seg].reverse()).flat()
-    :[...config.nodes].reverse().map(n=>[n.lat,n.lng])
-  L.polyline(retLls,{color:'#f59e0b',weight:3,opacity:.7,dashArray:'7,5'}).addTo(mapSignin)
-
-  // Node markers
+  // Numbered node markers (no name labels)
   config.nodes.forEach((n,i)=>{
-    const color=i===0?'#16a34a':i===config.nodes.length-1?'#dc2626':'#6366f1'
-    L.circleMarker([n.lat,n.lng],{radius:8,fillColor:color,color:'#fff',weight:2,fillOpacity:1})
-      .bindTooltip(`${i+1}. ${n.name}`,{permanent:config.nodes.length<=6,direction:'top',offset:[0,-10]})
-      .addTo(mapSignin)
+    L.marker([n.lat,n.lng],{icon:L.divIcon({
+      html:`<div style="width:22px;height:22px;background:#1d4ed8;border:2.5px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:white;box-shadow:0 2px 6px rgba(0,0,0,.3)">${i+1}</div>`,
+      className:'',iconSize:[22,22],iconAnchor:[11,11]
+    })}).addTo(mapSignin)
   })
-  mapSignin.fitBounds(bPoly.getBounds(),{padding:[18,18]})
+  mapSignin.fitBounds(poly.getBounds(),{padding:[18,18]})
+
+  // Direction text below map
+  const nums=config.nodes.map((_,i)=>i+1)
+  const dirEl=$('route-dir-text')
+  if(dirEl){
+    dirEl.innerHTML=`去程：${nums.join(' → ')}<br>回程：${[...nums].reverse().join(' → ')}`
+  }
 }
 
 function showSigninScreen(){
@@ -694,10 +697,12 @@ function checkNodeProximity(lat,lng){
   const nextNode=ordered[currentNodeIdx]
   if(!nextNode) return
   const dist=haversine(lat,lng,nextNode.lat,nextNode.lng)
+  const triggerR=nextNode.radius||AUTO_RECORD_DIST
   // Update distance display
   const card=$('next-node-card')
   $('nnc-dist-num').textContent=dist
-  if(dist<=AUTO_RECORD_DIST){
+  $('nnc-auto-hint').textContent=`• ${triggerR}m 內自動記錄`
+  if(dist<=triggerR){
     card.classList.add('arriving')
     if(!nodeAutoLock){
       nodeAutoLock=true
@@ -716,20 +721,23 @@ function recordNode(auto){
   const names=getNodeNames()
   if(currentNodeIdx>=names.length) return
   nodeTimestamps.push(new Date())
+  // Haptic feedback
+  if(navigator.vibrate) navigator.vibrate([150,50,150])
   // Update progress dots
   const dot=$(`nd-${currentNodeIdx}`)
   if(dot) dot.className='nd done'
   const line=$(`ndl-${currentNodeIdx}`)
   if(line) line.className='nd-line done'
+  const justRecorded=currentNodeIdx+1
   currentNodeIdx++
   if(currentNodeIdx<names.length){
     const nextDot=$(`nd-${currentNodeIdx}`)
     if(nextDot) nextDot.className='nd cur'
     updateNextNodeCard()
-    if(auto) showToast(`✅ 自動記錄節點 ${currentNodeIdx}／${names.length}`)
+    showToast(`✅ 節點 ${justRecorded}／${names.length} 已記錄`,true)
   }else{
     updateNextNodeCard()
-    showToast('🏁 已抵達終點！可結束調查')
+    showToast(`🏁 已抵達終點！節點 ${justRecorded}／${names.length}`,true)
   }
 }
 function updateNextNodeCard(){
@@ -859,6 +867,7 @@ function buildDelayGrids(){
 }
 function buildGrid(gid,types,group){
   const g=$(gid);g.innerHTML=''
+  g.style.cssText='display:flex;flex-direction:column;gap:7px'
   types.forEach(d=>{
     const b=document.createElement('button');b.className='btn-dl';b.id=`dbtn-${d.cause}`
     b.innerHTML=`<span class="di">${d.icon}</span><span class="dn">${d.label}</span><span class="dt" id="dtime-${d.cause}"></span>`
