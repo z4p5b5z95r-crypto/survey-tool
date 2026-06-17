@@ -172,6 +172,20 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .sec-title{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:6px}
 #map-result{height:240px;border-radius:14px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)}
 
+/* ── SGS Official Form ── */
+.sgs-form{background:white;border-radius:10px;overflow-x:auto;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.1);border:2px solid #1e293b}
+.sgs-t{width:100%;border-collapse:collapse;font-size:10px;min-width:680px}
+.sgs-t td,.sgs-t th{border:1px solid #475569;padding:2px 3px;vertical-align:middle;text-align:center;white-space:nowrap}
+.sgs-logo{font-size:18px;font-weight:900;color:#dc2626;font-style:italic;padding:4px 6px!important;border:2px solid #dc2626!important;letter-spacing:-1px}
+.sgs-title{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:1px}
+.sgs-meta-l{text-align:left!important;color:#374151;font-weight:600}
+.sgs-meta-v{text-align:left!important}
+.sgs-th{background:#e2e8f0;font-weight:700;font-size:10px;color:#1e293b}
+.sgs-seg{text-align:left!important;font-weight:600;font-size:10px}
+.sgs-t-time{color:#2563eb;font-weight:700}
+.sgs-total{background:#dbeafe;font-weight:700}
+.sgs-footer-l{background:#f1f5f9;font-weight:700;text-align:left!important}
+.sgs-footer-v{background:#f1f5f9}
 /* ── Toast ── */
 .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#1e293b;color:white;padding:9px 18px;border-radius:20px;font-size:14px;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 .toast.show{opacity:1}
@@ -380,11 +394,12 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
   <div class="page-header"><h2>📊 調查報告</h2><p id="report-subtitle"></p></div>
   <div class="scroll-body">
     <div><div class="sec-title">行駛路徑</div><div id="map-result"></div></div>
+    <div><div class="sec-title">官方調查表（主次要幹道行駛時間及延滯調查表）</div><div id="official-forms"></div></div>
     <div><div class="sec-title">總覽統計表</div><div class="report-wrap"><table class="rt" id="table1"></table></div></div>
     <div><div class="sec-title">各路段統計</div><div class="report-wrap"><table class="rt" id="table2"></table></div></div>
     <div><div class="sec-title">速率統計</div><div class="report-wrap"><table class="rt" id="table3"></table></div></div>
     <div class="export-row">
-      <button class="btn-ex html" onclick="exportReport()">📄 HTML 報告</button>
+      <button class="btn-ex html" onclick="exportReport()">📄 HTML 報告（含官方表）</button>
       <button class="btn-ex csv" onclick="exportCSV()">⬇ CSV</button>
     </div>
     <button style="width:100%;padding:15px;background:#e2e8f0;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px" onclick="goReady()">🔄 繼續補充旅次</button>
@@ -919,6 +934,7 @@ function endSurvey(){
     roadDelays:{...cur.roadDelays},intDelays:{...cur.intDelays},
     segTimes:segsForTable,delayLog:[...delayLog],
     gpsTrack:[...cur.gpsTrack],startTime:cur.startTime,endTime:cur.endTime,
+    nodeTimestamps:[...nodeTimestamps],
   }
   buildTripDoneUI(travelS,totalDelayS,runS)
   showScreen('screen-tripdone')
@@ -957,7 +973,217 @@ function spd(len,secs){return(len>0&&secs>0)?Math.round(len/secs*3.6):'—'}
 
 function buildReport(){
   $('report-subtitle').textContent=`${config.routeName}  ${config.date}`
-  buildResultMap();buildTable1();buildTable2();buildTable3()
+  buildResultMap();buildOfficialForms();buildTable1();buildTable2();buildTable3()
+}
+
+// ════════════════════════════════════
+//  OFFICIAL SGS FORM BUILDER
+// ════════════════════════════════════
+function segDelaysForIdx(trip, i){
+  const t0=trip.nodeTimestamps?.[i], t1=trip.nodeTimestamps?.[i+1]
+  const r={}; ;[...ROAD_DELAYS,...INT_DELAYS].forEach(d=>r[d.cause]=0)
+  if(trip.delayLog&&t0&&t1) trip.delayLog.forEach(dl=>{
+    const ds=new Date(dl.startedAt)
+    if(ds>=new Date(t0)&&ds<new Date(t1)&&r[dl.cause]!==undefined) r[dl.cause]+=dl.durationS
+  })
+  return r
+}
+
+function buildOfficialForms(){
+  const box=$('official-forms'); if(!box) return
+  box.innerHTML=''
+  COMBO_KEYS.forEach(key=>{
+    const trip=allTrips[key]; if(!trip) return
+    const [pt,dir]=parseComboKey(key)
+    box.appendChild(buildOneOfficialForm(trip,pt,dir))
+  })
+}
+
+function buildOneOfficialForm(trip,pt,dir){
+  const segs = dir==='return' ? [...config.segments].reverse() : config.segments
+  const nodes= dir==='return' ? [...config.nodes].reverse() : config.nodes
+  const len  = config.totalLength
+  const dl   = v => v>0?v:''
+  const spd  = (d,s) => (d>0&&s>0)?(d/s*3.6).toFixed(1):''
+  const pct  = (v,t) => t>0?Math.round(v/t*100)+'%':'0%'
+
+  const st=new Date(trip.startTime), et=new Date(trip.endTime)
+  const tH=st.getHours(),tM=String(st.getMinutes()).padStart(2,'0'),tS=String(st.getSeconds()).padStart(2,'0')
+  const eH=et.getHours(),eM=String(et.getMinutes()).padStart(2,'0'),eS=String(et.getSeconds()).padStart(2,'0')
+
+  const travelSpd = spd(len,trip.travelS)
+  const runSpd    = spd(len,trip.runS)
+
+  // Per-segment
+  const segD = segs.map((_,i)=>segDelaysForIdx(trip,i))
+  const segT = trip.segTimes||[]
+  const arrT = segs.map((_,i)=>{
+    const ts=trip.nodeTimestamps?.[i+1]; if(!ts) return{h:'',m:'',s:''}
+    const d=new Date(ts)
+    return{h:d.getHours(),m:String(d.getMinutes()).padStart(2,'0'),s:String(d.getSeconds()).padStart(2,'0')}
+  })
+
+  // Column totals
+  const RC=ROAD_DELAYS.map(d=>d.cause), IC=INT_DELAYS.map(d=>d.cause)
+  const colT={}; ;[...RC,...IC].forEach(c=>colT[c]=segD.reduce((s,d)=>s+(d[c]||0),0))
+  const roadT=RC.reduce((s,c)=>s+colT[c],0), intT=IC.reduce((s,c)=>s+colT[c],0)
+
+  // Start/end location names
+  const startN=nodes[0]?.name||'起點', endN=nodes[nodes.length-1]?.name||'終點'
+
+  const segRows = segs.map((seg,i)=>{
+    const sd=segD[i], st_=segT[i]||{}, ar=arrT[i]
+    return `<tr>
+      <td colspan="2" class="sgs-seg">${seg.name}</td>
+      <td class="sgs-t-time">${ar.h}</td><td class="sgs-t-time">${ar.m}</td><td class="sgs-t-time">${ar.s}</td>
+      <td>${dl(sd.congestion)}</td><td>${dl(sd.bus_stop)}</td><td>${dl(sd.taxi_stop)}</td>
+      <td>${dl(sd.parking)}</td><td>${dl(sd.ped_cross)}</td><td>${dl(sd.road_other)}</td>
+      <td>${dl(sd.red_light)}</td><td>${dl(sd.left_same)}</td><td>${dl(sd.left_opp)}</td>
+      <td>${dl(sd.right_turn)}</td><td>${dl(sd.cross_veh)}</td><td>${dl(sd.ped_int)}</td><td>${dl(sd.int_other)}</td>
+      <td>${st_.travelS||''}</td><td>${seg.length||''}</td><td>${st_.runS||''}</td>
+      <td>${spd(seg.length,st_.travelS)}</td><td>${spd(seg.length,st_.runS)}</td>
+    </tr>`
+  }).join('')
+
+  const emptyRows = Array(Math.max(0,7-segs.length)).fill(
+    `<tr>${'<td></td>'.repeat(23)}</tr>`).join('')
+
+  const html=`
+  <div class="sgs-form">
+  <table class="sgs-t">
+    <!-- ── Header ── -->
+    <tr>
+      <td rowspan="5" class="sgs-logo">SGS</td>
+      <td colspan="19" class="sgs-title">主次要幹道行駛時間及延滯調查表</td>
+      <td colspan="2" class="sgs-meta-l">日　期：</td>
+      <td colspan="1" class="sgs-meta-v" style="color:#dc2626;font-weight:700;white-space:nowrap">${config.date||''}</td>
+    </tr>
+    <tr>
+      <td colspan="3" class="sgs-meta-l">站　名：</td>
+      <td colspan="10" class="sgs-meta-v" style="text-decoration:underline">${config.routeName||''}</td>
+      <td colspan="6"></td>
+      <td colspan="2" class="sgs-meta-l" rowspan="2">天　氣：</td>
+      <td class="sgs-meta-v" rowspan="2">${WEATHER_ZH[config.weather]||'—'}</td>
+    </tr>
+    <tr>
+      <td colspan="3" class="sgs-meta-l">旅次編號：</td>
+      <td colspan="16" class="sgs-meta-v"></td>
+    </tr>
+    <tr>
+      <td colspan="3" class="sgs-meta-l">方向往：</td>
+      <td colspan="8" class="sgs-meta-v">${dir==='bound'?'■':'□'} 去　　　${dir==='return'?'■':'□'} 回</td>
+      <td colspan="8"></td>
+      <td colspan="2" class="sgs-meta-l">調查員：</td>
+      <td class="sgs-meta-v" style="text-decoration:underline">${config.surveyor||'—'}</td>
+    </tr>
+    <tr>
+      <td colspan="3" class="sgs-meta-l">時　間：</td>
+      <td colspan="19" class="sgs-meta-v">
+        ${pt==='off_peak'?'■':'□'} 離峰（${config.offPeakLabel}）　　${pt==='peak'?'■':'□'} 尖峰（${config.peakLabel}）
+      </td>
+    </tr>
+
+    <!-- ── Summary header ── -->
+    <tr class="sgs-th">
+      <td colspan="2" rowspan="3">路<br><small>起點位置</small></td>
+      <td colspan="2" rowspan="3">線<br><small>終點位置</small></td>
+      <td rowspan="3">距離<br>(公尺)</td>
+      <td colspan="6">時　　　　　　刻</td>
+      <td colspan="4">總旅行時間(秒)及百分比</td>
+      <td colspan="4" rowspan="3">總旅行速率<br>(公里/時)</td>
+      <td colspan="4" rowspan="3">總行駛速率<br>(公里/時)</td>
+    </tr>
+    <tr class="sgs-th">
+      <td colspan="3">起　點</td>
+      <td colspan="3">終　點</td>
+      <td rowspan="2">合計</td>
+      <td rowspan="2">交叉口<br>延　滯</td>
+      <td rowspan="2">路段中<br>延　滯</td>
+      <td rowspan="2">行　駛<br>時　間</td>
+    </tr>
+    <tr class="sgs-th">
+      <td>時</td><td>分</td><td>秒</td>
+      <td>時</td><td>分</td><td>秒</td>
+    </tr>
+
+    <!-- Summary data -->
+    <tr>
+      <td colspan="2" rowspan="2" class="sgs-seg">${startN}</td>
+      <td colspan="2" rowspan="2" class="sgs-seg">${endN}</td>
+      <td rowspan="2">${len}</td>
+      <td>${tH}</td><td>${tM}</td><td>${tS}</td>
+      <td>${eH}</td><td>${eM}</td><td style="background:#dcfce7;font-weight:700">${eS}</td>
+      <td>${trip.travelS}</td><td>${trip.intTotalS}</td><td>${trip.roadTotalS||0}</td><td>${trip.runS}</td>
+      <td colspan="4" rowspan="2" style="font-size:13px;font-weight:800">${travelSpd}</td>
+      <td colspan="4" rowspan="2" style="font-size:13px;font-weight:800">${runSpd}</td>
+    </tr>
+    <tr>
+      <td colspan="3" class="sgs-meta-l" style="font-size:9px">百分比</td>
+      <td colspan="3"></td>
+      <td style="font-size:9px">${pct(trip.travelS,trip.travelS)}</td>
+      <td style="font-size:9px">${pct(trip.intTotalS,trip.travelS)}</td>
+      <td style="font-size:9px">${pct(trip.roadTotalS||0,trip.travelS)}</td>
+      <td style="font-size:9px">${pct(trip.runS,trip.travelS)}</td>
+    </tr>
+
+    <!-- ── Segment header ── -->
+    <tr class="sgs-th">
+      <td colspan="2" rowspan="2">經過路口</td>
+      <td colspan="3" rowspan="2">經過時刻</td>
+      <td colspan="6">路　　段　　中</td>
+      <td colspan="7">交　　叉　　口</td>
+      <td rowspan="2">旅行<br>時間<br>(秒)</td>
+      <td rowspan="2">距離<br>(公尺)</td>
+      <td rowspan="2">行駛<br>時間<br>(秒)</td>
+      <td rowspan="2">旅行<br>速率</td>
+      <td rowspan="2">行駛<br>速率</td>
+    </tr>
+    <tr class="sgs-th">
+      <td>阻塞</td><td>公車<br>停靠</td><td>計程<br>車靠</td><td>路邊<br>停車</td><td>行人<br>穿越</td><td>其他</td>
+      <td>紅燈</td><td>左轉<br>同向</td><td>左轉<br>對向</td><td>右轉</td><td>橫越<br>車輛</td><td>行人</td><td>其他</td>
+    </tr>
+
+    <!-- Segment rows -->
+    ${segRows}
+    ${emptyRows}
+
+    <!-- ── Footer ── -->
+    <tr>
+      <td rowspan="2" class="sgs-footer-l">延滯時間<br>(秒)</td>
+      <td class="sgs-footer-l">小計</td>
+      <td colspan="3" class="sgs-footer-v"></td>
+      ${RC.map(c=>`<td class="sgs-footer-v">${colT[c]||0}</td>`).join('')}
+      ${IC.map(c=>`<td class="sgs-footer-v">${colT[c]||0}</td>`).join('')}
+      <td colspan="5"></td>
+    </tr>
+    <tr>
+      <td class="sgs-footer-l">合計</td>
+      <td colspan="3"></td>
+      <td colspan="6" class="sgs-footer-v">${roadT}</td>
+      <td colspan="7" class="sgs-footer-v">${intT}</td>
+      <td colspan="5"></td>
+    </tr>
+    <tr>
+      <td rowspan="2" class="sgs-footer-l">延滯時間<br>百分比</td>
+      <td class="sgs-footer-l">小計</td>
+      <td colspan="3" class="sgs-footer-v"></td>
+      ${RC.map(c=>`<td class="sgs-footer-v" style="font-size:9px">${pct(colT[c],trip.travelS)}</td>`).join('')}
+      ${IC.map(c=>`<td class="sgs-footer-v" style="font-size:9px">${pct(colT[c],trip.travelS)}</td>`).join('')}
+      <td colspan="5"></td>
+    </tr>
+    <tr>
+      <td class="sgs-footer-l">合計</td>
+      <td colspan="3"></td>
+      <td colspan="6" class="sgs-footer-v" style="font-size:9px">${pct(roadT,trip.travelS)}</td>
+      <td colspan="7" class="sgs-footer-v" style="font-size:9px">${pct(intT,trip.travelS)}</td>
+      <td colspan="5"></td>
+    </tr>
+  </table>
+  </div>`
+
+  const wrapper=document.createElement('div')
+  wrapper.innerHTML=html
+  return wrapper.firstElementChild
 }
 function buildResultMap(){
   if(mapResult){mapResult.remove();mapResult=null}
