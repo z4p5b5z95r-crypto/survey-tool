@@ -12,7 +12,33 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .screen{display:none;height:100dvh;flex-direction:column}
 .screen.active{display:flex}
 
-/* ── Setup ── */
+/* ── Sign-in (QR loaded) ── */
+#screen-signin{background:#f1f5f9}
+.signin-hero{background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);padding:28px 20px 22px;color:white;flex-shrink:0;text-align:center}
+.signin-hero .route-badge{display:inline-block;background:rgba(255,255,255,.1);border-radius:20px;padding:5px 14px;font-size:12px;color:#94a3b8;margin-bottom:10px}
+.signin-hero h2{font-size:20px;font-weight:800;margin-bottom:4px}
+.signin-hero p{font-size:13px;color:#94a3b8}
+.signin-info{display:flex;justify-content:center;gap:16px;margin-top:12px;flex-wrap:wrap}
+.signin-chip{font-size:12px;color:#60a5fa;background:rgba(96,165,250,.12);padding:4px 10px;border-radius:10px}
+.signin-body{flex:1;overflow-y:auto;padding:20px 16px}
+.signin-card{background:white;border-radius:16px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:14px}
+.signin-card h3{font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+.field label{display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:5px}
+.field input{width:100%;padding:12px 14px;border:1.5px solid #e2e8f0;border-radius:11px;font-size:16px;outline:none;background:white}
+.field input:focus{border-color:#3b82f6}
+.w-row{display:flex;gap:8px;margin-top:4px}
+.w-btn{flex:1;padding:12px 6px;border:2px solid #e2e8f0;border-radius:11px;background:white;cursor:pointer;text-align:center;font-size:22px;transition:all .15s}
+.w-btn span{display:block;font-size:11px;color:#64748b;margin-top:3px;font-weight:600}
+.w-btn.sel{border-color:#3b82f6;background:#eff6ff}
+.w-btn.sel span{color:#1d4ed8}
+.seg-preview{display:flex;flex-direction:column;gap:6px}
+.seg-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
+.seg-row:last-child{border:none}
+.seg-dot{width:8px;height:8px;border-radius:50%;background:#3b82f6;flex-shrink:0}
+.btn-signin{width:100%;padding:18px;background:#16a34a;color:white;border:none;border-radius:16px;font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(22,163,74,.3);margin-top:8px}
+.btn-signin:disabled{background:#94a3b8;box-shadow:none}
+
+/* ── Setup (manual) ── */
 #screen-setup{background:#f1f5f9}
 .page-header{background:#1e293b;padding:15px 16px;color:white;flex-shrink:0}
 .page-header h2{font-size:18px;font-weight:800}
@@ -22,14 +48,10 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .card-title{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
 .field{margin-bottom:10px}
 .field:last-child{margin-bottom:0}
-.field label{display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:4px}
-.field input,.field select{width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:15px;outline:none;background:white}
-.field input:focus,.field select:focus{border-color:#3b82f6}
 .row2{display:flex;gap:8px}
 .row2 .field{flex:1}
-.w-row{display:flex;gap:8px}
-.w-btn{flex:1;padding:10px 6px;border:2px solid #e2e8f0;border-radius:10px;background:white;font-size:18px;cursor:pointer;text-align:center}
-.w-btn.sel{border-color:#3b82f6;background:#eff6ff}
+.field input,.field select{width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:15px;outline:none;background:white}
+.field input:focus{border-color:#3b82f6}
 .seg-list{display:flex;flex-direction:column;gap:7px;margin-bottom:10px}
 .seg-item{background:#f8fafc;border-radius:10px;padding:10px 12px;border:1px solid #e2e8f0;display:flex;align-items:center;gap:8px}
 .seg-info{flex:1}
@@ -39,7 +61,6 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .btn-add{width:100%;padding:11px;border:2px dashed #cbd5e1;border-radius:10px;background:transparent;color:#64748b;font-size:14px;cursor:pointer;margin-bottom:10px}
 .seg-form{background:#eff6ff;border-radius:12px;padding:12px;border:2px solid #3b82f6;margin-bottom:10px;display:none}
 .seg-form.open{display:block}
-.seg-form-title{font-size:12px;font-weight:700;color:#2563eb;margin-bottom:8px}
 .seg-form-row{display:flex;gap:8px;margin-bottom:8px}
 .seg-form-row input{flex:1;padding:9px 10px;border:1.5px solid #bfdbfe;border-radius:8px;font-size:14px;outline:none;background:white}
 .seg-form-btns{display:flex;gap:8px}
@@ -52,6 +73,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 #map-ready{height:40%;flex-shrink:0}
 .ready-panel{flex:1;background:#1e293b;padding:12px 16px 20px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #334155;overflow-y:auto}
 .ready-title{color:white;font-size:16px;font-weight:800;text-align:center}
+.ready-route-info{text-align:center;color:#94a3b8;font-size:12px}
 .gps-status{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.07);padding:8px 14px;border-radius:20px;color:#94a3b8;font-size:13px;justify-content:center}
 .gps-dot{width:9px;height:9px;border-radius:50%;background:#94a3b8;flex-shrink:0}
 .gps-dot.good{background:#4ade80;animation:blink 1.5s infinite}
@@ -82,8 +104,6 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .tab.active{color:#60a5fa;border-bottom-color:#3b82f6}
 .tab-pane{display:none;flex:1;overflow-y:auto;padding:10px 12px;background:#1e293b;flex-direction:column;gap:8px}
 .tab-pane.active{display:flex}
-
-/* Node tab */
 .node-progress{display:flex;align-items:center;padding:4px 0 8px;overflow-x:auto}
 .nd{width:26px;height:26px;border-radius:50%;background:#334155;border:2px solid #475569;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#94a3b8;flex-shrink:0;cursor:pointer;transition:all .15s}
 .nd.done{background:#14532d;border-color:#4ade80;color:#4ade80}
@@ -97,16 +117,14 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .node-btn.cur{border-color:#3b82f6;color:white;background:#0c2a4e}
 .node-btn .nt{margin-left:auto;font-size:11px;font-family:monospace}
 .node-btn.done .nt{color:#4ade80}
-
-/* Delay buttons */
 .dl-group-label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#475569;margin-bottom:4px}
 .dl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
-.btn-dl{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 4px;min-height:60px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:#94a3b8;cursor:pointer;transition:all .15s}
+.btn-dl{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 4px;min-height:62px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:#94a3b8;cursor:pointer;transition:all .15s}
 .btn-dl.active{background:#450a0a;border-color:#ef4444;color:#fca5a5}
-.btn-dl .di{font-size:17px}
+.btn-dl .di{font-size:18px}
 .btn-dl .dn{font-size:10px;margin-top:2px;text-align:center;line-height:1.2}
 .btn-dl .dt{font-size:10px;font-family:monospace;color:#f87171;margin-top:1px}
-.btn-end{width:100%;padding:14px;background:#dc2626;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;flex-shrink:0;margin:8px 12px 8px;width:calc(100% - 24px)}
+.btn-end{width:calc(100% - 24px);margin:6px 12px;padding:14px;background:#dc2626;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;flex-shrink:0}
 
 /* ── Trip Done ── */
 #screen-tripdone{background:#f1f5f9}
@@ -133,8 +151,8 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .rt{width:100%;border-collapse:collapse;font-size:11px;min-width:380px}
 .rt th{background:#1e293b;color:white;padding:6px 7px;text-align:center;font-size:10px;font-weight:600;white-space:nowrap}
 .rt td{padding:5px 7px;border:1px solid #e2e8f0;text-align:center;white-space:nowrap}
-.rtl{text-align:left;background:#f8fafc;font-weight:600;color:#374151}
-.rts{background:#334155;color:white;font-weight:700;text-align:center}
+.rtl{text-align:left!important;background:#f8fafc;font-weight:600;color:#374151}
+.rts{background:#334155;color:white;font-weight:700}
 .rth{background:#e2e8f0;color:#1e293b;font-weight:700}
 .export-row{display:flex;gap:8px}
 .btn-ex{flex:1;padding:14px;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer}
@@ -142,21 +160,61 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .btn-ex.csv{background:#2563eb;color:white}
 .sec-title{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:6px}
 
-/* Toast */
+/* ── Result Map ── */
+#map-result{height:240px;border-radius:14px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+
+/* ── Toast ── */
 .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#1e293b;color:white;padding:9px 18px;border-radius:20px;font-size:14px;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 .toast.show{opacity:1}
 </style>
 </head>
 <body>
 
-<!-- ══ Screen 0: Setup ══ -->
-<div id="screen-setup" class="screen active">
+<!-- ══ Screen -1: QR Sign-in ══ -->
+<div id="screen-signin" class="screen">
+  <div class="signin-hero">
+    <div class="route-badge" id="si-badge">旅行時間調查</div>
+    <h2 id="si-route-name">載入任務中...</h2>
+    <p id="si-fromto"></p>
+    <div class="signin-info">
+      <span class="signin-chip" id="si-offpeak"></span>
+      <span class="signin-chip" id="si-peak"></span>
+      <span class="signin-chip" id="si-segs"></span>
+    </div>
+  </div>
+  <div class="signin-body">
+    <div class="signin-card">
+      <h3>調查員資訊</h3>
+      <div class="field" style="margin-bottom:14px">
+        <label>調查員姓名</label>
+        <input id="si-name" placeholder="請輸入姓名或代號" autocomplete="off"/>
+      </div>
+      <div class="field">
+        <label>當日天氣</label>
+        <div class="w-row">
+          <button class="w-btn" id="sw-sunny"  onclick="selSigninWeather('sunny')">☀️<span>晴</span></button>
+          <button class="w-btn" id="sw-cloudy" onclick="selSigninWeather('cloudy')">☁️<span>陰</span></button>
+          <button class="w-btn" id="sw-rainy"  onclick="selSigninWeather('rainy')">🌧️<span>雨</span></button>
+        </div>
+      </div>
+    </div>
+    <div class="signin-card">
+      <h3>路段預覽</h3>
+      <div class="seg-preview" id="si-seg-preview"></div>
+    </div>
+    <button class="btn-signin" id="btn-signin" disabled onclick="startFromQR()">
+      ✓ 確認開始調查
+    </button>
+  </div>
+</div>
+
+<!-- ══ Screen 0: Manual Setup ══ -->
+<div id="screen-setup" class="screen">
   <div class="page-header">
     <h2>⚙️ 調查設定</h2>
-    <p>填寫後可重複使用，每次調查前確認即可</p>
+    <p>手動填寫路線資訊與路段設定</p>
   </div>
   <div class="scroll-body">
-
     <div class="card">
       <div class="card-title">路線資訊</div>
       <div class="field"><label>路線名稱</label><input id="s-route-name" placeholder="台二省道轉新市二路到港子平"/></div>
@@ -166,20 +224,18 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
         <div class="field"><label>日期</label><input id="s-date" type="date"/></div>
       </div>
     </div>
-
     <div class="card">
       <div class="card-title">調查人員與天氣</div>
-      <div class="field"><label>調查員姓名</label><input id="s-surveyor" placeholder="張佑聖"/></div>
+      <div class="field"><label>調查員姓名</label><input id="s-surveyor" placeholder="姓名"/></div>
       <div class="field">
         <label>天氣</label>
         <div class="w-row">
-          <button class="w-btn" id="w-sunny"  onclick="selWeather('sunny')">☀️<br><span style="font-size:11px">晴</span></button>
-          <button class="w-btn" id="w-cloudy" onclick="selWeather('cloudy')">☁️<br><span style="font-size:11px">陰</span></button>
-          <button class="w-btn" id="w-rainy"  onclick="selWeather('rainy')">🌧️<br><span style="font-size:11px">雨</span></button>
+          <button class="w-btn" id="w-sunny"  onclick="selWeather('sunny')">☀️<span>晴</span></button>
+          <button class="w-btn" id="w-cloudy" onclick="selWeather('cloudy')">☁️<span>陰</span></button>
+          <button class="w-btn" id="w-rainy"  onclick="selWeather('rainy')">🌧️<span>雨</span></button>
         </div>
       </div>
     </div>
-
     <div class="card">
       <div class="card-title">調查時間區間</div>
       <div class="row2">
@@ -187,29 +243,26 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
         <div class="field"><label>尖峰時間</label><input id="s-peak" placeholder="17:00~19:00"/></div>
       </div>
     </div>
-
     <div class="card">
       <div class="card-title">路段設定（依行進順序）</div>
       <div id="seg-list" class="seg-list"></div>
       <button class="btn-add" onclick="openSegForm()">＋ 新增路段</button>
       <div class="seg-form" id="seg-form">
-        <div class="seg-form-title">新增路段</div>
+        <div style="font-size:12px;font-weight:700;color:#2563eb;margin-bottom:8px">新增路段</div>
         <div class="seg-form-row">
-          <input id="sf-name" placeholder="路段名稱（例：濱海路三段-新市二路二段）" style="flex:2"/>
+          <input id="sf-name" placeholder="路段名稱" style="flex:2"/>
         </div>
         <div class="seg-form-row">
-          <input id="sf-lanes"  type="number" placeholder="車道數" min="1"/>
-          <input id="sf-width"  type="number" placeholder="路寬(m)" min="1"/>
-          <input id="sf-length" type="number" placeholder="長度(m)" min="1"/>
+          <input id="sf-lanes" type="number" placeholder="車道數"/>
+          <input id="sf-width" type="number" placeholder="路寬(m)"/>
+          <input id="sf-length" type="number" placeholder="長度(m)"/>
         </div>
         <div class="seg-form-btns">
           <button class="btn-seg-ok" onclick="addSeg()">確認新增</button>
           <button class="btn-seg-cancel" onclick="closeSegForm()">取消</button>
         </div>
       </div>
-      <p style="font-size:11px;color:#94a3b8">共 <span id="seg-count">0</span> 個路段</p>
     </div>
-
     <button class="btn-primary" onclick="saveSetup()">✓ 儲存設定，開始調查</button>
   </div>
 </div>
@@ -218,7 +271,8 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 <div id="screen-ready" class="screen">
   <div id="map-ready"></div>
   <div class="ready-panel">
-    <div class="ready-title">🚗 旅行時間調查</div>
+    <div class="ready-title" id="ready-title">🚗 旅行時間調查</div>
+    <div class="ready-route-info" id="ready-route-info"></div>
     <div class="gps-status">
       <div class="gps-dot" id="gps-dot"></div>
       <span id="gps-text">等待 GPS 訊號...</span>
@@ -252,20 +306,20 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
     <span class="status-right" id="status-timer">00:00</span>
   </div>
   <div class="tab-bar">
-    <div class="tab active" id="tab-node"   onclick="showTab('node')">📍 節點</div>
-    <div class="tab"        id="tab-road"   onclick="showTab('road')">🛣 路段延滯</div>
-    <div class="tab"        id="tab-inter"  onclick="showTab('inter')">🚦 交叉口延滯</div>
+    <div class="tab active" id="tab-node"  onclick="showTab('node')">📍 節點</div>
+    <div class="tab"        id="tab-road"  onclick="showTab('road')">🛣 路段</div>
+    <div class="tab"        id="tab-inter" onclick="showTab('inter')">🚦 交叉口</div>
   </div>
   <div class="tab-pane active" id="pane-node">
     <div class="node-progress" id="node-progress"></div>
     <div class="node-items" id="node-items"></div>
   </div>
   <div class="tab-pane" id="pane-road">
-    <div class="dl-group-label">路段延滯（點一下開始計時，再點停止）</div>
+    <div class="dl-group-label">路段延滯（點開始計時，再點停止）</div>
     <div class="dl-grid" id="grid-road"></div>
   </div>
   <div class="tab-pane" id="pane-inter">
-    <div class="dl-group-label">交叉口延滯（點一下開始計時，再點停止）</div>
+    <div class="dl-group-label">交叉口延滯（點開始計時，再點停止）</div>
     <div class="dl-grid" id="grid-inter"></div>
   </div>
   <button class="btn-end" onclick="endSurvey()">🔴 結束調查</button>
@@ -303,22 +357,26 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
   </div>
   <div class="scroll-body">
     <div>
+      <div class="sec-title">行駛路徑</div>
+      <div id="map-result"></div>
+    </div>
+    <div>
       <div class="sec-title">總覽統計表（第1頁）</div>
       <div class="report-wrap"><table class="rt" id="table1"></table></div>
     </div>
     <div>
-      <div class="sec-title">各路段統計表（第2頁）</div>
+      <div class="sec-title">各路段統計（第2頁）</div>
       <div class="report-wrap"><table class="rt" id="table2"></table></div>
     </div>
     <div>
-      <div class="sec-title">速率統計表</div>
+      <div class="sec-title">速率統計</div>
       <div class="report-wrap"><table class="rt" id="table3"></table></div>
     </div>
     <div class="export-row">
-      <button class="btn-ex html" onclick="exportReport()">📄 下載 HTML 報告</button>
-      <button class="btn-ex csv"  onclick="exportCSV()">⬇ 下載 CSV</button>
+      <button class="btn-ex html" onclick="exportReport()">📄 HTML 報告</button>
+      <button class="btn-ex csv"  onclick="exportCSV()">⬇ CSV</button>
     </div>
-    <button style="width:100%;padding:15px;background:#e2e8f0;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer" onclick="goReady()">🔄 繼續補充旅次</button>
+    <button style="width:100%;padding:15px;background:#e2e8f0;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px" onclick="goReady()">🔄 繼續補充旅次</button>
   </div>
 </div>
 
@@ -329,25 +387,26 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 //  CONSTANTS
 // ════════════════════════════════════
 const ROAD_DELAYS = [
-  {cause:'congestion',  label:'阻塞',    icon:'🚧'},
-  {cause:'bus_stop',    label:'公車停靠', icon:'🚌'},
-  {cause:'taxi_stop',   label:'計程車停靠',icon:'🚕'},
-  {cause:'parking',     label:'路邊停靠', icon:'🅿️'},
-  {cause:'ped_cross',   label:'行人穿越', icon:'🚶'},
-  {cause:'road_other',  label:'其他',     icon:'❓'},
+  {cause:'congestion', label:'阻塞',     icon:'🚧'},
+  {cause:'bus_stop',   label:'公車停靠',  icon:'🚌'},
+  {cause:'taxi_stop',  label:'計程車停靠',icon:'🚕'},
+  {cause:'parking',    label:'路邊停靠',  icon:'🅿️'},
+  {cause:'ped_cross',  label:'行人穿越',  icon:'🚶'},
+  {cause:'road_other', label:'其他',      icon:'❓'},
 ]
 const INT_DELAYS = [
-  {cause:'red_light',   label:'紅燈',    icon:'🔴'},
-  {cause:'left_same',   label:'左轉同向', icon:'↰'},
-  {cause:'left_opp',    label:'左轉對向', icon:'↱'},
-  {cause:'right_turn',  label:'右轉',    icon:'↳'},
-  {cause:'cross_veh',   label:'橫越車輛', icon:'↔️'},
-  {cause:'ped_int',     label:'行人',    icon:'🚶'},
-  {cause:'int_other',   label:'其他',    icon:'❓'},
+  {cause:'red_light',  label:'紅燈',    icon:'🔴'},
+  {cause:'left_same',  label:'左轉同向', icon:'↰'},
+  {cause:'left_opp',   label:'左轉對向', icon:'↱'},
+  {cause:'right_turn', label:'右轉',    icon:'↳'},
+  {cause:'cross_veh',  label:'橫越車輛', icon:'↔️'},
+  {cause:'ped_int',    label:'行人',    icon:'🚶'},
+  {cause:'int_other',  label:'其他',    icon:'❓'},
 ]
 const PEAK_LABEL = {peak:'尖峰', off_peak:'離峰'}
 const DIR_LABEL  = {bound:'去程', return:'回程'}
 const COMBO_KEYS = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
+const WEATHER_ZH = {sunny:'晴', cloudy:'陰', rainy:'雨'}
 
 // ════════════════════════════════════
 //  STATE
@@ -356,25 +415,28 @@ let config = {
   routeName:'', routeFromTo:'', totalLength:0,
   surveyor:'', weather:'', date:'',
   offPeakLabel:'14:00~16:00', peakLabel:'17:00~19:00',
-  segments:[]
+  segments:[], nodes:[]
 }
-let weather = ''
-let allTrips = {}   // key = 'off_peak_bound' etc, value = tripResult
-let cur = null      // current trip state
+let qrMode = false   // true = loaded from QR code
+let signinWeather = ''
+
+let allTrips = {}
+let cur = null
 
 // GPS
-let watchId=null, mapReady=null, mapSurvey=null, markerReady=null, markerSurvey=null
+let watchId=null, mapReady=null, mapSurvey=null, mapResult=null
+let markerReady=null, markerSurvey=null
+let routeLayerReady=null, routeLayerSurvey=null
 let lastPos=null, clockTimer=null, elapsedSec=0
 
-// Delay tracking
-let activeDelay = null   // {cause, group, startedAt, timerId, startPos}
-let roadDelayTotals = {}
-let intDelayTotals  = {}
-let delayLog = []        // [{cause,group,label,icon,startedAt,endedAt,durationS,pos}]
+// Delay
+let activeDelay=null, delayLog=[]
 
-// Node tracking
-let nodeTimestamps = []  // timestamps when each node reached
-let currentNodeIdx = 0   // which node we're heading to next (0=start already done)
+// Node
+let nodeTimestamps=[], currentNodeIdx=0
+
+// Setup manual
+let setupWeather='', manualSegs=[]
 
 // ════════════════════════════════════
 //  UTILS
@@ -383,61 +445,197 @@ function fmtSec(s){const m=Math.floor(s/60),r=s%60;return`${String(m).padStart(2
 function fmtTime(s){if(!s&&s!==0)return'--';const m=Math.floor(s/60),r=s%60;return`${m}分${String(r).padStart(2,'0')}秒`}
 function fmtHMS(d){return d?d.toTimeString().slice(0,8):''}
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}
-function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');setTimeout(()=>{if(id==='screen-survey'&&mapSurvey)mapSurvey.invalidateSize()},80)}
-function v(id){return document.getElementById(id)}
 function $(id){return document.getElementById(id)}
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'))
+  $(id).classList.add('active')
+  setTimeout(()=>{
+    if(id==='screen-survey'&&mapSurvey)mapSurvey.invalidateSize()
+    if(id==='screen-report'&&mapResult)mapResult.invalidateSize()
+  },80)
+}
 
 // ════════════════════════════════════
-//  SETUP SCREEN
+//  QR CODE DECODE
 // ════════════════════════════════════
-function selWeather(w){
-  weather=w
-  ;['sunny','cloudy','rainy'].forEach(x=>$('w-'+x).classList.toggle('sel',x===w))
+function decodeConfig(encoded){
+  try{
+    // URL-safe base64 → standard base64
+    const b64 = encoded.replace(/-/g,'+').replace(/_/g,'/')
+    const padded = b64 + '=='.slice(0,(4-b64.length%4)%4)
+    const json = decodeURIComponent(escape(atob(padded)))
+    return JSON.parse(json)
+  }catch(e){return null}
 }
-function openSegForm(){$('seg-form').classList.add('open');$('sf-name').focus()}
-function closeSegForm(){$('seg-form').classList.remove('open');['sf-name','sf-lanes','sf-width','sf-length'].forEach(id=>$(id).value='')}
+
+function loadFromHash(){
+  // 支援 ?c= (新版) 與 #c= (舊版) 兩種格式
+  const params = new URLSearchParams(location.search)
+  let encoded = params.get('c')
+  if(!encoded){
+    const match = location.hash.match(/#c=(.+)/)
+    encoded = match ? match[1] : null
+  }
+  if(!encoded) return false
+
+  const cfg = decodeConfig(encoded)
+  if(!cfg||cfg.v!==1) return false
+
+  // Populate config from QR data
+  config.routeName    = cfg.rn||''
+  config.routeFromTo  = cfg.ft||''
+  config.totalLength  = cfg.tl||0
+  config.offPeakLabel = cfg.op||'14:00~16:00'
+  config.peakLabel    = cfg.pk||'17:00~19:00'
+  config.date         = new Date().toLocaleDateString('zh-TW')
+  config.nodes = (cfg.nd||[]).map(n=>({
+    name: n.n || n.r1 || '節點',
+    lat: n.a, lng: n.o
+  }))
+  config.segments     = (cfg.sg||[]).map(s=>({name:s.n, lanes:s.l, width:s.w, length:s.d}))
+
+  return true
+}
+
+function showSigninScreen(){
+  $('si-route-name').textContent = config.routeName||'旅行時間調查'
+  $('si-fromto').textContent     = config.routeFromTo
+  $('si-offpeak').textContent    = '離峰 ' + config.offPeakLabel
+  $('si-peak').textContent       = '尖峰 ' + config.peakLabel
+  $('si-segs').textContent       = config.segments.length + ' 個路段'
+
+  $('si-seg-preview').innerHTML  = config.segments.map((s,i)=>`
+    <div class="seg-row">
+      <div class="seg-dot"></div>
+      <span style="flex:1;color:#1e293b;font-weight:600">${s.name}</span>
+      <span style="color:#94a3b8;font-size:11px">${s.length}m</span>
+    </div>`).join('')
+
+  showScreen('screen-signin')
+}
+
+function selSigninWeather(w){
+  signinWeather = w
+  ;['sunny','cloudy','rainy'].forEach(x=>$('sw-'+x).classList.toggle('sel',x===w))
+  checkSigninReady()
+}
+function checkSigninReady(){
+  const ok = $('si-name').value.trim().length>0 && signinWeather!==''
+  $('btn-signin').disabled=!ok
+}
+$('si-name').addEventListener('input', checkSigninReady)
+
+function startFromQR(){
+  config.surveyor = $('si-name').value.trim()
+  config.weather  = signinWeather
+  qrMode = true
+  initMaps()
+  updateProgressChips()
+  showScreen('screen-ready')
+  $('ready-title').textContent   = '🚗 ' + config.routeName
+  $('ready-route-info').textContent = config.routeFromTo
+}
+
+// ════════════════════════════════════
+//  MANUAL SETUP
+// ════════════════════════════════════
+function selWeather(w){ setupWeather=w; ['sunny','cloudy','rainy'].forEach(x=>$('w-'+x).classList.toggle('sel',x===w)) }
+function openSegForm(){ $('seg-form').classList.add('open'); $('sf-name').focus() }
+function closeSegForm(){ $('seg-form').classList.remove('open'); ['sf-name','sf-lanes','sf-width','sf-length'].forEach(id=>$(id).value='') }
 function addSeg(){
-  const name=$('sf-name').value.trim()
-  const lanes=parseInt($('sf-lanes').value)||0
-  const width=parseInt($('sf-width').value)||0
-  const length=parseInt($('sf-length').value)||0
-  if(!name||!length){showToast('請填寫路段名稱和長度');return}
-  config.segments.push({name,lanes,width,length})
-  renderSegList()
-  closeSegForm()
+  const name=$('sf-name').value.trim(), length=parseInt($('sf-length').value)||0
+  if(!name||!length){showToast('請填路段名稱和長度');return}
+  manualSegs.push({name, lanes:parseInt($('sf-lanes').value)||2, width:parseInt($('sf-width').value)||8, length})
+  renderManualSegList(); closeSegForm()
 }
-function delSeg(i){config.segments.splice(i,1);renderSegList()}
-function renderSegList(){
-  const list=$('seg-list')
-  list.innerHTML=config.segments.map((s,i)=>`
+function delSeg(i){ manualSegs.splice(i,1); renderManualSegList() }
+function renderManualSegList(){
+  $('seg-list').innerHTML = manualSegs.map((s,i)=>`
     <div class="seg-item">
       <div class="seg-info">
         <div class="seg-name">${i+1}. ${s.name}</div>
-        <div class="seg-meta">${s.lanes}車道 · ${s.width}m寬 · ${s.length}m</div>
+        <div class="seg-meta">${s.lanes}車道 · ${s.width}m · ${s.length}m</div>
       </div>
       <button class="seg-del" onclick="delSeg(${i})">✕</button>
     </div>`).join('')
-  $('seg-count').textContent=config.segments.length
 }
 function saveSetup(){
-  config.routeName   = $('s-route-name').value.trim()
-  config.routeFromTo = $('s-route-fromto').value.trim()
-  config.totalLength = parseInt($('s-length').value)||0
-  config.date        = $('s-date').value||new Date().toLocaleDateString('zh-TW')
-  config.surveyor    = $('s-surveyor').value.trim()
-  config.weather     = weather
-  config.offPeakLabel= $('s-offpeak').value.trim()||'14:00~16:00'
-  config.peakLabel   = $('s-peak').value.trim()||'17:00~19:00'
-  if(!config.routeName){showToast('請填寫路線名稱');return}
-  if(config.segments.length===0){showToast('請至少新增一個路段');return}
+  config.routeName    = $('s-route-name').value.trim()
+  config.routeFromTo  = $('s-route-fromto').value.trim()
+  config.totalLength  = parseInt($('s-length').value)||0
+  config.date         = $('s-date').value||new Date().toLocaleDateString('zh-TW')
+  config.surveyor     = $('s-surveyor').value.trim()
+  config.weather      = setupWeather
+  config.offPeakLabel = $('s-offpeak').value.trim()||'14:00~16:00'
+  config.peakLabel    = $('s-peak').value.trim()||'17:00~19:00'
+  config.segments     = [...manualSegs]
+  config.nodes        = []  // no GPS nodes in manual mode
+  if(!config.routeName){showToast('請填路線名稱');return}
+  if(!config.segments.length){showToast('請至少新增一個路段');return}
   if(!config.weather){showToast('請選擇天氣');return}
-  initReadyMap()
-  startGPS()
+  initMaps()
   updateProgressChips()
+  $('ready-title').textContent = '🚗 ' + config.routeName
   showScreen('screen-ready')
-  // 3s fallback GPS enable
   setTimeout(()=>{const d=$('gps-dot');if(!d.classList.contains('good')&&!d.classList.contains('poor')){d.className='gps-dot poor';$('gps-text').textContent='GPS訊號弱，可嘗試開始';checkStart()}},5000)
 }
+
+// ════════════════════════════════════
+//  MAPS INIT
+// ════════════════════════════════════
+function initMaps(){
+  startGPS()
+  if(mapReady) return
+  mapReady = L.map('map-ready',{zoomControl:true,attributionControl:false})
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapReady)
+  const initPos = config.nodes.length ? [config.nodes[0].lat, config.nodes[0].lng] : [25.04776,121.51755]
+  mapReady.setView(initPos, 14)
+  markerReady = L.circleMarker(initPos,{radius:10,fillColor:'#3B82F6',color:'#fff',weight:3,fillOpacity:.95}).addTo(mapReady)
+  // Draw route from nodes
+  drawRouteOnMap(mapReady, 'routeLayerReady')
+}
+
+function drawRouteOnMap(map, layerKey){
+  if(!config.nodes||config.nodes.length<2) return
+  if(window[layerKey]) map.removeLayer(window[layerKey])
+  const latlngs = config.nodes.map(n=>[n.lat,n.lng])
+  window[layerKey] = L.polyline(latlngs,{color:'#3b82f6',weight:4,opacity:.7,dashArray:'8,4'}).addTo(map)
+  // Node markers on ready map
+  config.nodes.forEach((n,i)=>{
+    const color = i===0?'#16a34a':i===config.nodes.length-1?'#dc2626':'#6366f1'
+    L.circleMarker([n.lat,n.lng],{radius:7,fillColor:color,color:'#fff',weight:2,fillOpacity:1})
+      .bindTooltip(`${i+1}. ${n.name}`,{direction:'top',offset:[0,-8]})
+      .addTo(map)
+  })
+  map.fitBounds(window[layerKey].getBounds(),{padding:[30,30]})
+}
+
+// ════════════════════════════════════
+//  GPS
+// ════════════════════════════════════
+function smooth(lat,lng,alpha=0.25){
+  if(!lastPos)return{lat,lng}
+  return{lat:lastPos.lat*(1-alpha)+lat*alpha, lng:lastPos.lng*(1-alpha)+lng*alpha}
+}
+function startGPS(){
+  if(watchId||!navigator.geolocation)return
+  watchId=navigator.geolocation.watchPosition(onPos,onGPSErr,{enableHighAccuracy:true,timeout:10000,maximumAge:2000})
+}
+function onPos(p){
+  const{latitude:rl,longitude:ro,accuracy,speed}=p.coords
+  const{lat,lng}=smooth(rl,ro); lastPos={lat,lng}
+  const dot=$('gps-dot'),txt=$('gps-text')
+  if(accuracy<30){dot.className='gps-dot good';txt.textContent=`GPS良好 ±${Math.round(accuracy)}m`}
+  else{dot.className='gps-dot poor';txt.textContent=`GPS ±${Math.round(accuracy)}m`}
+  const b=$('gps-badge');if(b)b.textContent=`📡 ±${Math.round(accuracy)}m`
+  checkStart()
+  if(mapReady&&markerReady){markerReady.setLatLng([lat,lng]);mapReady.panTo([lat,lng],{animate:true,duration:.3})}
+  if(cur&&cur.startTime){
+    if(mapSurvey&&markerSurvey){markerSurvey.setLatLng([lat,lng]);mapSurvey.setView([lat,lng],mapSurvey.getZoom()||16,{animate:true,duration:.5})}
+    cur.gpsTrack.push({lat,lng,speed_ms:speed,accuracy_m:accuracy,ts:new Date().toISOString()})
+  }
+}
+function onGPSErr(e){const t=$('gps-text');if(t)t.textContent=`GPS錯誤:${e.message}`}
 
 // ════════════════════════════════════
 //  READY SCREEN
@@ -454,63 +652,17 @@ function updateBadge(){
 function checkStart(){
   const gpsOk=$('gps-dot').classList.contains('good')||$('gps-dot').classList.contains('poor')
   const key=`${selPeakType}_${selDirection}`
-  const alreadyDone=allTrips[key]
-  const ok=selPeakType&&selDirection&&gpsOk&&!alreadyDone
-  $('btn-start').disabled=!ok
-  $('btn-start').textContent=alreadyDone?'此組合已完成':'▶ 開始調查'
+  const done=allTrips[key]
+  $('btn-start').disabled=!(selPeakType&&selDirection&&gpsOk&&!done)
+  if(done)$('btn-start').textContent='此組合已完成'
+  else $('btn-start').textContent='▶ 開始調查'
 }
 function updateProgressChips(){
-  const el=$('progress-chips')
-  el.innerHTML=COMBO_KEYS.map(k=>{
-    const [pt,dir]=k.split('_').reduce((a,c,i)=>i===0?[c,a[1]]:i===1?[a[0]+`_${c}`,a[1]]:[a[0],a[1]+(a[1]?'_':'')+c],['',[]])
-    // parse combo key properly
-    const parts=k.split('_')
-    const peakT=parts[0]==='off'?'off_peak':'peak'
-    const dirT=parts[parts.length-1]
-    const label=`${peakT==='peak'?'尖':'離'}${dirT==='bound'?'去':'回'}`
+  $('progress-chips').innerHTML=COMBO_KEYS.map(k=>{
+    const[pt,dir]=parseComboKey(k)
+    const label=`${pt==='peak'?'尖':'離'}${dir==='bound'?'去':'回'}`
     return`<span class="chip${allTrips[k]?' done':''}">${label}</span>`
   }).join('')
-}
-
-// ════════════════════════════════════
-//  GPS
-// ════════════════════════════════════
-function smooth(lat,lng,alpha=0.25){
-  if(!lastPos)return{lat,lng}
-  return{lat:lastPos.lat*(1-alpha)+lat*alpha,lng:lastPos.lng*(1-alpha)+lng*alpha}
-}
-function startGPS(){
-  if(!navigator.geolocation)return
-  watchId=navigator.geolocation.watchPosition(onPos,onGPSErr,{enableHighAccuracy:true,timeout:10000,maximumAge:2000})
-}
-function onPos(p){
-  const{latitude:rlat,longitude:rlng,accuracy,speed}=p.coords
-  const{lat,lng}=smooth(rlat,rlng)
-  lastPos={lat,lng}
-  const dot=$('gps-dot'),txt=$('gps-text')
-  if(accuracy<30){dot.className='gps-dot good';txt.textContent=`GPS良好 ±${Math.round(accuracy)}m`}
-  else{dot.className='gps-dot poor';txt.textContent=`GPS ±${Math.round(accuracy)}m`}
-  const b=$('gps-badge');if(b)b.textContent=`📡 ±${Math.round(accuracy)}m`
-  checkStart()
-  updateMap(mapReady,markerReady,lat,lng,false)
-  if(cur&&cur.startTime){
-    updateMap(mapSurvey,markerSurvey,lat,lng,true)
-    cur.gpsTrack.push({lat,lng,speed_ms:speed,accuracy_m:accuracy,ts:new Date().toISOString()})
-  }
-}
-function onGPSErr(e){const t=$('gps-text');if(t)t.textContent=`GPS錯誤:${e.message}`}
-function updateMap(map,marker,lat,lng,follow){
-  if(!map||!marker)return
-  marker.setLatLng([lat,lng])
-  if(follow)map.setView([lat,lng],map.getZoom()||16,{animate:true,duration:0.5})
-  else if(!map._loaded||map.getZoom()===undefined)map.setView([lat,lng],16)
-  else map.panTo([lat,lng],{animate:true,duration:0.3})
-}
-function initReadyMap(){
-  mapReady=L.map('map-ready',{zoomControl:true,attributionControl:false})
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapReady)
-  mapReady.setView([25.04776,121.51755],14)
-  markerReady=L.circleMarker([25.04776,121.51755],{radius:10,fillColor:'#3B82F6',color:'#fff',weight:3,fillOpacity:.95}).addTo(mapReady)
 }
 
 // ════════════════════════════════════
@@ -518,23 +670,14 @@ function initReadyMap(){
 // ════════════════════════════════════
 function startSurvey(){
   const key=`${selPeakType}_${selDirection}`
-  cur={
-    peakType:selPeakType, direction:selDirection, key,
-    startTime:new Date(), endTime:null,
-    gpsTrack:[], nodeTimestamps:[], roadDelays:{}, intDelays:{},
+  cur={peakType:selPeakType, direction:selDirection, key,
+    startTime:new Date(), endTime:null, gpsTrack:[],
+    roadDelays:{}, intDelays:{}
   }
-  // init delay totals
   ROAD_DELAYS.forEach(d=>{cur.roadDelays[d.cause]=0})
   INT_DELAYS.forEach(d=>{cur.intDelays[d.cause]=0})
-  roadDelayTotals={}; ROAD_DELAYS.forEach(d=>{roadDelayTotals[d.cause]=0})
-  intDelayTotals={};  INT_DELAYS.forEach(d=>{intDelayTotals[d.cause]=0})
-  delayLog=[]
-  activeDelay=null
-  elapsedSec=0
-
-  // node tracking: nodeTimestamps[0] = start
-  nodeTimestamps=[cur.startTime]
-  currentNodeIdx=1  // next node to reach
+  delayLog=[]; activeDelay=null; elapsedSec=0
+  nodeTimestamps=[cur.startTime]; currentNodeIdx=1
 
   $('status-combo').textContent=`● ${PEAK_LABEL[selPeakType]} ${DIR_LABEL[selDirection]}`
   showScreen('screen-survey')
@@ -545,6 +688,18 @@ function startSurvey(){
     const ip=lastPos?[lastPos.lat,lastPos.lng]:[25.04776,121.51755]
     mapSurvey.setView(ip,16)
     markerSurvey=L.circleMarker(ip,{radius:11,fillColor:'#3B82F6',color:'#fff',weight:3,fillOpacity:.95}).addTo(mapSurvey)
+    // Draw planned route on survey map too
+    if(config.nodes&&config.nodes.length>=2){
+      const nodes=config.nodes
+      const dir = selDirection
+      const orderedNodes = dir==='return' ? [...nodes].reverse() : nodes
+      L.polyline(orderedNodes.map(n=>[n.lat,n.lng]),{color:'#6366f1',weight:3,opacity:.6,dashArray:'6,4'}).addTo(mapSurvey)
+      orderedNodes.forEach((n,i)=>{
+        const color=i===0?'#16a34a':i===orderedNodes.length-1?'#dc2626':'#818cf8'
+        L.circleMarker([n.lat,n.lng],{radius:6,fillColor:color,color:'#fff',weight:2,fillOpacity:.9})
+          .bindTooltip(n.name,{direction:'top'}).addTo(mapSurvey)
+      })
+    }
   }
 
   clockTimer=setInterval(()=>{elapsedSec++;$('status-timer').textContent=fmtSec(elapsedSec)},1000)
@@ -556,102 +711,84 @@ function startSurvey(){
 // ════════════════════════════════════
 //  NODE UI
 // ════════════════════════════════════
-function getNodes(){
-  // nodes are endpoints of segments: n+1 nodes for n segments
+function getNodeNames(){
+  if(config.nodes&&config.nodes.length>0){
+    const ns = cur.direction==='return' ? [...config.nodes].reverse() : config.nodes
+    return ns.map(n => n.name || '節點')
+  }
+  // Fallback: derive from segments
   const segs=config.segments
-  const nodes=['起點',...segs.map(s=>s.name.split(/[-→至]/)[1]||s.name)]
-  // For return direction, reverse display but keep same array (we track idx forward)
-  return cur.direction==='return'?[...nodes].reverse():nodes
+  const names=['起點',...segs.map(s=>{const p=s.name.split(/[-→至]/);return p[1]||p[0]})]
+  return cur.direction==='return'?[...names].reverse():names
 }
 function buildNodeUI(){
-  const nodes=getNodes()
-  const total=nodes.length  // = segments+1
-
-  // Progress dots
-  const pp=$('node-progress')
-  pp.innerHTML=''
-  nodes.forEach((n,i)=>{
-    if(i>0){const line=document.createElement('div');line.className='nd-line';line.id=`ndl-${i}`;pp.appendChild(line)}
-    const dot=document.createElement('div')
-    dot.className='nd'+(i===0?' done':'')+(i===1?' cur':'')
-    dot.id=`nd-${i}`
-    dot.textContent=i+1
-    dot.title=n
-    pp.appendChild(dot)
+  const names=getNodeNames(), total=names.length
+  const pp=$('node-progress'); pp.innerHTML=''
+  names.forEach((n,i)=>{
+    if(i>0){const l=document.createElement('div');l.className='nd-line';l.id=`ndl-${i}`;pp.appendChild(l)}
+    const d=document.createElement('div')
+    d.className='nd'+(i===0?' done':'')+(i===1?' cur':'')
+    d.id=`nd-${i}`; d.textContent=i+1; d.title=n
+    pp.appendChild(d)
   })
-
-  // Node list
-  const ni=$('node-items')
-  ni.innerHTML=nodes.map((n,i)=>`
+  $('node-items').innerHTML=names.map((n,i)=>`
     <button class="node-btn${i===0?' done':i===1?' cur':''}" id="nbtn-${i}" onclick="tapNode(${i})">
-      <span style="font-size:14px">${i===0?'🟢':i===nodes.length-1?'🏁':'📍'}</span>
-      <span>${n}</span>
+      <span style="font-size:13px">${i===0?'🟢':i===names.length-1?'🏁':'📍'}</span>
+      <span style="flex:1">${n}</span>
       <span class="nt" id="nt-${i}">${i===0?fmtHMS(cur.startTime):''}</span>
     </button>`).join('')
 }
 function tapNode(i){
-  const nodes=getNodes()
-  const total=nodes.length
-  if(i!==currentNodeIdx)return  // must tap in order
-  const now=new Date()
-  nodeTimestamps.push(now)
+  const names=getNodeNames()
+  if(i!==currentNodeIdx)return
+  const now=new Date(); nodeTimestamps.push(now)
   $(`nt-${i}`).textContent=fmtHMS(now)
   $(`nbtn-${i}`).className='node-btn done'
   $(`nd-${i}`).className='nd done'
-  $(`ndl-${i}`) && ($(`ndl-${i}`).className='nd-line done')
-
+  if($(`ndl-${i}`))$(`ndl-${i}`).className='nd-line done'
   currentNodeIdx++
-  if(currentNodeIdx<total){
+  if(currentNodeIdx<names.length){
     $(`nbtn-${currentNodeIdx}`).className='node-btn cur'
     $(`nd-${currentNodeIdx}`).className='nd cur'
-  } else {
-    showToast('已到達終點，可結束調查')
-  }
+  } else showToast('已到達終點，可結束調查')
 }
 
 // ════════════════════════════════════
 //  DELAY GRIDS
 // ════════════════════════════════════
 function buildDelayGrids(){
-  buildGrid('grid-road', ROAD_DELAYS, 'road')
-  buildGrid('grid-inter', INT_DELAYS, 'int')
+  buildGrid('grid-road',ROAD_DELAYS,'road')
+  buildGrid('grid-inter',INT_DELAYS,'int')
 }
-function buildGrid(gridId, types, group){
-  const grid=$(gridId)
-  grid.innerHTML=''
+function buildGrid(gid,types,group){
+  const g=$(gid); g.innerHTML=''
   types.forEach(d=>{
-    const btn=document.createElement('button')
-    btn.className='btn-dl'
-    btn.id=`dbtn-${d.cause}`
-    btn.innerHTML=`<span class="di">${d.icon}</span><span class="dn">${d.label}</span><span class="dt" id="dtime-${d.cause}"></span>`
-    btn.onclick=()=>toggleDelay(d,group)
-    grid.appendChild(btn)
+    const b=document.createElement('button'); b.className='btn-dl'; b.id=`dbtn-${d.cause}`
+    b.innerHTML=`<span class="di">${d.icon}</span><span class="dn">${d.label}</span><span class="dt" id="dtime-${d.cause}"></span>`
+    b.onclick=()=>toggleDelay(d,group); g.appendChild(b)
   })
 }
 function toggleDelay(d,group){
   if(activeDelay&&activeDelay.cause===d.cause){
     clearInterval(activeDelay.timerId)
-    const endedAt=new Date()
-    const durationS=Math.round((endedAt-activeDelay.startedAt)/1000)
-    if(group==='road')cur.roadDelays[d.cause]=(cur.roadDelays[d.cause]||0)+durationS
-    else cur.intDelays[d.cause]=(cur.intDelays[d.cause]||0)+durationS
-    delayLog.push({cause:d.cause,group,label:d.label,icon:d.icon,startedAt:activeDelay.startedAt,endedAt,durationS,pos:activeDelay.startPos})
+    const end=new Date(), dur=Math.round((end-activeDelay.startedAt)/1000)
+    if(group==='road')cur.roadDelays[d.cause]=(cur.roadDelays[d.cause]||0)+dur
+    else cur.intDelays[d.cause]=(cur.intDelays[d.cause]||0)+dur
+    delayLog.push({cause:d.cause,group,label:d.label,icon:d.icon,startedAt:activeDelay.startedAt,endedAt:end,durationS:dur,pos:activeDelay.startPos})
     $(`dbtn-${d.cause}`).classList.remove('active')
-    $(`dtime-${d.cause}`).textContent=''
-    activeDelay=null
+    $(`dtime-${d.cause}`).textContent=''; activeDelay=null
   } else {
-    if(activeDelay){const prev=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(prev)toggleDelay(prev,activeDelay.group)}
-    const startedAt=new Date(), startPos=lastPos?{...lastPos}:null
-    let el2=0
-    const timerId=setInterval(()=>{el2++;const e=$(`dtime-${d.cause}`);if(e)e.textContent=fmtSec(el2)},1000)
-    activeDelay={cause:d.cause,group,startedAt,timerId,startPos}
+    if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(p)toggleDelay(p,activeDelay.group)}
+    const s=new Date(), sp=lastPos?{...lastPos}:null; let el=0
+    const tid=setInterval(()=>{el++;const e=$(`dtime-${d.cause}`);if(e)e.textContent=fmtSec(el)},1000)
+    activeDelay={cause:d.cause,group,startedAt:s,timerId:tid,startPos:sp}
     $(`dbtn-${d.cause}`).classList.add('active')
   }
 }
-function showTab(tab){
-  ;['node','road','inter'].forEach(t=>{
-    $(`tab-${t}`).classList.toggle('active',t===tab)
-    $(`pane-${t}`).classList.toggle('active',t===tab)
+function showTab(t){
+  ;['node','road','inter'].forEach(x=>{
+    $(`tab-${x}`).classList.toggle('active',x===t)
+    $(`pane-${x}`).classList.toggle('active',x===t)
   })
 }
 
@@ -661,29 +798,22 @@ function showTab(tab){
 function endSurvey(){
   if(!confirm('確定結束調查？'))return
   cur.endTime=new Date()
-  // stop active delay
-  if(activeDelay){const prev=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(prev)toggleDelay(prev,activeDelay.group)}
+  if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(p)toggleDelay(p,activeDelay.group)}
   clearInterval(clockTimer)
-  // record final node if not yet
   if(nodeTimestamps.length<config.segments.length+1)nodeTimestamps.push(cur.endTime)
 
-  // compute stats
   const travelS=Math.round((cur.endTime-cur.startTime)/1000)
   const roadTotalS=Object.values(cur.roadDelays).reduce((a,b)=>a+b,0)
   const intTotalS=Object.values(cur.intDelays).reduce((a,b)=>a+b,0)
   const totalDelayS=roadTotalS+intTotalS
   const runS=Math.max(0,travelS-totalDelayS)
+  const runRatio=travelS>0?runS/travelS:1
 
-  // segment times
-  const segTimes=[]
-  for(let i=0;i<config.segments.length;i++){
+  const segTimes=config.segments.map((_,i)=>{
     const t0=nodeTimestamps[i], t1=nodeTimestamps[i+1]
     const segS=t0&&t1?Math.round((t1-t0)/1000):null
-    const runRatio=travelS>0?runS/travelS:1
-    segTimes.push({travelS:segS, runS:segS?Math.round(segS*runRatio):null})
-  }
-
-  // For return direction, segment times are reversed (we drove reverse order)
+    return{travelS:segS, runS:segS?Math.round(segS*runRatio):null}
+  })
   const segsForTable=cur.direction==='return'?[...segTimes].reverse():segTimes
 
   allTrips[cur.key]={
@@ -691,36 +821,29 @@ function endSurvey(){
     travelS, runS, totalDelayS, roadTotalS, intTotalS,
     roadDelays:{...cur.roadDelays}, intDelays:{...cur.intDelays},
     segTimes:segsForTable, delayLog:[...delayLog],
-    gpsTrack:[...cur.gpsTrack],
-    startTime:cur.startTime, endTime:cur.endTime,
+    gpsTrack:[...cur.gpsTrack], startTime:cur.startTime, endTime:cur.endTime,
   }
-
-  buildTripDoneUI(travelS, totalDelayS, runS)
+  buildTripDoneUI(travelS,totalDelayS,runS)
   showScreen('screen-tripdone')
 }
 
 // ════════════════════════════════════
-//  TRIP DONE SCREEN
+//  TRIP DONE
 // ════════════════════════════════════
-function buildTripDoneUI(travelS, totalDelayS, runS){
+function buildTripDoneUI(travelS,totalDelayS,runS){
   $('td-title').textContent=`✅ ${PEAK_LABEL[cur.peakType]} ${DIR_LABEL[cur.direction]} 完成`
   $('td-subtitle').textContent=`${fmtHMS(cur.startTime)} → ${fmtHMS(cur.endTime)}`
   $('td-travel').textContent=fmtTime(travelS)
   $('td-delay').textContent=fmtTime(totalDelayS)
   $('td-run').textContent=fmtTime(runS)
-
-  const list=$('combo-progress-list')
-  list.innerHTML=COMBO_KEYS.map(k=>{
-    const [pt,dir]=parseComboKey(k)
-    const done=!!allTrips[k]
+  $('combo-progress-list').innerHTML=COMBO_KEYS.map(k=>{
+    const[pt,dir]=parseComboKey(k)
     return`<div class="prog-row">
       <span>${PEAK_LABEL[pt]} ${DIR_LABEL[dir]}</span>
-      <span class="${done?'badge-done':'badge-todo'}">${done?'✓ 完成':'待執行'}</span>
+      <span class="${allTrips[k]?'badge-done':'badge-todo'}">${allTrips[k]?'✓ 完成':'待執行'}</span>
     </div>`
   }).join('')
-
-  const remaining=COMBO_KEYS.filter(k=>!allTrips[k])
-  $('btn-next-combo').style.display=remaining.length>0?'block':'none'
+  $('btn-next-combo').style.display=COMBO_KEYS.some(k=>!allTrips[k])?'block':'none'
   updateProgressChips()
 }
 function parseComboKey(k){
@@ -732,43 +855,57 @@ function goReport(){buildReport();showScreen('screen-report')}
 function goReady(){showScreen('screen-ready');checkStart()}
 
 // ════════════════════════════════════
-//  REPORT BUILDING
+//  REPORT
 // ════════════════════════════════════
-const WEATHER_ZH={sunny:'晴',cloudy:'陰',rainy:'雨'}
 function getTrip(pt,dir){return allTrips[`${pt}_${dir}`]||null}
-function val(t,fn,fallback='—'){return t?fn(t):fallback}
-function spd(len,secs){return secs>0?Math.round(len/secs*3.6):'—'}
+function spd(len,secs){return(len>0&&secs>0)?Math.round(len/secs*3.6):'—'}
 
 function buildReport(){
   $('report-subtitle').textContent=`${config.routeName}  ${config.date}`
-  buildTable1()
-  buildTable2()
-  buildTable3()
+  buildResultMap()
+  buildTable1(); buildTable2(); buildTable3()
+}
+
+function buildResultMap(){
+  if(mapResult){mapResult.remove();mapResult=null}
+  mapResult=L.map('map-result',{zoomControl:true,attributionControl:false})
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapResult)
+
+  let hasLayer=false
+  // Draw GPS tracks from all trips
+  Object.values(allTrips).forEach((t,i)=>{
+    if(!t.gpsTrack||t.gpsTrack.length<2)return
+    const colors=['#3b82f6','#ef4444','#16a34a','#f59e0b']
+    const ll=t.gpsTrack.map(p=>[p.lat,p.lng])
+    const poly=L.polyline(ll,{color:colors[i%4],weight:3,opacity:.8}).addTo(mapResult)
+    if(!hasLayer){mapResult.fitBounds(poly.getBounds(),{padding:[20,20]});hasLayer=true}
+    // Delay markers
+    t.delayLog.forEach(r=>{
+      if(!r.pos)return
+      L.marker([r.pos.lat,r.pos.lng],{icon:L.divIcon({html:`<div style="font-size:18px">${r.icon}</div>`,className:'',iconSize:[20,20],iconAnchor:[10,10]})})
+        .bindPopup(`${r.icon} ${r.label}<br>${fmtHMS(r.startedAt)}<br>${r.durationS}秒`).addTo(mapResult)
+    })
+  })
+  if(!hasLayer&&lastPos) mapResult.setView([lastPos.lat,lastPos.lng],14)
+  // Planned route
+  if(config.nodes&&config.nodes.length>=2){
+    L.polyline(config.nodes.map(n=>[n.lat,n.lng]),{color:'#6366f1',weight:2,opacity:.5,dashArray:'6,4'}).addTo(mapResult)
+  }
 }
 
 function buildTable1(){
   const ob=getTrip('off_peak','bound'),or_=getTrip('off_peak','return')
-  const pb=getTrip('peak','bound'),    pr=getTrip('peak','return')
-  const trips=[ob,or_,pb,pr]
-  const len=config.totalLength
+  const pb=getTrip('peak','bound'),pr=getTrip('peak','return')
+  const trips=[ob,or_,pb,pr], len=config.totalLength
+  const pct=(a,b)=>b>0?Math.round(a/b*100)+'%':'—'
+  const r=(label,...vals)=>`<tr><td class="rtl">${label}</td>${vals.map(v=>`<td>${v??'—'}</td>`).join('')}</tr>`
 
-  function r(label,...vals){
-    return`<tr><td class="rtl">${label}</td>${vals.map(v=>`<td>${v??'—'}</td>`).join('')}</tr>`
-  }
-  function pct(part,total){return total>0?Math.round(part/total*100)+'%':'—'}
-
-  let html=`
-  <tr><th colspan="5" style="text-align:left;padding:8px 10px">路名：${config.routeName}　　日期：${config.date}</th></tr>
+  $('table1').innerHTML=`
+  <tr><th colspan="5" style="text-align:left;padding:8px 10px">路名：${config.routeName}　日期：${config.date}</th></tr>
   <tr><th colspan="3" style="text-align:left;padding:4px 10px">起迄點：${config.routeFromTo}</th><th colspan="2">天氣：${WEATHER_ZH[config.weather]||'—'}</th></tr>
-  <tr><th colspan="3" style="text-align:left;padding:4px 10px">全長：${config.totalLength} 公尺</th><th colspan="2">調查員：${config.surveyor}</th></tr>
-  <tr>
-    <th rowspan="2">調查時間</th>
-    <th colspan="2">離峰 ${config.offPeakLabel}</th>
-    <th colspan="2">下午尖峰 ${config.peakLabel}</th>
-  </tr>
-  <tr>
-    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
-  </tr>
+  <tr><th colspan="3" style="text-align:left;padding:4px 10px">全長：${config.totalLength}m　調查員：${config.surveyor}</th><th colspan="2">&nbsp;</th></tr>
+  <tr><th rowspan="2">調查時間</th><th colspan="2">離峰 ${config.offPeakLabel}</th><th colspan="2">下午尖峰 ${config.peakLabel}</th></tr>
+  <tr><th>去程</th><th>回程</th><th>去程</th><th>回程</th></tr>
   ${r('平均總旅行速率(km/h)',...trips.map(t=>t?spd(len,t.travelS):'—'))}
   ${r('平均總行駛速率(km/h)',...trips.map(t=>t?spd(len,t.runS):'—'))}
   <tr><td class="rtl" rowspan="2">行駛時間</td>${trips.map(t=>`<td>${t?t.runS:'—'}</td>`).join('')}</tr>
@@ -784,117 +921,58 @@ function buildTable1(){
   <tr><td class="rts" colspan="5">交叉口延滯</td></tr>
   ${INT_DELAYS.map(d=>r(d.label,...trips.map(t=>t?t.intDelays[d.cause]||0:'—'))).join('')}
   ${r('小計',...trips.map(t=>t?t.intTotalS:'—'))}
-  ${r('合計',...trips.map(t=>t?t.totalDelayS:'—'))}
-  `
-  $('table1').innerHTML=html
+  ${r('合計',...trips.map(t=>t?t.totalDelayS:'—'))}`
 }
 
 function buildTable2(){
-  // Per segment travel & running time
-  const ob=getTrip('off_peak','bound'),or_=getTrip('off_peak','return')
-  const pb=getTrip('peak','bound'),    pr=getTrip('peak','return')
-  const trips=[ob,or_,pb,pr]
+  const trips=[getTrip('off_peak','bound'),getTrip('off_peak','return'),getTrip('peak','bound'),getTrip('peak','return')]
   const segs=config.segments
-
-  let html=`
-  <tr><th colspan="${4+6}" style="text-align:center;padding:8px">各路段平均旅行時間及平均行駛時間統計表</th></tr>
-  <tr>
-    <th rowspan="3">路段位置</th>
-    <th rowspan="3">車道數</th><th rowspan="3">路寬(m)</th><th rowspan="3">長度(m)</th>
-    <th colspan="4">平均旅行時間(秒)</th>
-    <th colspan="4">平均行駛時間(秒)</th>
-  </tr>
-  <tr>
-    <th colspan="2">離峰 ${config.offPeakLabel}</th>
-    <th colspan="2">下午尖峰 ${config.peakLabel}</th>
-    <th colspan="2">離峰</th>
-    <th colspan="2">下午尖峰</th>
-  </tr>
-  <tr>
-    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
-    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
-  </tr>`
-
-  segs.forEach((s,i)=>{
-    const tVals=trips.map(t=>t&&t.segTimes[i]?t.segTimes[i].travelS:'—')
-    const rVals=trips.map(t=>t&&t.segTimes[i]?t.segTimes[i].runS:'—')
-    html+=`<tr>
-      <td class="rtl">${s.name}</td>
-      <td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
-      ${tVals.map(v=>`<td>${v}</td>`).join('')}
-      ${rVals.map(v=>`<td>${v}</td>`).join('')}
-    </tr>`
-  })
-
-  // Total row
-  const totT=trips.map(t=>t?t.travelS:'—')
-  const totR=trips.map(t=>t?t.runS:'—')
-  html+=`<tr><td class="rth" colspan="3">總計</td><td class="rth">${config.totalLength}</td>
-    ${totT.map(v=>`<td class="rth">${v}</td>`).join('')}
-    ${totR.map(v=>`<td class="rth">${v}</td>`).join('')}
-  </tr>`
-
-  $('table2').innerHTML=html
+  $('table2').innerHTML=`
+  <tr><th colspan="${4+8}" style="padding:8px">各路段平均旅行時間及平均行駛時間統計表（秒）</th></tr>
+  <tr><th rowspan="3">路段</th><th rowspan="3">車道</th><th rowspan="3">路寬</th><th rowspan="3">長度</th>
+    <th colspan="4">平均旅行時間(秒)</th><th colspan="4">平均行駛時間(秒)</th></tr>
+  <tr><th colspan="2">離峰</th><th colspan="2">下午尖峰</th><th colspan="2">離峰</th><th colspan="2">下午尖峰</th></tr>
+  <tr><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th></tr>
+  ${segs.map((s,i)=>`<tr>
+    <td class="rtl">${s.name}</td><td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
+    ${trips.map(t=>`<td>${t&&t.segTimes[i]?t.segTimes[i].travelS:'—'}</td>`).join('')}
+    ${trips.map(t=>`<td>${t&&t.segTimes[i]?t.segTimes[i].runS:'—'}</td>`).join('')}
+  </tr>`).join('')}
+  <tr><td class="rth" colspan="3">總計</td><td class="rth">${config.totalLength}</td>
+    ${trips.map(t=>`<td class="rth">${t?t.travelS:'—'}</td>`).join('')}
+    ${trips.map(t=>`<td class="rth">${t?t.runS:'—'}</td>`).join('')}</tr>`
 }
 
 function buildTable3(){
-  const ob=getTrip('off_peak','bound'),or_=getTrip('off_peak','return')
-  const pb=getTrip('peak','bound'),    pr=getTrip('peak','return')
-  const trips=[ob,or_,pb,pr]
+  const trips=[getTrip('off_peak','bound'),getTrip('off_peak','return'),getTrip('peak','bound'),getTrip('peak','return')]
   const segs=config.segments
-
-  let html=`
-  <tr><th colspan="${4+8}" style="text-align:center;padding:8px">各路段平均旅行速率及平均行駛速率統計表(km/h)</th></tr>
-  <tr>
-    <th rowspan="3">路段位置</th>
-    <th rowspan="3">車道數</th><th rowspan="3">路寬(m)</th><th rowspan="3">長度(m)</th>
-    <th colspan="4">平均旅行速率(km/h)</th>
-    <th colspan="4">平均行駛速率(km/h)</th>
-  </tr>
-  <tr>
-    <th colspan="2">離峰</th><th colspan="2">下午尖峰</th>
-    <th colspan="2">離峰</th><th colspan="2">下午尖峰</th>
-  </tr>
-  <tr>
-    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
-    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
-  </tr>`
-
-  segs.forEach((s,i)=>{
-    const tv=trips.map(t=>t&&t.segTimes[i]?spd(s.length,t.segTimes[i].travelS):'—')
-    const rv=trips.map(t=>t&&t.segTimes[i]?spd(s.length,t.segTimes[i].runS):'—')
-    html+=`<tr>
-      <td class="rtl">${s.name}</td>
-      <td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
-      ${tv.map(v=>`<td>${v}</td>`).join('')}
-      ${rv.map(v=>`<td>${v}</td>`).join('')}
-    </tr>`
-  })
-
-  const totTV=trips.map(t=>t?spd(config.totalLength,t.travelS):'—')
-  const totRV=trips.map(t=>t?spd(config.totalLength,t.runS):'—')
-  html+=`<tr><td class="rth" colspan="3">總計</td><td class="rth">${config.totalLength}</td>
-    ${totTV.map(v=>`<td class="rth">${v}</td>`).join('')}
-    ${totRV.map(v=>`<td class="rth">${v}</td>`).join('')}
-  </tr>`
-
-  $('table3').innerHTML=html
+  $('table3').innerHTML=`
+  <tr><th colspan="${4+8}" style="padding:8px">各路段平均旅行速率及平均行駛速率統計表（km/h）</th></tr>
+  <tr><th rowspan="3">路段</th><th rowspan="3">車道</th><th rowspan="3">路寬</th><th rowspan="3">長度</th>
+    <th colspan="4">旅行速率</th><th colspan="4">行駛速率</th></tr>
+  <tr><th colspan="2">離峰</th><th colspan="2">下午尖峰</th><th colspan="2">離峰</th><th colspan="2">下午尖峰</th></tr>
+  <tr><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th></tr>
+  ${segs.map((s,i)=>`<tr>
+    <td class="rtl">${s.name}</td><td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
+    ${trips.map(t=>`<td>${t&&t.segTimes[i]?spd(s.length,t.segTimes[i].travelS):'—'}</td>`).join('')}
+    ${trips.map(t=>`<td>${t&&t.segTimes[i]?spd(s.length,t.segTimes[i].runS):'—'}</td>`).join('')}
+  </tr>`).join('')}
+  <tr><td class="rth" colspan="3">總計</td><td class="rth">${config.totalLength}</td>
+    ${trips.map(t=>`<td class="rth">${t?spd(config.totalLength,t.travelS):'—'}</td>`).join('')}
+    ${trips.map(t=>`<td class="rth">${t?spd(config.totalLength,t.runS):'—'}</td>`).join('')}</tr>`
 }
 
 // ════════════════════════════════════
 //  EXPORT
 // ════════════════════════════════════
 function exportReport(){
-  const t1=$('table1').outerHTML
-  const t2=$('table2').outerHTML
-  const t3=$('table3').outerHTML
-  const WEATHER_ZH2={sunny:'晴',cloudy:'陰',rainy:'雨'}
+  const t1=$('table1').outerHTML, t2=$('table2').outerHTML, t3=$('table3').outerHTML
   const html=`<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8">
 <title>旅行時間調查報告 ${config.date}</title>
 <style>
-body{font-family:'標楷體','Noto Serif TC',sans-serif;margin:15mm 12mm;font-size:13px}
+body{font-family:'標楷體',serif;margin:15mm 12mm;font-size:13px}
 h1{text-align:center;font-size:18px;margin-bottom:16px}
-table{width:100%;border-collapse:collapse;margin-bottom:24px;page-break-inside:avoid}
+table{width:100%;border-collapse:collapse;margin-bottom:24px}
 th{background:#1e293b;color:white;padding:6px 8px;text-align:center;font-size:11px}
 td{padding:5px 8px;border:1px solid #ccc;text-align:center}
 .rtl{text-align:left;background:#f5f5f5;font-weight:bold}
@@ -907,39 +985,35 @@ ${t1}<br>${t2}<br>${t3}
 </body></html>`
   const a=document.createElement('a')
   a.href=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}))
-  a.download=`調查報告_${config.date}_${config.routeName||'survey'}.html`
-  a.click()
+  a.download=`調查報告_${config.date||'survey'}.html`; a.click()
   showToast('✅ 報告已下載')
 }
 
 function exportCSV(){
-  let csv=`路線名稱,${config.routeName}\n起迄點,${config.routeFromTo}\n全長(m),${config.totalLength}\n日期,${config.date}\n調查員,${config.surveyor}\n天氣,${WEATHER_ZH[config.weather]||''}\n\n`
-  csv+='組合,旅行時間(秒),行駛時間(秒),總延滯(秒),旅行速率(km/h),行駛速率(km/h)\n'
+  let csv=`路線,${config.routeName}\n起迄點,${config.routeFromTo}\n調查員,${config.surveyor}\n日期,${config.date}\n天氣,${WEATHER_ZH[config.weather]||''}\n\n`
+  csv+='組合,旅行時間(秒),行駛時間(秒),總延滯(秒)\n'
   COMBO_KEYS.forEach(k=>{
-    const [pt,dir]=parseComboKey(k)
-    const t=allTrips[k]
-    if(t)csv+=`${PEAK_LABEL[pt]}${DIR_LABEL[dir]},${t.travelS},${t.runS},${t.totalDelayS},${spd(config.totalLength,t.travelS)},${spd(config.totalLength,t.runS)}\n`
-  })
-  csv+='\n各路段旅行時間(秒)\n路段,長度(m)'
-  COMBO_KEYS.forEach(k=>{const[pt,dir]=parseComboKey(k);csv+=`,${PEAK_LABEL[pt]}${DIR_LABEL[dir]}`})
-  csv+='\n'
-  config.segments.forEach((s,i)=>{
-    csv+=`${s.name},${s.length}`
-    COMBO_KEYS.forEach(k=>{const t=allTrips[k];csv+=`,${t&&t.segTimes[i]?t.segTimes[i].travelS:''}`})
-    csv+='\n'
+    const[pt,dir]=parseComboKey(k), t=allTrips[k]
+    if(t)csv+=`${PEAK_LABEL[pt]}${DIR_LABEL[dir]},${t.travelS},${t.runS},${t.totalDelayS}\n`
   })
   const a=document.createElement('a')
   a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}))
-  a.download=`調查數據_${config.date||'survey'}.csv`
-  a.click()
+  a.download=`調查數據_${config.date||'survey'}.csv`; a.click()
   showToast('✅ CSV 已下載')
 }
 
 // ════════════════════════════════════
 //  INIT
 // ════════════════════════════════════
-window.addEventListener('load',()=>{
-  $('s-date').value=new Date().toISOString().slice(0,10)
+window.addEventListener('load', ()=>{
+  // Try to load config from QR code hash
+  if(loadFromHash()){
+    showSigninScreen()
+  } else {
+    // Manual mode
+    $('s-date').value = new Date().toISOString().slice(0,10)
+    showScreen('screen-setup')
+  }
 })
 </script>
 </body>
