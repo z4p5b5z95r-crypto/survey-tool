@@ -15,43 +15,46 @@
   .screen.active { display: flex; }
 
   /* ══════════════════════════════════════
-     畫面 A：準備畫面（全螢幕地圖 + 開始按鈕）
+     畫面 A：準備畫面（地圖 55% + 控制區 45%）
   ══════════════════════════════════════ */
-  #screen-ready { position: relative; }
-  #map-ready { flex: 1; }
+  #screen-ready { background: #0f172a; }
+  #map-ready { height: 55%; flex-shrink: 0; }
 
-  .ready-overlay {
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    background: linear-gradient(transparent, rgba(15,23,42,0.95) 40%);
-    padding: 32px 20px 36px;
+  .ready-panel {
+    flex: 1;
+    background: #1e293b;
+    padding: 20px 20px 32px;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 14px;
+    border-top: 1px solid #334155;
   }
   .ready-title { color: white; font-size: 20px; font-weight: 800; }
-  .ready-sub   { color: #94a3b8; font-size: 13px; }
+  .ready-sub   { color: #94a3b8; font-size: 13px; text-align: center; }
 
   .gps-status {
     display: flex; align-items: center; gap: 8px;
-    background: rgba(255,255,255,0.1);
-    padding: 8px 16px; border-radius: 20px;
-    color: #94a3b8; font-size: 13px;
+    background: rgba(255,255,255,0.08);
+    padding: 10px 20px; border-radius: 20px;
+    color: #94a3b8; font-size: 14px;
+    width: 100%; justify-content: center;
   }
-  .gps-dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; }
+  .gps-dot { width: 10px; height: 10px; border-radius: 50%; background: #94a3b8; flex-shrink: 0; }
   .gps-dot.good { background: #4ade80; animation: blink 1.5s infinite; }
   .gps-dot.poor { background: #fbbf24; }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
 
   .btn-start {
-    width: 100%; max-width: 340px;
+    width: 100%;
     padding: 20px; background: #16a34a;
     color: white; border: none; border-radius: 18px;
     font-size: 20px; font-weight: 800; cursor: pointer;
     box-shadow: 0 4px 20px rgba(22,163,74,.4);
+    margin-top: auto;
   }
-  .btn-start:active { transform: scale(.97); }
+  .btn-start:disabled { background: #374151; box-shadow: none; }
+  .btn-start:not(:disabled):active { transform: scale(.97); }
 
   /* ══════════════════════════════════════
      畫面 B：調查中（地圖 40% + 操作 60%）
@@ -197,8 +200,8 @@
      畫面 A：準備（全螢幕地圖）
 ══════════════════════════════════ -->
 <div id="screen-ready" class="screen active">
-  <div id="map-ready" style="flex:1"></div>
-  <div class="ready-overlay">
+  <div id="map-ready"></div>
+  <div class="ready-panel">
     <div class="ready-title">🚗 旅行時間調查</div>
     <div class="ready-sub">確認藍點在你的位置後，按下開始</div>
     <div class="gps-status">
