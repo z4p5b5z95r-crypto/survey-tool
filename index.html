@@ -203,6 +203,14 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 </head>
 <body>
 
+<!-- ══ Screen: Cloud Loading ══ -->
+<div id="screen-loading" class="screen" style="display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px">
+  <div style="font-size:40px;animation:spin 1s linear infinite">☁️</div>
+  <div id="loading-msg" style="font-size:16px;font-weight:700;color:#1e293b">從雲端載入路線...</div>
+  <div id="loading-sub" style="font-size:13px;color:#64748b"></div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+
 <!-- ══ Screen -1: Sign-in ══ -->
 <div id="screen-signin" class="screen">
   <div class="signin-hero">
@@ -422,6 +430,12 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
     <div><div class="sec-title">總覽統計表</div><div class="report-wrap"><table class="rt" id="table1"></table></div></div>
     <div><div class="sec-title">各路段統計</div><div class="report-wrap"><table class="rt" id="table2"></table></div></div>
     <div><div class="sec-title">速率統計</div><div class="report-wrap"><table class="rt" id="table3"></table></div></div>
+    <!-- 雲端上傳狀態（只在雲端路線顯示） -->
+    <div id="cloud-upload-box" style="display:none;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:14px;padding:12px 14px;margin-top:4px">
+      <div style="font-size:13px;font-weight:700;color:#0369a1;margin-bottom:8px">☁️ 雲端資料上傳</div>
+      <div id="cloud-upload-status" style="font-size:13px;color:#475569;margin-bottom:8px">準備中...</div>
+      <button id="cloud-upload-btn" onclick="submitToCloud()" style="width:100%;padding:11px;background:#0369a1;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">☁ 上傳調查結果</button>
+    </div>
     <button class="btn-ex html" style="width:100%;font-size:16px;padding:16px" onclick="exportReport()">📤 產出完整報告（可傳 LINE 給 PM）</button>
     <p style="text-align:center;font-size:11px;color:#94a3b8;margin-top:6px">HTML 檔案內含地圖、全部表格，打開後可再下載 Excel</p>
     <button style="width:100%;padding:15px;background:#e2e8f0;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px" onclick="goReady()">🔄 繼續補充旅次</button>
@@ -472,6 +486,12 @@ let qrKey = ''       // raw encoded string from URL — used as localStorage key
 let signinWeather = ''
 let allTrips = {}
 let cur = null
+
+// Cloud connection (populated when URL uses ?id=...&gs=...&k=...)
+let cloudRouteId  = ''
+let cloudScriptUrl = ''
+let cloudApiKey   = ''
+let cloudSubmitted = false  // prevent double-submit
 
 // GPS
 let watchId=null, mapReady=null, mapSurvey=null, mapResult=null, mapSignin=null
@@ -572,23 +592,83 @@ function decodeConfig(encoded){
     return JSON.parse(decodeURIComponent(escape(atob(padded))))
   }catch{return null}
 }
+
+/// Sync: try ?c= local decode.  Returns true if loaded.
+// Cloud load (?id=) is async — handled separately in window load handler.
 function loadFromHash(){
   const params=new URLSearchParams(location.search)
   let encoded=params.get('c')
   if(!encoded){const m=location.hash.match(/#c=(.+)/);encoded=m?m[1]:null}
   if(!encoded) return false
-  qrKey=encoded   // keep for localStorage namespacing
+  qrKey=encoded
   const cfg=decodeConfig(encoded)
   if(!cfg||cfg.v!==1) return false
-  config.routeName   =cfg.rn||''
-  config.routeFromTo =cfg.ft||''
-  config.totalLength =cfg.tl||0
-  config.offPeakLabel=cfg.op||'14:00~16:00'
-  config.peakLabel   =cfg.pk||'17:00~19:00'
-  config.date        =new Date().toLocaleDateString('zh-TW')
-  config.nodes=(cfg.nd||[]).map(n=>({name:n.n||n.r1||'節點',lat:n.a,lng:n.o,radius:n.r||15}))
-  config.segments=(cfg.sg||[]).map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d}))
+  applyConfig(cfg)
   return true
+}
+
+function applyConfig(cfg){
+  config.routeName   =cfg.routeName   ||cfg.rn||''
+  config.routeFromTo =cfg.routeFromTo ||cfg.ft||''
+  config.totalLength =cfg.totalLength ||cfg.tl||0
+  config.offPeakLabel=cfg.offPeakLabel||cfg.op||'14:00~16:00'
+  config.peakLabel   =cfg.peakLabel   ||cfg.pk||'17:00~19:00'
+  config.date        =cfg.date        ||new Date().toLocaleDateString('zh-TW')
+  config.nodes=(cfg.nodes||cfg.nd||[]).map(n=>{
+    if(n.lat!==undefined) return {name:n.name||'節點',lat:n.lat,lng:n.lng,radius:n.radius||15}
+    return {name:n.n||n.r1||'節點',lat:n.a,lng:n.o,radius:n.r||15}
+  })
+  config.segments=(cfg.segments||cfg.sg||[]).map(s=>{
+    if(s.name!==undefined) return {name:s.name,lanes:s.lanes||2,width:s.width||8,length:s.length||0}
+    return {name:s.n,lanes:s.l,width:s.w,length:s.d}
+  })
+}
+
+// ════════════════════════════════════
+//  CLOUD FETCH HELPERS
+// ════════════════════════════════════
+async function cloudFetchRoute(id, gsUrl, apiKey){
+  const p=new URLSearchParams({action:'getRoute',id,key:apiKey})
+  const res=await fetch(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(15000)})
+  const json=await res.json()
+  if(!json.ok) throw new Error(json.error||'cloud error')
+  return json.data
+}
+
+async function cloudPostSurvey(gsUrl, apiKey, body){
+  const res=await fetch(gsUrl,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({...body,key:apiKey}),
+    signal:AbortSignal.timeout(20000)
+  })
+  const json=await res.json()
+  if(!json.ok) throw new Error(json.error||'cloud error')
+  return json.data
+}
+
+// Offline queue — save failed submissions so retry is possible
+const OFFLINE_QUEUE_KEY='cloud_submit_queue'
+function enqueueOffline(payload){
+  try{
+    const q=JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY)||'[]')
+    q.push({ts:Date.now(),...payload})
+    localStorage.setItem(OFFLINE_QUEUE_KEY,JSON.stringify(q))
+  }catch(e){}
+}
+async function flushOfflineQueue(){
+  try{
+    const q=JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY)||'[]')
+    if(!q.length) return
+    const remaining=[]
+    for(const item of q){
+      try{
+        await cloudPostSurvey(item.gsUrl,item.apiKey,item.body)
+      }catch(e){ remaining.push(item) }
+    }
+    localStorage.setItem(OFFLINE_QUEUE_KEY,JSON.stringify(remaining))
+    if(remaining.length<q.length) showToast(`☁️ 離線佇列上傳 ${q.length-remaining.length} 筆`)
+  }catch(e){}
 }
 
 // ════════════════════════════════════
@@ -1246,8 +1326,86 @@ function parseComboKey(k){
   return['peak',k.replace('peak_','')]
 }
 function goNextCombo(){showScreen('screen-ready');checkStart()}
-function goReport(){buildReport();showScreen('screen-report')}
+function goReport(){
+  buildReport()
+  showScreen('screen-report')
+  // Show cloud upload box only if this is a cloud-linked route
+  const box=document.getElementById('cloud-upload-box')
+  if(cloudRouteId && cloudScriptUrl && cloudApiKey){
+    box.style.display='block'
+    if(cloudSubmitted){
+      document.getElementById('cloud-upload-status').textContent='✅ 已上傳至雲端'
+      document.getElementById('cloud-upload-btn').disabled=true
+      document.getElementById('cloud-upload-btn').textContent='✅ 已上傳'
+    } else {
+      document.getElementById('cloud-upload-status').textContent='調查結果尚未上傳，點下方按鈕送出。'
+    }
+    // auto-try if all 4 combos done and not yet submitted
+    if(!cloudSubmitted && COMBO_KEYS.every(k=>allTrips[k])) submitToCloud()
+  } else {
+    box.style.display='none'
+  }
+}
 function goReady(){showScreen('screen-ready');checkStart();updateRestoredBanner(Object.keys(allTrips).length)}
+
+// ════════════════════════════════════
+//  CLOUD SUBMIT
+// ════════════════════════════════════
+async function submitToCloud(){
+  if(cloudSubmitted){ showToast('已上傳'); return }
+  const statusEl=document.getElementById('cloud-upload-status')
+  const btnEl=document.getElementById('cloud-upload-btn')
+  statusEl.textContent='⏳ 上傳中...'
+  btnEl.disabled=true
+
+  const body={
+    action:   'saveSurvey',
+    routeId:  cloudRouteId,
+    surveyor: config.surveyor,
+    weather:  config.weather,
+    date:     config.date,
+    trips:    buildTripsPayload()
+  }
+
+  try{
+    await cloudPostSurvey(cloudScriptUrl, cloudApiKey, body)
+    cloudSubmitted=true
+    statusEl.textContent='✅ 已成功上傳至雲端！'
+    btnEl.textContent='✅ 已上傳'
+    showToast('☁️ 調查結果已上傳')
+    // clear offline queue if any
+    flushOfflineQueue()
+  }catch(e){
+    statusEl.textContent='❌ 上傳失敗：'+e.message+'（已存入離線佇列，連線後自動重試）'
+    btnEl.disabled=false
+    btnEl.textContent='🔄 重新上傳'
+    enqueueOffline({gsUrl:cloudScriptUrl,apiKey:cloudApiKey,body})
+    showToast('⚠️ 上傳失敗，已存入離線佇列')
+  }
+}
+
+function buildTripsPayload(){
+  const out={}
+  Object.entries(allTrips).forEach(([k,t])=>{
+    if(!t) return
+    out[k]={
+      peakType:    t.peakType,
+      direction:   t.direction,
+      startTime:   t.startTime instanceof Date ? t.startTime.toISOString() : t.startTime,
+      endTime:     t.endTime   instanceof Date ? t.endTime.toISOString()   : t.endTime,
+      travelS:     t.travelS,
+      runS:        t.runS,
+      intTotalS:   t.intTotalS,
+      roadTotalS:  t.roadTotalS,
+      totalDelayS: t.totalDelayS,
+      segTimes:        t.segTimes,
+      nodeTimestamps:  (t.nodeTimestamps||[]).map(ts=>ts instanceof Date?ts.toISOString():ts),
+      roadDelays:      t.roadDelays,
+      intDelays:       t.intDelays
+    }
+  })
+  return out
+}
 
 // ════════════════════════════════════
 //  REPORT
@@ -1840,8 +1998,42 @@ function exportReport(){
 //  INIT
 // ════════════════════════════════════
 window.addEventListener('load', async () => {
-  if(loadFromHash()){
-    await prefetchRoutes()   // fetch OSRM routes so maps show actual roads
+  const params=new URLSearchParams(location.search)
+  const idParam = params.get('id')
+  const gsParam = params.get('gs')
+  const kParam  = params.get('k')
+
+  if(idParam && gsParam && kParam){
+    // ── Cloud route ──
+    cloudRouteId   = idParam
+    cloudScriptUrl = gsParam
+    cloudApiKey    = kParam
+    qrKey = 'cloud_' + idParam   // localStorage namespace
+
+    // Show loading screen while fetching
+    const allScreens=document.querySelectorAll('.screen')
+    allScreens.forEach(s=>{s.style.display='none'})
+    const ls=document.getElementById('screen-loading')
+    ls.style.display='flex'
+    document.getElementById('loading-sub').textContent='路線 ID: '+idParam
+
+    try{
+      const routeData = await cloudFetchRoute(idParam, gsParam, kParam)
+      applyConfig(routeData)
+      ls.style.display='none'
+      await prefetchRoutes()
+      showSigninScreen()
+      // Try to flush any offline queued submissions from previous sessions
+      flushOfflineQueue()
+    }catch(e){
+      document.getElementById('loading-msg').textContent='❌ 載入失敗'
+      document.getElementById('loading-sub').textContent=e.message
+      ls.style.display='flex'
+    }
+
+  }else if(loadFromHash()){
+    // ── Offline ?c= encoded route ──
+    await prefetchRoutes()
     showSigninScreen()
   }else{
     $('s-date').value=new Date().toISOString().slice(0,10)
