@@ -488,12 +488,35 @@ let nodeAutoLock = false   // prevent double-trigger within 3s
 
 // Audio — single context created on user gesture in startSurvey(), reused for auto-trigger
 let audioCtx = null
+let _silentSrc = null   // keeps AudioContext alive on iOS
+
 function unlockAudio(){
   try{
     if(!audioCtx||audioCtx.state==='closed')
       audioCtx=new(window.AudioContext||window.webkitAudioContext)()
     if(audioCtx.state==='suspended') audioCtx.resume()
   }catch(e){}
+}
+
+// Play an inaudible loop so iOS never suspends the AudioContext.
+// Must be called while we still have a user gesture (inside startSurvey).
+function startAudioKeepAlive(){
+  if(!audioCtx||audioCtx.state==='closed') return
+  try{
+    // 1-second silent buffer, looped forever
+    const buf=audioCtx.createBuffer(1,audioCtx.sampleRate,audioCtx.sampleRate)
+    const src=audioCtx.createBufferSource()
+    src.buffer=buf; src.loop=true
+    const gain=audioCtx.createGain()
+    gain.gain.setValueAtTime(0.00001,audioCtx.currentTime)  // inaudible
+    src.connect(gain); gain.connect(audioCtx.destination)
+    src.start()
+    _silentSrc=src
+  }catch(e){}
+}
+
+function stopAudioKeepAlive(){
+  try{ if(_silentSrc){_silentSrc.stop();_silentSrc=null} }catch(e){}
 }
 
 // Setup manual
@@ -991,7 +1014,7 @@ function recordNode(auto){
   if(isFinal){
     cur.endTime=now
     clearInterval(clockTimer); clockTimer=null
-    releaseWakeLock(); disableNoSleep()
+    stopAudioKeepAlive(); releaseWakeLock(); disableNoSleep()
     updateNextNodeCard()
     showToast(`🏁 已抵達終點！節點 ${justRecorded}／${names.length}`,true)
   }else{
@@ -1066,9 +1089,10 @@ function startSurvey(){
   nodeAutoLock=false
   isPaused=false;pauseStart=null;totalPausedMs=0
   const pb=$('btn-pause');if(pb){pb.textContent='⏸';pb.classList.remove('paused');pb.title='暫停調查'}
-  unlockAudio()   // unlock AudioContext while we still have the user gesture
+  unlockAudio()          // unlock AudioContext while we still have the user gesture
+  startAudioKeepAlive()  // silent loop keeps iOS from suspending the context
   acquireWakeLock()
-  enableNoSleep()  // video-loop trick to prevent iOS screen auto-sleep
+  enableNoSleep()        // video-loop trick to prevent iOS screen auto-sleep
 
   $('status-combo').textContent=`● ${PEAK_LABEL[selPeakType]} ${DIR_LABEL[selDirection]}`
   showScreen('screen-survey')
@@ -1165,7 +1189,7 @@ function endSurvey(){
   if(!confirm('確定結束調查？'))return
   // auto-resume if paused
   if(isPaused){ if(pauseStart) totalPausedMs+=(new Date()-pauseStart); pauseStart=null; isPaused=false }
-  releaseWakeLock(); disableNoSleep()
+  stopAudioKeepAlive(); releaseWakeLock(); disableNoSleep()
   // If last node already set endTime, keep it; otherwise record now
   if(!cur.endTime) cur.endTime=new Date()
   // If first node was never hit, treat start = end (0s trip)
@@ -1591,8 +1615,6 @@ function exportReport(){
 '<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n' +
 '<title>旅行時間調查報告 ' + (config.date||'') + '</title>\n' +
 '<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>\n' +
-'<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\\/script>\n' +
-'<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\\/script>\n' +
 '<style>\n' +
 '*{box-sizing:border-box;margin:0;padding:0}\n' +
 'body{font-family:-apple-system,"PingFang TC",sans-serif;background:#f1f5f9;color:#1e293b}\n' +
@@ -1654,6 +1676,8 @@ function exportReport(){
 
 '<button class="xl-btn" onclick="dlExcel()">📥 下載 Excel 報表（官方調查表格式）</button>\n' +
 '<div class="rpt-ft">本報告由旅行時間調查系統自動產生</div>\n' +
+'<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\\/script>\n' +
+'<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\\/script>\n' +
 
 '<script>\n' +
 'var ROAD_D=[{c:"congestion",l:"阻塞"},{c:"bus_stop",l:"公車停靠"},{c:"ped_cross",l:"行人穿越"},{c:"taxi_stop",l:"計程車停靠"},{c:"parking",l:"路邊停靠"},{c:"road_other",l:"其他"}];\n' +
@@ -1666,29 +1690,32 @@ function exportReport(){
 'var NODES=' + nodesJ + ';\n' +
 'var ROUTE=' + routeJ + ';\n' +
 
-// Map init
-'(function(){\n' +
-'  var map=L.map("rpt-map",{zoomControl:true,attributionControl:false});\n' +
-'  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map);\n' +
-'  var colors=["#3b82f6","#ef4444","#16a34a","#f59e0b"],bounds=null;\n' +
-'  KEYS.forEach(function(k,i){\n' +
-'    var tr=TRACKS[k]; if(!tr||tr.length<2) return;\n' +
-'    var poly=L.polyline(tr,{color:colors[i],weight:3,opacity:.85}).addTo(map);\n' +
-'    if(!bounds) bounds=poly.getBounds(); else bounds.extend(poly.getBounds());\n' +
-'    (DELAYS[k]||[]).forEach(function(d){\n' +
-'      L.marker([d.lat,d.lng],{icon:L.divIcon({html:"<div style=\'font-size:16px\'>"+d.icon+"</div>",className:"",iconSize:[20,20],iconAnchor:[10,10]})})\n' +
-'       .bindPopup(d.icon+" "+d.label+"<br>"+d.dur+"秒").addTo(map);\n' +
+// Map init — runs after all scripts load so L is guaranteed to exist
+'window.addEventListener("load",function(){\n' +
+'  if(typeof L==="undefined") return;\n' +
+'  try{\n' +
+'    var map=L.map("rpt-map",{zoomControl:true,attributionControl:false});\n' +
+'    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map);\n' +
+'    var colors=["#3b82f6","#ef4444","#16a34a","#f59e0b"],bounds=null;\n' +
+'    KEYS.forEach(function(k,i){\n' +
+'      var tr=TRACKS[k]; if(!tr||tr.length<2) return;\n' +
+'      var poly=L.polyline(tr,{color:colors[i],weight:3,opacity:.85}).addTo(map);\n' +
+'      if(!bounds) bounds=poly.getBounds(); else bounds.extend(poly.getBounds());\n' +
+'      (DELAYS[k]||[]).forEach(function(d){\n' +
+'        L.marker([d.lat,d.lng],{icon:L.divIcon({html:"<div style=\'font-size:16px\'>"+d.icon+"</div>",className:"",iconSize:[20,20],iconAnchor:[10,10]})})\n' +
+'         .bindPopup(d.icon+" "+d.label+"<br>"+d.dur+"秒").addTo(map);\n' +
+'      });\n' +
 '    });\n' +
-'  });\n' +
-'  if(ROUTE.length>1) L.polyline(ROUTE,{color:"#6366f1",weight:2,opacity:.35,dashArray:"6,4"}).addTo(map);\n' +
-'  NODES.forEach(function(n,i){\n' +
-'    var clr=i===0?"#16a34a":i===NODES.length-1?"#dc2626":"#6366f1";\n' +
-'    L.circleMarker([n[0],n[1]],{radius:7,fillColor:clr,color:"#fff",weight:2,fillOpacity:1})\n' +
-'     .bindTooltip((i+1)+". "+n[2],{direction:"top"}).addTo(map);\n' +
-'  });\n' +
-'  if(bounds) map.fitBounds(bounds,{padding:[20,20]});\n' +
-'  else if(NODES.length) map.setView([NODES[0][0],NODES[0][1]],14);\n' +
-'})();\n' +
+'    if(ROUTE.length>1) L.polyline(ROUTE,{color:"#6366f1",weight:2,opacity:.35,dashArray:"6,4"}).addTo(map);\n' +
+'    NODES.forEach(function(n,i){\n' +
+'      var clr=i===0?"#16a34a":i===NODES.length-1?"#dc2626":"#6366f1";\n' +
+'      L.circleMarker([n[0],n[1]],{radius:7,fillColor:clr,color:"#fff",weight:2,fillOpacity:1})\n' +
+'       .bindTooltip((i+1)+". "+n[2],{direction:"top"}).addTo(map);\n' +
+'    });\n' +
+'    if(bounds) map.fitBounds(bounds,{padding:[20,20]});\n' +
+'    else if(NODES.length) map.setView([NODES[0][0],NODES[0][1]],14);\n' +
+'  }catch(e){document.getElementById("rpt-map").style.display="none";}\n' +
+'});\n' +
 
 // Helpers for Excel
 'function xSpd(d,s){return(d>0&&s>0)?+(d/s*3.6).toFixed(1):"";}\n' +
