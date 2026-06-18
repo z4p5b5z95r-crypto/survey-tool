@@ -6,6 +6,7 @@
 <title>旅行時間調查</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/nosleep.js/dist/NoSleep.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC',sans-serif}
@@ -485,6 +486,16 @@ let activeDelay=null, delayLog=[]
 let nodeTimestamps=[], currentNodeIdx=0
 let nodeAutoLock = false   // prevent double-trigger within 3s
 
+// Audio — single context created on user gesture in startSurvey(), reused for auto-trigger
+let audioCtx = null
+function unlockAudio(){
+  try{
+    if(!audioCtx||audioCtx.state==='closed')
+      audioCtx=new(window.AudioContext||window.webkitAudioContext)()
+    if(audioCtx.state==='suspended') audioCtx.resume()
+  }catch(e){}
+}
+
 // Setup manual
 let setupWeather='', manualSegs=[]
 
@@ -851,6 +862,20 @@ function releaseWakeLock() {
   if (wakeLockSentinel) { wakeLockSentinel.release(); wakeLockSentinel = null }
 }
 
+// NoSleep.js — video-loop trick that prevents iOS screen auto-sleep
+// (Screen Wake Lock API alone is often overridden by iOS Low Power Mode)
+let _noSleep = null
+function enableNoSleep() {
+  try {
+    if (typeof NoSleep === 'undefined') return
+    if (!_noSleep) _noSleep = new NoSleep()
+    _noSleep.enable()
+  } catch(e) {}
+}
+function disableNoSleep() {
+  try { if (_noSleep) _noSleep.disable() } catch(e) {}
+}
+
 function startGPS(){
   if(watchId||!navigator.geolocation)return
   watchId=navigator.geolocation.watchPosition(onPos,onGPSErr,{enableHighAccuracy:true,timeout:10000,maximumAge:1500})
@@ -910,7 +935,11 @@ function manualRecordNode(){
 }
 function playNodeBeep(isFinal){
   try{
-    const ctx=new(window.AudioContext||window.webkitAudioContext)()
+    // Reuse the unlocked AudioContext created on user gesture in startSurvey()
+    // Creating a new one here (inside GPS callback) would be suspended on iOS
+    if(!audioCtx||audioCtx.state==='closed') return
+    if(audioCtx.state==='suspended') audioCtx.resume()
+    const ctx=audioCtx
     const play=(freq,startT,dur)=>{
       const o=ctx.createOscillator(),g=ctx.createGain()
       o.connect(g);g.connect(ctx.destination)
@@ -921,13 +950,10 @@ function playNodeBeep(isFinal){
     }
     const t=ctx.currentTime
     if(isFinal){
-      // 終點：三連音上升
       play(660,t,0.12);play(880,t+0.13,0.12);play(1100,t+0.26,0.2)
     } else {
-      // 一般節點：雙音叮
       play(880,t,0.12);play(1100,t+0.15,0.18)
     }
-    setTimeout(()=>ctx.close(),800)
   }catch(e){}
 }
 
@@ -965,7 +991,7 @@ function recordNode(auto){
   if(isFinal){
     cur.endTime=now
     clearInterval(clockTimer); clockTimer=null
-    releaseWakeLock()
+    releaseWakeLock(); disableNoSleep()
     updateNextNodeCard()
     showToast(`🏁 已抵達終點！節點 ${justRecorded}／${names.length}`,true)
   }else{
@@ -1040,7 +1066,9 @@ function startSurvey(){
   nodeAutoLock=false
   isPaused=false;pauseStart=null;totalPausedMs=0
   const pb=$('btn-pause');if(pb){pb.textContent='⏸';pb.classList.remove('paused');pb.title='暫停調查'}
+  unlockAudio()   // unlock AudioContext while we still have the user gesture
   acquireWakeLock()
+  enableNoSleep()  // video-loop trick to prevent iOS screen auto-sleep
 
   $('status-combo').textContent=`● ${PEAK_LABEL[selPeakType]} ${DIR_LABEL[selDirection]}`
   showScreen('screen-survey')
@@ -1137,7 +1165,7 @@ function endSurvey(){
   if(!confirm('確定結束調查？'))return
   // auto-resume if paused
   if(isPaused){ if(pauseStart) totalPausedMs+=(new Date()-pauseStart); pauseStart=null; isPaused=false }
-  releaseWakeLock()
+  releaseWakeLock(); disableNoSleep()
   // If last node already set endTime, keep it; otherwise record now
   if(!cur.endTime) cur.endTime=new Date()
   // If first node was never hit, treat start = end (0s trip)
