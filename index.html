@@ -636,9 +636,10 @@ async function cloudFetchRoute(id, gsUrl, apiKey){
 }
 
 async function cloudPostSurvey(gsUrl, apiKey, body){
+  // text/plain avoids CORS preflight (OPTIONS) that Apps Script doesn't handle
   const res=await fetch(gsUrl,{
     method:'POST',
-    headers:{'Content-Type':'application/json'},
+    headers:{'Content-Type':'text/plain'},
     body:JSON.stringify({...body,key:apiKey}),
     signal:AbortSignal.timeout(20000)
   })
