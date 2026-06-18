@@ -33,6 +33,11 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .w-btn.sel span{color:#1d4ed8}
 /* Signin route map */
 #map-signin{height:185px;border-radius:12px;overflow:hidden;margin-bottom:8px;z-index:0}
+/* Locate-me button (shared across all maps) */
+.locate-btn{position:absolute;z-index:999;background:white;border:none;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.2);width:36px;height:36px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.locate-btn:active{background:#eff6ff}
+.locate-btn.locating{animation:locatePulse .8s infinite}
+@keyframes locatePulse{0%,100%{opacity:1}50%{opacity:.4}}
 .route-legend{display:flex;gap:14px;font-size:11px;color:#64748b;flex-wrap:wrap}
 .route-legend span{display:flex;align-items:center;gap:5px}
 .seg-preview{display:flex;flex-direction:column;gap:5px}
@@ -74,7 +79,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 
 /* ── Ready ── */
 #screen-ready{background:#0f172a}
-#map-ready{height:38%;flex-shrink:0}
+#map-ready{height:100%}
 .ready-panel{flex:1;background:#1e293b;padding:12px 16px 20px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #334155;overflow-y:auto}
 .ready-title{color:white;font-size:16px;font-weight:800;text-align:center}
 .ready-route-info{text-align:center;color:#94a3b8;font-size:12px}
@@ -214,7 +219,10 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
     <!-- Route map preview -->
     <div class="signin-card">
       <h3>📍 路線地圖</h3>
-      <div id="map-signin"></div>
+      <div style="position:relative">
+        <div id="map-signin"></div>
+        <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapSignin)" title="定位目前位置">📍</button>
+      </div>
       <div id="route-dir-text" style="font-size:12px;color:#64748b;margin-top:6px;text-align:center;line-height:1.8"></div>
     </div>
 
@@ -303,7 +311,10 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 
 <!-- ══ Screen A: Ready ══ -->
 <div id="screen-ready" class="screen">
-  <div id="map-ready"></div>
+  <div style="position:relative;flex-shrink:0;height:38%">
+    <div id="map-ready" style="width:100%;height:100%"></div>
+    <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapReady)" title="定位目前位置">📍</button>
+  </div>
   <div class="ready-panel">
     <div class="ready-title" id="ready-title">🚗 旅行時間調查</div>
     <div class="ready-route-info" id="ready-route-info"></div>
@@ -324,6 +335,10 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
       </div>
     </div>
     <div class="sel-badge" id="sel-badge"></div>
+    <div id="restored-banner" style="display:none;background:#14532d;color:#4ade80;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;align-items:center;justify-content:space-between;gap:8px">
+      <span>📂 已有 <span id="restored-count">0</span> 筆記錄（換頁前已儲存）</span>
+      <button onclick="confirmClearStorage()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fca5a5;border-radius:7px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0">重新開始</button>
+    </div>
     <div class="progress-chips" id="progress-chips"></div>
     <button class="btn-start" id="btn-start" disabled onclick="startSurvey()">▶ 開始調查</button>
   </div>
@@ -335,6 +350,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
   <div class="map-wrap">
     <div id="map-survey"></div>
     <div class="gps-badge" id="gps-badge">📡</div>
+    <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapSurvey)" title="定位目前位置">📍</button>
   </div>
   <!-- Status -->
   <div class="status-bar">
@@ -392,6 +408,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
     </div>
     <button class="btn-blue" id="btn-next-combo" onclick="goNextCombo()">繼續下一個組合 →</button>
     <button class="btn-purple" onclick="goReport()">📊 產出調查報告</button>
+    <button style="width:100%;padding:13px;background:#1e293b;border:1.5px solid #334155;border-radius:14px;font-size:13px;font-weight:600;color:#94a3b8;cursor:pointer" onclick="confirmClearStorage()">🗑 清除所有調查記錄（重新開始）</button>
   </div>
 </div>
 
@@ -404,10 +421,8 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
     <div><div class="sec-title">總覽統計表</div><div class="report-wrap"><table class="rt" id="table1"></table></div></div>
     <div><div class="sec-title">各路段統計</div><div class="report-wrap"><table class="rt" id="table2"></table></div></div>
     <div><div class="sec-title">速率統計</div><div class="report-wrap"><table class="rt" id="table3"></table></div></div>
-    <div class="export-row">
-      <button class="btn-ex html" onclick="exportReport()">📄 HTML 報告（含官方表）</button>
-      <button class="btn-ex csv" onclick="exportCSV()">⬇ CSV</button>
-    </div>
+    <button class="btn-ex html" style="width:100%;font-size:16px;padding:16px" onclick="exportReport()">📤 產出完整報告（可傳 LINE 給 PM）</button>
+    <p style="text-align:center;font-size:11px;color:#94a3b8;margin-top:6px">HTML 檔案內含地圖、全部表格，打開後可再下載 Excel</p>
     <button style="width:100%;padding:15px;background:#e2e8f0;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px" onclick="goReady()">🔄 繼續補充旅次</button>
   </div>
 </div>
@@ -452,6 +467,7 @@ let config = {
 }
 let routePolylines = []   // OSRM latlngs per segment (pre-fetched)
 let qrMode = false
+let qrKey = ''       // raw encoded string from URL — used as localStorage key
 let signinWeather = ''
 let allTrips = {}
 let cur = null
@@ -527,6 +543,7 @@ function loadFromHash(){
   let encoded=params.get('c')
   if(!encoded){const m=location.hash.match(/#c=(.+)/);encoded=m?m[1]:null}
   if(!encoded) return false
+  qrKey=encoded   // keep for localStorage namespacing
   const cfg=decodeConfig(encoded)
   if(!cfg||cfg.v!==1) return false
   config.routeName   =cfg.rn||''
@@ -538,6 +555,58 @@ function loadFromHash(){
   config.nodes=(cfg.nd||[]).map(n=>({name:n.n||n.r1||'節點',lat:n.a,lng:n.o,radius:n.r||15}))
   config.segments=(cfg.sg||[]).map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d}))
   return true
+}
+
+// ════════════════════════════════════
+//  LOCAL STORAGE PERSISTENCE
+//  Key = "survey_" + raw QR encoded string
+//  (same QR always maps to same bucket)
+// ════════════════════════════════════
+const LS_PREFIX = 'survey_'
+
+function storageKey(){ return qrKey ? LS_PREFIX+qrKey : null }
+
+function saveTripsToStorage(){
+  const k=storageKey(); if(!k) return
+  try{ localStorage.setItem(k, JSON.stringify(allTrips)) }catch(e){}
+}
+
+// Returns number of trips restored (skips keys already in allTrips)
+function loadTripsFromStorage(){
+  const k=storageKey(); if(!k) return 0
+  try{
+    const raw=localStorage.getItem(k); if(!raw) return 0
+    const saved=JSON.parse(raw); let count=0
+    Object.keys(saved).forEach(tripKey=>{
+      if(!allTrips[tripKey]){ allTrips[tripKey]=saved[tripKey]; count++ }
+    })
+    return count
+  }catch(e){ return 0 }
+}
+
+function clearTripStorage(){
+  const k=storageKey(); if(!k) return
+  try{ localStorage.removeItem(k) }catch(e){}
+}
+
+function updateRestoredBanner(count){
+  const b=$('restored-banner'); if(!b) return
+  if(count>0){
+    $('restored-count').textContent=count
+    b.style.display='flex'
+  } else {
+    b.style.display='none'
+  }
+}
+
+function confirmClearStorage(){
+  if(!confirm('確定清除本條路線所有已儲存的調查記錄？此動作無法復原。')) return
+  clearTripStorage()
+  allTrips={}
+  updateProgressChips()
+  updateRestoredBanner(0)
+  checkStart()
+  showToast('已清除所有記錄')
 }
 
 // ════════════════════════════════════
@@ -599,11 +668,15 @@ function startFromQR(){
   config.surveyor=$('si-name').value.trim()
   config.weather=signinWeather
   qrMode=true
+  // Restore any trips recorded in earlier sessions for this QR
+  const restored=loadTripsFromStorage()
   initMaps()
   updateProgressChips()
   showScreen('screen-ready')
   $('ready-title').textContent='🚗 '+config.routeName
   $('ready-route-info').textContent=config.routeFromTo
+  updateRestoredBanner(Object.keys(allTrips).length)
+  if(restored>0) showToast(`📂 已恢復 ${restored} 筆旅次記錄`)
 }
 
 // ════════════════════════════════════
@@ -715,6 +788,40 @@ function togglePause(){
     btn.title='暫停調查'
     showToast('▶ 調查繼續中')
   }
+}
+
+// ════════════════════════════════════
+//  LOCATE ME
+// ════════════════════════════════════
+let locateMarker = null
+function locateMe(targetMap) {
+  if (!targetMap) return
+  const btn = event.currentTarget
+  btn.classList.add('locating')
+  // Use cached position if fresh enough
+  if (lastPos) {
+    centerOnPos(targetMap, lastPos.lat, lastPos.lng)
+    btn.classList.remove('locating')
+    return
+  }
+  navigator.geolocation.getCurrentPosition(
+    p => {
+      centerOnPos(targetMap, p.coords.latitude, p.coords.longitude)
+      btn.classList.remove('locating')
+    },
+    () => { btn.classList.remove('locating'); showToast('⚠️ 無法取得定位') },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 }
+  )
+}
+function centerOnPos(targetMap, lat, lng) {
+  if (!targetMap) return
+  targetMap.setView([lat, lng], Math.max(targetMap.getZoom() || 0, 16), { animate: true })
+  // Show a temporary pulse marker
+  if (locateMarker) { targetMap.removeLayer(locateMarker) }
+  locateMarker = L.circleMarker([lat, lng], {
+    radius: 10, fillColor: '#3b82f6', color: 'white', weight: 3, fillOpacity: 0.9
+  }).addTo(targetMap)
+  setTimeout(() => { if (locateMarker) { try { targetMap.removeLayer(locateMarker) } catch(e){} locateMarker = null } }, 4000)
 }
 
 // ════════════════════════════════════
@@ -1059,6 +1166,8 @@ function endSurvey(){
     gpsTrack:[...cur.gpsTrack],startTime:cur.startTime,endTime:cur.endTime,
     nodeTimestamps:[...nodeTimestamps],
   }
+  saveTripsToStorage()   // persist so page-close won't lose this trip
+  updateRestoredBanner(Object.keys(allTrips).length)
   buildTripDoneUI(travelS,totalDelayS,runS)
   showScreen('screen-tripdone')
 }
@@ -1086,7 +1195,7 @@ function parseComboKey(k){
 }
 function goNextCombo(){showScreen('screen-ready');checkStart()}
 function goReport(){buildReport();showScreen('screen-report')}
-function goReady(){showScreen('screen-ready');checkStart()}
+function goReady(){showScreen('screen-ready');checkStart();updateRestoredBanner(Object.keys(allTrips).length)}
 
 // ════════════════════════════════════
 //  REPORT
@@ -1398,38 +1507,279 @@ function buildTable3(){
 }
 
 // ════════════════════════════════════
-//  EXPORT
+//  EXPORT — full HTML report for LINE sharing
+//  Excel download is embedded inside that HTML
 // ════════════════════════════════════
 function exportReport(){
-  const t1=$('table1').outerHTML,t2=$('table2').outerHTML,t3=$('table3').outerHTML
-  const html=`<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8">
-<title>旅行時間調查報告 ${config.date}</title>
-<style>body{font-family:'標楷體',serif;margin:15mm 12mm;font-size:13px}
-h1{text-align:center;font-size:18px;margin-bottom:16px}
-table{width:100%;border-collapse:collapse;margin-bottom:24px}
-th{background:#1e293b;color:white;padding:6px 8px;text-align:center;font-size:11px}
-td{padding:5px 8px;border:1px solid #ccc;text-align:center}
-.rtl{text-align:left;background:#f5f5f5;font-weight:bold}
-.rts{background:#334155;color:white;font-weight:700}
-.rth{background:#e8e8e8;font-weight:700}
-@media print{@page{margin:10mm}}</style></head><body>
-<h1>旅行時間與延滯調查報告</h1>${t1}<br>${t2}<br>${t3}</body></html>`
+  // ── 1. Build all tables so outerHTML is ready ──
+  buildTable1(); buildTable2(); buildTable3()
+
+  // ── 2. Subsample GPS tracks (every 5th point) ──
+  const tracksData = {}
+  COMBO_KEYS.forEach(k=>{
+    const t=allTrips[k]; if(!t||!t.gpsTrack||t.gpsTrack.length<2) return
+    tracksData[k]=t.gpsTrack.filter((_,i)=>i%5===0).map(p=>[p.lat,p.lng])
+  })
+
+  // ── 3. Delay marker positions ──
+  const delayData = {}
+  COMBO_KEYS.forEach(k=>{
+    const t=allTrips[k]; if(!t) return
+    delayData[k]=(t.delayLog||[]).filter(d=>d.pos).map(d=>({
+      lat:d.pos.lat, lng:d.pos.lng, icon:d.icon, label:d.label, dur:d.durationS
+    }))
+  })
+
+  // ── 4. Official form HTML (reuse existing builder) ──
+  let formsHtml=''
+  COMBO_KEYS.forEach(k=>{
+    const trip=allTrips[k]; if(!trip) return
+    const[pt,dir]=parseComboKey(k)
+    formsHtml+=buildOneOfficialForm(trip,pt,dir).outerHTML
+  })
+
+  // ── 5. Summary table HTML ──
+  const t1=$('table1').outerHTML, t2=$('table2').outerHTML, t3=$('table3').outerHTML
+
+  // ── 6. Serialise data for embedded Excel generator ──
+  const eCfg = {
+    routeName:config.routeName, routeFromTo:config.routeFromTo,
+    totalLength:config.totalLength, date:config.date,
+    surveyor:config.surveyor, weather:config.weather,
+    offPeakLabel:config.offPeakLabel, peakLabel:config.peakLabel,
+    segments:config.segments, nodes:config.nodes
+  }
+  const eTrips  = JSON.parse(JSON.stringify(allTrips))
+  const tripCnt = Object.keys(eTrips).length
+  const wZh     = {sunny:'晴',cloudy:'陰',rainy:'雨'}[config.weather]||'—'
+  const nodesJ  = JSON.stringify(config.nodes.map(n=>[n.lat,n.lng,n.name]))
+  const routeJ  = JSON.stringify(routePolylines.flat())
+
+  // ── 7. Build the full HTML string ──
+  const html =
+'<!DOCTYPE html>\n' +
+'<html lang="zh-TW">\n' +
+'<head>\n' +
+'<meta charset="UTF-8"/>\n' +
+'<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n' +
+'<title>旅行時間調查報告 ' + (config.date||'') + '</title>\n' +
+'<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>\n' +
+'<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\\/script>\n' +
+'<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\\/script>\n' +
+'<style>\n' +
+'*{box-sizing:border-box;margin:0;padding:0}\n' +
+'body{font-family:-apple-system,"PingFang TC",sans-serif;background:#f1f5f9;color:#1e293b}\n' +
+'.rpt-hd{background:linear-gradient(135deg,#1e293b,#0f172a);color:white;padding:18px 16px;text-align:center}\n' +
+'.rpt-hd h1{font-size:17px;font-weight:800;margin-bottom:4px}\n' +
+'.rpt-hd p{font-size:12px;color:#94a3b8}\n' +
+'.chips{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:10px}\n' +
+'.chip{font-size:11px;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.1);color:#93c5fd}\n' +
+'.sec{margin:12px;background:white;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden}\n' +
+'.sec-hd{background:#1e293b;color:white;padding:9px 14px;font-size:13px;font-weight:700}\n' +
+'.sec-bd{padding:12px;overflow-x:auto}\n' +
+'#rpt-map{height:280px}\n' +
+'.sgs-form{background:white;border-radius:10px;overflow-x:auto;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.1);border:2px solid #1e293b}\n' +
+'.sgs-t{width:100%;border-collapse:collapse;font-size:10px;min-width:680px}\n' +
+'.sgs-t td,.sgs-t th{border:1px solid #475569;padding:2px 3px;vertical-align:middle;text-align:center;white-space:nowrap}\n' +
+'.sgs-logo{font-size:18px;font-weight:900;color:#dc2626;font-style:italic;padding:4px 6px!important;border:2px solid #dc2626!important;letter-spacing:-1px}\n' +
+'.sgs-title{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:1px}\n' +
+'.sgs-meta-l{text-align:left!important;color:#374151;font-weight:600}\n' +
+'.sgs-meta-v{text-align:left!important}\n' +
+'.sgs-th{background:#e2e8f0;font-weight:700;font-size:10px;color:#1e293b}\n' +
+'.sgs-seg{text-align:left!important;font-weight:600;font-size:10px}\n' +
+'.sgs-t-time{color:#2563eb;font-weight:700}\n' +
+'.sgs-footer-l{background:#f1f5f9;font-weight:700;text-align:left!important}\n' +
+'.sgs-footer-v{background:#f1f5f9}\n' +
+'table.rt{width:100%;border-collapse:collapse;font-size:11px;min-width:380px}\n' +
+'table.rt th{background:#1e293b;color:white;padding:6px 7px;text-align:center;font-size:10px;font-weight:600;white-space:nowrap}\n' +
+'table.rt td{padding:5px 7px;border:1px solid #e2e8f0;text-align:center;white-space:nowrap}\n' +
+'.rtl{text-align:left!important;background:#f8fafc;font-weight:600;color:#374151}\n' +
+'.rts{background:#334155;color:white;font-weight:700}\n' +
+'.rth{background:#e2e8f0;color:#1e293b;font-weight:700}\n' +
+'.xl-btn{display:block;width:calc(100% - 24px);margin:0 12px 12px;padding:15px;background:#1d6f42;color:white;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer}\n' +
+'.rpt-ft{text-align:center;padding:14px;font-size:11px;color:#94a3b8}\n' +
+'</style>\n' +
+'</head>\n' +
+'<body>\n' +
+
+'<div class="rpt-hd">\n' +
+'  <h1>🚗 旅行時間與延滯調查報告</h1>\n' +
+'  <p>' + (config.routeFromTo||config.routeName||'') + '</p>\n' +
+'  <div class="chips">\n' +
+'    <span class="chip">📅 ' + (config.date||'') + '</span>\n' +
+'    <span class="chip">👤 ' + (config.surveyor||'') + '</span>\n' +
+'    <span class="chip">🌤 ' + wZh + '</span>\n' +
+'    <span class="chip">📏 ' + (config.totalLength||0) + 'm</span>\n' +
+'    <span class="chip">✅ 旅次 ' + tripCnt + '/4</span>\n' +
+'  </div>\n' +
+'</div>\n' +
+
+'<div class="sec"><div class="sec-hd">🗺 行駛路徑地圖</div><div id="rpt-map"></div></div>\n' +
+
+'<div class="sec">\n' +
+'  <div class="sec-hd">📋 官方調查表（主次要幹道行駛時間及延滯調查表）</div>\n' +
+'  <div class="sec-bd">' + formsHtml + '</div>\n' +
+'</div>\n' +
+
+'<div class="sec"><div class="sec-hd">📊 總覽統計表</div><div class="sec-bd">' + t1 + '</div></div>\n' +
+'<div class="sec"><div class="sec-hd">📊 各路段統計</div><div class="sec-bd">' + t2 + '</div></div>\n' +
+'<div class="sec"><div class="sec-hd">📊 速率統計</div><div class="sec-bd">' + t3 + '</div></div>\n' +
+
+'<button class="xl-btn" onclick="dlExcel()">📥 下載 Excel 報表（官方調查表格式）</button>\n' +
+'<div class="rpt-ft">本報告由旅行時間調查系統自動產生</div>\n' +
+
+'<script>\n' +
+'var ROAD_D=[{c:"congestion",l:"阻塞"},{c:"bus_stop",l:"公車停靠"},{c:"ped_cross",l:"行人穿越"},{c:"taxi_stop",l:"計程車停靠"},{c:"parking",l:"路邊停靠"},{c:"road_other",l:"其他"}];\n' +
+'var INT_D=[{c:"red_light",l:"紅燈"},{c:"ped_int",l:"行人"},{c:"cross_veh",l:"橫越車輛"},{c:"left_same",l:"左轉同向"},{c:"left_opp",l:"左轉對向"},{c:"right_turn",l:"右轉"},{c:"int_other",l:"其他"}];\n' +
+'var KEYS=["off_peak_bound","off_peak_return","peak_bound","peak_return"];\n' +
+'var CFG=' + JSON.stringify(eCfg) + ';\n' +
+'var TRIPS=' + JSON.stringify(eTrips) + ';\n' +
+'var TRACKS=' + JSON.stringify(tracksData) + ';\n' +
+'var DELAYS=' + JSON.stringify(delayData) + ';\n' +
+'var NODES=' + nodesJ + ';\n' +
+'var ROUTE=' + routeJ + ';\n' +
+
+// Map init
+'(function(){\n' +
+'  var map=L.map("rpt-map",{zoomControl:true,attributionControl:false});\n' +
+'  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map);\n' +
+'  var colors=["#3b82f6","#ef4444","#16a34a","#f59e0b"],bounds=null;\n' +
+'  KEYS.forEach(function(k,i){\n' +
+'    var tr=TRACKS[k]; if(!tr||tr.length<2) return;\n' +
+'    var poly=L.polyline(tr,{color:colors[i],weight:3,opacity:.85}).addTo(map);\n' +
+'    if(!bounds) bounds=poly.getBounds(); else bounds.extend(poly.getBounds());\n' +
+'    (DELAYS[k]||[]).forEach(function(d){\n' +
+'      L.marker([d.lat,d.lng],{icon:L.divIcon({html:"<div style=\'font-size:16px\'>"+d.icon+"</div>",className:"",iconSize:[20,20],iconAnchor:[10,10]})})\n' +
+'       .bindPopup(d.icon+" "+d.label+"<br>"+d.dur+"秒").addTo(map);\n' +
+'    });\n' +
+'  });\n' +
+'  if(ROUTE.length>1) L.polyline(ROUTE,{color:"#6366f1",weight:2,opacity:.35,dashArray:"6,4"}).addTo(map);\n' +
+'  NODES.forEach(function(n,i){\n' +
+'    var clr=i===0?"#16a34a":i===NODES.length-1?"#dc2626":"#6366f1";\n' +
+'    L.circleMarker([n[0],n[1]],{radius:7,fillColor:clr,color:"#fff",weight:2,fillOpacity:1})\n' +
+'     .bindTooltip((i+1)+". "+n[2],{direction:"top"}).addTo(map);\n' +
+'  });\n' +
+'  if(bounds) map.fitBounds(bounds,{padding:[20,20]});\n' +
+'  else if(NODES.length) map.setView([NODES[0][0],NODES[0][1]],14);\n' +
+'})();\n' +
+
+// Helpers for Excel
+'function xSpd(d,s){return(d>0&&s>0)?+(d/s*3.6).toFixed(1):"";}\n' +
+'function xPct(v,t){return t>0?Math.round(v/t*100)+"%":"0%";}\n' +
+'function xSegDelays(trip,idx){\n' +
+'  var t0=trip.nodeTimestamps&&trip.nodeTimestamps[idx],t1=trip.nodeTimestamps&&trip.nodeTimestamps[idx+1];\n' +
+'  var r={};\n' +
+'  ROAD_D.concat(INT_D).forEach(function(d){r[d.c]=0;});\n' +
+'  if(trip.delayLog&&t0&&t1) trip.delayLog.forEach(function(dl){\n' +
+'    var ds=new Date(dl.startedAt);\n' +
+'    if(ds>=new Date(t0)&&ds<new Date(t1)&&r[dl.c]!==undefined) r[dl.c]+=dl.durationS;\n' +
+'  });\n' +
+'  return r;\n' +
+'}\n' +
+
+// Build one official form sheet (AOA)
+'function buildSgsSheet(trip,pt,dir){\n' +
+'  var segs=dir==="return"?CFG.segments.slice().reverse():CFG.segments;\n' +
+'  var nodes=dir==="return"?CFG.nodes.slice().reverse():CFG.nodes;\n' +
+'  var RC=ROAD_D.map(function(d){return d.c;}),IC=INT_D.map(function(d){return d.c;});\n' +
+'  var segD=segs.map(function(_,i){return xSegDelays(trip,i);});\n' +
+'  var segT=trip.segTimes||[];\n' +
+'  var arrT=segs.map(function(_,i){\n' +
+'    var ts=trip.nodeTimestamps&&trip.nodeTimestamps[i+1]; if(!ts) return["","",""];\n' +
+'    var d=new Date(ts); return[d.getHours(),String(d.getMinutes()).padStart(2,"0"),String(d.getSeconds()).padStart(2,"0")];\n' +
+'  });\n' +
+'  var colT={};\n' +
+'  RC.concat(IC).forEach(function(c){colT[c]=segD.reduce(function(s,d){return s+(d[c]||0);},0);});\n' +
+'  var roadT=RC.reduce(function(s,c){return s+colT[c];},0),intT=IC.reduce(function(s,c){return s+colT[c];},0);\n' +
+'  var st=new Date(trip.startTime),et=new Date(trip.endTime);\n' +
+'  var startN=(nodes[0]&&nodes[0].name)||"起點",endN=(nodes[nodes.length-1]&&nodes[nodes.length-1].name)||"終點";\n' +
+'  var PL={peak:"尖峰",off_peak:"離峰"},DL={bound:"去程",return:"回程"},WL={sunny:"晴",cloudy:"陰",rainy:"雨"};\n' +
+'  var aoa=[];\n' +
+// Row 1: title
+'  aoa.push(["SGS","主次要幹道行駛時間及延滯調查表","","","","","","","","","","","","","","","","","","","日期：",CFG.date||""]);\n' +
+'  aoa.push(["","站名：",CFG.routeName||"","","","","","","","","","","","","","","","","","","天氣：",WL[CFG.weather]||""]);\n' +
+'  aoa.push(["","旅次編號：","","","","","","","","","","","","","","","","","","","",""]);\n' +
+'  aoa.push(["","方向：",(dir==="bound"?"■":"□")+" 去    "+(dir==="return"?"■":"□")+" 回","","","","","","","","","","","","","","","","","","調查員：",CFG.surveyor||""]);\n' +
+'  aoa.push(["","時間：",(pt==="off_peak"?"■":"□")+" 離峰（"+CFG.offPeakLabel+"）  "+(pt==="peak"?"■":"□")+" 尖峰（"+CFG.peakLabel+"）","","","","","","","","","","","","","","","","","","",""]);\n' +
+// Summary header
+'  aoa.push(["起點","終點","距離(m)","起點時","分","秒","終點時","分","秒","旅行時間(秒)","交叉口延滯(秒)","路段延滯(秒)","行駛時間(秒)","旅行速率(km/h)","","行駛速率(km/h)",""]);\n' +
+'  aoa.push([startN,endN,CFG.totalLength,st.getHours(),String(st.getMinutes()).padStart(2,"0"),String(st.getSeconds()).padStart(2,"0"),et.getHours(),String(et.getMinutes()).padStart(2,"0"),String(et.getSeconds()).padStart(2,"0"),trip.travelS,trip.intTotalS,trip.roadTotalS||0,trip.runS,xSpd(CFG.totalLength,trip.travelS),"",xSpd(CFG.totalLength,trip.runS),""]);\n' +
+'  aoa.push(["百分比","","","","","","","","","",xPct(trip.travelS,trip.travelS),xPct(trip.intTotalS,trip.travelS),xPct(trip.roadTotalS||0,trip.travelS),xPct(trip.runS,trip.travelS),"","",""]);\n' +
+// Segment header
+'  aoa.push(["經過路口（路段）","","到達時刻","","","阻塞","公車停靠","計程車靠","路邊停車","行人穿越","路段其他","紅燈","左轉同向","左轉對向","右轉","橫越車輛","行人","路口其他","旅行時間(秒)","距離(m)","行駛時間(秒)","旅行速率","行駛速率"]);\n' +
+// Segment rows
+'  segs.forEach(function(seg,i){\n' +
+'    var sd=segD[i],st_=segT[i]||{},ar=arrT[i];\n' +
+'    aoa.push([seg.name,"",ar[0],ar[1],ar[2],\n' +
+'      sd.congestion||"",sd.bus_stop||"",sd.taxi_stop||"",sd.parking||"",sd.ped_cross||"",sd.road_other||"",\n' +
+'      sd.red_light||"",sd.left_same||"",sd.left_opp||"",sd.right_turn||"",sd.cross_veh||"",sd.ped_int||"",sd.int_other||"",\n' +
+'      st_.travelS||"",seg.length||"",st_.runS||"",\n' +
+'      xSpd(seg.length,st_.travelS),xSpd(seg.length,st_.runS)]);\n' +
+'  });\n' +
+'  for(var ei=segs.length;ei<7;ei++) aoa.push(Array(23).fill(""));\n' +
+// Footer
+'  aoa.push(["延滯時間(秒)","小計","","",""].concat(RC.map(function(c){return colT[c]||0;})).concat(IC.map(function(c){return colT[c]||0;})).concat(["","","","",""]));\n' +
+'  aoa.push(["","合計","","","",roadT,"","","","","","",intT,"","","","","","","","","",""]);\n' +
+'  aoa.push(["延滯百分比","小計","","",""].concat(RC.map(function(c){return xPct(colT[c],trip.travelS);})).concat(IC.map(function(c){return xPct(colT[c],trip.travelS);})).concat(["","","","",""]));\n' +
+'  aoa.push(["","合計","","","",xPct(roadT,trip.travelS),"","","","","","",xPct(intT,trip.travelS),"","","","","","","","","",""]);\n' +
+'  return XLSX.utils.aoa_to_sheet(aoa);\n' +
+'}\n' +
+
+// Summary sheet
+'function buildSummarySheet(){\n' +
+'  var trips=KEYS.map(function(k){return TRIPS[k]||null;});\n' +
+'  var segs=CFG.segments;\n' +
+'  function pK(k){if(k.indexOf("off_peak")===0)return["off_peak",k.replace("off_peak_","")];return["peak",k.replace("peak_","")];}\n' +
+'  var PL={peak:"尖峰",off_peak:"離峰"},DL={bound:"去程",return:"回程"},WL={sunny:"晴",cloudy:"陰",rainy:"雨"};\n' +
+'  var aoa=[];\n' +
+'  aoa.push(["旅行時間調查統計彙總表"]);\n' +
+'  aoa.push(["路線："+CFG.routeName,"","起迄："+CFG.routeFromTo]);\n' +
+'  aoa.push(["日期："+CFG.date,"","調查員："+CFG.surveyor,"天氣："+(WL[CFG.weather]||"")]);\n' +
+'  aoa.push([]);\n' +
+'  aoa.push(["","離峰去程","離峰回程","尖峰去程","尖峰回程"]);\n' +
+'  aoa.push(["旅行速率(km/h)"].concat(trips.map(function(t){return t?xSpd(CFG.totalLength,t.travelS):"—";})));\n' +
+'  aoa.push(["行駛速率(km/h)"].concat(trips.map(function(t){return t?xSpd(CFG.totalLength,t.runS):"—";})));\n' +
+'  aoa.push(["旅行時間(秒)"].concat(trips.map(function(t){return t?t.travelS:"—";})));\n' +
+'  aoa.push(["行駛時間(秒)"].concat(trips.map(function(t){return t?t.runS:"—";})));\n' +
+'  aoa.push(["路段延滯(秒)"].concat(trips.map(function(t){return t?t.roadTotalS:"—";})));\n' +
+'  aoa.push(["交叉口延滯(秒)"].concat(trips.map(function(t){return t?t.intTotalS:"—";})));\n' +
+'  aoa.push(["總延滯(秒)"].concat(trips.map(function(t){return t?t.totalDelayS:"—";})));\n' +
+'  aoa.push([]);\n' +
+'  aoa.push(["各路段旅行時間(秒)","離峰去程","離峰回程","尖峰去程","尖峰回程"]);\n' +
+'  segs.forEach(function(s,i){\n' +
+'    aoa.push([s.name].concat(trips.map(function(t){return t&&t.segTimes&&t.segTimes[i]?t.segTimes[i].travelS:"—";})));\n' +
+'  });\n' +
+'  aoa.push([]);\n' +
+'  aoa.push(["各路段行駛時間(秒)","離峰去程","離峰回程","尖峰去程","尖峰回程"]);\n' +
+'  segs.forEach(function(s,i){\n' +
+'    aoa.push([s.name].concat(trips.map(function(t){return t&&t.segTimes&&t.segTimes[i]?t.segTimes[i].runS:"—";})));\n' +
+'  });\n' +
+'  return XLSX.utils.aoa_to_sheet(aoa);\n' +
+'}\n' +
+
+// Download trigger
+'function dlExcel(){\n' +
+'  try{\n' +
+'    var wb=XLSX.utils.book_new();\n' +
+'    var PL={peak:"尖峰",off_peak:"離峰"},DL={bound:"去程",return:"回程"};\n' +
+'    function pK(k){if(k.indexOf("off_peak")===0)return["off_peak",k.replace("off_peak_","")];return["peak",k.replace("peak_","")];}\n' +
+'    KEYS.forEach(function(k){\n' +
+'      var trip=TRIPS[k]; if(!trip) return;\n' +
+'      var pk=pK(k),pt=pk[0],dir=pk[1];\n' +
+'      XLSX.utils.book_append_sheet(wb,buildSgsSheet(trip,pt,dir),PL[pt]+DL[dir]);\n' +
+'    });\n' +
+'    XLSX.utils.book_append_sheet(wb,buildSummarySheet(),"統計彙總");\n' +
+'    XLSX.writeFile(wb,"旅行時間調查_"+CFG.date+".xlsx");\n' +
+'  }catch(e){alert("Excel 產生失敗："+e.message);}\n' +
+'}\n' +
+'<\/script>\n' +
+'</body></html>'
+
   const a=document.createElement('a')
   a.href=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}))
-  a.download=`調查報告_${config.date||'survey'}.html`;a.click()
-  showToast('✅ 報告已下載')
-}
-function exportCSV(){
-  let csv=`路線,${config.routeName}\n起迄點,${config.routeFromTo}\n調查員,${config.surveyor}\n日期,${config.date}\n天氣,${WEATHER_ZH[config.weather]||''}\n\n`
-  csv+='組合,旅行時間(秒),行駛時間(秒),總延滯(秒)\n'
-  COMBO_KEYS.forEach(k=>{
-    const[pt,dir]=parseComboKey(k),t=allTrips[k]
-    if(t)csv+=`${PEAK_LABEL[pt]}${DIR_LABEL[dir]},${t.travelS},${t.runS},${t.totalDelayS}\n`
-  })
-  const a=document.createElement('a')
-  a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}))
-  a.download=`調查數據_${config.date||'survey'}.csv`;a.click()
-  showToast('✅ CSV 已下載')
+  a.download=`旅行時間調查報告_${config.date||'report'}.html`
+  a.click()
+  showToast('✅ 報告已下載，可透過 LINE 傳送給 PM')
 }
 
 // ════════════════════════════════════
