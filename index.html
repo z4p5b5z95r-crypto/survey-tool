@@ -717,6 +717,33 @@ function togglePause(){
   }
 }
 
+// ════════════════════════════════════
+//  SCREEN WAKE LOCK
+// ════════════════════════════════════
+let wakeLockSentinel = null
+
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return  // not supported
+  try {
+    wakeLockSentinel = await navigator.wakeLock.request('screen')
+    // Re-acquire after visibility change (e.g. tab switch back)
+    document.addEventListener('visibilitychange', reacquireWakeLock)
+  } catch(e) {
+    // permission denied or not available — silently ignore
+  }
+}
+
+async function reacquireWakeLock() {
+  if (document.visibilityState === 'visible' && cur && cur.startTime && !cur.endTime) {
+    try { wakeLockSentinel = await navigator.wakeLock.request('screen') } catch(e) {}
+  }
+}
+
+function releaseWakeLock() {
+  document.removeEventListener('visibilitychange', reacquireWakeLock)
+  if (wakeLockSentinel) { wakeLockSentinel.release(); wakeLockSentinel = null }
+}
+
 function startGPS(){
   if(watchId||!navigator.geolocation)return
   watchId=navigator.geolocation.watchPosition(onPos,onGPSErr,{enableHighAccuracy:true,timeout:10000,maximumAge:1500})
@@ -730,7 +757,7 @@ function onPos(p){
   const b=$('gps-badge');if(b)b.textContent=`📡 ±${Math.round(accuracy)}m`
   checkStart()
   if(mapReady&&markerReady){markerReady.setLatLng([lat,lng]);mapReady.panTo([lat,lng],{animate:true,duration:.3})}
-  if(cur&&cur.startTime){
+  if(cur&&!cur.endTime){
     if(mapSurvey&&markerSurvey){markerSurvey.setLatLng([lat,lng]);mapSurvey.setView([lat,lng],mapSurvey.getZoom()||16,{animate:true,duration:.5})}
     if(!isPaused){
       cur.gpsTrack.push({lat,lng,speed_ms:speed,accuracy_m:accuracy,ts:new Date().toISOString()})
@@ -774,12 +801,49 @@ function manualRecordNode(){
   if(currentNodeIdx>=getNodeNames().length) return
   recordNode(false)
 }
+function playNodeBeep(isFinal){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)()
+    const play=(freq,startT,dur)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain()
+      o.connect(g);g.connect(ctx.destination)
+      o.type='sine';o.frequency.setValueAtTime(freq,startT)
+      g.gain.setValueAtTime(0.55,startT)
+      g.gain.exponentialRampToValueAtTime(0.001,startT+dur)
+      o.start(startT);o.stop(startT+dur)
+    }
+    const t=ctx.currentTime
+    if(isFinal){
+      // 終點：三連音上升
+      play(660,t,0.12);play(880,t+0.13,0.12);play(1100,t+0.26,0.2)
+    } else {
+      // 一般節點：雙音叮
+      play(880,t,0.12);play(1100,t+0.15,0.18)
+    }
+    setTimeout(()=>ctx.close(),800)
+  }catch(e){}
+}
+
 function recordNode(auto){
   const names=getNodeNames()
   if(currentNodeIdx>=names.length) return
-  nodeTimestamps.push(new Date())
-  // Haptic feedback
+  const now=new Date()
+  nodeTimestamps.push(now)
+
+  // ── First node: start the clock ──
+  if(currentNodeIdx===0){
+    cur.startTime=now
+    if(clockTimer) clearInterval(clockTimer)
+    clockTimer=setInterval(()=>{
+      if(isPaused) return
+      elapsedSec++
+      $('status-timer').textContent=fmtSec(elapsedSec)
+    },1000)
+  }
+
+  // Haptic + sound feedback
   if(navigator.vibrate) navigator.vibrate([150,50,150])
+
   // Update progress dots
   const dot=$(`nd-${currentNodeIdx}`)
   if(dot) dot.className='nd done'
@@ -787,14 +851,21 @@ function recordNode(auto){
   if(line) line.className='nd-line done'
   const justRecorded=currentNodeIdx+1
   currentNodeIdx++
-  if(currentNodeIdx<names.length){
+  const isFinal=currentNodeIdx>=names.length
+  playNodeBeep(isFinal)
+
+  // ── Last node: stop the clock ──
+  if(isFinal){
+    cur.endTime=now
+    clearInterval(clockTimer); clockTimer=null
+    releaseWakeLock()
+    updateNextNodeCard()
+    showToast(`🏁 已抵達終點！節點 ${justRecorded}／${names.length}`,true)
+  }else{
     const nextDot=$(`nd-${currentNodeIdx}`)
     if(nextDot) nextDot.className='nd cur'
     updateNextNodeCard()
     showToast(`✅ 節點 ${justRecorded}／${names.length} 已記錄`,true)
-  }else{
-    updateNextNodeCard()
-    showToast(`🏁 已抵達終點！節點 ${justRecorded}／${names.length}`,true)
   }
 }
 function updateNextNodeCard(){
@@ -811,7 +882,7 @@ function updateNextNodeCard(){
     return
   }
   card.classList.remove('done','arriving')
-  $('nnc-label').textContent=`下一節點 ${currentNodeIdx+1} / ${names.length}`
+  $('nnc-label').textContent=currentNodeIdx===0?`⏳ 等待第一個節點計時開始`:`節點 ${currentNodeIdx+1} / ${names.length}`
   $('nnc-name').textContent=names[currentNodeIdx]
   $('nnc-dist-num').textContent=lastPos?haversine(lastPos.lat,lastPos.lng,...getOrderedNodes()[currentNodeIdx]?[getOrderedNodes()[currentNodeIdx].lat,getOrderedNodes()[currentNodeIdx].lng]:[0,0]):'-'
   $('nnc-dist-unit').textContent='m'
@@ -852,16 +923,17 @@ function updateProgressChips(){
 function startSurvey(){
   const key=`${selPeakType}_${selDirection}`
   cur={peakType:selPeakType,direction:selDirection,key,
-    startTime:new Date(),endTime:null,gpsTrack:[],
+    startTime:null,endTime:null,gpsTrack:[],
     roadDelays:{},intDelays:{}}
   ROAD_DELAYS.forEach(d=>{cur.roadDelays[d.cause]=0})
   INT_DELAYS.forEach(d=>{cur.intDelays[d.cause]=0})
   delayLog=[];activeDelay=null;elapsedSec=0
-  nodeTimestamps=[cur.startTime]
-  currentNodeIdx=1
+  nodeTimestamps=[]   // will be filled when nodes are hit
+  currentNodeIdx=0    // 0 = waiting for node 1
   nodeAutoLock=false
   isPaused=false;pauseStart=null;totalPausedMs=0
   const pb=$('btn-pause');if(pb){pb.textContent='⏸';pb.classList.remove('paused');pb.title='暫停調查'}
+  acquireWakeLock()
 
   $('status-combo').textContent=`● ${PEAK_LABEL[selPeakType]} ${DIR_LABEL[selDirection]}`
   showScreen('screen-survey')
@@ -887,7 +959,7 @@ function startSurvey(){
     }
   }
 
-  clockTimer=setInterval(()=>{elapsedSec++;$('status-timer').textContent=fmtSec(elapsedSec)},1000)
+  $('status-timer').textContent='--:--'   // waiting for first node
   buildNodeUI()
   buildDelayGrids()
   updateNextNodeCard()
@@ -911,7 +983,7 @@ function buildNodeUI(){
   names.forEach((n,i)=>{
     if(i>0){const l=document.createElement('div');l.className='nd-line';l.id=`ndl-${i}`;pp.appendChild(l)}
     const d=document.createElement('div')
-    d.className='nd'+(i===0?' done':i===1?' cur':'')
+    d.className='nd'+(i===0?' cur':'')
     d.id=`nd-${i}`;d.textContent=i+1;d.title=n
     pp.appendChild(d)
   })
@@ -956,11 +1028,16 @@ function toggleDelay(d,group){
 // ════════════════════════════════════
 function endSurvey(){
   if(!confirm('確定結束調查？'))return
-  // auto-resume if paused so endTime is correct
+  // auto-resume if paused
   if(isPaused){ if(pauseStart) totalPausedMs+=(new Date()-pauseStart); pauseStart=null; isPaused=false }
-  cur.endTime=new Date()
+  releaseWakeLock()
+  // If last node already set endTime, keep it; otherwise record now
+  if(!cur.endTime) cur.endTime=new Date()
+  // If first node was never hit, treat start = end (0s trip)
+  if(!cur.startTime) cur.startTime=cur.endTime
   if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(p)toggleDelay(p,activeDelay.group)}
-  clearInterval(clockTimer)
+  if(clockTimer){clearInterval(clockTimer);clockTimer=null}
+  // Ensure nodeTimestamps has enough entries for segment calc
   if(nodeTimestamps.length<config.segments.length+1)nodeTimestamps.push(cur.endTime)
   const travelS=Math.max(0,Math.round((cur.endTime-cur.startTime)/1000)-Math.round(totalPausedMs/1000))
   const roadTotalS=Object.values(cur.roadDelays).reduce((a,b)=>a+b,0)
