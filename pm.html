@@ -49,6 +49,27 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;backgro
 .sat-btn:hover{box-shadow:0 3px 10px rgba(0,0,0,.18)}
 .sat-btn.active{background:#0f172a;border-color:#0f172a;color:white}
 
+/* ── Map search bar (top-center) ── */
+.map-search{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:999;display:flex;flex-direction:column;align-items:stretch;width:320px;max-width:calc(100vw - 240px)}
+.map-search-row{display:flex;background:white;border:1.5px solid #cbd5e1;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.14);overflow:hidden;transition:border-color .15s}
+.map-search-row:focus-within{border-color:#3b82f6}
+.map-search-input{flex:1;padding:8px 12px;border:none;outline:none;font-size:14px;color:#1e293b;background:transparent;min-width:0}
+.map-search-input::placeholder{color:#94a3b8}
+.map-search-btn{padding:0 12px;background:transparent;border:none;cursor:pointer;font-size:16px;color:#64748b;flex-shrink:0;transition:color .15s}
+.map-search-btn:hover{color:#3b82f6}
+.map-search-clear{padding:0 10px;background:transparent;border:none;cursor:pointer;font-size:14px;color:#94a3b8;flex-shrink:0;display:none}
+.map-search-clear:hover{color:#dc2626}
+.map-search-results{background:white;border:1.5px solid #e2e8f0;border-top:none;border-radius:0 0 10px 10px;box-shadow:0 4px 12px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;display:none}
+.map-search-item{padding:9px 13px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:13px;color:#1e293b;line-height:1.4}
+.map-search-item:last-child{border:none}
+.map-search-item:hover{background:#eff6ff}
+.map-search-item .si-main{font-weight:600}
+.map-search-item .si-sub{font-size:11px;color:#64748b;margin-top:1px}
+.map-search-item.coord-result .si-main{color:#7c3aed}
+.map-search-loading{padding:10px 13px;font-size:13px;color:#64748b;text-align:center}
+.map-search-none{padding:10px 13px;font-size:13px;color:#94a3b8;text-align:center}
+.map-search-item.active-result{background:#eff6ff}
+
 /* ── Measure badge ── */
 .measure-badge{position:absolute;top:52px;right:10px;z-index:999;background:rgba(217,119,6,.95);color:white;padding:8px 14px;border-radius:12px;font-size:14px;font-weight:700;display:none;box-shadow:0 2px 8px rgba(0,0,0,.2)}
 .measure-badge .hint{font-size:11px;font-weight:400;opacity:.85;display:block;margin-top:1px}
@@ -76,6 +97,11 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;backgro
 .node-num.end{background:#dc2626}
 .node-info{flex:1}
 .node-name-text{font-size:13px;font-weight:600;color:#1e293b}
+.node-name-inp{font-size:13px;font-weight:600;color:#1e293b;border:none;outline:none;background:transparent;width:100%;padding:0;line-height:1.4}
+.node-name-inp:focus{background:#eff6ff;border-radius:5px;padding:1px 5px;margin:-1px -5px}
+.node-radius-row{display:flex;align-items:center;gap:4px;margin-top:2px}
+.node-radius-inp{width:44px;padding:1px 4px;border:1px solid #e2e8f0;border-radius:5px;font-size:11px;outline:none;text-align:center;color:#475569}
+.node-radius-inp:focus{border-color:#3b82f6}
 .node-coords{font-size:10px;color:#94a3b8;margin-top:1px}
 .node-del{background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;flex-shrink:0}
 .node-hint{font-size:11px;color:#60a5fa;margin-top:4px}
@@ -235,15 +261,32 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;backgro
 
     <!-- 左側工具列 -->
     <div class="map-toolbar">
-      <button class="tool-btn" id="tool-node"    onclick="setMode('node')">📍 新增節點</button>
-      <button class="tool-btn" id="tool-pan"     onclick="setMode('pan')">🖱 瀏覽地圖</button>
+      <button class="tool-btn" id="tool-node"    onclick="toggleNodeMode()">📍 新增節點</button>
+      <button class="tool-btn" id="tool-route"   onclick="toggleRouteEdit()">✏️ 移動路線</button>
       <button class="tool-btn" id="tool-measure" onclick="toggleMeasure()">📐 量測距離</button>
       <div style="height:1px;background:#e2e8f0;margin:2px 0"></div>
       <button class="tool-btn danger"            onclick="clearAll()">🗑 清除全部</button>
     </div>
 
+    <!-- 搜尋列（上方中央） -->
+    <div class="map-search" id="map-search">
+      <div class="map-search-row">
+        <span style="padding:0 4px 0 10px;font-size:15px;display:flex;align-items:center;color:#94a3b8">🔍</span>
+        <input class="map-search-input" id="search-input" placeholder="搜尋地址、路段名稱或座標（25.05,121.53）"
+          autocomplete="off" spellcheck="false"
+          oninput="onSearchInput()" onkeydown="onSearchKey(event)"/>
+        <button class="map-search-clear" id="search-clear" onclick="clearSearch()">✕</button>
+        <button class="map-search-btn" onclick="doSearch()">→</button>
+      </div>
+      <div class="map-search-results" id="search-results"></div>
+    </div>
+
     <!-- 衛星影像（右上） -->
     <button class="sat-btn" id="sat-btn" onclick="toggleSat()">🛰 衛星影像</button>
+
+    <!-- 定位按鈕（右下，zoom 按鈕上方） -->
+    <button id="pm-locate-btn" onclick="pmLocateMe()" title="定位目前位置"
+      style="position:absolute;bottom:72px;right:10px;z-index:999;width:36px;height:36px;background:white;border:1.5px solid #cbd5e1;border-radius:10px;font-size:18px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.14);display:flex;align-items:center;justify-content:center;transition:background .15s">📍</button>
 
     <!-- 量測結果 -->
     <div class="measure-badge" id="measure-badge">
@@ -300,12 +343,168 @@ function toggleSat() {
 }
 
 // ════════════════════════════════════
+//  LOCATE ME
+// ════════════════════════════════════
+let pmLocateMarker = null
+function pmLocateMe() {
+  const btn = document.getElementById('pm-locate-btn')
+  btn.style.opacity = '0.45'
+  navigator.geolocation.getCurrentPosition(
+    p => {
+      const { latitude: lat, longitude: lng } = p.coords
+      map.setView([lat, lng], Math.max(map.getZoom(), 15), { animate: true })
+      if (pmLocateMarker) map.removeLayer(pmLocateMarker)
+      pmLocateMarker = L.circleMarker([lat, lng], {
+        radius: 10, fillColor: '#3b82f6', color: 'white', weight: 3, fillOpacity: 0.9
+      }).addTo(map)
+      setTimeout(() => { if (pmLocateMarker) { map.removeLayer(pmLocateMarker); pmLocateMarker = null } }, 5000)
+      btn.style.opacity = '1'
+    },
+    () => { btn.style.opacity = '1'; toast('⚠️ 無法取得目前位置') },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 }
+  )
+}
+
+// ════════════════════════════════════
+//  MAP SEARCH (Nominatim + coordinate)
+// ════════════════════════════════════
+let searchTimer = null
+let searchMarker = null
+let searchResultIdx = -1
+let lastResults = []
+
+function onSearchInput() {
+  const q = document.getElementById('search-input').value.trim()
+  document.getElementById('search-clear').style.display = q ? 'block' : 'none'
+  clearTimeout(searchTimer)
+  if (!q) { hideResults(); return }
+  searchTimer = setTimeout(() => doSearch(), 450)
+}
+
+function onSearchKey(e) {
+  const items = document.querySelectorAll('.map-search-item')
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    searchResultIdx = Math.min(searchResultIdx + 1, items.length - 1)
+    items.forEach((el,i) => el.classList.toggle('active-result', i === searchResultIdx))
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    searchResultIdx = Math.max(searchResultIdx - 1, 0)
+    items.forEach((el,i) => el.classList.toggle('active-result', i === searchResultIdx))
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    if (searchResultIdx >= 0 && lastResults[searchResultIdx]) {
+      selectResult(lastResults[searchResultIdx])
+    } else {
+      doSearch()
+    }
+  } else if (e.key === 'Escape') {
+    clearSearch()
+  }
+}
+
+async function doSearch() {
+  const q = document.getElementById('search-input').value.trim()
+  if (!q) return
+  const box = document.getElementById('search-results')
+  box.style.display = 'block'
+  box.innerHTML = '<div class="map-search-loading">🔍 搜尋中...</div>'
+  searchResultIdx = -1
+
+  // Coordinate input: "25.05, 121.53" or "25.05 121.53"
+  const coordMatch = q.match(/^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$/)
+  if (coordMatch) {
+    const lat = parseFloat(coordMatch[1]), lng = parseFloat(coordMatch[2])
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      lastResults = [{ type: 'coord', lat, lng, display: `座標 ${lat.toFixed(5)}, ${lng.toFixed(5)}`, sub: '直接跳至此座標' }]
+      renderResults(lastResults)
+      return
+    }
+  }
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1&countrycodes=tw&accept-language=zh-TW`
+    const res = await fetch(url, { headers: { 'Accept-Language': 'zh-TW,zh;q=0.9' } })
+    const data = await res.json()
+    lastResults = data.map(d => ({
+      type: 'nominatim',
+      lat: parseFloat(d.lat), lng: parseFloat(d.lon),
+      display: d.display_name.split(',').slice(0,3).join(', '),
+      sub: d.display_name,
+      bbox: d.boundingbox
+    }))
+    renderResults(lastResults)
+  } catch(err) {
+    box.innerHTML = '<div class="map-search-none">⚠️ 搜尋失敗，請檢查網路連線</div>'
+  }
+}
+
+function renderResults(results) {
+  const box = document.getElementById('search-results')
+  if (!results.length) { box.innerHTML = '<div class="map-search-none">找不到結果</div>'; return }
+  box.innerHTML = results.map((r,i) => `
+    <div class="map-search-item${r.type==='coord'?' coord-result':''}" onclick="selectResult(lastResults[${i}])">
+      <div class="si-main">${r.type==='coord'?'📍 ':''}<b>${r.display}</b></div>
+      <div class="si-sub">${r.sub||''}</div>
+    </div>`).join('')
+  box.style.display = 'block'
+}
+
+function selectResult(r) {
+  if (!r) return
+  // Remove previous search marker
+  if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null }
+
+  const ll = [r.lat, r.lng]
+  if (r.type === 'coord') {
+    map.setView(ll, 17, { animate: true })
+  } else if (r.bbox) {
+    map.fitBounds([[r.bbox[0],r.bbox[2]],[r.bbox[1],r.bbox[3]]], { maxZoom: 17, animate: true })
+  } else {
+    map.setView(ll, 16, { animate: true })
+  }
+
+  // Pulse marker
+  searchMarker = L.marker(ll, {
+    icon: L.divIcon({
+      html: `<div style="width:18px;height:18px;background:#ef4444;border:3px solid white;border-radius:50%;box-shadow:0 0 0 3px rgba(239,68,68,.35),0 2px 8px rgba(0,0,0,.3)"></div>`,
+      className: '', iconSize: [18,18], iconAnchor: [9,9]
+    })
+  }).addTo(map)
+
+  document.getElementById('search-input').value = r.display
+  document.getElementById('search-clear').style.display = 'block'
+  hideResults()
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = ''
+  document.getElementById('search-clear').style.display = 'none'
+  hideResults()
+  if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null }
+}
+
+function hideResults() {
+  const box = document.getElementById('search-results')
+  box.style.display = 'none'
+  box.innerHTML = ''
+  lastResults = []
+  searchResultIdx = -1
+}
+
+// Close results on map click
+map.on('click', () => { hideResults() })
+
+// ════════════════════════════════════
 //  STATE
 // ════════════════════════════════════
-let mode      = 'pan'
-let nodes     = []        // [{lat, lng, name}]
+let mode      = 'browse'
+let nodes     = []        // [{lat, lng, name, radius}]
 let nodeMarkers = []      // L.marker[]
+let radiusCircles = []    // L.circle[] per node (trigger radius visualisation)
 let segPolylines = []     // L.polyline[] per segment
+let midHandles  = []      // midpoint drag handles on route lines
+let routeEditMode = false // true = show midpoint handles for route editing
 let pendingLatLng = null
 
 let segData   = []        // [{name, lanes, width, length, _auto}]
@@ -332,6 +531,132 @@ function haversine(lat1, lng1, lat2, lng2) {
 function fmtDist(m) { return m >= 1000 ? (m/1000).toFixed(2)+' km' : m+' m' }
 function getNodeColor(i) {
   return i === 0 ? '#16a34a' : i === nodes.length-1 ? '#dc2626' : '#3b82f6'
+}
+
+// ════════════════════════════════════
+//  MIDPOINT DRAG HANDLE (Google Maps-style route editing)
+// ════════════════════════════════════
+function createMidIcon(active) {
+  const s = active ? 18 : 12
+  return L.divIcon({
+    html: `<div style="width:${s}px;height:${s}px;background:white;border:3px solid #3b82f6;border-radius:50%;box-shadow:0 1px 5px rgba(0,0,0,.3);cursor:grab;transition:all .12s"></div>`,
+    className: '',
+    iconSize: [s, s],
+    iconAnchor: [s/2, s/2]
+  })
+}
+
+// Get the geographic midpoint along the actual OSRM polyline
+function getPolylineMidpoint(poly) {
+  const pts = poly.getLatLngs()
+  if (pts.length < 2) return pts[0]
+  let total = 0
+  const dists = []
+  for (let i = 1; i < pts.length; i++) {
+    const d = pts[i-1].distanceTo(pts[i]); dists.push(d); total += d
+  }
+  let half = total / 2, acc = 0
+  for (let i = 0; i < dists.length; i++) {
+    if (acc + dists[i] >= half) {
+      const t = (half - acc) / dists[i]
+      return L.latLng(pts[i].lat + (pts[i+1].lat - pts[i].lat) * t,
+                      pts[i].lng + (pts[i+1].lng - pts[i].lng) * t)
+    }
+    acc += dists[i]
+  }
+  return pts[pts.length - 1]
+}
+
+function clearMidHandles() {
+  midHandles.forEach(h => map.removeLayer(h)); midHandles = []
+}
+
+function toggleRouteEdit() {
+  routeEditMode = !routeEditMode
+  const btn = document.getElementById('tool-route')
+  btn.classList.toggle('active', routeEditMode)
+  btn.textContent = routeEditMode ? '✕ 結束移動' : '✏️ 移動路線'
+  if (routeEditMode) {
+    if (measuring) stopMeasure()
+    // exit node mode if active
+    if (mode === 'node') setMode('browse')
+    // disable map drag so handles can be grabbed reliably
+    map.dragging.disable()
+    refreshMidHandles()
+    toast('拖曳路線上的白圓點可調整路線走向')
+  } else {
+    clearMidHandles()
+    map.dragging.enable()
+  }
+}
+
+function refreshMidHandles() {
+  clearMidHandles()
+  if (!routeEditMode) return   // only show handles when route-edit mode is active
+  for (let segIdx = 0; segIdx < nodes.length - 1; segIdx++) {
+    const poly = segPolylines[segIdx]; if (!poly) continue
+    const midPt = getPolylineMidpoint(poly)
+    const n1 = nodes[segIdx], n2 = nodes[segIdx + 1]
+
+    const handle = L.marker(midPt, {
+      draggable: true,
+      zIndexOffset: 50,
+      icon: createMidIcon(false)
+    }).addTo(map)
+
+    let tmpA = null, tmpB = null
+
+    handle.on('mouseover', function() { if (!this._drag) this.setIcon(createMidIcon(true)) })
+    handle.on('mouseout',  function() { if (!this._drag) this.setIcon(createMidIcon(false)) })
+
+    handle.on('dragstart', function() {
+      this._drag = true; this.setIcon(createMidIcon(true))
+      // dim the original segment
+      if (segPolylines[segIdx]) segPolylines[segIdx].setStyle({ opacity: 0.25 })
+    })
+
+    handle.on('drag', function(e) {
+      const ll = e.target.getLatLng()
+      if (tmpA) map.removeLayer(tmpA)
+      if (tmpB) map.removeLayer(tmpB)
+      tmpA = L.polyline([[n1.lat, n1.lng], [ll.lat, ll.lng]], { color:'#3b82f6', weight:4, opacity:.75, dashArray:'7,5' }).addTo(map)
+      tmpB = L.polyline([[ll.lat, ll.lng], [n2.lat, n2.lng]], { color:'#3b82f6', weight:4, opacity:.75, dashArray:'7,5' }).addTo(map)
+    })
+
+    handle.on('dragend', async function(e) {
+      this._drag = false
+      if (tmpA) { map.removeLayer(tmpA); tmpA = null }
+      if (tmpB) { map.removeLayer(tmpB); tmpB = null }
+      if (segPolylines[segIdx]) segPolylines[segIdx].setStyle({ opacity: .85 })
+
+      const ll = e.target.getLatLng()
+      // Insert new node between segIdx and segIdx+1
+      const insertIdx = segIdx + 1
+      const newNodeList = [
+        ...nodes.slice(0, insertIdx),
+        { lat: ll.lat, lng: ll.lng, name: `節點${insertIdx + 1}` },
+        ...nodes.slice(insertIdx)
+      ]
+      await rebuildAllNodes(newNodeList)
+    })
+
+    midHandles.push(handle)
+  }
+}
+
+// Full rebuild: clear everything, re-add nodes list, then refresh handles
+async function rebuildAllNodes(nodeList) {
+  nodeMarkers.forEach(m => map.removeLayer(m)); nodeMarkers = []
+  radiusCircles.forEach(c => map.removeLayer(c)); radiusCircles = []
+  segPolylines.forEach(p => map.removeLayer(p)); segPolylines = []
+  clearMidHandles()
+  nodes = []; segData = []
+  for (const n of nodeList) await addNode(n.lat, n.lng, n.name, n.radius||15)
+  // re-show handles if route-edit mode is still active
+  if (routeEditMode) {
+    map.dragging.disable()
+    refreshMidHandles()
+  }
 }
 
 // ════════════════════════════════════
@@ -383,26 +708,42 @@ async function refreshSegment(segIdx) {
 // ════════════════════════════════════
 //  MODE
 // ════════════════════════════════════
+function toggleNodeMode() {
+  if (mode === 'node') setMode('browse')
+  else setMode('node')
+}
+
 function setMode(m) {
   if (m !== 'measure' && measuring) stopMeasure()
+  // Entering node mode exits route-edit
+  if (m === 'node' && routeEditMode) {
+    routeEditMode = false
+    document.getElementById('tool-route').classList.remove('active')
+    document.getElementById('tool-route').textContent = '✏️ 移動路線'
+    clearMidHandles()
+    map.dragging.enable()
+  }
   mode = m
   document.getElementById('tool-node').classList.toggle('active', m === 'node')
-  document.getElementById('tool-pan').classList.toggle('active', m === 'pan')
   document.getElementById('map-hint').style.display = m === 'node' ? 'block' : 'none'
   map.getContainer().style.cursor = m === 'node' ? 'crosshair' : m === 'measure' ? 'cell' : ''
+  // restore map dragging when switching away from route-edit via setMode
+  if (m !== 'browse' || !routeEditMode) {
+    if (!routeEditMode) map.dragging.enable()
+  }
 }
-setMode('pan')
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { cancelNode(); stopMeasure(); setMode('pan') } })
+setMode('browse')
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { cancelNode(); stopMeasure(); setMode('browse') } })
 
 // ════════════════════════════════════
 //  MEASURE TOOL
 // ════════════════════════════════════
 function toggleMeasure() {
-  if (measuring) { stopMeasure(); setMode('pan') }
+  if (measuring) { stopMeasure(); setMode('browse') }
   else { measuring = true; mode = 'measure'; document.getElementById('tool-measure').classList.add('active-measure'); document.getElementById('tool-measure').textContent = '✕ 結束量測'; document.getElementById('measure-badge').style.display = 'block'; map.getContainer().style.cursor = 'cell' }
 }
 function stopMeasure() {
-  measuring = false; mode = 'pan'
+  measuring = false; mode = 'browse'
   document.getElementById('tool-measure').classList.remove('active-measure'); document.getElementById('tool-measure').textContent = '📐 量測距離'
   document.getElementById('measure-badge').style.display = 'none'
   if (measurePolyline) { map.removeLayer(measurePolyline); measurePolyline = null }
@@ -457,7 +798,7 @@ map.on('click', e => {
   inp.value = `節點${nodes.length + 1}`; inp.focus(); inp.select()
 })
 
-map.on('dblclick', e => { if (mode === 'measure') { L.DomEvent.stopPropagation(e); stopMeasure(); setMode('pan') } })
+map.on('dblclick', e => { if (mode === 'measure') { L.DomEvent.stopPropagation(e); stopMeasure(); setMode('browse') } })
 
 // ════════════════════════════════════
 //  NODE DIALOG
@@ -481,9 +822,9 @@ document.getElementById('nd-name').addEventListener('keydown', e => {
 // ════════════════════════════════════
 //  ADD NODE
 // ════════════════════════════════════
-async function addNode(lat, lng, name) {
+async function addNode(lat, lng, name, radius=15) {
   const idx = nodes.length
-  nodes.push({ lat, lng, name })
+  nodes.push({ lat, lng, name, radius })
 
   const color = getNodeColor(idx)
   const marker = L.marker([lat, lng], {
@@ -493,26 +834,25 @@ async function addNode(lat, lng, name) {
   }).addTo(map)
   nodeMarkers.push(marker)
   updateAllIcons()
+  refreshRadiusCircles()
 
-  // Popup for rename/delete
+  // Popup: show node info + delete (name/radius edited in sidebar)
   marker.on('click', function() {
     const i = nodeMarkers.indexOf(this)
     if (i < 0 || mode === 'node') return
     const n = nodes[i]
     this.unbindPopup()
     this.bindPopup(
-      `<div>
-        <div style="font-size:11px;color:#64748b;margin-bottom:5px">節點 ${i+1}</div>
-        <input class="node-popup-name" id="popup-inp" value="${n.name}"/>
-        <div class="node-popup-btns">
-          <button class="node-popup-save" onclick="popupSave(${i})">✓ 更名</button>
+      `<div style="min-width:140px">
+        <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px">節點 ${i+1}：${n.name}</div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:8px">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}<br>📡 觸發範圍 ${n.radius||15}m</div>
+        <div style="display:flex;gap:6px">
+          <button class="node-popup-save" onclick="focusSidebarNode(${i});map.closePopup()" style="flex:1">✏️ 改名</button>
           <button class="node-popup-del" onclick="popupDelete(${i})">🗑</button>
         </div>
       </div>`,
-      { maxWidth: 220 }
+      { maxWidth: 200 }
     ).openPopup()
-    // Auto-focus input after popup renders
-    setTimeout(() => { const el = document.getElementById('popup-inp'); if(el){el.focus();el.select()} }, 80)
   })
 
   // Live drag: redraw adjacent segments as straight lines
@@ -523,6 +863,7 @@ async function addNode(lat, lng, name) {
     nodes[i].lat = latlng.lat; nodes[i].lng = latlng.lng
     if (i > 0 && segPolylines[i-1]) segPolylines[i-1].setLatLngs([[nodes[i-1].lat,nodes[i-1].lng],[latlng.lat,latlng.lng]])
     if (i < nodes.length-1 && segPolylines[i]) segPolylines[i].setLatLngs([[latlng.lat,latlng.lng],[nodes[i+1].lat,nodes[i+1].lng]])
+    if (radiusCircles[i]) radiusCircles[i].setLatLng(latlng)
   })
 
   // Drag end: re-fetch OSRM route
@@ -536,6 +877,7 @@ async function addNode(lat, lng, name) {
     if (i > 0) await refreshSegment(i - 1)
     if (i < nodes.length - 1) await refreshSegment(i)
     document.getElementById('route-loading').style.display = 'none'
+    refreshMidHandles()
   })
 
   // Segment routing (for all nodes except first)
@@ -560,6 +902,7 @@ async function addNode(lat, lng, name) {
 
   renderNodeList()
   renderSegTable()
+  refreshMidHandles()
 }
 
 function updateAllIcons() {
@@ -574,14 +917,11 @@ function updateTotalLength() {
 // ════════════════════════════════════
 //  POPUP ACTIONS (called from inline HTML)
 // ════════════════════════════════════
-window.popupSave = function(i) {
-  const inp = document.getElementById('popup-inp')
-  if (!inp || !nodes[i]) return
-  nodes[i].name = inp.value.trim() || nodes[i].name
-  map.closePopup()
-  renderNodeList()
-  renderSegTable()
-  toast('✅ 節點名稱已更新')
+window.focusSidebarNode = function(i) {
+  const el = document.getElementById(`nname-${i}`)
+  if (!el) return
+  el.scrollIntoView({ behavior:'smooth', block:'center' })
+  setTimeout(() => { el.focus(); el.select() }, 200)
 }
 window.popupDelete = async function(i) {
   map.closePopup()
@@ -593,12 +933,30 @@ window.popupDelete = async function(i) {
 // ════════════════════════════════════
 async function removeNode(idx) {
   const remaining = nodes.filter((_, i) => i !== idx)
-  // Clear all map layers
-  nodeMarkers.forEach(m => map.removeLayer(m)); nodeMarkers = []
-  segPolylines.forEach(p => map.removeLayer(p)); segPolylines = []
-  nodes = []; segData = []
-  // Re-add remaining (re-fetches routes)
-  for (const n of remaining) await addNode(n.lat, n.lng, n.name)
+  await rebuildAllNodes(remaining)
+}
+
+// ════════════════════════════════════
+//  RADIUS CIRCLES
+// ════════════════════════════════════
+function refreshRadiusCircles() {
+  // Remove all existing circles
+  radiusCircles.forEach(c => { if(c) map.removeLayer(c) })
+  radiusCircles = []
+  nodes.forEach((n, i) => {
+    const color = getNodeColor(i)
+    const circle = L.circle([n.lat, n.lng], {
+      radius: n.radius || 15,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.12,
+      opacity: 0.45,
+      weight: 1.5,
+      dashArray: '4,4',
+      interactive: false   // don't intercept clicks
+    }).addTo(map)
+    radiusCircles.push(circle)
+  })
 }
 
 // ════════════════════════════════════
@@ -610,11 +968,39 @@ function renderNodeList() {
     <div class="node-item">
       <div class="node-num${i===0?' start':i===nodes.length-1?' end':''}">${i+1}</div>
       <div class="node-info">
-        <div class="node-name-text">${n.name}</div>
+        <input class="node-name-inp" id="nname-${i}" value="${n.name.replace(/"/g,'&quot;')}"
+          onblur="saveNodeName(${i})" onkeydown="if(event.key==='Enter')this.blur()"
+          placeholder="節點名稱" title="點擊修改節點名稱"/>
         <div class="node-coords">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}</div>
+        <div class="node-radius-row">
+          <span style="font-size:10px;color:#94a3b8">📡</span>
+          <input class="node-radius-inp" id="nradius-${i}" type="number" value="${n.radius||15}" min="5" max="200"
+            onblur="saveNodeRadius(${i})" onkeydown="if(event.key==='Enter')this.blur()" title="觸發範圍(m)"/>
+          <span style="font-size:10px;color:#94a3b8">m</span>
+        </div>
       </div>
       <button class="node-del" onclick="removeNode(${i})">✕</button>
     </div>`).join('')
+}
+window.saveNodeName = function(i) {
+  const el = document.getElementById(`nname-${i}`)
+  if (!el || !nodes[i]) return
+  nodes[i].name = el.value.trim() || nodes[i].name
+  el.value = nodes[i].name
+  renderSegTable()
+  updateAllIcons()
+}
+window.saveNodeRadius = function(i) {
+  const el = document.getElementById(`nradius-${i}`)
+  if (!el || !nodes[i]) return
+  nodes[i].radius = Math.min(200, Math.max(5, parseInt(el.value)||15))
+  el.value = nodes[i].radius
+  // Update just this circle instantly
+  if (radiusCircles[i]) {
+    radiusCircles[i].setRadius(nodes[i].radius)
+  } else {
+    refreshRadiusCircles()
+  }
 }
 
 // ════════════════════════════════════
@@ -649,7 +1035,9 @@ function renderSegTable() {
 function clearAll() {
   if (!confirm('清除所有節點與路線？')) return
   nodeMarkers.forEach(m => map.removeLayer(m)); nodeMarkers = []
+  radiusCircles.forEach(c => map.removeLayer(c)); radiusCircles = []
   segPolylines.forEach(p => map.removeLayer(p)); segPolylines = []
+  clearMidHandles()
   nodes = []; segData = []
   stopMeasure()
   renderNodeList(); renderSegTable()
@@ -679,7 +1067,7 @@ function buildConfig() {
     tl: parseInt(document.getElementById('tl').value)||0,
     op: document.getElementById('op').value.trim()||'14:00~16:00',
     pk: document.getElementById('pk').value.trim()||'17:00~19:00',
-    nd: nodes.map(n => ({ n: n.name, a: parseFloat(n.lat.toFixed(6)), o: parseFloat(n.lng.toFixed(6)) })),
+    nd: nodes.map(n => ({ n: n.name, a: parseFloat(n.lat.toFixed(6)), o: parseFloat(n.lng.toFixed(6)), r: n.radius||15 })),
     sg: segData.map(s => ({ n: s.name, l: s.lanes||2, w: s.width||8, d: s.length||0 }))
   }
 }
@@ -762,6 +1150,7 @@ async function loadTask(id) {
   document.getElementById('pk').value = cfg.pk||'17:00~19:00'
 
   nodeMarkers.forEach(m => map.removeLayer(m)); nodeMarkers = []
+  radiusCircles.forEach(c => map.removeLayer(c)); radiusCircles = []
   segPolylines.forEach(p => map.removeLayer(p)); segPolylines = []
   nodes = []
 
@@ -769,7 +1158,7 @@ async function loadTask(id) {
   segData = cfg.sg ? cfg.sg.map(s => ({ name:s.n, lanes:s.l, width:s.w, length:s.d, _auto:false })) : []
 
   if (cfg.nd) {
-    for (const n of cfg.nd) await addNode(n.a, n.o, n.n || n.r1 || '節點')
+    for (const n of cfg.nd) await addNode(n.a, n.o, n.n || n.r1 || '節點', n.r||15)
   }
 
   if (nodes.length >= 2) map.fitBounds(L.polyline(nodes.map(n=>[n.lat,n.lng])).getBounds(), { padding:[40,40] })
