@@ -308,10 +308,10 @@ input,select,textarea{font-size:max(16px,1em)!important}
 
     <!-- 3. Route map preview -->
     <div class="signin-card">
-      <h3>📍 路線地圖</h3>
+      <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg> 路線地圖</h3>
       <div style="position:relative">
         <div id="map-signin"></div>
-        <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapSignin)" title="定位目前位置">📍</button>
+        <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapSignin)" title="定位目前位置"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg></button>
       </div>
       <div id="route-dir-text" style="font-size:12px;color:#64748b;margin-top:6px;text-align:center;line-height:1.8"></div>
     </div>
@@ -390,7 +390,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
   <div style="position:relative;flex-shrink:0;height:44%">
     <div id="map-ready" style="width:100%;height:100%"></div>
     <button onclick="showScreen('screen-signin')" style="position:absolute;top:8px;left:8px;z-index:900;background:rgba(15,23,42,.75);backdrop-filter:blur(6px);border:none;border-radius:20px;padding:5px 12px 5px 6px;color:white;display:flex;align-items:center;gap:4px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>返回</button>
-    <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapReady)" title="定位目前位置">📍</button>
+    <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapReady)" title="定位目前位置"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg></button>
   </div>
   <div class="ready-panel">
     <div class="ready-title" id="ready-title">🚗 旅行時間調查</div>
@@ -435,7 +435,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
     </div>
     <div class="gps-badge" id="gps-badge">📡</div>
     <button onclick="surveyBackConfirm()" style="position:absolute;top:8px;left:8px;z-index:900;background:rgba(15,23,42,.75);backdrop-filter:blur(6px);border:none;border-radius:20px;padding:5px 12px 5px 6px;color:white;display:flex;align-items:center;gap:4px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>返回</button>
-    <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapSurvey)" title="定位目前位置">📍</button>
+    <button id="locate-survey-btn" class="locate-btn" style="bottom:8px;left:8px" onclick="surveyLocate()" title="回到定位"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg></button>
   </div>
   <!-- Status -->
   <div class="status-bar" style="justify-content:center">
@@ -455,7 +455,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
         <span id="nnc-auto-hint" style="font-size:10px;opacity:.8">• 15m 內自動記錄</span>
       </div>
     </div>
-    <button class="nnc-manual" id="nnc-manual-btn" onclick="manualRecordNode()">📍<br>手動<br>記錄</button>
+    <button class="nnc-manual" id="nnc-manual-btn" onclick="manualRecordNode()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg><br>手動<br>記錄</button>
   </div>
   <!-- Side-by-side delay columns -->
   <div class="delay-columns">
@@ -1110,6 +1110,11 @@ let compassHeading=0, compassListening=false, _smoothH=null
 // Nav-map rotation — hybrid GPS (Course Up) / compass (Heading Up)
 const NAV_SPEED_MS = 2.2   // 8 km/h threshold
 let _gpsNavHistory=[], _navBearing=null, _lastSpeed=0
+let _mapFollowing=true   // false when user manually pans/zooms
+function _updateLocateBtn(){
+  const btn=document.getElementById('locate-survey-btn')
+  if(btn) btn.style.opacity=_mapFollowing?'0.5':'1'
+}
 
 function createHeadingIcon(){
   // Blue pulsing dot with direction arrow pointing up — map rotates, icon stays up
@@ -1484,6 +1489,16 @@ function centerOnPos(targetMap, lat, lng) {
   setTimeout(() => { if (locateMarker) { try { targetMap.removeLayer(locateMarker) } catch(e){} locateMarker = null } }, 4000)
 }
 
+// Survey map locate button — re-enables GPS following + restores heading rotation
+function surveyLocate(){
+  if(!mapSurvey||!lastPos) return
+  _mapFollowing=true
+  _updateLocateBtn()
+  _lastRotated=null   // force rotation to re-apply immediately
+  mapSurvey.setView([lastPos.lat,lastPos.lng],mapSurvey.getZoom()||17,{animate:true,duration:0.5})
+  if(_navBearing!==null) rotateNavMap(_navBearing)
+}
+
 // ════════════════════════════════════
 //  SCREEN WAKE LOCK
 // ════════════════════════════════════
@@ -1551,7 +1566,10 @@ function onPos(p){
   }
   if(cur&&!cur.endTime){
     updateNavMapBearing(lat,lng,speed)   // hybrid Course Up / Heading Up
-    if(mapSurvey&&markerSurvey){markerSurvey.setLatLng([lat,lng]);mapSurvey.setView([lat,lng],mapSurvey.getZoom()||17,{animate:true,duration:.5})}
+    if(mapSurvey&&markerSurvey){
+      markerSurvey.setLatLng([lat,lng])
+      if(_mapFollowing) mapSurvey.setView([lat,lng],mapSurvey.getZoom()||17,{animate:true,duration:.5})
+    }
     {
       cur.gpsTrack.push({lat,lng,speed_ms:speed,accuracy_m:accuracy,ts:new Date().toISOString()})
       checkNodeProximity(lat,lng)
@@ -1566,7 +1584,7 @@ function onPos(p){
           const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===cause)
           if(p){
             toggleDelay(p,grp)
-            showToast(`📍 ${p.label} 自動結束（移動 ${delayDist}m）`)
+            showToast(`▸ ${p.label} 自動結束（移動 ${delayDist}m）`)
           }
         }
       }
@@ -1829,7 +1847,10 @@ function startSurvey(){
   initCompass()   // request compass permission on user gesture
 
   if(!mapSurvey){
-    mapSurvey=L.map('map-survey',{zoomControl:false,attributionControl:false,dragging:false,touchZoom:false,doubleClickZoom:false,scrollWheelZoom:false,boxZoom:false,keyboard:false})
+    mapSurvey=L.map('map-survey',{zoomControl:false,attributionControl:false})
+    // When user manually drags/zooms, pause GPS auto-follow
+    mapSurvey.on('dragstart zoomstart',()=>{ _mapFollowing=false; _updateLocateBtn() })
+    mapSurvey.on('moveend',()=>{ _lastRotated=null })
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapSurvey)
     const ip=lastPos?[lastPos.lat,lastPos.lng]:[25.04776,121.51755]
     mapSurvey.setView(ip,17)
