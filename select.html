@@ -182,11 +182,11 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0f172a;min-h
 </div>
 
 <script>
-// ════════════════ URL PARAMS ════════════════
+// ════════════════ CONFIG ════════════════
+// URL 參數優先，否則直接讀 pm.html 存的 localStorage
 const urlP = new URLSearchParams(location.search)
-const GS_URL = urlP.get('gs')
-const GS_KEY = urlP.get('k')
-// Optional: index.html base URL (defaults to ./index.html)
+const GS_URL   = urlP.get('gs')  || localStorage.getItem('gs_url') || ''
+const GS_KEY   = urlP.get('k')   || localStorage.getItem('gs_key') || ''
 const INDEX_URL = urlP.get('index') || './index.html'
 
 // ════════════════ STATE ════════════════
@@ -229,12 +229,12 @@ window.addEventListener('load', async ()=>{
     setLoadProgress(10)
     document.getElementById('ld-msg').textContent='載入人員資料...'
     const usersRes = await cloudGet({action:'getUsers'})
-    allUsers = (usersRes.users||usersRes||[]).filter(u=>u.name && u.name!=='admin')
+    allUsers = (usersRes.data || []).filter(u=>u.name && u.name!=='admin')
     setLoadProgress(55)
 
     document.getElementById('ld-msg').textContent='載入案件資料...'
     const routesRes = await cloudGet({action:'getRoutes'})
-    allRoutes = routesRes || []
+    allRoutes = routesRes.data || []
     setLoadProgress(100)
 
     await new Promise(r=>setTimeout(r,450))
