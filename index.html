@@ -120,17 +120,18 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .nd-line{height:2px;background:#334155;flex:1;min-width:8px}
 .nd-line.done{background:#4ade80}
 
-/* Next-node card */
-.next-node-card{margin:8px 12px 6px;border-radius:16px;padding:20px 16px;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;flex-shrink:0;position:relative;overflow:hidden}
+/* Next-node card — compact */
+.next-node-card{margin:5px 12px 0;border-radius:14px;padding:9px 14px;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;flex-shrink:0;position:relative;overflow:hidden}
 .next-node-card.arriving{background:linear-gradient(135deg,#15803d,#16a34a);animation:cardPulse 1s infinite}
 .next-node-card.done{background:#374151;animation:none}
 @keyframes cardPulse{0%,100%{opacity:1}50%{opacity:.85}}
-.nnc-label{font-size:10px;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-.nnc-name{font-size:20px;font-weight:800;line-height:1.2;margin-bottom:5px}
-.nnc-dist{font-size:13px;color:rgba(255,255,255,.85);display:flex;align-items:center;gap:8px}
-.nnc-dist .dist-num{font-size:18px;font-weight:800;color:white}
-.nnc-manual{position:absolute;right:10px;top:50%;transform:translateY(-50%);padding:5px 7px;background:rgba(255,255,255,.2);border:1.5px solid rgba(255,255,255,.4);border-radius:8px;color:white;font-size:10px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px);line-height:1.3;text-align:center}
-.nnc-manual:active{background:rgba(255,255,255,.35)}
+.nnc-label{font-size:9px;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.5px;margin-bottom:1px}
+.nnc-name{font-size:16px;font-weight:800;line-height:1.2;margin-bottom:2px}
+.nnc-dist{font-size:12px;color:rgba(255,255,255,.85);display:flex;align-items:center;gap:6px}
+.nnc-dist .dist-num{font-size:15px;font-weight:800;color:white}
+/* Manual record button — standalone large button below card */
+.nnc-manual{display:block;width:calc(100% - 24px);margin:5px 12px 0;padding:13px 0;background:#1e40af;border:2px solid #60a5fa;border-radius:13px;color:white;font-size:15px;font-weight:800;cursor:pointer;text-align:center;font-family:inherit;letter-spacing:.3px}
+.nnc-manual:active{background:#1d4ed8}
 
 /* Scrollable delay area — side-by-side columns */
 .delay-columns{flex:1;overflow-y:auto;background:#1e293b;display:flex;gap:8px;padding:8px 10px 6px}
@@ -143,9 +144,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .btn-dl .dn{font-size:11px;margin-top:4px;text-align:center;line-height:1.2;font-weight:600}
 .btn-dl .dt{font-size:10px;font-family:monospace;color:#f87171;margin-top:2px}
 .survey-bottom-row{display:flex;gap:8px;margin:6px 12px;flex-shrink:0}
-.btn-end{flex:1;padding:16px;background:#dc2626;color:white;border:none;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer}
-.btn-pause{width:64px;padding:16px 0;background:#d97706;color:white;border:none;border-radius:14px;font-size:20px;cursor:pointer;flex-shrink:0;transition:background .15s}
-.btn-pause.paused{background:#16a34a}
+.btn-end{flex:1;padding:14px;background:#dc2626;color:white;border:none;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer}
 
 /* ── Trip Done ── */
 #screen-tripdone{background:#f1f5f9}
@@ -230,9 +229,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
         <div style="position:absolute;top:50%;transform:translateY(-50%);left:4px;right:4px;height:3px;
              background:repeating-linear-gradient(90deg,#fbbf24 0 10px,transparent 10px 20px)"></div>
       </div>
-      <!-- Finish flag -->
-      <div style="position:absolute;right:-4px;bottom:24px;font-size:22px;line-height:1">🏁</div>
-      <!-- Car (scaleX(-1) flips to face right toward the flag) -->
+      <!-- Car (scaleX(-1) flips to face right) -->
       <div id="car-icon" style="position:absolute;bottom:22px;font-size:26px;left:2px;transform:scaleX(-1);transition:left 1.4s cubic-bezier(.4,0,.2,1)">🚗</div>
     </div>
     <!-- Progress bar -->
@@ -368,7 +365,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 
 <!-- ══ Screen A: Ready ══ -->
 <div id="screen-ready" class="screen">
-  <div style="position:relative;flex-shrink:0;height:38%">
+  <div style="position:relative;flex-shrink:0;height:44%">
     <div id="map-ready" style="width:100%;height:100%"></div>
     <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapReady)" title="定位目前位置">📍</button>
   </div>
@@ -421,17 +418,18 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
   </div>
   <!-- Node progress dots -->
   <div class="node-progress" id="node-progress"></div>
-  <!-- Next node card: auto-detect + manual fallback -->
+  <!-- Next node card: compact info only -->
   <div class="next-node-card" id="next-node-card">
     <div class="nnc-label" id="nnc-label">下一個節點</div>
     <div class="nnc-name" id="nnc-name">-</div>
     <div class="nnc-dist">
       <span class="dist-num" id="nnc-dist-num">-</span>
       <span id="nnc-dist-unit">m</span>
-      <span id="nnc-auto-hint" style="font-size:11px;opacity:.8">• 15m 內自動記錄</span>
+      <span id="nnc-auto-hint" style="font-size:10px;opacity:.8">• 15m 內自動記錄</span>
     </div>
-    <button class="nnc-manual" id="nnc-manual-btn" onclick="manualRecordNode()">手動記錄</button>
   </div>
+  <!-- Large manual record button -->
+  <button class="nnc-manual" id="nnc-manual-btn" onclick="manualRecordNode()">📍 手動記錄節點</button>
   <!-- Side-by-side delay columns -->
   <div class="delay-columns">
     <div class="delay-col">
@@ -444,7 +442,6 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
     </div>
   </div>
   <div class="survey-bottom-row">
-    <button class="btn-pause" id="btn-pause" onclick="togglePause()" title="暫停／繼續">⏸</button>
     <button class="btn-end" onclick="endSurvey()">🔴 結束調查</button>
   </div>
 </div>
@@ -554,7 +551,7 @@ let cloudSubmitted = false  // prevent double-submit
 
 // GPS
 let watchId=null, mapReady=null, mapSurvey=null, mapResult=null, mapSignin=null
-let isPaused=false, pauseStart=null, totalPausedMs=0
+let totalPausedMs=0
 let markerReady=null, markerSurvey=null
 let lastPos=null, clockTimer=null, elapsedSec=0
 
@@ -1256,10 +1253,16 @@ function initMaps(){
   if(mapReady) return
   mapReady=L.map('map-ready',{zoomControl:true,attributionControl:false})
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapReady)
-  const initPos=config.nodes.length?[config.nodes[0].lat,config.nodes[0].lng]:[25.04776,121.51755]
+  const initPos=lastPos?[lastPos.lat,lastPos.lng]:config.nodes.length?[config.nodes[0].lat,config.nodes[0].lng]:[25.04776,121.51755]
   mapReady.setView(initPos,14)
   markerReady=L.marker(initPos,{icon:createHeadingIcon(compassHeading||0),zIndexOffset:500}).addTo(mapReady)
   drawRouteOnMap(mapReady,'routeLayerReady')
+  // Extend bounds to include GPS position so both route and user are visible
+  if(lastPos&&config.nodes&&config.nodes.length>=2){
+    const routeBounds=L.latLngBounds(config.nodes.map(n=>[n.lat,n.lng]))
+    routeBounds.extend([lastPos.lat,lastPos.lng])
+    mapReady.fitBounds(routeBounds,{padding:[30,30]})
+  }
 }
 
 // ════════════════════════════════════
@@ -1269,39 +1272,6 @@ function smooth(lat,lng,alpha=0.3){
   if(!lastPos)return{lat,lng}
   return{lat:lastPos.lat*(1-alpha)+lat*alpha,lng:lastPos.lng*(1-alpha)+lng*alpha}
 }
-function togglePause(){
-  isPaused=!isPaused
-  const btn=$('btn-pause')
-  if(isPaused){
-    pauseStart=new Date()
-    // stop any active delay timers
-    Object.keys(activeDelays).forEach(cause=>{
-      const d=activeDelays[cause]
-      if(d&&d.startedAt) d._pausedAt=new Date()
-    })
-    btn.textContent='▶'
-    btn.classList.add('paused')
-    btn.title='繼續調查'
-    showToast('⏸ 調查已暫停')
-  } else {
-    if(pauseStart) totalPausedMs+=(new Date()-pauseStart)
-    pauseStart=null
-    // resume delay timers
-    Object.keys(activeDelays).forEach(cause=>{
-      const d=activeDelays[cause]
-      if(d&&d._pausedAt){
-        // shift startedAt forward by paused duration
-        d.startedAt=new Date(d.startedAt.getTime()+(new Date()-d._pausedAt))
-        delete d._pausedAt
-      }
-    })
-    btn.textContent='⏸'
-    btn.classList.remove('paused')
-    btn.title='暫停調查'
-    showToast('▶ 調查繼續中')
-  }
-}
-
 // ════════════════════════════════════
 //  LOCATE ME
 // ════════════════════════════════════
@@ -1396,7 +1366,7 @@ function onPos(p){
   }
   if(cur&&!cur.endTime){
     if(mapSurvey&&markerSurvey){markerSurvey.setLatLng([lat,lng]);mapSurvey.setView([lat,lng],mapSurvey.getZoom()||16,{animate:true,duration:.5})}
-    if(!isPaused){
+    {
       cur.gpsTrack.push({lat,lng,speed_ms:speed,accuracy_m:accuracy,ts:new Date().toISOString()})
       checkNodeProximity(lat,lng)
       // ── Auto-stop delay if clearly moved away from start point ──
@@ -1524,7 +1494,6 @@ function recordNode(auto){
     cur.startTime=now
     if(clockTimer) clearInterval(clockTimer)
     clockTimer=setInterval(()=>{
-      if(isPaused) return
       elapsedSec++
       $('status-timer').textContent=fmtSec(elapsedSec)
     },1000)
@@ -1662,8 +1631,7 @@ function startSurvey(){
   nodeTimestamps=[]   // will be filled when nodes are hit
   currentNodeIdx=0    // 0 = waiting for node 1
   nodeAutoLock=false
-  isPaused=false;pauseStart=null;totalPausedMs=0
-  const pb=$('btn-pause');if(pb){pb.textContent='⏸';pb.classList.remove('paused');pb.title='暫停調查'}
+  totalPausedMs=0
   unlockAudio()          // unlock AudioContext while we still have the user gesture
   startAudioKeepAlive()  // silent loop keeps iOS from suspending the context
   acquireWakeLock()
@@ -1691,12 +1659,27 @@ function startSurvey(){
       const lls=routePolylines.length>0
         ?(cur.direction==='return'?[...routePolylines].reverse().map(s=>[...s].reverse()).flat():routePolylines.flat())
         :ordered.map(n=>[n.lat,n.lng])
-      L.polyline(lls,{color:'#6366f1',weight:3,opacity:.7}).addTo(mapSurvey)
+      L.polyline(lls,{color:'#6366f1',weight:4,opacity:.8}).addTo(mapSurvey)
       ordered.forEach((n,i)=>{
         const color=i===0?'#16a34a':i===ordered.length-1?'#dc2626':'#818cf8'
         L.circleMarker([n.lat,n.lng],{radius:6,fillColor:color,color:'#fff',weight:2,fillOpacity:.9})
           .bindTooltip(n.name,{direction:'top'}).addTo(mapSurvey)
       })
+      // Direction arrows on survey map
+      const arrowColor=cur.direction==='return'?'#7c3aed':'#3b82f6'
+      for(let i=0;i<ordered.length-1;i++){
+        const a=ordered[i],b=ordered[i+1]
+        const midLat=(a.lat+b.lat)/2, midLng=(a.lng+b.lng)/2
+        const bear=calcBearing(a.lat,a.lng,b.lat,b.lng)
+        L.marker([midLat,midLng],{icon:L.divIcon({
+          html:`<svg width="32" height="32" viewBox="-16 -16 32 32" xmlns="http://www.w3.org/2000/svg">
+            <circle r="14" fill="rgba(0,0,0,.3)" stroke="${arrowColor}" stroke-width="1.5" opacity="0.8"/>
+            <polygon transform="rotate(${bear})" points="0,-10 -4,4 0,1 4,4"
+              fill="${arrowColor}" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>`,
+          className:'',iconSize:[32,32],iconAnchor:[16,16]
+        })}).addTo(mapSurvey)
+      }
     }
   }
 
@@ -1776,8 +1759,6 @@ function toggleDelay(d,group){
 // ════════════════════════════════════
 function endSurvey(){
   if(!confirm('確定結束調查？'))return
-  // auto-resume if paused
-  if(isPaused){ if(pauseStart) totalPausedMs+=(new Date()-pauseStart); pauseStart=null; isPaused=false }
   stopAudioKeepAlive(); releaseWakeLock(); disableNoSleep()
   // If last node already set endTime, keep it; otherwise record now
   if(!cur.endTime) cur.endTime=new Date()
