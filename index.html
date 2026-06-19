@@ -132,18 +132,18 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .nd-line.done{background:#4ade80}
 
 /* Next-node card — compact, info left + manual button right */
-/* ── Next node card (compact single-row) ── */
-.next-node-card{margin:4px 10px 0;border-radius:10px;padding:7px 10px 7px 12px;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;flex-shrink:0;display:flex;align-items:center;gap:8px;overflow:hidden}
+/* ── Next node card (two-row) ── */
+.next-node-card{margin:4px 10px 0;border-radius:10px;padding:10px 10px 10px 12px;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;flex-shrink:0;display:flex;align-items:center;gap:10px;overflow:hidden}
 .next-node-card.arriving{background:linear-gradient(135deg,#15803d,#16a34a);animation:cardPulse 1s infinite}
 .next-node-card.done{background:#374151;animation:none}
 @keyframes cardPulse{0%,100%{opacity:1}50%{opacity:.85}}
-.nnc-info{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;overflow:hidden}
-.nnc-label{font-size:10px;color:rgba(255,255,255,.7);white-space:nowrap;flex-shrink:0}
-.nnc-name{font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
-.nnc-dist{font-size:12px;color:rgba(255,255,255,.85);display:flex;align-items:center;gap:3px;white-space:nowrap;flex-shrink:0}
-.nnc-dist .dist-num{font-size:13px;font-weight:800;color:white}
+.nnc-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;overflow:hidden}
+.nnc-label{font-size:11px;color:rgba(255,255,255,.7);white-space:nowrap}
+.nnc-name{font-size:17px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nnc-dist{font-size:13px;color:rgba(255,255,255,.85);display:flex;align-items:center;gap:3px;white-space:nowrap;flex-shrink:0}
+.nnc-dist .dist-num{font-size:15px;font-weight:800;color:white}
 /* Manual record button */
-.nnc-manual{flex-shrink:0;padding:6px 12px;background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.5);border-radius:8px;color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+.nnc-manual{flex-shrink:0;padding:14px 14px;background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.5);border-radius:8px;color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;align-self:stretch;display:flex;align-items:center}
 .nnc-manual:active{background:rgba(255,255,255,.32)}
 
 /* Scrollable delay area — side-by-side columns */
@@ -454,7 +454,6 @@ input,select,textarea{font-size:max(16px,1em)!important}
     <div class="nnc-dist">
       <span class="dist-num" id="nnc-dist-num">-</span>
       <span id="nnc-dist-unit">m</span>
-      <span id="nnc-auto-hint" style="font-size:10px;opacity:.75">· 15m內自動</span>
     </div>
     <button class="nnc-manual" id="nnc-manual-btn" onclick="manualRecordNode()">手動記錄</button>
   </div>
