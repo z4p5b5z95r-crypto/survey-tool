@@ -14,6 +14,11 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 input,select,textarea{font-size:max(16px,1em)!important}
 .screen{display:none;height:100dvh;flex-direction:column}
 .screen.active{display:flex}
+/* ── Back button (shared) ── */
+.back-btn{display:flex;align-items:center;gap:5px;background:transparent;border:none;
+  color:#60a5fa;font-size:15px;font-weight:600;cursor:pointer;padding:6px 10px 6px 4px;
+  font-family:inherit;line-height:1;flex-shrink:0}
+.back-btn svg{flex-shrink:0}
 
 /* ── Sign-in ── */
 #screen-signin{background:#f1f5f9}
@@ -52,7 +57,9 @@ input,select,textarea{font-size:max(16px,1em)!important}
 
 /* ── Setup (manual) ── */
 #screen-setup{background:#f1f5f9}
-.page-header{background:#1e293b;padding:15px 16px;color:white;flex-shrink:0}
+.page-header{background:#1e293b;color:white;flex-shrink:0}
+.page-header-nav{display:flex;align-items:center;padding:6px 8px 0}
+.page-header-body{padding:2px 16px 12px}
 .page-header h2{font-size:18px;font-weight:800}
 .page-header p{font-size:12px;color:#94a3b8;margin-top:2px}
 .scroll-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
@@ -109,8 +116,8 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .map-wrap{height:24%;position:relative;flex-shrink:0}
 #map-survey{width:100%;height:100%}
 .gps-badge{position:absolute;bottom:6px;right:8px;background:rgba(0,0,0,.65);color:#4ade80;padding:3px 8px;border-radius:10px;font-size:11px;z-index:999}
-.status-bar{background:#0f172a;padding:6px 14px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
-.status-left{color:#4ade80;font-size:12px;font-weight:700}
+.status-bar{background:#0f172a;padding:4px 10px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:8px}
+.status-left{color:#4ade80;font-size:12px;font-weight:700;flex:1;text-align:center}
 .status-right{color:#94a3b8;font-size:13px;font-family:monospace}
 
 /* Node progress */
@@ -321,7 +328,10 @@ input,select,textarea{font-size:max(16px,1em)!important}
 
 <!-- ══ Screen 0: Manual Setup ══ -->
 <div id="screen-setup" class="screen">
-  <div class="page-header"><h2>⚙️ 調查設定</h2><p>手動填寫路線資訊與路段設定</p></div>
+  <div class="page-header">
+    <div class="page-header-nav"><button class="back-btn" onclick="showScreen('screen-signin')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>返回</button></div>
+    <div class="page-header-body"><h2>⚙️ 調查設定</h2><p>手動填寫路線資訊與路段設定</p></div>
+  </div>
   <div class="scroll-body">
     <div class="card">
       <div class="card-title">路線資訊</div>
@@ -377,6 +387,8 @@ input,select,textarea{font-size:max(16px,1em)!important}
 <div id="screen-ready" class="screen">
   <div style="position:relative;flex-shrink:0;height:44%">
     <div id="map-ready" style="width:100%;height:100%"></div>
+    <!-- Floating back button over map -->
+    <button class="back-btn" onclick="showScreen('screen-signin')" style="position:absolute;top:8px;left:8px;z-index:900;background:rgba(15,23,42,.75);backdrop-filter:blur(6px);border-radius:20px;padding:5px 12px 5px 6px;color:white"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>返回</button>
     <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapReady)" title="定位目前位置">📍</button>
   </div>
   <div class="ready-panel">
@@ -423,6 +435,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
   </div>
   <!-- Status -->
   <div class="status-bar">
+    <button onclick="surveyBackConfirm()" style="background:transparent;border:none;color:#60a5fa;display:flex;align-items:center;gap:3px;font-size:13px;font-weight:600;cursor:pointer;padding:0;font-family:inherit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>返回</button>
     <span class="status-left" id="status-combo">● 調查中</span>
     <span class="status-right" id="status-timer">00:00</span>
   </div>
@@ -459,8 +472,9 @@ input,select,textarea{font-size:max(16px,1em)!important}
 
 <!-- ══ Screen C: Trip Done ══ -->
 <div id="screen-tripdone" class="screen">
-  <div class="td-header">
-    <h2 id="td-title">✅ 旅次完成</h2>
+  <div class="td-header" style="position:relative">
+    <button class="back-btn" onclick="goReady()" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.8)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>返回</button>
+    <h2 id="td-title" style="padding-left:28px">✅ 旅次完成</h2>
     <p id="td-subtitle"></p>
   </div>
   <div class="scroll-body">
@@ -484,10 +498,9 @@ input,select,textarea{font-size:max(16px,1em)!important}
 
 <!-- ══ Screen D: Report ══ -->
 <div id="screen-report" class="screen">
-  <div class="page-header" style="position:relative;flex-shrink:0">
-    <button id="report-back-btn" onclick="goReady()" style="position:absolute;left:0;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#60a5fa;font-size:22px;cursor:pointer;padding:4px 8px;line-height:1">‹</button>
-    <h2 style="padding-left:28px">📊 調查報告</h2>
-    <p id="report-subtitle"></p>
+  <div class="page-header" style="flex-shrink:0">
+    <div class="page-header-nav"><button id="report-back-btn" class="back-btn" onclick="goReady()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>返回</button></div>
+    <div class="page-header-body"><h2>📊 調查報告</h2><p id="report-subtitle"></p></div>
   </div>
   <!-- Top-level tab bar -->
   <div class="rpt-tab-bar">
@@ -1839,6 +1852,15 @@ function toggleDelay(d,group){
 // ════════════════════════════════════
 //  END SURVEY
 // ════════════════════════════════════
+function surveyBackConfirm(){
+  if(!confirm('確定停止調查並返回上一頁？\n已記錄的節點資料將保留。')) return
+  // Stop timers
+  if(clockTimer){clearInterval(clockTimer);clockTimer=null}
+  stopAudioKeepAlive(); releaseWakeLock(); disableNoSleep()
+  // Discard current in-progress trip
+  cur=null
+  goReady()
+}
 function endSurvey(){
   if(!confirm('確定結束調查？'))return
   stopAudioKeepAlive(); releaseWakeLock(); disableNoSleep()
