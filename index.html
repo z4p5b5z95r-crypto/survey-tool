@@ -823,14 +823,17 @@ function clearTripStorage(){
   try{ localStorage.removeItem(k) }catch(e){}
 }
 
-// ── Local survey history (per route, per device) ──────────────────
+// ── Survey history — cloud-first, localStorage fallback ───────────
+let _histCache = null   // null = not loaded yet; [] = loaded but empty
+
+// Save to localStorage as offline backup
 function saveToLocalHistory(){
   if(!cloudRouteId) return
   const histKey = HIST_PREFIX + cloudRouteId
   try{
     const history = JSON.parse(localStorage.getItem(histKey)||'[]')
     const entry = {
-      date: (config.date||todayStr()).slice(0,10),   // always YYYY-MM-DD
+      date: (config.date||todayStr()).slice(0,10),
       surveyor: config.surveyor || '',
       weather: config.weather || '',
       trips: Object.fromEntries(
@@ -840,13 +843,10 @@ function saveToLocalHistory(){
       ),
       uploadedAt: new Date().toISOString()
     }
-    // Replace if same day + same surveyor, otherwise prepend
     const idx = history.findIndex(h=>h.date?.slice(0,10)===entry.date && h.surveyor===entry.surveyor)
-    if(idx>=0) history[idx]=entry
-    else history.unshift(entry)
+    if(idx>=0) history[idx]=entry; else history.unshift(entry)
     if(history.length>30) history.length=30
     localStorage.setItem(histKey, JSON.stringify(history))
-    renderLocalHistory()
   }catch(e){}
 }
 
@@ -855,10 +855,24 @@ function getLocalHistory(){
   try{ return JSON.parse(localStorage.getItem(HIST_PREFIX+cloudRouteId)||'[]') }catch(e){ return [] }
 }
 
-function renderLocalHistory(){
+// Returns cached cloud history, or local if cloud not loaded
+function getHistory(){ return _histCache !== null ? _histCache : getLocalHistory() }
+
+// Fetch history from cloud and refresh display
+async function loadCloudHistory(){
+  if(!cloudRouteId||!cloudScriptUrl||!cloudApiKey) return
+  try{
+    const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey})
+    const res=await fetch(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(10000)})
+    const json=await res.json()
+    if(json.ok){ _histCache=json.data; renderHistory() }
+  }catch(e){}
+}
+
+function renderHistory(){
   const el=document.getElementById('history-section')
   if(!el) return
-  const hist=getLocalHistory()
+  const hist=getHistory()
   const countEl=document.getElementById('hist-count-badge')
   if(countEl) countEl.textContent=hist.length?`(${hist.length})`:''
   if(!hist.length){ el.style.display='none'; return }
@@ -871,9 +885,10 @@ function renderLocalHistory(){
     const chips = Object.entries(h.trips||{}).map(([k,t])=>
       `<span style="background:#1e293b;color:#93c5fd;padding:2px 7px;border-radius:6px;font-size:11px;white-space:nowrap">${CZH[k]||k} ${fmtTime(t.travelS)}</span>`
     ).join('')
+    const src = _histCache!==null ? '☁️' : '📱'
     return `<div style="background:#0f172a;border-radius:10px;padding:10px 12px;margin-bottom:6px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div style="font-size:12px;font-weight:700;color:#f1f5f9">${WZH[h.weather]||''} ${h.date} · ${h.surveyor}</div>
+        <div style="font-size:12px;font-weight:700;color:#f1f5f9">${src} ${WZH[h.weather]||''} ${h.date} · ${h.surveyor}</div>
         <button onclick="viewHistoryReport(${i})"
           style="background:#1e3a5f;border:1px solid #2563eb;color:#93c5fd;border-radius:7px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
           📊 查看
@@ -884,8 +899,11 @@ function renderLocalHistory(){
   }).join('')
 }
 
+// Keep old name as alias for call sites
+function renderLocalHistory(){ renderHistory() }
+
 function viewHistoryReport(idx){
-  const hist=getLocalHistory()
+  const hist=getHistory()
   const h=hist[idx]; if(!h) return
   // Save current live allTrips + date
   const savedTrips=JSON.parse(JSON.stringify(allTrips))
@@ -928,7 +946,7 @@ function toggleHistory(){
   listEl.dataset.open = open?'0':'1'
   listEl.style.display = open?'none':'block'
   btn.textContent = open?'📋 過去調查記錄':'📋 過去調查記錄 ▲'
-  if(!open) renderLocalHistory()
+  if(!open){ renderHistory(); loadCloudHistory() }
 }
 
 function updateRestoredBanner(count){
@@ -1951,8 +1969,9 @@ function goReady(){
   showScreen('screen-ready')
   checkStart()
   updateRestoredBanner(Object.keys(allTrips).length)
-  renderLocalHistory()
-  autoSelectPeak()   // auto-detect peak/off-peak by current time (skips if user already chose)
+  renderHistory()
+  loadCloudHistory()   // refresh from cloud in background
+  autoSelectPeak()     // auto-detect peak/off-peak by current time (skips if user already chose)
 }
 
 // ════════════════════════════════════
@@ -1977,7 +1996,9 @@ async function submitToCloud(){
   try{
     await cloudPostSurvey(cloudScriptUrl, cloudApiKey, body)
     cloudSubmitted=true
-    saveToLocalHistory()   // persist to device history
+    saveToLocalHistory()    // persist to device as offline backup
+    _histCache=null         // invalidate cache so cloud re-fetch gets fresh data
+    loadCloudHistory()      // refresh history from cloud
     statusEl.textContent='✅ 已成功上傳至雲端！'
     btnEl.textContent='✅ 已上傳'
     showToast('☁️ 調查結果已上傳')
