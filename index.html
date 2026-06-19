@@ -121,7 +121,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .nd-line.done{background:#4ade80}
 
 /* Next-node card — compact, info left + manual button right */
-.next-node-card{margin:5px 12px 0;border-radius:14px;padding:10px 14px;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;flex-shrink:0;display:flex;align-items:center;gap:10px;overflow:hidden}
+.next-node-card{margin:5px 12px 0;border-radius:14px;padding:6px 10px;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;flex-shrink:0;display:flex;align-items:center;gap:10px;overflow:hidden}
 .next-node-card.arriving{background:linear-gradient(135deg,#15803d,#16a34a);animation:cardPulse 1s infinite}
 .next-node-card.done{background:#374151;animation:none}
 @keyframes cardPulse{0%,100%{opacity:1}50%{opacity:.85}}
@@ -137,7 +137,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 /* Scrollable delay area — side-by-side columns */
 .delay-columns{flex:1;overflow-y:auto;background:#1e293b;display:flex;gap:8px;padding:8px 10px 6px}
 .delay-col{flex:1;display:flex;flex-direction:column;gap:7px;min-width:0}
-.dl-col-label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#475569;font-weight:700;text-align:center;padding:3px 0 4px;border-bottom:1px solid #334155;margin-bottom:2px}
+.dl-col-label{font-size:15px;color:#64748b;font-weight:700;text-align:center;padding:4px 0 5px;border-bottom:1px solid #334155;margin-bottom:2px}
 .btn-dl{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 6px;min-height:68px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:#94a3b8;cursor:pointer;transition:all .15s;width:100%}
 .btn-dl:active{transform:scale(.96)}
 .btn-dl.active{background:#450a0a;border-color:#ef4444;color:#fca5a5}
@@ -231,7 +231,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
              background:repeating-linear-gradient(90deg,#fbbf24 0 10px,transparent 10px 20px)"></div>
       </div>
       <!-- Car (scaleX(-1) flips to face right) -->
-      <div id="car-icon" style="position:absolute;bottom:22px;font-size:26px;left:2px;transform:scaleX(-1);transition:left 1.4s cubic-bezier(.4,0,.2,1)">🚗</div>
+      <div id="car-icon" style="position:absolute;bottom:18px;font-size:52px;left:2px;transform:scaleX(-1);transition:left 1.4s cubic-bezier(.4,0,.2,1)">🚗</div>
     </div>
     <!-- Progress bar -->
     <div style="height:5px;background:#1e293b;border-radius:3px;margin-top:4px">
@@ -2562,7 +2562,7 @@ function setLoadPct(pct){
   const bar=document.getElementById('load-bar')
   if(!car||!bar) return
   const containerW=Math.min(window.innerWidth*0.86,320)
-  const carSize=32   // 26px font emoji ~32px rendered; leave gap before flag
+  const carSize=64   // 52px font emoji ~64px rendered
   car.style.left=Math.max(2,(containerW-carSize)*pct/100)+'px'
   bar.style.width=Math.max(3,pct)+'%'
 }
