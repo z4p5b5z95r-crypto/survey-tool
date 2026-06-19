@@ -168,6 +168,22 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 /* ── Report ── */
 #screen-report{background:#f1f5f9}
 .report-wrap{overflow-x:auto;background:white;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+/* Report combo tabs */
+#report-combo-tabs{display:flex;gap:8px;padding:0 0 10px;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap}
+.rtab{padding:8px 16px;border:2px solid #e2e8f0;border-radius:20px;background:white;
+  color:#64748b;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;
+  flex-shrink:0;transition:all .15s;font-family:inherit}
+.rtab.active{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}
+/* History back button */
+#hist-report-back{position:fixed;top:16px;right:16px;z-index:9999;background:#1e293b;
+  color:#f1f5f9;border:1.5px solid #475569;border-radius:20px;padding:8px 16px;
+  font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5);font-family:inherit}
+/* Chip action sheet */
+#chip-action-sheet{background:#0f172a;border:1px solid #334155;border-radius:14px;
+  padding:10px;margin:8px 0 0;display:flex;flex-direction:column;gap:6px}
+.cas-btn{border-radius:10px;padding:9px;font-size:13px;font-weight:700;cursor:pointer;
+  text-align:center;font-family:inherit;transition:opacity .15s}
+.cas-btn:active{opacity:.7}
 .rt{width:100%;border-collapse:collapse;font-size:11px;min-width:380px}
 .rt th{background:#1e293b;color:white;padding:6px 7px;text-align:center;font-size:10px;font-weight:600;white-space:nowrap}
 .rt td{padding:5px 7px;border:1px solid #e2e8f0;text-align:center;white-space:nowrap}
@@ -465,7 +481,11 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
   <div class="page-header"><h2>📊 調查報告</h2><p id="report-subtitle"></p></div>
   <div class="scroll-body">
     <div><div class="sec-title">行駛路徑</div><div id="map-result"></div></div>
-    <div><div class="sec-title">官方調查表（主次要幹道行駛時間及延滯調查表）</div><div id="official-forms"></div></div>
+    <div>
+      <div class="sec-title">官方調查表（主次要幹道行駛時間及延滯調查表）</div>
+      <div id="report-combo-tabs"></div>
+      <div id="official-forms"></div>
+    </div>
     <div><div class="sec-title">總覽統計表</div><div class="report-wrap"><table class="rt" id="table1"></table></div></div>
     <div><div class="sec-title">各路段統計</div><div class="report-wrap"><table class="rt" id="table2"></table></div></div>
     <div><div class="sec-title">速率統計</div><div class="report-wrap"><table class="rt" id="table3"></table></div></div>
@@ -659,8 +679,8 @@ function applyConfig(cfg){
   config.peakLabel   =cfg.peakLabel   ||cfg.pk||'17:00~19:00'
   config.date        =cfg.date        ||new Date().toLocaleDateString('zh-TW')
   config.nodes=(cfg.nodes||cfg.nd||[]).map(n=>{
-    if(n.lat!==undefined) return {name:n.name||'節點',lat:n.lat,lng:n.lng,radius:n.radius||15}
-    return {name:n.n||n.r1||'節點',lat:n.a,lng:n.o,radius:n.r||15}
+    if(n.lat!==undefined) return {name:n.name||'節點',exitName:n.exitName||n.n2||'',lat:n.lat,lng:n.lng,radius:n.radius||15}
+    return {name:n.n||n.r1||'節點',exitName:n.n2||n.exitName||'',lat:n.a,lng:n.o,radius:n.r||15}
   })
   config.segments=(cfg.segments||cfg.sg||[]).map(s=>{
     if(s.name!==undefined) return {name:s.name,lanes:s.lanes||2,width:s.width||8,length:s.length||0}
@@ -818,50 +838,42 @@ function renderLocalHistory(){
   }).join('')
 }
 
-function viewHistoryReport(i){
+function viewHistoryReport(idx){
   const hist=getLocalHistory()
-  const h=hist[i]; if(!h) return
-  const WZH={sunny:'晴天 ☀️',cloudy:'陰天 ☁️',rainy:'雨天 🌧️'}
-  const CZH_FULL={off_peak_bound:'離峰去程',off_peak_return:'離峰回程',peak_bound:'尖峰去程',peak_return:'尖峰回程'}
-  const rows=Object.entries(h.trips||{}).map(([k,t])=>{
-    const spd=(config.totalLength&&t.travelS)?Math.round(config.totalLength/t.travelS*3.6):'—'
-    const delay=t.totalDelayS||0
-    return`<tr>
-      <td style="padding:9px 10px;border-bottom:1px solid #f1f5f9;font-weight:600;color:#1e293b">${CZH_FULL[k]||k}</td>
-      <td style="padding:9px 10px;border-bottom:1px solid #f1f5f9;text-align:center;color:#0369a1;font-weight:700">${fmtTime(t.travelS)}</td>
-      <td style="padding:9px 10px;border-bottom:1px solid #f1f5f9;text-align:center;color:#dc2626">${fmtTime(delay)}</td>
-      <td style="padding:9px 10px;border-bottom:1px solid #f1f5f9;text-align:center;color:#16a34a;font-weight:600">${spd} km/h</td>
-    </tr>`
-  }).join('')
-  // Remove existing modal if any
-  const old=document.getElementById('hist-report-modal'); if(old) old.remove()
-  const modal=document.createElement('div')
-  modal.id='hist-report-modal'
-  modal.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.65);display:flex;align-items:flex-end'
-  modal.onclick=e=>{if(e.target===modal) modal.remove()}
-  modal.innerHTML=`
-    <div style="background:white;border-radius:20px 20px 0 0;padding:20px 16px 40px;width:100%;max-height:80vh;overflow-y:auto">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
-        <div>
-          <div style="font-size:16px;font-weight:800;color:#1e293b">${h.date} 調查摘要</div>
-          <div style="font-size:12px;color:#64748b;margin-top:3px">${h.surveyor} &nbsp;·&nbsp; ${WZH[h.weather]||h.weather} &nbsp;·&nbsp; ${config.routeName||''}</div>
-        </div>
-        <button onclick="document.getElementById('hist-report-modal').remove()"
-          style="background:#f1f5f9;border:none;border-radius:10px;padding:6px 12px;font-size:16px;cursor:pointer;flex-shrink:0">✕</button>
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead>
-          <tr style="background:#f8fafc">
-            <th style="padding:8px 10px;text-align:left;font-size:11px;color:#64748b;font-weight:700;border-bottom:2px solid #e2e8f0">時段方向</th>
-            <th style="padding:8px 10px;text-align:center;font-size:11px;color:#64748b;font-weight:700;border-bottom:2px solid #e2e8f0">行駛時間</th>
-            <th style="padding:8px 10px;text-align:center;font-size:11px;color:#64748b;font-weight:700;border-bottom:2px solid #e2e8f0">延滯時間</th>
-            <th style="padding:8px 10px;text-align:center;font-size:11px;color:#64748b;font-weight:700;border-bottom:2px solid #e2e8f0">平均車速</th>
-          </tr>
-        </thead>
-        <tbody>${rows||'<tr><td colspan="4" style="padding:20px;text-align:center;color:#94a3b8">無記錄</td></tr>'}</tbody>
-      </table>
-    </div>`
-  document.body.appendChild(modal)
+  const h=hist[idx]; if(!h) return
+  // Save current live allTrips + date
+  const savedTrips=JSON.parse(JSON.stringify(allTrips))
+  const savedDate=config.date
+  // Build synthetic allTrips from history totals
+  const synth={}
+  COMBO_KEYS.forEach(k=>{
+    const t=h.trips?.[k]; if(!t) return
+    synth[k]={
+      peakType:k.startsWith('peak')?'peak':'off_peak',
+      direction:k.endsWith('bound')?'bound':'return',
+      startTime:null, endTime:null,
+      travelS:t.travelS||0, runS:t.runS||0, totalDelayS:t.totalDelayS||0,
+      gpsTrack:[], segTimes:[], nodeTimestamps:[], roadDelays:{}, intDelays:{}, delayLog:[]
+    }
+  })
+  // Swap allTrips temporarily and show report screen
+  const origAllTrips=allTrips
+  allTrips=synth
+  config.date=(h.date||'').slice(0,10)
+  buildReport()
+  showScreen('screen-report')
+  // Floating back button
+  const old=document.getElementById('hist-report-back'); if(old) old.remove()
+  const backBtn=document.createElement('button')
+  backBtn.id='hist-report-back'
+  backBtn.textContent='← 返回'
+  backBtn.onclick=()=>{
+    allTrips=origAllTrips
+    config.date=savedDate
+    backBtn.remove()
+    showScreen('screen-ready')
+  }
+  document.body.appendChild(backBtn)
 }
 
 function toggleHistory(){
@@ -947,13 +959,18 @@ function drawRouteArrows(direction){
     const a=nodes[i],b=nodes[i+1]
     const midLat=(a.lat+b.lat)/2, midLng=(a.lng+b.lng)/2
     const bear=calcBearing(a.lat,a.lng,b.lat,b.lng)
-    const color=direction==='return'?'#7c3aed':'#2563eb'
+    const color=direction==='return'?'#7c3aed':'#1d4ed8'
+    const bg=direction==='return'?'rgba(124,58,237,.18)':'rgba(29,78,216,.18)'
     L.marker([midLat,midLng],{icon:L.divIcon({
-      html:`<svg width="22" height="22" viewBox="-11 -11 22 22" xmlns="http://www.w3.org/2000/svg">
-        <polygon transform="rotate(${bear})" points="0,-10 -5,4 0,1 5,4"
-          fill="${color}" stroke="white" stroke-width="1.5" stroke-linejoin="round" opacity="0.92"/>
+      html:`<svg width="40" height="40" viewBox="-20 -20 40 40" xmlns="http://www.w3.org/2000/svg">
+        <defs><filter id="sh${i}" x="-60%" y="-60%" width="220%" height="220%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="rgba(0,0,0,.5)"/>
+        </filter></defs>
+        <circle r="18" fill="${bg}" stroke="${color}" stroke-width="1.5" opacity="0.7"/>
+        <polygon transform="rotate(${bear})" points="0,-13 -6,5 0,2 6,5"
+          fill="${color}" stroke="white" stroke-width="2" stroke-linejoin="round" filter="url(#sh${i})"/>
       </svg>`,
-      className:'',iconSize:[22,22],iconAnchor:[11,11]
+      className:'',iconSize:[40,40],iconAnchor:[20,20]
     })}).addTo(group)
   }
   routeArrowLayer=group.addTo(mapReady)
@@ -1000,6 +1017,7 @@ function onCompassUpdate(e){
   if(h===null) return
   compassHeading=h
   if(markerSurvey) markerSurvey.setIcon(createHeadingIcon(h))
+  if(markerReady) markerReady.setIcon(createHeadingIcon(h))
 }
 
 function initCompass(){
@@ -1157,6 +1175,7 @@ function startFromQR(){
   // Restore any trips recorded in earlier sessions for this QR
   const restored=loadTripsFromStorage()
   initMaps()
+  initCompass()   // request compass on user gesture (sign-in button click)
   updateProgressChips()
   showScreen('screen-ready')
   $('ready-title').textContent='🚗 '+config.routeName
@@ -1220,9 +1239,14 @@ function drawRouteOnMap(targetMap, layerKey){
     :config.nodes.map(n=>[n.lat,n.lng])
   window[layerKey]=L.polyline(allLls,{color:'#3b82f6',weight:4,opacity:.8}).addTo(targetMap)
   config.nodes.forEach((n,i)=>{
-    const color=i===0?'#16a34a':i===config.nodes.length-1?'#dc2626':'#6366f1'
-    L.circleMarker([n.lat,n.lng],{radius:7,fillColor:color,color:'#fff',weight:2,fillOpacity:1})
-      .bindTooltip(`${i+1}. ${n.name}`,{direction:'top',offset:[0,-8]}).addTo(targetMap)
+    const color=i===0?'#16a34a':i===config.nodes.length-1?'#dc2626':'#4f46e5'
+    L.marker([n.lat,n.lng],{icon:L.divIcon({
+      html:`<div style="width:22px;height:22px;border-radius:50%;background:${color};
+        border:2.5px solid white;color:white;font-size:10px;font-weight:800;
+        display:flex;align-items:center;justify-content:center;
+        box-shadow:0 2px 8px rgba(0,0,0,.45);line-height:1">${i+1}</div>`,
+      className:'',iconSize:[22,22],iconAnchor:[11,11]
+    })}).bindTooltip(n.name,{direction:'top',offset:[0,-6]}).addTo(targetMap)
   })
   targetMap.fitBounds(window[layerKey].getBounds(),{padding:[30,30]})
 }
@@ -1234,7 +1258,7 @@ function initMaps(){
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapReady)
   const initPos=config.nodes.length?[config.nodes[0].lat,config.nodes[0].lng]:[25.04776,121.51755]
   mapReady.setView(initPos,14)
-  markerReady=L.circleMarker(initPos,{radius:10,fillColor:'#3B82F6',color:'#fff',weight:3,fillOpacity:.95}).addTo(mapReady)
+  markerReady=L.marker(initPos,{icon:createHeadingIcon(compassHeading||0),zIndexOffset:500}).addTo(mapReady)
   drawRouteOnMap(mapReady,'routeLayerReady')
 }
 
@@ -1365,7 +1389,11 @@ function onPos(p){
   else{dot.className='gps-dot poor';txt.textContent=`GPS ±${Math.round(accuracy)}m`}
   const b=$('gps-badge');if(b)b.textContent=`📡 ±${Math.round(accuracy)}m`
   checkStart()
-  if(mapReady&&markerReady){markerReady.setLatLng([lat,lng]);mapReady.panTo([lat,lng],{animate:true,duration:.3})}
+  if(mapReady&&markerReady){
+    markerReady.setLatLng([lat,lng])
+    if(!compassListening) markerReady.setIcon(createHeadingIcon(compassHeading||0))
+    mapReady.panTo([lat,lng],{animate:true,duration:.3})
+  }
   if(cur&&!cur.endTime){
     if(mapSurvey&&markerSurvey){markerSurvey.setLatLng([lat,lng]);mapSurvey.setView([lat,lng],mapSurvey.getZoom()||16,{animate:true,duration:.5})}
     if(!isPaused){
@@ -1585,13 +1613,40 @@ function updateProgressChips(){
 const COMBO_ZH={off_peak_bound:'離峰去程',off_peak_return:'離峰回程',peak_bound:'尖峰去程',peak_return:'尖峰回程'}
 
 function confirmResetCombo(k){
-  if(!confirm(`重新調查「${COMBO_ZH[k]||k}」？\n此組合的已儲存資料將被清除。`)) return
+  // Toggle: second click on same chip closes the sheet
+  const existing=document.getElementById('chip-action-sheet')
+  if(existing){const ek=existing.dataset.key; existing.remove(); if(ek===k) return}
+  const label=COMBO_ZH[k]||k
+  const sheet=document.createElement('div')
+  sheet.id='chip-action-sheet'
+  sheet.dataset.key=k
+  sheet.innerHTML=`
+    <div style="font-size:11px;color:#64748b;font-weight:700;text-align:center;padding:2px 0 6px">${label}</div>
+    <button class="cas-btn" style="background:#1e3a5f;border:1px solid #2563eb;color:#93c5fd"
+      onclick="viewComboFromChip('${k}')">📊 查看此次調查結果</button>
+    <button class="cas-btn" style="background:#1c0a0a;border:1px solid #ef4444;color:#fca5a5"
+      onclick="doResetCombo('${k}')">🔄 重新調查此組合</button>
+    <button class="cas-btn" style="background:transparent;border:1px solid #334155;color:#64748b"
+      onclick="document.getElementById('chip-action-sheet')?.remove()">取消</button>`
+  const chips=$('progress-chips')
+  chips.parentNode.insertBefore(sheet,chips.nextSibling)
+}
+
+function doResetCombo(k){
+  document.getElementById('chip-action-sheet')?.remove()
   delete allTrips[k]
   saveTripsToStorage()
   updateProgressChips()
   updateRestoredBanner(Object.keys(allTrips).length)
   checkStart()
   showToast(`「${COMBO_ZH[k]||k}」已清除，可重新調查`)
+}
+
+function viewComboFromChip(k){
+  document.getElementById('chip-action-sheet')?.remove()
+  buildReport()
+  showScreen('screen-report')
+  setTimeout(()=>showComboTab(k),150)
 }
 
 // ════════════════════════════════════
@@ -1789,6 +1844,7 @@ function parseComboKey(k){
 }
 function goNextCombo(){showScreen('screen-ready');checkStart()}
 function goReport(){
+  document.getElementById('hist-report-back')?.remove()
   buildReport()
   showScreen('screen-report')
   // Show cloud upload box only if this is a cloud-linked route
@@ -1882,6 +1938,16 @@ function buildTripsPayload(){
 function getTrip(pt,dir){return allTrips[`${pt}_${dir}`]||null}
 function spd(len,secs){return(len>0&&secs>0)?Math.round(len/secs*3.6):'—'}
 
+// Segment label: uses node[i].exitName (departure road) if set, else node[i].name
+// e.g. node4 arrives as "縣政南路" but LEAVES as "縣政六街" → segment 4→5 = "縣政六街→縣政五街"
+function segLabel(i){
+  const nd=config.nodes
+  if(!nd||i<0||i>=nd.length-1) return config.segments?.[i]?.name||''
+  const from=nd[i].exitName||nd[i].name
+  const to=nd[i+1].name
+  return `${from}→${to}`
+}
+
 function buildReport(){
   $('report-subtitle').textContent=`${config.routeName}  ${config.date}`
   buildResultMap();buildOfficialForms();buildTable1();buildTable2();buildTable3()
@@ -1900,14 +1966,38 @@ function segDelaysForIdx(trip, i){
   return r
 }
 
+const COMBO_ZH_FULL=COMBO_ZH   // alias
+let _activeComboTab=null
+
 function buildOfficialForms(){
+  const tabBar=$('report-combo-tabs')
   const box=$('official-forms'); if(!box) return
   box.innerHTML=''
-  COMBO_KEYS.forEach(key=>{
-    const trip=allTrips[key]; if(!trip) return
-    const [pt,dir]=parseComboKey(key)
-    box.appendChild(buildOneOfficialForm(trip,pt,dir))
-  })
+  const doneCombos=COMBO_KEYS.filter(k=>allTrips[k])
+  if(!doneCombos.length){if(tabBar)tabBar.innerHTML='';return}
+  // Build tab bar
+  if(tabBar){
+    tabBar.innerHTML=doneCombos.map((k,i)=>
+      `<button class="rtab${i===0?' active':''}" data-tab="${k}" onclick="showComboTab('${k}')">${COMBO_ZH_FULL[k]||k}</button>`
+    ).join('')
+  }
+  // Show first tab
+  _activeComboTab=doneCombos[0]
+  showComboTab(_activeComboTab)
+}
+
+function showComboTab(key){
+  _activeComboTab=key
+  // Update tab active styles
+  document.querySelectorAll('.rtab').forEach(b=>b.classList.toggle('active',b.dataset.tab===key))
+  // Rebuild official form for this combo
+  const box=$('official-forms'); if(!box) return
+  box.innerHTML=''
+  const trip=allTrips[key]; if(!trip) return
+  const[pt,dir]=parseComboKey(key)
+  box.appendChild(buildOneOfficialForm(trip,pt,dir))
+  // Update GPS track on result map
+  if(mapResult) updateResultMapTrack(key)
 }
 
 function buildOneOfficialForm(trip,pt,dir){
@@ -1918,9 +2008,11 @@ function buildOneOfficialForm(trip,pt,dir){
   const spd  = (d,s) => (d>0&&s>0)?(d/s*3.6).toFixed(1):''
   const pct  = (v,t) => t>0?Math.round(v/t*100)+'%':'0%'
 
-  const st=new Date(trip.startTime), et=new Date(trip.endTime)
-  const tH=st.getHours(),tM=String(st.getMinutes()).padStart(2,'0'),tS=String(st.getSeconds()).padStart(2,'0')
-  const eH=et.getHours(),eM=String(et.getMinutes()).padStart(2,'0'),eS=String(et.getSeconds()).padStart(2,'0')
+  const _st=trip.startTime?new Date(trip.startTime):null
+  const _et=trip.endTime?new Date(trip.endTime):null
+  const _ok=d=>d&&!isNaN(d.getTime())
+  const tH=_ok(_st)?_st.getHours():'—',tM=_ok(_st)?String(_st.getMinutes()).padStart(2,'0'):'—',tS=_ok(_st)?String(_st.getSeconds()).padStart(2,'0'):'—'
+  const eH=_ok(_et)?_et.getHours():'—',eM=_ok(_et)?String(_et.getMinutes()).padStart(2,'0'):'—',eS=_ok(_et)?String(_et.getSeconds()).padStart(2,'0'):'—'
 
   const travelSpd = spd(len,trip.travelS)
   const runSpd    = spd(len,trip.runS)
@@ -1945,7 +2037,7 @@ function buildOneOfficialForm(trip,pt,dir){
   const segRows = segs.map((seg,i)=>{
     const sd=segD[i], st_=segT[i]||{}, ar=arrT[i]
     return `<tr>
-      <td colspan="2" class="sgs-seg">${seg.name}</td>
+      <td colspan="2" class="sgs-seg">${segLabel(i)||seg.name}</td>
       <td class="sgs-t-time">${ar.h}</td><td class="sgs-t-time">${ar.m}</td><td class="sgs-t-time">${ar.s}</td>
       <td>${dl(sd.congestion)}</td><td>${dl(sd.bus_stop)}</td><td>${dl(sd.taxi_stop)}</td>
       <td>${dl(sd.parking)}</td><td>${dl(sd.ped_cross)}</td><td>${dl(sd.road_other)}</td>
@@ -2095,28 +2187,44 @@ function buildOneOfficialForm(trip,pt,dir){
   wrapper.innerHTML=html
   return wrapper.firstElementChild
 }
+let _resultGpsLayer=null
 function buildResultMap(){
-  if(mapResult){mapResult.remove();mapResult=null}
+  if(mapResult){mapResult.remove();mapResult=null;_resultGpsLayer=null}
   mapResult=L.map('map-result',{zoomControl:true,attributionControl:false})
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapResult)
-  let hasLayer=false
-  Object.values(allTrips).forEach((t,i)=>{
-    if(!t.gpsTrack||t.gpsTrack.length<2)return
-    const colors=['#3b82f6','#ef4444','#16a34a','#f59e0b']
-    const ll=t.gpsTrack.map(p=>[p.lat,p.lng])
-    const poly=L.polyline(ll,{color:colors[i%4],weight:3,opacity:.8}).addTo(mapResult)
-    if(!hasLayer){mapResult.fitBounds(poly.getBounds(),{padding:[20,20]});hasLayer=true}
-    t.delayLog.forEach(r=>{
-      if(!r.pos)return
-      L.marker([r.pos.lat,r.pos.lng],{icon:L.divIcon({html:`<div style="font-size:18px">${r.icon}</div>`,className:'',iconSize:[20,20],iconAnchor:[10,10]})})
-        .bindPopup(`${r.icon} ${r.label}<br>${fmtHMS(r.startedAt)}<br>${r.durationS}秒`).addTo(mapResult)
-    })
-  })
-  if(!hasLayer&&lastPos)mapResult.setView([lastPos.lat,lastPos.lng],14)
+  // Draw planned route (dashed)
   if(config.nodes&&config.nodes.length>=2){
     const lls=routePolylines.length>0?routePolylines.flat():config.nodes.map(n=>[n.lat,n.lng])
     L.polyline(lls,{color:'#6366f1',weight:2,opacity:.5,dashArray:'6,4'}).addTo(mapResult)
   }
+  // Initial view: fit nodes or last GPS pos
+  if(config.nodes&&config.nodes.length>=2){
+    const lls=config.nodes.map(n=>[n.lat,n.lng])
+    mapResult.fitBounds(L.latLngBounds(lls),{padding:[30,30]})
+  } else if(lastPos){mapResult.setView([lastPos.lat,lastPos.lng],14)}
+  // Draw GPS track for active tab (or first available)
+  const firstKey=COMBO_KEYS.find(k=>allTrips[k])
+  if(firstKey) updateResultMapTrack(firstKey)
+}
+
+function updateResultMapTrack(key){
+  if(!mapResult) return
+  if(_resultGpsLayer){try{mapResult.removeLayer(_resultGpsLayer)}catch(e){};_resultGpsLayer=null}
+  const t=allTrips[key]; if(!t) return
+  const group=L.layerGroup()
+  if(t.gpsTrack&&t.gpsTrack.length>=2){
+    const ll=t.gpsTrack.map(p=>[p.lat,p.lng])
+    const poly=L.polyline(ll,{color:'#3b82f6',weight:3.5,opacity:.85}).addTo(group)
+    mapResult.fitBounds(poly.getBounds(),{padding:[20,20]})
+  }
+  if(t.delayLog){
+    t.delayLog.forEach(r=>{
+      if(!r.pos)return
+      L.marker([r.pos.lat,r.pos.lng],{icon:L.divIcon({html:`<div style="font-size:18px">${r.icon}</div>`,className:'',iconSize:[20,20],iconAnchor:[10,10]})})
+        .bindPopup(`${r.icon} ${r.label}<br>${fmtHMS(r.startedAt)}<br>${r.durationS}秒`).addTo(group)
+    })
+  }
+  _resultGpsLayer=group.addTo(mapResult)
 }
 function buildTable1(){
   const ob=getTrip('off_peak','bound'),or_=getTrip('off_peak','return')
@@ -2157,7 +2265,7 @@ function buildTable2(){
   <tr><th colspan="2">離峰</th><th colspan="2">下午尖峰</th><th colspan="2">離峰</th><th colspan="2">下午尖峰</th></tr>
   <tr><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th></tr>
   ${segs.map((s,i)=>`<tr>
-    <td class="rtl">${s.name}</td><td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
+    <td class="rtl">${segLabel(i)||s.name}</td><td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
     ${trips.map(t=>`<td>${t&&t.segTimes[i]?t.segTimes[i].travelS:'—'}</td>`).join('')}
     ${trips.map(t=>`<td>${t&&t.segTimes[i]?t.segTimes[i].runS:'—'}</td>`).join('')}
   </tr>`).join('')}
@@ -2175,7 +2283,7 @@ function buildTable3(){
   <tr><th colspan="2">離峰</th><th colspan="2">下午尖峰</th><th colspan="2">離峰</th><th colspan="2">下午尖峰</th></tr>
   <tr><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th></tr>
   ${segs.map((s,i)=>`<tr>
-    <td class="rtl">${s.name}</td><td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
+    <td class="rtl">${segLabel(i)||s.name}</td><td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
     ${trips.map(t=>`<td>${t&&t.segTimes[i]?spd(s.length,t.segTimes[i].travelS):'—'}</td>`).join('')}
     ${trips.map(t=>`<td>${t&&t.segTimes[i]?spd(s.length,t.segTimes[i].runS):'—'}</td>`).join('')}
   </tr>`).join('')}
