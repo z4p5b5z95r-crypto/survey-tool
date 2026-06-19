@@ -95,9 +95,10 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .combo-btn.pk{background:#450a0a;border-color:#ef4444;color:#fca5a5}
 .combo-btn.dr{background:#0c2a4e;border-color:#3b82f6;color:#93c5fd}
 .sel-badge{text-align:center;font-size:13px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,.12);padding:6px 12px;border-radius:10px;display:none}
-.progress-chips{display:flex;gap:5px;flex-wrap:wrap;justify-content:center}
-.chip{font-size:11px;padding:3px 9px;border-radius:20px;background:#0f172a;color:#475569;font-weight:600}
-.chip.done{background:#14532d;color:#4ade80}
+.progress-chips{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px}
+.prog-chip{padding:10px 8px;border-radius:11px;font-size:13px;font-weight:700;border:1.5px solid #334155;background:#0f172a;color:#475569;cursor:default;font-family:inherit;text-align:center;transition:all .15s}
+.prog-chip.done{background:#14532d;border-color:#16a34a;color:#4ade80;cursor:pointer}
+.prog-chip.done:active{opacity:.8}
 .btn-start{width:100%;padding:16px;background:#16a34a;color:white;border:none;border-radius:16px;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(22,163,74,.3);margin-top:auto;flex-shrink:0}
 .btn-start:disabled{background:#374151;box-shadow:none;cursor:default}
 
@@ -391,10 +392,6 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
       </div>
     </div>
     <div class="sel-badge" id="sel-badge"></div>
-    <div id="restored-banner" style="display:none;background:#14532d;color:#4ade80;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;align-items:center;justify-content:space-between;gap:8px">
-      <span>📂 已有 <span id="restored-count">0</span> 筆記錄（換頁前已儲存）</span>
-      <button onclick="confirmClearStorage()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fca5a5;border-radius:7px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0">重新開始</button>
-    </div>
     <div class="progress-chips" id="progress-chips"></div>
     <button class="btn-start" id="btn-start" disabled onclick="startSurvey()">▶ 開始調查</button>
     <!-- ── Device history ── -->
@@ -478,7 +475,11 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 
 <!-- ══ Screen D: Report ══ -->
 <div id="screen-report" class="screen">
-  <div class="page-header"><h2>📊 調查報告</h2><p id="report-subtitle"></p></div>
+  <div class="page-header" style="position:relative">
+    <button id="report-back-btn" onclick="goReady()" style="position:absolute;left:0;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#60a5fa;font-size:22px;cursor:pointer;padding:4px 8px;line-height:1">‹</button>
+    <h2 style="padding-left:28px">📊 調查報告</h2>
+    <p id="report-subtitle"></p>
+  </div>
   <div class="scroll-body">
     <div><div class="sec-title">行駛路徑</div><div id="map-result"></div></div>
     <div>
@@ -495,8 +496,6 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
       <div id="cloud-upload-status" style="font-size:13px;color:#475569;margin-bottom:8px">準備中...</div>
       <button id="cloud-upload-btn" onclick="submitToCloud()" style="width:100%;padding:11px;background:#0369a1;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">☁ 上傳調查結果</button>
     </div>
-    <button class="btn-ex html" style="width:100%;font-size:16px;padding:16px" onclick="exportReport()">📤 產出完整報告（可傳 LINE 給 PM）</button>
-    <p style="text-align:center;font-size:11px;color:#94a3b8;margin-top:6px">HTML 檔案內含地圖、全部表格，打開後可再下載 Excel</p>
     <button style="width:100%;padding:15px;background:#e2e8f0;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px" onclick="goReady()">🔄 繼續補充旅次</button>
   </div>
 </div>
@@ -679,7 +678,7 @@ function applyConfig(cfg){
   config.totalLength =cfg.totalLength ||cfg.tl||0
   config.offPeakLabel=cfg.offPeakLabel||cfg.op||'14:00~16:00'
   config.peakLabel   =cfg.peakLabel   ||cfg.pk||'17:00~19:00'
-  config.date        =cfg.date        ||new Date().toLocaleDateString('zh-TW')
+  config.date        =todayStr()   // always default to today; surveyor picks their own date
   config.nodes=(cfg.nodes||cfg.nd||[]).map(n=>{
     if(n.lat!==undefined) return {name:n.name||'節點',exitName:n.exitName||n.n2||'',lat:n.lat,lng:n.lng,radius:n.radius||15}
     return {name:n.n||n.r1||'節點',exitName:n.n2||n.exitName||'',lat:n.a,lng:n.o,radius:n.r||15}
@@ -864,18 +863,16 @@ function viewHistoryReport(idx){
   config.date=(h.date||'').slice(0,10)
   buildReport()
   showScreen('screen-report')
-  // Floating back button
-  const old=document.getElementById('hist-report-back'); if(old) old.remove()
-  const backBtn=document.createElement('button')
-  backBtn.id='hist-report-back'
-  backBtn.textContent='← 返回'
-  backBtn.onclick=()=>{
-    allTrips=origAllTrips
-    config.date=savedDate
-    backBtn.remove()
-    showScreen('screen-ready')
+  // Re-wire the header back button to restore live data
+  const backBtn=document.getElementById('report-back-btn')
+  if(backBtn){
+    backBtn.onclick=()=>{
+      allTrips=origAllTrips
+      config.date=savedDate
+      backBtn.onclick=()=>goReady()  // reset to normal
+      showScreen('screen-ready')
+    }
   }
-  document.body.appendChild(backBtn)
 }
 
 function toggleHistory(){
@@ -1603,12 +1600,11 @@ function checkStart(){
 }
 function updateProgressChips(){
   $('progress-chips').innerHTML=COMBO_KEYS.map(k=>{
-    const[pt,dir]=parseComboKey(k)
-    const label=`${pt==='peak'?'尖':'離'}${dir==='bound'?'去':'回'}`
+    const label=COMBO_ZH[k]||k
     if(allTrips[k]){
-      return`<span class="chip done" onclick="confirmResetCombo('${k}')" title="點擊可重新調查" style="cursor:pointer">${label} ✕</span>`
+      return`<button class="prog-chip done" onclick="confirmResetCombo('${k}')">${label} ✏️</button>`
     }
-    return`<span class="chip">${label}</span>`
+    return`<button class="prog-chip" disabled>${label}</button>`
   }).join('')
 }
 
