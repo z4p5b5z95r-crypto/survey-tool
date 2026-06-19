@@ -1116,19 +1116,28 @@ function _updateLocateBtn(){
   if(btn) btn.style.opacity=_mapFollowing?'0.5':'1'
 }
 
-function createHeadingIcon(){
-  // Blue pulsing dot with direction arrow pointing up — map rotates, icon stays up
+// Ready-screen marker: arrow rotates with compass heading
+function createHeadingIcon(heading){
+  const rot=heading??0
   return L.divIcon({
     html:`<svg width="44" height="44" viewBox="-22 -22 44 44" xmlns="http://www.w3.org/2000/svg">
       <filter id="dotshadow"><feDropShadow dx="0" dy="1" stdDeviation="2.5" flood-color="rgba(0,0,0,.4)"/></filter>
-      <!-- accuracy halo -->
       <circle cx="0" cy="0" r="14" fill="rgba(37,99,235,.15)" stroke="rgba(37,99,235,.3)" stroke-width="1"/>
-      <!-- main dot -->
       <circle cx="0" cy="0" r="8" fill="#2563eb" stroke="white" stroke-width="2.5" filter="url(#dotshadow)"/>
-      <!-- direction arrow pointing up -->
-      <polygon points="0,-19 5,-10 0,-13 -5,-10" fill="#2563eb" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+      <polygon points="0,-19 5,-10 0,-13 -5,-10" fill="#2563eb" stroke="white" stroke-width="1.5" stroke-linejoin="round" transform="rotate(${rot})"/>
     </svg>`,
     className:'',iconSize:[44,44],iconAnchor:[22,22]
+  })
+}
+// Survey-screen marker: just a dot — map itself rotates to show direction
+function createSurveyIcon(){
+  return L.divIcon({
+    html:`<svg width="26" height="26" viewBox="-13 -13 26 26" xmlns="http://www.w3.org/2000/svg">
+      <filter id="sdot"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="rgba(0,0,0,.4)"/></filter>
+      <circle cx="0" cy="0" r="10" fill="#2563eb" stroke="white" stroke-width="2.5" filter="url(#sdot)"/>
+      <circle cx="0" cy="0" r="3.5" fill="white" opacity="0.9"/>
+    </svg>`,
+    className:'',iconSize:[26,26],iconAnchor:[13,13]
   })
 }
 
@@ -1142,7 +1151,7 @@ function onCompassUpdate(e){
   _smoothH=(_smoothH+delta*0.12+360)%360
   compassHeading=_smoothH
   // Always update ready-screen marker
-  if(markerReady) markerReady.setIcon(createHeadingIcon())
+  if(markerReady) markerReady.setIcon(createHeadingIcon(compassHeading))
   // Low speed / stationary → Heading Up: compass drives the nav-map
   if(_lastSpeed < NAV_SPEED_MS){
     if(_navBearing===null) _navBearing=compassHeading
@@ -1445,7 +1454,7 @@ function initMaps(){
   mapReady.setView(initPos,14)
   // Place GPS marker at current position if known, else at route start
   const gpsPos=lastPos?[lastPos.lat,lastPos.lng]:initPos
-  markerReady=L.marker(gpsPos,{icon:createHeadingIcon(),zIndexOffset:500}).addTo(mapReady)
+  markerReady=L.marker(gpsPos,{icon:createHeadingIcon(compassHeading),zIndexOffset:500}).addTo(mapReady)
   mapReady._gpsFitted=false
   // Draw route — fitBounds to show full route
   drawRouteOnMap(mapReady,'routeLayerReady')
@@ -1566,7 +1575,7 @@ function onPos(p){
   checkStart()
   if(mapReady&&markerReady){
     markerReady.setLatLng([lat,lng])
-    if(!compassListening) markerReady.setIcon(createHeadingIcon())
+    if(!compassListening) markerReady.setIcon(createHeadingIcon(compassHeading))
     // First GPS fix: extend route bounds to include position, then stop auto-panning
     if(!mapReady._gpsFitted&&window.routeLayerReady){
       try{
@@ -1860,13 +1869,36 @@ function startSurvey(){
 
   if(!mapSurvey){
     mapSurvey=L.map('map-survey',{zoomControl:false,attributionControl:false})
-    // When user manually drags/zooms, pause GPS auto-follow
-    mapSurvey.on('dragstart zoomstart',()=>{ _mapFollowing=false; _updateLocateBtn() })
+    // Disable Leaflet's built-in drag — use custom handler to compensate for CSS rotation
+    mapSurvey.dragging.disable()
+    mapSurvey.on('zoomstart',()=>{ _mapFollowing=false; _updateLocateBtn() })
+    // Custom touch-pan: un-rotate screen delta → Leaflet internal delta
+    ;(()=>{
+      let _td=null
+      const mc=mapSurvey.getContainer()
+      mc.addEventListener('touchstart',e=>{
+        if(e.touches.length===1){
+          _td={x:e.touches[0].clientX, y:e.touches[0].clientY}
+          _mapFollowing=false; _updateLocateBtn()
+        }
+      },{passive:true})
+      mc.addEventListener('touchmove',e=>{
+        if(!_td||e.touches.length!==1) return
+        const dx=e.touches[0].clientX-_td.x, dy=e.touches[0].clientY-_td.y
+        _td.x=e.touches[0].clientX; _td.y=e.touches[0].clientY
+        // Un-rotate screen delta to Leaflet internal coordinates
+        const θ=(_cssRotDeg||0)*Math.PI/180
+        const mx=dx*Math.cos(θ)+dy*Math.sin(θ)
+        const my=-dx*Math.sin(θ)+dy*Math.cos(θ)
+        mapSurvey.panBy([-mx,-my],{animate:false})
+      },{passive:true})
+      mc.addEventListener('touchend',()=>{ _td=null },{passive:true})
+    })()
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapSurvey)
     const ip=lastPos?[lastPos.lat,lastPos.lng]:[25.04776,121.51755]
     mapSurvey.setView(ip,17)
     // Heading-aware marker (Google Maps style: circle + direction arrow)
-    markerSurvey=L.marker(ip,{icon:createHeadingIcon(),zIndexOffset:1000}).addTo(mapSurvey)
+    markerSurvey=L.marker(ip,{icon:createSurveyIcon(),zIndexOffset:1000}).addTo(mapSurvey)
     // Fly to user location with animation
     setTimeout(()=>{
       if(lastPos) mapSurvey.flyTo([lastPos.lat,lastPos.lng],17,{duration:1.4})
