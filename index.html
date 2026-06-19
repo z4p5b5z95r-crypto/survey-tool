@@ -95,8 +95,8 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .combo-btn.pk{background:#450a0a;border-color:#ef4444;color:#fca5a5}
 .combo-btn.dr{background:#0c2a4e;border-color:#3b82f6;color:#93c5fd}
 .sel-badge{text-align:center;font-size:13px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,.12);padding:6px 12px;border-radius:10px;display:none}
-.progress-chips{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px}
-.prog-chip{padding:10px 8px;border-radius:11px;font-size:13px;font-weight:700;border:1.5px solid #334155;background:#0f172a;color:#475569;cursor:default;font-family:inherit;text-align:center;transition:all .15s}
+.progress-chips{display:flex;gap:5px;margin-top:4px}
+.prog-chip{flex:1;padding:9px 4px;border-radius:10px;font-size:11px;font-weight:700;border:1.5px solid #334155;background:#0f172a;color:#475569;cursor:default;font-family:inherit;text-align:center;transition:all .15s;white-space:nowrap}
 .prog-chip.done{background:#14532d;border-color:#16a34a;color:#4ade80;cursor:pointer}
 .prog-chip.done:active{opacity:.8}
 .btn-start{width:100%;padding:16px;background:#16a34a;color:white;border:none;border-radius:16px;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(22,163,74,.3);margin-top:auto;flex-shrink:0}
@@ -392,6 +392,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
       </div>
     </div>
     <div class="sel-badge" id="sel-badge"></div>
+    <div style="font-size:11px;font-weight:700;color:#64748b;letter-spacing:.4px;margin-top:10px;margin-bottom:4px">本次監測記錄</div>
     <div class="progress-chips" id="progress-chips"></div>
     <button class="btn-start" id="btn-start" disabled onclick="startSurvey()">▶ 開始調查</button>
     <!-- ── Device history ── -->
