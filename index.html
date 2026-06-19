@@ -1018,6 +1018,21 @@ function onPos(p){
     if(!isPaused){
       cur.gpsTrack.push({lat,lng,speed_ms:speed,accuracy_m:accuracy,ts:new Date().toISOString()})
       checkNodeProximity(lat,lng)
+      // ── Auto-stop delay if clearly moved away from start point ──
+      // Only trigger when GPS accuracy is good (<30m) and distance exceeds
+      // max(20m, accuracy) — this filters pure GPS drift within accuracy circle
+      if(activeDelay&&activeDelay.startPos&&accuracy<30){
+        const delayDist=haversine(lat,lng,activeDelay.startPos.lat,activeDelay.startPos.lng)
+        const moveThresh=Math.max(20,Math.round(accuracy))
+        if(delayDist>moveThresh){
+          const cause=activeDelay.cause,grp=activeDelay.group
+          const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===cause)
+          if(p){
+            toggleDelay(p,grp)
+            showToast(`📍 ${p.label} 自動結束（移動 ${delayDist}m）`)
+          }
+        }
+      }
     }
   }
 }
@@ -1057,6 +1072,33 @@ function manualRecordNode(){
   if(currentNodeIdx>=getNodeNames().length) return
   recordNode(false)
 }
+// ── Delay button sounds ─────────────────────────────────────────
+function playDelayBeep(isStart){
+  try{
+    if(!audioCtx||audioCtx.state==='closed') return
+    if(audioCtx.state==='suspended') audioCtx.resume()
+    const ctx=audioCtx
+    const play=(freq,startT,dur,vol=0.35,type='square')=>{
+      const o=ctx.createOscillator(),g=ctx.createGain()
+      o.connect(g);g.connect(ctx.destination)
+      o.type=type;o.frequency.setValueAtTime(freq,startT)
+      g.gain.setValueAtTime(vol,startT)
+      g.gain.exponentialRampToValueAtTime(0.001,startT+dur)
+      o.start(startT);o.stop(startT+dur)
+    }
+    const t=ctx.currentTime
+    if(isStart){
+      // 「搭！」— low-mid thunk：按下開始
+      play(420,t,0.07,0.4,'square')
+      play(280,t+0.06,0.10,0.2,'sine')
+    } else {
+      // 「啪！」— descending pop：鬆開結束
+      play(700,t,0.05,0.35,'square')
+      play(420,t+0.06,0.08,0.2,'sine')
+    }
+  }catch(e){}
+}
+
 function playNodeBeep(isFinal){
   try{
     // Reuse the unlocked AudioContext created on user gesture in startSurvey()
@@ -1267,6 +1309,7 @@ function buildGrid(gid,types,group){
 }
 function toggleDelay(d,group){
   if(activeDelay&&activeDelay.cause===d.cause){
+    // ── Stop recording this delay ──
     clearInterval(activeDelay.timerId)
     const end=new Date(),dur=Math.round((end-activeDelay.startedAt)/1000)
     if(group==='road')cur.roadDelays[d.cause]=(cur.roadDelays[d.cause]||0)+dur
@@ -1274,12 +1317,18 @@ function toggleDelay(d,group){
     delayLog.push({cause:d.cause,group,label:d.label,icon:d.icon,startedAt:activeDelay.startedAt,endedAt:end,durationS:dur,pos:activeDelay.startPos})
     $(`dbtn-${d.cause}`).classList.remove('active')
     $(`dtime-${d.cause}`).textContent='';activeDelay=null
+    playDelayBeep(false)
+    if(navigator.vibrate) navigator.vibrate(60)
   }else{
+    // ── If another delay is active, stop it first ──
     if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(p)toggleDelay(p,activeDelay.group)}
+    // ── Start recording this delay ──
     const s=new Date(),sp=lastPos?{...lastPos}:null;let el=0
     const tid=setInterval(()=>{el++;const e=$(`dtime-${d.cause}`);if(e)e.textContent=fmtSec(el)},1000)
     activeDelay={cause:d.cause,group,startedAt:s,timerId:tid,startPos:sp}
     $(`dbtn-${d.cause}`).classList.add('active')
+    playDelayBeep(true)
+    if(navigator.vibrate) navigator.vibrate(120)
   }
 }
 
