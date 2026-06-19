@@ -866,7 +866,8 @@ async function loadCloudHistory(){
     const res=await fetch(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(10000)})
     const json=await res.json()
     if(json.ok){ _histCache=json.data; renderHistory() }
-  }catch(e){}
+    else{ console.error('[history] GAS error:', json.error) }
+  }catch(e){ console.error('[history] fetch error:', e.message) }
 }
 
 function renderHistory(){
@@ -1260,7 +1261,8 @@ function startFromQR(){
   $('ready-title').textContent='🚗 '+config.routeName
   $('ready-route-info').textContent=config.routeFromTo
   updateRestoredBanner(Object.keys(allTrips).length)
-  renderLocalHistory()
+  renderHistory()
+  loadCloudHistory()   // fetch history from cloud in background
   autoSelectPeak()   // auto-detect by current time on first entry
   if(restored>0) showToast(`📂 已恢復 ${restored} 筆旅次記錄`)
 }
