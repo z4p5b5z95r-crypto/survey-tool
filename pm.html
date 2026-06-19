@@ -136,17 +136,31 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;backgro
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:white;padding:9px 18px;border-radius:20px;font-size:14px;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 .toast.show{opacity:1}
 
+/* ── Cloud config ── */
+.cloud-sec{background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:10px;padding:10px 12px;margin-bottom:0}
+.cloud-sec-title{font-size:11px;font-weight:700;color:#0369a1;margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.cloud-status{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:auto}
+.cloud-status.ok{background:#dcfce7;color:#16a34a}
+.cloud-status.err{background:#fee2e2;color:#dc2626}
+.cloud-status.idle{background:#f1f5f9;color:#64748b}
+
 /* ── Saved tasks ── */
 .task-list{display:flex;flex-direction:column;gap:7px}
-.task-card{background:#f8fafc;border-radius:10px;padding:10px 12px;border:1px solid #e2e8f0;transition:border-color .15s}
-.task-card:hover{border-color:#3b82f6}
+.task-card{background:#f8fafc;border-radius:10px;padding:10px 12px;border:1.5px solid #e2e8f0;transition:border-color .15s}
+.task-card:hover{border-color:#93c5fd}
+.task-card.active{border-color:#2563eb;background:#eff6ff}
+.task-card.active .task-card-name{color:#1d4ed8}
 .task-card-name{font-size:14px;font-weight:700;color:#1e293b}
 .task-card-meta{font-size:11px;color:#94a3b8;margin-top:3px}
-.task-card-btns{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap}
-.tc-btn{padding:5px 10px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer}
+.task-card-btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.tc-btn{padding:6px 12px;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer}
 .tc-btn.load{background:#e0f2fe;color:#0369a1}
 .tc-btn.qr{background:#7c3aed;color:white}
 .tc-btn.del{background:#fee2e2;color:#dc2626}
+.tc-btn.surveys{background:#f0fdf4;color:#16a34a}
+.cloud-badge{font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;background:#dbeafe;color:#1d4ed8;font-weight:700}
+/* ── QR warning ── */
+.qr-warn{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:7px 10px;font-size:11px;color:#92400e;margin-bottom:8px;display:none}
 
 /* ── Leaflet popup override ── */
 .leaflet-popup-content{margin:10px 12px!important;min-width:150px}
@@ -168,11 +182,11 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;backgro
 <div class="topbar">
   <div>
     <h1>🗺 旅行時間調查 — PM 任務派發</h1>
-    <p>建立路線、設定節點、派發 QR Code 給調查員</p>
+    <p id="topbar-editing">建立路線 · 設定節點 · 派發 QR Code 給調查員</p>
   </div>
   <div class="topbar-btns">
-    <button class="btn-sm outline" onclick="newTask()">＋ 新增任務</button>
-    <button class="btn-sm green" onclick="saveTask()">💾 儲存任務</button>
+    <button class="btn-sm outline" onclick="newTask()">＋ 新建</button>
+    <button class="btn-sm green" onclick="saveTask()">💾 儲存</button>
   </div>
 </div>
 
@@ -186,10 +200,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;backgro
       <div class="sec-title">📋 路線資訊</div>
       <div class="field"><label>路線名稱</label><input id="rn" placeholder="台二省道轉新市二路到港子平"/></div>
       <div class="field"><label>起迄點</label><input id="ft" placeholder="港子平 ↔ 台二線"/></div>
-      <div class="row2">
-        <div class="field"><label>全長（公尺）</label><input id="tl" type="number" placeholder="自動計算"/></div>
-        <div class="field"><label>日期</label><input id="survey-date" type="date"/></div>
-      </div>
+      <div class="field"><label>全長（公尺）</label><input id="tl" type="number" placeholder="自動計算"/></div>
     </div>
 
     <!-- 調查時間 -->
@@ -233,6 +244,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;backgro
     <!-- QR Code -->
     <div class="sec">
       <div class="sec-title">📱 QR Code 派發</div>
+      <div class="qr-warn" id="qr-cloud-warn">⚠️ 尚未連線雲端。QR 將內嵌完整路線資料（離線模式），URL 較長，建議先在下方設定雲端連線。</div>
       <div class="qr-url-row">
         <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px">監測者 App 網址</label>
         <input id="app-url" value="https://z4p5b5z95r-crypto.github.io/survey-tool/"/>
@@ -246,9 +258,33 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;backgro
       <div class="qr-info" id="qr-info"></div>
     </div>
 
+    <!-- 雲端設定 -->
+    <div class="sec">
+      <div class="sec-title">☁️ 雲端設定
+        <span class="cloud-status idle" id="cloud-status-badge">● 未連線</span>
+      </div>
+      <div class="cloud-sec">
+        <div style="font-size:11px;color:#0369a1;margin-bottom:8px">填入 Apps Script URL 和 API Key 後，儲存的路線可同步至雲端，QR Code 只需包含路線 ID。</div>
+        <div class="field" style="margin-bottom:7px">
+          <label>Apps Script URL</label>
+          <input id="gs-url" placeholder="https://script.google.com/macros/s/.../exec" style="font-size:12px"/>
+        </div>
+        <div class="field" style="margin-bottom:8px">
+          <label>API Key</label>
+          <input id="gs-key" type="password" placeholder="設定的 API_KEY 值" style="font-size:12px"/>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="saveCloudConfig()" style="flex:1;padding:7px;background:#0369a1;color:white;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">💾 儲存設定</button>
+          <button onclick="testCloudConnection()" style="flex:1;padding:7px;background:#f0f9ff;color:#0369a1;border:1.5px solid #bae6fd;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🔗 測試連線</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 已儲存任務 -->
     <div class="sec">
-      <div class="sec-title">💾 已儲存的任務</div>
+      <div class="sec-title">💾 已儲存的任務
+        <button onclick="syncFromCloud()" id="sync-btn" style="margin-left:auto;padding:3px 9px;background:#f0f9ff;color:#0369a1;border:1.5px solid #bae6fd;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;display:none">☁ 同步</button>
+      </div>
       <div id="saved-tasks" class="task-list"></div>
       <p id="no-tasks-hint" style="font-size:12px;color:#94a3b8">尚無已儲存的任務</p>
     </div>
@@ -262,7 +298,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;backgro
     <!-- 左側工具列 -->
     <div class="map-toolbar">
       <button class="tool-btn" id="tool-node"    onclick="toggleNodeMode()">📍 新增節點</button>
-      <button class="tool-btn" id="tool-route"   onclick="toggleRouteEdit()">✏️ 移動路線</button>
+      <button class="tool-btn" id="tool-route"   onclick="toggleRouteEdit()">✏️ 調整路線走向</button>
       <button class="tool-btn" id="tool-measure" onclick="toggleMeasure()">📐 量測距離</button>
       <div style="height:1px;background:#e2e8f0;margin:2px 0"></div>
       <button class="tool-btn danger"            onclick="clearAll()">🗑 清除全部</button>
@@ -514,6 +550,79 @@ let measuring = false, measurePts = [], measurePolyline = null
 let measureMarkers = [], measureTooltipMarker = null
 
 let savedTasks = JSON.parse(localStorage.getItem('pm_tasks') || '[]')
+let currentTaskId = null   // local id of currently-edited task
+
+// ════════════════════════════════════
+//  CLOUD CONFIG
+// ════════════════════════════════════
+let gsUrl = '', gsKey = ''
+
+function loadCloudConfig() {
+  gsUrl = localStorage.getItem('gs_url') || ''
+  gsKey = localStorage.getItem('gs_key') || ''
+  if (gsUrl) {
+    document.getElementById('gs-url').value = gsUrl
+    document.getElementById('gs-key').value = gsKey
+    updateCloudBadge('idle')
+    document.getElementById('sync-btn').style.display = 'inline-block'
+  }
+}
+
+function saveCloudConfig() {
+  gsUrl = document.getElementById('gs-url').value.trim()
+  gsKey = document.getElementById('gs-key').value.trim()
+  localStorage.setItem('gs_url', gsUrl)
+  localStorage.setItem('gs_key', gsKey)
+  document.getElementById('sync-btn').style.display = gsUrl ? 'inline-block' : 'none'
+  toast('✅ 設定已儲存，請按「測試連線」確認')
+  updateCloudBadge('idle')
+  updateQrWarn()
+}
+
+function updateCloudBadge(state, msg) {
+  const b = document.getElementById('cloud-status-badge')
+  b.className = `cloud-status ${state}`
+  b.textContent = state === 'ok' ? `● ${msg||'已連線'}` : state === 'err' ? `● ${msg||'錯誤'}` : '● 未連線'
+}
+
+async function testCloudConnection() {
+  if (!gsUrl || !gsKey) { toast('請先填入 URL 和 API Key'); return }
+  updateCloudBadge('idle', '測試中...')
+  try {
+    const data = await cloudGet({ action: 'ping' })
+    updateCloudBadge('ok', '已連線')
+    toast('✅ 連線成功！')
+  } catch(e) {
+    updateCloudBadge('err', '連線失敗')
+    toast('❌ 連線失敗：' + e.message)
+  }
+}
+
+// ════════════════════════════════════
+//  CLOUD API HELPERS
+// ════════════════════════════════════
+async function cloudGet(params) {
+  if (!gsUrl || !gsKey) throw new Error('未設定雲端')
+  const p = new URLSearchParams({ ...params, key: gsKey })
+  const res = await fetch(`${gsUrl}?${p}`, { signal: AbortSignal.timeout(15000) })
+  const json = await res.json()
+  if (!json.ok) throw new Error(json.error || 'cloud error')
+  return json.data
+}
+
+async function cloudPost(body) {
+  if (!gsUrl || !gsKey) throw new Error('未設定雲端')
+  // text/plain avoids CORS preflight (OPTIONS) that Apps Script doesn't handle
+  const res = await fetch(gsUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ ...body, key: gsKey }),
+    signal: AbortSignal.timeout(15000)
+  })
+  const json = await res.json()
+  if (!json.ok) throw new Error(json.error || 'cloud error')
+  return json.data
+}
 
 // ════════════════════════════════════
 //  UTILS
@@ -537,12 +646,15 @@ function getNodeColor(i) {
 //  MIDPOINT DRAG HANDLE (Google Maps-style route editing)
 // ════════════════════════════════════
 function createMidIcon(active) {
-  const s = active ? 18 : 12
+  const inner = active ? 18 : 12
+  // outer hit area is always 32px so it's easy to grab
   return L.divIcon({
-    html: `<div style="width:${s}px;height:${s}px;background:white;border:3px solid #3b82f6;border-radius:50%;box-shadow:0 1px 5px rgba(0,0,0,.3);cursor:grab;transition:all .12s"></div>`,
+    html: `<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:grab">
+      <div style="width:${inner}px;height:${inner}px;background:white;border:3px solid #3b82f6;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.4);transition:width .1s,height .1s,border-color .1s;${active?'border-color:#1d4ed8':''}"></div>
+    </div>`,
     className: '',
-    iconSize: [s, s],
-    iconAnchor: [s/2, s/2]
+    iconSize: [32, 32],
+    iconAnchor: [16, 16]
   })
 }
 
@@ -575,18 +687,15 @@ function toggleRouteEdit() {
   routeEditMode = !routeEditMode
   const btn = document.getElementById('tool-route')
   btn.classList.toggle('active', routeEditMode)
-  btn.textContent = routeEditMode ? '✕ 結束移動' : '✏️ 移動路線'
+  btn.textContent = routeEditMode ? '✕ 結束調整' : '✏️ 調整路線走向'
   if (routeEditMode) {
     if (measuring) stopMeasure()
     // exit node mode if active
     if (mode === 'node') setMode('browse')
-    // disable map drag so handles can be grabbed reliably
-    map.dragging.disable()
     refreshMidHandles()
     toast('拖曳路線上的白圓點可調整路線走向')
   } else {
     clearMidHandles()
-    map.dragging.enable()
   }
 }
 
@@ -595,66 +704,95 @@ function refreshMidHandles() {
   if (!routeEditMode) return   // only show handles when route-edit mode is active
   for (let segIdx = 0; segIdx < nodes.length - 1; segIdx++) {
     const poly = segPolylines[segIdx]; if (!poly) continue
-    const midPt = getPolylineMidpoint(poly)
     const n1 = nodes[segIdx], n2 = nodes[segIdx + 1]
 
-    const handle = L.marker(midPt, {
-      draggable: true,
-      zIndexOffset: 50,
-      icon: createMidIcon(false)
+    // ── White mid-handle: drag to INSERT a new waypoint ──
+    const midPt = getPolylineMidpoint(poly)
+    const insertHandle = L.marker(midPt, {
+      draggable: true, zIndexOffset: 50, icon: createMidIcon(false)
     }).addTo(map)
 
     let tmpA = null, tmpB = null
-
-    handle.on('mouseover', function() { if (!this._drag) this.setIcon(createMidIcon(true)) })
-    handle.on('mouseout',  function() { if (!this._drag) this.setIcon(createMidIcon(false)) })
-
-    handle.on('dragstart', function() {
+    insertHandle.on('mouseover', function() { if (!this._drag) this.setIcon(createMidIcon(true)) })
+    insertHandle.on('mouseout',  function() { if (!this._drag) this.setIcon(createMidIcon(false)) })
+    insertHandle.on('dragstart', function() {
       this._drag = true; this.setIcon(createMidIcon(true))
-      // dim the original segment
       if (segPolylines[segIdx]) segPolylines[segIdx].setStyle({ opacity: 0.25 })
     })
-
-    handle.on('drag', function(e) {
+    insertHandle.on('drag', function(e) {
       const ll = e.target.getLatLng()
       if (tmpA) map.removeLayer(tmpA)
       if (tmpB) map.removeLayer(tmpB)
       tmpA = L.polyline([[n1.lat, n1.lng], [ll.lat, ll.lng]], { color:'#3b82f6', weight:4, opacity:.75, dashArray:'7,5' }).addTo(map)
       tmpB = L.polyline([[ll.lat, ll.lng], [n2.lat, n2.lng]], { color:'#3b82f6', weight:4, opacity:.75, dashArray:'7,5' }).addTo(map)
     })
-
-    handle.on('dragend', async function(e) {
+    insertHandle.on('dragend', async function(e) {
       this._drag = false
       if (tmpA) { map.removeLayer(tmpA); tmpA = null }
       if (tmpB) { map.removeLayer(tmpB); tmpB = null }
       if (segPolylines[segIdx]) segPolylines[segIdx].setStyle({ opacity: .85 })
-
       const ll = e.target.getLatLng()
-      // Insert new node between segIdx and segIdx+1
-      const insertIdx = segIdx + 1
-      const newNodeList = [
-        ...nodes.slice(0, insertIdx),
-        { lat: ll.lat, lng: ll.lng, name: `節點${insertIdx + 1}` },
-        ...nodes.slice(insertIdx)
-      ]
-      await rebuildAllNodes(newNodeList)
+      const newWp = { lat: ll.lat, lng: ll.lng }
+      if (!segData[segIdx].waypoints) segData[segIdx].waypoints = []
+      const idx = waypointInsertIdx(segIdx, newWp)
+      segData[segIdx].waypoints.splice(idx, 0, newWp)
+      document.getElementById('route-loading').style.display = 'block'
+      await refreshSegment(segIdx)
+      document.getElementById('route-loading').style.display = 'none'
+      refreshMidHandles()
     })
+    midHandles.push(insertHandle)
 
-    midHandles.push(handle)
+    // ── Yellow waypoint handles: drag to MOVE, click to DELETE ──
+    ;(segData[segIdx]?.waypoints || []).forEach((wp, wpIdx) => {
+      const wpHandle = L.marker([wp.lat, wp.lng], {
+        draggable: true, zIndexOffset: 100, icon: createWaypointIcon(false)
+      }).addTo(map)
+
+      wpHandle.on('mouseover', function() { this.setIcon(createWaypointIcon(true)) })
+      wpHandle.on('mouseout',  function() { if (!this._drag) this.setIcon(createWaypointIcon(false)) })
+      wpHandle.on('dragstart', function() { this._drag = true })
+      wpHandle.on('drag', function(e) {
+        const ll = e.target.getLatLng()
+        segData[segIdx].waypoints[wpIdx] = { lat: ll.lat, lng: ll.lng }
+      })
+      wpHandle.on('dragend', async function(e) {
+        this._drag = false; this.setIcon(createWaypointIcon(false))
+        const ll = e.target.getLatLng()
+        segData[segIdx].waypoints[wpIdx] = { lat: ll.lat, lng: ll.lng }
+        document.getElementById('route-loading').style.display = 'block'
+        await refreshSegment(segIdx)
+        document.getElementById('route-loading').style.display = 'none'
+        refreshMidHandles()
+      })
+      wpHandle.on('click', async function(e) {
+        L.DomEvent.stopPropagation(e)
+        segData[segIdx].waypoints.splice(wpIdx, 1)
+        document.getElementById('route-loading').style.display = 'block'
+        await refreshSegment(segIdx)
+        document.getElementById('route-loading').style.display = 'none'
+        refreshMidHandles()
+        toast('途徑點已移除')
+      })
+      midHandles.push(wpHandle)
+    })
   }
 }
 
 // Full rebuild: clear everything, re-add nodes list, then refresh handles
-async function rebuildAllNodes(nodeList) {
+async function rebuildAllNodes(nodeList, preSegData=[]) {
   nodeMarkers.forEach(m => map.removeLayer(m)); nodeMarkers = []
   radiusCircles.forEach(c => map.removeLayer(c)); radiusCircles = []
   segPolylines.forEach(p => map.removeLayer(p)); segPolylines = []
   clearMidHandles()
-  nodes = []; segData = []
-  for (const n of nodeList) await addNode(n.lat, n.lng, n.name, n.radius||15)
+  nodes = []
+  // Pre-populate segData with preserved data (including waypoints); addNode will update lengths
+  segData = nodeList.slice(0, -1).map((_,i) =>
+    preSegData[i] ? { ...preSegData[i] } : { name:'', lanes:2, width:8, length:0, _auto:true, waypoints:[] }
+  )
+  for (const n of nodeList) await addNode(n.lat, n.lng, n.name, n.radius||15, n.exitName||'')
   // re-show handles if route-edit mode is still active
   if (routeEditMode) {
-    map.dragging.disable()
     refreshMidHandles()
   }
 }
@@ -675,9 +813,11 @@ function createNodeIcon(num, color) {
 // ════════════════════════════════════
 //  OSRM ROUTING
 // ════════════════════════════════════
-async function fetchRoute(lat1, lng1, lat2, lng2) {
+async function fetchRoute(lat1, lng1, lat2, lng2, waypoints=[]) {
   try {
-    const url = `https://router.project-osrm.org/route/v1/driving/${lng1},${lat1};${lng2},${lat2}?overview=full&geometries=geojson`
+    const via = waypoints.map(w=>`${w.lng},${w.lat}`).join(';')
+    const coords = via ? `${lng1},${lat1};${via};${lng2},${lat2}` : `${lng1},${lat1};${lng2},${lat2}`
+    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) })
     const data = await res.json()
     if (data.code === 'Ok' && data.routes?.length > 0) {
@@ -693,9 +833,10 @@ async function refreshSegment(segIdx) {
   if (segIdx < 0 || segIdx >= nodes.length - 1) return
   if (segPolylines[segIdx]) { map.removeLayer(segPolylines[segIdx]); segPolylines[segIdx] = null }
   const n1 = nodes[segIdx], n2 = nodes[segIdx + 1]
-  const result = await fetchRoute(n1.lat, n1.lng, n2.lat, n2.lng)
+  const wps = segData[segIdx]?.waypoints || []
+  const result = await fetchRoute(n1.lat, n1.lng, n2.lat, n2.lng, wps)
   segPolylines[segIdx] = L.polyline(result.latlngs, { color: '#3b82f6', weight: 4, opacity: .85 }).addTo(map)
-  if (!segData[segIdx]) segData[segIdx] = { name:'', lanes:2, width:8, length:0, _auto:true }
+  if (!segData[segIdx]) segData[segIdx] = { name:'', lanes:2, width:8, length:0, _auto:true, waypoints:[] }
   if (segData[segIdx]._auto !== false) {
     segData[segIdx].length = result.distance
     segData[segIdx]._source = result.source
@@ -703,6 +844,36 @@ async function refreshSegment(segIdx) {
     renderSegTable()
   }
   if (result.source === 'straight') toast('⚠️ 使用直線距離（OSRM 無回應）')
+}
+
+// Helper: find best insert index for a new waypoint in segment segIdx
+function waypointInsertIdx(segIdx, newPt) {
+  const wps = segData[segIdx]?.waypoints || []
+  const n1 = nodes[segIdx], n2 = nodes[segIdx+1]
+  const kp = [n1, ...wps, n2]
+  const distToSeg = (a,b,p) => {
+    const ax=a.lng,ay=a.lat,bx=b.lng,by=b.lat,px=p.lng,py=p.lat
+    const l2=(bx-ax)**2+(by-ay)**2
+    if(!l2) return Math.hypot(px-ax,py-ay)
+    const t=Math.max(0,Math.min(1,((px-ax)*(bx-ax)+(py-ay)*(by-ay))/l2))
+    return Math.hypot(px-(ax+t*(bx-ax)),py-(ay+t*(by-ay)))
+  }
+  let best=wps.length, minD=Infinity
+  for(let i=0;i<kp.length-1;i++){
+    const d=distToSeg(kp[i],kp[i+1],newPt)
+    if(d<minD){minD=d;best=i}
+  }
+  return best
+}
+
+// Yellow icon for existing waypoints (途徑點)
+function createWaypointIcon(hover=false) {
+  const c=hover?'#ef4444':'#f59e0b'
+  return L.divIcon({
+    html:`<div title="拖曳移動 · 點擊刪除" style="width:14px;height:14px;border-radius:50%;
+      background:${c};border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer"></div>`,
+    className:'',iconSize:[14,14],iconAnchor:[7,7]
+  })
 }
 
 // ════════════════════════════════════
@@ -721,16 +892,11 @@ function setMode(m) {
     document.getElementById('tool-route').classList.remove('active')
     document.getElementById('tool-route').textContent = '✏️ 移動路線'
     clearMidHandles()
-    map.dragging.enable()
   }
   mode = m
   document.getElementById('tool-node').classList.toggle('active', m === 'node')
   document.getElementById('map-hint').style.display = m === 'node' ? 'block' : 'none'
   map.getContainer().style.cursor = m === 'node' ? 'crosshair' : m === 'measure' ? 'cell' : ''
-  // restore map dragging when switching away from route-edit via setMode
-  if (m !== 'browse' || !routeEditMode) {
-    if (!routeEditMode) map.dragging.enable()
-  }
 }
 setMode('browse')
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { cancelNode(); stopMeasure(); setMode('browse') } })
@@ -822,9 +988,9 @@ document.getElementById('nd-name').addEventListener('keydown', e => {
 // ════════════════════════════════════
 //  ADD NODE
 // ════════════════════════════════════
-async function addNode(lat, lng, name, radius=15) {
+async function addNode(lat, lng, name, radius=15, exitName='') {
   const idx = nodes.length
-  nodes.push({ lat, lng, name, radius })
+  nodes.push({ lat, lng, name, exitName: exitName||'', radius })
 
   const color = getNodeColor(idx)
   const marker = L.marker([lat, lng], {
@@ -884,10 +1050,11 @@ async function addNode(lat, lng, name, radius=15) {
   if (idx > 0) {
     const prev = nodes[idx - 1]
     document.getElementById('route-loading').style.display = 'block'
-    const result = await fetchRoute(prev.lat, prev.lng, lat, lng)
+    const preWps = segData[idx-1]?.waypoints || []
+    const result = await fetchRoute(prev.lat, prev.lng, lat, lng, preWps)
     document.getElementById('route-loading').style.display = 'none'
     segPolylines.push(L.polyline(result.latlngs, { color:'#3b82f6', weight:4, opacity:.85 }).addTo(map))
-    if (!segData[idx-1]) segData[idx-1] = { name:'', lanes:2, width:8, length:0, _auto:true }
+    if (!segData[idx-1]) segData[idx-1] = { name:'', lanes:2, width:8, length:0, _auto:true, waypoints:[] }
     if (segData[idx-1]._auto !== false) {
       segData[idx-1].length = result.distance
       segData[idx-1]._source = result.source
@@ -932,8 +1099,18 @@ window.popupDelete = async function(i) {
 //  REMOVE NODE
 // ════════════════════════════════════
 async function removeNode(idx) {
+  // Build preserved segData for the surviving segments
+  // Removing node[idx] merges seg[idx-1] and seg[idx] into a new segment (no waypoints),
+  // and shifts all subsequent segments left by 1.
+  const n = nodes.length
+  const newSegData = []
+  for (let j = 0; j < n - 2; j++) {
+    if (j < idx - 1)       newSegData[j] = { ...segData[j], waypoints:[...(segData[j]?.waypoints||[])] }
+    else if (j === idx - 1) newSegData[j] = { name:'', lanes:2, width:8, length:0, _auto:true, waypoints:[] }
+    else                   newSegData[j] = { ...(segData[j+1]||{}), waypoints:[...(segData[j+1]?.waypoints||[])] }
+  }
   const remaining = nodes.filter((_, i) => i !== idx)
-  await rebuildAllNodes(remaining)
+  await rebuildAllNodes(remaining, newSegData)
 }
 
 // ════════════════════════════════════
@@ -964,32 +1141,55 @@ function refreshRadiusCircles() {
 // ════════════════════════════════════
 function renderNodeList() {
   document.getElementById('node-count').textContent = nodes.length
-  document.getElementById('node-list').innerHTML = nodes.map((n, i) => `
-    <div class="node-item">
-      <div class="node-num${i===0?' start':i===nodes.length-1?' end':''}">${i+1}</div>
-      <div class="node-info">
-        <input class="node-name-inp" id="nname-${i}" value="${n.name.replace(/"/g,'&quot;')}"
-          onblur="saveNodeName(${i})" onkeydown="if(event.key==='Enter')this.blur()"
-          placeholder="節點名稱" title="點擊修改節點名稱"/>
-        <div class="node-coords">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}</div>
-        <div class="node-radius-row">
-          <span style="font-size:10px;color:#94a3b8">📡</span>
-          <input class="node-radius-inp" id="nradius-${i}" type="number" value="${n.radius||15}" min="5" max="200"
-            onblur="saveNodeRadius(${i})" onkeydown="if(event.key==='Enter')this.blur()" title="觸發範圍(m)"/>
-          <span style="font-size:10px;color:#94a3b8">m</span>
+  document.getElementById('node-list').innerHTML = nodes.map((n, i) => {
+    const isLast = i === nodes.length - 1
+    return `
+    <div class="node-item" style="flex-direction:column;align-items:stretch;gap:6px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="node-num${i===0?' start':isLast?' end':''}" style="flex-shrink:0">${i+1}</div>
+        <div class="node-info" style="flex:1;min-width:0">
+          <!-- Arrival name (main) -->
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+            <input class="node-name-inp" id="nname-${i}" value="${n.name.replace(/"/g,'&quot;')}"
+              onkeydown="if(event.key==='Enter'){saveNode(${i});this.blur()}"
+              placeholder="到達路名"/>
+            <button onclick="saveNode(${i})" style="padding:3px 8px;background:#dbeafe;color:#1d4ed8;border:none;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">✓ 儲存</button>
+          </div>
+          <!-- Exit name (optional, for turn intersections) -->
+          ${!isLast ? `<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+            <span style="font-size:10px;color:#94a3b8;white-space:nowrap;flex-shrink:0">↩ 離開路名</span>
+            <input class="node-name-inp" id="nexitname-${i}" value="${(n.exitName||'').replace(/"/g,'&quot;')}"
+              onkeydown="if(event.key==='Enter'){saveNode(${i});this.blur()}"
+              placeholder="轉彎時才填（如：縣政六街）"
+              style="font-size:11px;color:#475569;border-color:#e2e8f0"/>
+          </div>` : ''}
+          <div class="node-coords">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}</div>
+          <div class="node-radius-row">
+            <span style="font-size:10px;color:#94a3b8">感應範圍</span>
+            <input class="node-radius-inp" id="nradius-${i}" type="number" value="${n.radius||15}" min="5" max="200"
+              onblur="saveNodeRadius(${i})" onkeydown="if(event.key==='Enter')this.blur()" title="GPS 觸發範圍（公尺）"/>
+            <span style="font-size:10px;color:#94a3b8">公尺</span>
+          </div>
         </div>
+        <button class="node-del" onclick="removeNode(${i})">✕</button>
       </div>
-      <button class="node-del" onclick="removeNode(${i})">✕</button>
-    </div>`).join('')
+    </div>`
+  }).join('')
 }
-window.saveNodeName = function(i) {
-  const el = document.getElementById(`nname-${i}`)
-  if (!el || !nodes[i]) return
-  nodes[i].name = el.value.trim() || nodes[i].name
-  el.value = nodes[i].name
+window.saveNode = function(i) {
+  const nameEl = document.getElementById(`nname-${i}`)
+  const exitEl = document.getElementById(`nexitname-${i}`)
+  if (!nameEl || !nodes[i]) return
+  nodes[i].name = nameEl.value.trim() || nodes[i].name
+  nameEl.value = nodes[i].name
+  if (exitEl) {
+    nodes[i].exitName = exitEl.value.trim()
+  }
   renderSegTable()
   updateAllIcons()
 }
+// Keep old alias for backward compat with any inline onkeydown
+window.saveNodeName = window.saveNode
 window.saveNodeRadius = function(i) {
   const el = document.getElementById(`nradius-${i}`)
   if (!el || !nodes[i]) return
@@ -1015,13 +1215,15 @@ function renderSegTable() {
   while (segData.length < needed) segData.push({ name:'', lanes:2, width:8, length:0, _auto:true })
   segData.length = needed
   tbody.innerHTML = nodes.slice(0,-1).map((n, i) => {
-    const defName = segData[i].name || `${n.name}→${nodes[i+1].name}`
-    segData[i].name = defName
+    const autoName = `${n.exitName||n.name}→${nodes[i+1].name}`
+    // Only use stored name if user explicitly customised it; otherwise follow node names
+    if (!segData[i]._nameCustom) segData[i].name = autoName
+    const defName = segData[i].name || autoName
     const badge = segData[i]._source==='straight'
       ? '<span class="dist-manual">直線</span>'
       : segData[i]._auto!==false ? '<span class="dist-auto">✓</span>' : '<span class="dist-manual">手動</span>'
     return `<tr>
-      <td><input class="seg-input" style="text-align:left;min-width:100px" value="${defName}" onchange="segData[${i}].name=this.value"/></td>
+      <td><input class="seg-input" style="text-align:left;min-width:100px" value="${defName}" onchange="segData[${i}].name=this.value;segData[${i}]._nameCustom=true"/></td>
       <td><input class="seg-input" style="width:38px" type="number" value="${segData[i].lanes}" min="1" max="10" onchange="segData[${i}].lanes=+this.value||2"/></td>
       <td><input class="seg-input" style="width:42px" type="number" value="${segData[i].width}" onchange="segData[${i}].width=+this.value||8"/></td>
       <td style="white-space:nowrap"><input class="seg-input" style="width:54px" type="number" value="${segData[i].length}" onchange="segData[${i}].length=+this.value||0;segData[${i}]._auto=false;updateTotalLength()"/>${badge}</td>
@@ -1067,8 +1269,12 @@ function buildConfig() {
     tl: parseInt(document.getElementById('tl').value)||0,
     op: document.getElementById('op').value.trim()||'14:00~16:00',
     pk: document.getElementById('pk').value.trim()||'17:00~19:00',
-    nd: nodes.map(n => ({ n: n.name, a: parseFloat(n.lat.toFixed(6)), o: parseFloat(n.lng.toFixed(6)), r: n.radius||15 })),
-    sg: segData.map(s => ({ n: s.name, l: s.lanes||2, w: s.width||8, d: s.length||0 }))
+    nd: nodes.map(n => ({ n: n.name, n2: n.exitName||'', a: parseFloat(n.lat.toFixed(6)), o: parseFloat(n.lng.toFixed(6)), r: n.radius||15 })),
+    sg: segData.map(s => {
+      const obj = { n: s.name, l: s.lanes||2, w: s.width||8, d: s.length||0 }
+      if (s.waypoints?.length) obj.wp = s.waypoints.map(w=>({a:+w.lat.toFixed(6),o:+w.lng.toFixed(6)}))
+      return obj
+    })
   }
 }
 
@@ -1082,10 +1288,19 @@ function buildURL() {
   if (!cfg.rn) { toast('請先填寫路線名稱'); return null }
   if (nodes.length < 2) { toast('請至少在地圖上放置 2 個節點'); return null }
   const base = document.getElementById('app-url').value.trim().replace(/\/$/, '')
+
+  // 若目前任務已有雲端 ID 且有設定雲端，改用輕量雲端 URL
+  const task = currentTaskId ? savedTasks.find(t => t.id === currentTaskId) : null
+  if (task && task.cloudId && gsUrl && gsKey) {
+    document.getElementById('qr-info').textContent =
+      `☁️ 雲端路線 ${task.cloudId}（節點 ${cfg.nd.length} 個）`
+    return `${base}/?id=${encodeURIComponent(task.cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(gsKey)}`
+  }
+
+  // 否則使用舊版 ?c= 完整編碼（離線用）
   const encoded = encodeConfig(cfg)
   document.getElementById('qr-info').textContent =
-    `包含 ${cfg.nd.length} 個節點、${cfg.sg.length} 個路段（${encoded.length} 字元）`
-  // 使用 ?c= 避免 LINE 截掉 # hash
+    `📦 離線模式 — 節點 ${cfg.nd.length} 個、路段 ${cfg.sg.length} 個（${encoded.length} 字元）`
   return `${base}/?c=${encoded}`
 }
 
@@ -1120,53 +1335,133 @@ function downloadQR() {
 // ════════════════════════════════════
 //  SAVE / LOAD TASKS
 // ════════════════════════════════════
-function saveTask() {
+async function saveTask() {
   const cfg = buildConfig()
   if (!cfg.rn) { toast('請先填寫路線名稱'); return }
   if (nodes.length < 2) { toast('請至少放置 2 個節點'); return }
-  const id = Date.now().toString(36)
-  savedTasks.unshift({ id, cfg, savedAt: new Date().toLocaleDateString('zh-TW') })
-  if (savedTasks.length > 20) savedTasks.pop()
+
+  // Find existing local task or create new
+  let existingTask = currentTaskId ? savedTasks.find(t => t.id === currentTaskId) : null
+  const id = existingTask ? existingTask.id : Date.now().toString(36)
+  currentTaskId = id
+
+  const taskObj = {
+    id,
+    cloudId: existingTask?.cloudId || null,
+    cfg,
+    savedAt: new Date().toLocaleDateString('zh-TW')
+  }
+
+  // Save locally first
+  if (existingTask) {
+    const idx = savedTasks.findIndex(t => t.id === id)
+    savedTasks[idx] = taskObj
+  } else {
+    savedTasks.unshift(taskObj)
+    if (savedTasks.length > 30) savedTasks.pop()
+  }
   localStorage.setItem('pm_tasks', JSON.stringify(savedTasks))
   renderSavedTasks()
-  toast('✅ 任務已儲存')
+  updateTopbarEditing()
+
+  // Try cloud sync if configured
+  if (gsUrl && gsKey) {
+    toast('⏳ 同步至雲端...')
+    try {
+      const payload = {
+        action: 'saveRoute',
+        id: taskObj.cloudId || undefined,
+        routeName:    cfg.rn,
+        routeFromTo:  cfg.ft,
+        totalLength:  cfg.tl,
+        offPeakLabel: cfg.op,
+        peakLabel:    cfg.pk,
+        nodes:        cfg.nd.map(n => ({ name:n.n, exitName:n.n2||'', lat:n.a, lng:n.o, radius:n.r })),
+        segments:     cfg.sg.map(s => ({ name:s.n, lanes:s.l, width:s.w, length:s.d }))
+      }
+      const result = await cloudPost(payload)
+      const taskIdx = savedTasks.findIndex(t => t.id === id)
+      if (taskIdx >= 0) {
+        savedTasks[taskIdx].cloudId = result.id
+        currentTaskId = id
+        localStorage.setItem('pm_tasks', JSON.stringify(savedTasks))
+        renderSavedTasks()
+      }
+      updateCloudBadge('ok')
+      toast('✅ 任務已儲存並同步至雲端')
+    } catch(e) {
+      updateCloudBadge('err', '同步失敗')
+      toast('⚠️ 已儲存本地，雲端同步失敗：' + e.message)
+    }
+  } else {
+    toast('✅ 任務已儲存（本地）')
+  }
 }
 
 function newTask() {
-  if (!confirm('清除目前設定，開始新任務？')) return
+  if (!confirm('清除目前設定，開始新建任務？')) return
+  currentTaskId = null
   document.getElementById('rn').value = ''
   document.getElementById('ft').value = ''
   document.getElementById('tl').value = ''
-  clearAll()
+  document.getElementById('op').value = '14:00~16:00'
+  document.getElementById('pk').value = '17:00~19:00'
+  // Clear map directly without a second confirm dialog
+  nodeMarkers.forEach(m => map.removeLayer(m)); nodeMarkers = []
+  radiusCircles.forEach(c => map.removeLayer(c)); radiusCircles = []
+  segPolylines.forEach(p => map.removeLayer(p)); segPolylines = []
+  clearMidHandles()
+  nodes = []; segData = []
+  stopMeasure()
+  renderNodeList(); renderSegTable()
+  renderSavedTasks()   // refresh to remove active highlight
+  updateTopbarEditing()
 }
 
 async function loadTask(id) {
   const task = savedTasks.find(t => t.id === id); if (!task) return
+  currentTaskId = id
   const cfg = task.cfg
   document.getElementById('rn').value = cfg.rn||''
   document.getElementById('ft').value = cfg.ft||''
   document.getElementById('tl').value = cfg.tl||''
   document.getElementById('op').value = cfg.op||'14:00~16:00'
   document.getElementById('pk').value = cfg.pk||'17:00~19:00'
-
   nodeMarkers.forEach(m => map.removeLayer(m)); nodeMarkers = []
   radiusCircles.forEach(c => map.removeLayer(c)); radiusCircles = []
   segPolylines.forEach(p => map.removeLayer(p)); segPolylines = []
   nodes = []
 
   // Preset segment data so lengths aren't re-fetched from OSRM
-  segData = cfg.sg ? cfg.sg.map(s => ({ name:s.n, lanes:s.l, width:s.w, length:s.d, _auto:false })) : []
+  segData = cfg.sg ? cfg.sg.map(s => ({
+    name:s.n, lanes:s.l, width:s.w, length:s.d, _auto:false,
+    waypoints: (s.wp||[]).map(w=>({lat:w.a,lng:w.o}))
+  })) : []
 
   if (cfg.nd) {
-    for (const n of cfg.nd) await addNode(n.a, n.o, n.n || n.r1 || '節點', n.r||15)
+    for (const n of cfg.nd) await addNode(n.a, n.o, n.n || n.r1 || '節點', n.r||15, n.n2||'')
   }
 
   if (nodes.length >= 2) map.fitBounds(L.polyline(nodes.map(n=>[n.lat,n.lng])).getBounds(), { padding:[40,40] })
+  renderSavedTasks()    // highlight active card
+  updateTopbarEditing() // show route name in topbar
   toast('✅ 任務已載入')
 }
 
-function deleteTask(id) {
+async function deleteTask(id) {
   if (!confirm('刪除此任務？')) return
+  const task = savedTasks.find(t => t.id === id)
+
+  // Cloud soft-delete
+  if (task && task.cloudId && gsUrl && gsKey) {
+    try {
+      await cloudPost({ action: 'deleteRoute', id: task.cloudId })
+    } catch(e) {
+      toast('⚠️ 雲端刪除失敗：' + e.message)
+    }
+  }
+
+  if (currentTaskId === id) currentTaskId = null
   savedTasks = savedTasks.filter(t => t.id !== id)
   localStorage.setItem('pm_tasks', JSON.stringify(savedTasks))
   renderSavedTasks()
@@ -1177,28 +1472,110 @@ async function loadAndQR(id) {
   generateQR()
 }
 
+// ════════════════════════════════════
+//  SYNC FROM CLOUD
+// ════════════════════════════════════
+async function syncFromCloud() {
+  if (!gsUrl || !gsKey) { toast('請先設定雲端連線'); return }
+  const btn = document.getElementById('sync-btn')
+  btn.textContent = '⏳'
+  try {
+    const routes = await cloudGet({ action: 'getRoutes' })
+    updateCloudBadge('ok')
+    let added = 0
+    for (const r of routes) {
+      // skip if already tracked
+      const exists = savedTasks.some(t => t.cloudId === r.id)
+      if (exists) continue
+      const cfg = {
+        v: 1,
+        rn: r.routeName || '',
+        ft: r.routeFromTo || '',
+        tl: r.totalLength || 0,
+        op: r.offPeakLabel || '14:00~16:00',
+        pk: r.peakLabel || '17:00~19:00',
+        nd: (r.nodes || []).map(n => ({ n: n.name, a: n.lat, o: n.lng, r: n.radius || 15 })),
+        sg: (r.segments || []).map(s => ({ n: s.name, l: s.lanes, w: s.width, d: s.length }))
+      }
+      savedTasks.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2,5), cloudId: r.id, cfg, savedAt: r.createdAt?.slice(0,10) || '雲端' })
+      added++
+    }
+    if (added > 0) {
+      localStorage.setItem('pm_tasks', JSON.stringify(savedTasks))
+      renderSavedTasks()
+      toast(`☁️ 從雲端匯入 ${added} 筆路線`)
+    } else {
+      toast('☁️ 雲端無新路線')
+    }
+  } catch(e) {
+    updateCloudBadge('err', '同步失敗')
+    toast('❌ 同步失敗：' + e.message)
+  } finally {
+    btn.textContent = '☁ 同步'
+  }
+}
+
+// ════════════════════════════════════
+//  SURVEY RESULTS — open in new window
+// ════════════════════════════════════
+function viewSurveys(cloudId, routeName) {
+  if (!gsUrl || !gsKey) { toast('請先設定雲端連線'); return }
+  const url = `survey-report.html?id=${encodeURIComponent(cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(gsKey)}`
+  window.open(url, '_blank')
+}
+
+// ── UI helpers ──────────────────────
+function updateTopbarEditing() {
+  const el = document.getElementById('topbar-editing')
+  if (!el) return
+  if (currentTaskId) {
+    const t = savedTasks.find(t => t.id === currentTaskId)
+    const name = t?.cfg?.rn || '未命名路線'
+    el.textContent = `編輯中：${name}`
+    el.style.color = '#93c5fd'
+  } else {
+    el.textContent = '建立路線 · 設定節點 · 派發 QR Code 給調查員'
+    el.style.color = ''
+  }
+}
+
+function updateQrWarn() {
+  const warn = document.getElementById('qr-cloud-warn')
+  if (warn) warn.style.display = gsUrl ? 'none' : 'block'
+}
+
 function renderSavedTasks() {
   const el = document.getElementById('saved-tasks')
   const hint = document.getElementById('no-tasks-hint')
   if (!savedTasks.length) { el.innerHTML=''; hint.style.display='block'; return }
   hint.style.display = 'none'
-  el.innerHTML = savedTasks.map(t => `
-    <div class="task-card">
-      <div class="task-card-name">${t.cfg.rn||'未命名路線'}</div>
+  el.innerHTML = savedTasks.map(t => {
+    const isActive = t.id === currentTaskId
+    return `<div class="task-card${isActive?' active':''}">
+      <div class="task-card-name">
+        ${isActive?'▶ ':''}${t.cfg.rn||'未命名路線'}
+        ${t.cloudId ? `<span class="cloud-badge">☁ 雲端</span>` : ''}
+      </div>
       <div class="task-card-meta">${t.cfg.ft||''}　${t.savedAt}　節點 ${t.cfg.nd?.length||0} 個</div>
       <div class="task-card-btns">
-        <button class="tc-btn load" onclick="loadTask('${t.id}')">✏️ 載入編輯</button>
+        ${isActive
+          ? `<span style="font-size:11px;color:#2563eb;font-weight:600;align-self:center">編輯中</span>`
+          : `<button class="tc-btn load" onclick="loadTask('${t.id}')">✏️ 載入編輯</button>`}
         <button class="tc-btn qr" onclick="loadAndQR('${t.id}')">🔲 QR</button>
-        <button class="tc-btn del" onclick="deleteTask('${t.id}')">刪除</button>
+        ${t.cloudId ? `<button class="tc-btn surveys" onclick="viewSurveys('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,'\\\'')}')" >📊 調查結果</button>` : ''}
+        <button class="tc-btn del" onclick="deleteTask('${t.id}')">🗑 刪除</button>
       </div>
-    </div>`).join('')
+    </div>`
+  }).join('')
 }
 
 // ════════════════════════════════════
 //  INIT
 // ════════════════════════════════════
-document.getElementById('survey-date').value = new Date().toISOString().slice(0,10)
+loadCloudConfig()
 renderSavedTasks()
+updateTopbarEditing()
+updateQrWarn()
 </script>
 </body>
 </html>
