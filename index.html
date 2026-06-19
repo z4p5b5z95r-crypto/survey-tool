@@ -171,7 +171,14 @@ input,select,textarea{font-size:max(16px,1em)!important}
 /* ── Report ── */
 #screen-report{background:#f1f5f9}
 .report-wrap{overflow-x:auto;background:white;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
-/* Report combo tabs */
+/* Main report tabs (總覽 / 官方調查表 / 地圖) */
+.rpt-tab-bar{display:flex;background:#e2e8f0;border-radius:12px;padding:3px;margin:10px 12px 0;flex-shrink:0}
+.rpt-tab{flex:1;padding:8px 4px;border:none;border-radius:9px;background:transparent;
+  color:#64748b;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
+.rpt-tab.active{background:white;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.rpt-panel{display:none}
+.rpt-panel.active{display:block}
+/* Report combo tabs (inside 官方調查表 panel) */
 #report-combo-tabs{display:flex;gap:8px;padding:0 0 10px;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap}
 .rtab{padding:8px 16px;border:2px solid #e2e8f0;border-radius:20px;background:white;
   color:#64748b;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;
@@ -477,28 +484,42 @@ input,select,textarea{font-size:max(16px,1em)!important}
 
 <!-- ══ Screen D: Report ══ -->
 <div id="screen-report" class="screen">
-  <div class="page-header" style="position:relative">
+  <div class="page-header" style="position:relative;flex-shrink:0">
     <button id="report-back-btn" onclick="goReady()" style="position:absolute;left:0;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#60a5fa;font-size:22px;cursor:pointer;padding:4px 8px;line-height:1">‹</button>
     <h2 style="padding-left:28px">📊 調查報告</h2>
     <p id="report-subtitle"></p>
   </div>
-  <div class="scroll-body">
-    <div><div class="sec-title">行駛路徑</div><div id="map-result"></div></div>
-    <div>
-      <div class="sec-title">官方調查表（主次要幹道行駛時間及延滯調查表）</div>
-      <div id="report-combo-tabs"></div>
-      <div id="official-forms"></div>
+  <!-- Top-level tab bar -->
+  <div class="rpt-tab-bar">
+    <button class="rpt-tab active" onclick="switchRptTab('overview',this)">總覽</button>
+    <button class="rpt-tab" onclick="switchRptTab('official',this)">官方調查表</button>
+    <button class="rpt-tab" onclick="switchRptTab('map',this)">地圖</button>
+  </div>
+  <div class="scroll-body" style="margin-top:8px">
+    <!-- 總覽 panel -->
+    <div id="rpt-panel-overview" class="rpt-panel active">
+      <div><div class="sec-title">總覽統計表</div><div class="report-wrap"><table class="rt" id="table1"></table></div></div>
+      <div><div class="sec-title">各路段統計</div><div class="report-wrap"><table class="rt" id="table2"></table></div></div>
+      <div><div class="sec-title">速率統計</div><div class="report-wrap"><table class="rt" id="table3"></table></div></div>
+      <!-- 雲端上傳狀態（只在雲端路線顯示） -->
+      <div id="cloud-upload-box" style="display:none;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:14px;padding:12px 14px;margin-top:4px">
+        <div style="font-size:13px;font-weight:700;color:#0369a1;margin-bottom:8px">☁️ 雲端資料上傳</div>
+        <div id="cloud-upload-status" style="font-size:13px;color:#475569;margin-bottom:8px">準備中...</div>
+        <button id="cloud-upload-btn" onclick="submitToCloud()" style="width:100%;padding:11px;background:#0369a1;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">☁ 上傳調查結果</button>
+      </div>
+      <button style="width:100%;padding:15px;background:#e2e8f0;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px" onclick="goReady()">🔄 繼續補充旅次</button>
     </div>
-    <div><div class="sec-title">總覽統計表</div><div class="report-wrap"><table class="rt" id="table1"></table></div></div>
-    <div><div class="sec-title">各路段統計</div><div class="report-wrap"><table class="rt" id="table2"></table></div></div>
-    <div><div class="sec-title">速率統計</div><div class="report-wrap"><table class="rt" id="table3"></table></div></div>
-    <!-- 雲端上傳狀態（只在雲端路線顯示） -->
-    <div id="cloud-upload-box" style="display:none;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:14px;padding:12px 14px;margin-top:4px">
-      <div style="font-size:13px;font-weight:700;color:#0369a1;margin-bottom:8px">☁️ 雲端資料上傳</div>
-      <div id="cloud-upload-status" style="font-size:13px;color:#475569;margin-bottom:8px">準備中...</div>
-      <button id="cloud-upload-btn" onclick="submitToCloud()" style="width:100%;padding:11px;background:#0369a1;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">☁ 上傳調查結果</button>
+    <!-- 官方調查表 panel -->
+    <div id="rpt-panel-official" class="rpt-panel">
+      <div>
+        <div id="report-combo-tabs"></div>
+        <div id="official-forms"></div>
+      </div>
     </div>
-    <button style="width:100%;padding:15px;background:#e2e8f0;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px" onclick="goReady()">🔄 繼續補充旅次</button>
+    <!-- 地圖 panel -->
+    <div id="rpt-panel-map" class="rpt-panel">
+      <div id="map-result" style="height:340px;border-radius:14px;overflow:hidden;margin-bottom:8px"></div>
+    </div>
   </div>
 </div>
 
@@ -622,6 +643,22 @@ function showScreen(id){
     if(id==='screen-report'&&mapResult)  mapResult.invalidateSize()
     if(id==='screen-ready'&&mapReady)    mapReady.invalidateSize()
   },120)
+  // Reset report to 總覽 tab when entering report screen
+  if(id==='screen-report'){
+    document.querySelectorAll('.rpt-tab').forEach(t=>t.classList.remove('active'))
+    document.querySelectorAll('.rpt-panel').forEach(p=>p.classList.remove('active'))
+    const first=document.querySelector('.rpt-tab')
+    if(first) first.classList.add('active')
+    const fp=document.getElementById('rpt-panel-overview')
+    if(fp) fp.classList.add('active')
+  }
+}
+function switchRptTab(panel, btn){
+  document.querySelectorAll('.rpt-tab').forEach(t=>t.classList.remove('active'))
+  document.querySelectorAll('.rpt-panel').forEach(p=>p.classList.remove('active'))
+  btn.classList.add('active')
+  document.getElementById('rpt-panel-'+panel).classList.add('active')
+  if(panel==='map'&&mapResult) setTimeout(()=>mapResult.invalidateSize(),120)
 }
 function haversine(lat1,lng1,lat2,lng2){
   const R=6371000,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180
