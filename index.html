@@ -1159,28 +1159,37 @@ function manualRecordNode(){
   recordNode(false)
 }
 // ── Delay button sounds ─────────────────────────────────────────
-function playDelayBeep(isStart){
+// async so we can await resume() — on iOS resume() is a Promise and must settle
+// before scheduling oscillators, otherwise the context is still suspended → silent
+async function playDelayBeep(isStart){
   try{
-    if(!audioCtx||audioCtx.state==='closed') return
-    if(audioCtx.state==='suspended') audioCtx.resume()
+    if(!audioCtx||audioCtx.state==='closed'){
+      // We're inside a user gesture (button tap) — safe to create a fresh context
+      try{
+        audioCtx=new(window.AudioContext||window.webkitAudioContext)()
+        startAudioKeepAlive()
+      }catch(e){ return }
+    }
+    if(audioCtx.state==='suspended') await audioCtx.resume()
+    if(audioCtx.state!=='running') return   // give up if still not running
     const ctx=audioCtx
-    const play=(freq,startT,dur,vol=0.35,type='square')=>{
+    const play=(freq,startT,dur,vol=0.45,type='square')=>{
       const o=ctx.createOscillator(),g=ctx.createGain()
       o.connect(g);g.connect(ctx.destination)
       o.type=type;o.frequency.setValueAtTime(freq,startT)
       g.gain.setValueAtTime(vol,startT)
       g.gain.exponentialRampToValueAtTime(0.001,startT+dur)
-      o.start(startT);o.stop(startT+dur)
+      o.start(startT);o.stop(startT+dur+0.02)
     }
     const t=ctx.currentTime
     if(isStart){
-      // 「搭！」— low-mid thunk：按下開始
-      play(420,t,0.07,0.4,'square')
-      play(280,t+0.06,0.10,0.2,'sine')
+      // 「搭！」— low thunk：按下開始（比節點低沉）
+      play(440,t,0.15,0.5,'square')
+      play(280,t+0.12,0.18,0.3,'sine')
     } else {
-      // 「啪！」— descending pop：鬆開結束
-      play(700,t,0.05,0.35,'square')
-      play(420,t+0.06,0.08,0.2,'sine')
+      // 「啪！」— high pop：結束取消（比節點更短促）
+      play(660,t,0.12,0.5,'square')
+      play(440,t+0.10,0.15,0.3,'sine')
     }
   }catch(e){}
 }
