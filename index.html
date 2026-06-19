@@ -213,8 +213,8 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .sgs-footer-l{background:#f1f5f9;font-weight:700;text-align:left!important}
 .sgs-footer-v{background:#f1f5f9}
 /* ── Toast ── */
-.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#1e293b;color:white;padding:9px 18px;border-radius:20px;font-size:14px;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
-.toast.show{opacity:1}
+.toast{position:fixed;top:60px;left:50%;transform:translateX(-50%) translateY(-8px);background:#1e293b;color:white;padding:9px 18px;border-radius:20px;font-size:14px;z-index:9999;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .toast.node-toast{background:#15803d;font-size:16px;font-weight:700;padding:12px 22px;border-radius:24px;box-shadow:0 4px 18px rgba(0,0,0,.35)}
 </style>
 </head>
@@ -1272,16 +1272,23 @@ function initMaps(){
   if(mapReady) return
   mapReady=L.map('map-ready',{zoomControl:true,attributionControl:false})
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapReady)
-  const initPos=lastPos?[lastPos.lat,lastPos.lng]:config.nodes.length?[config.nodes[0].lat,config.nodes[0].lng]:[25.04776,121.51755]
+  const initPos=config.nodes.length?[config.nodes[0].lat,config.nodes[0].lng]:[25.04776,121.51755]
   mapReady.setView(initPos,14)
-  markerReady=L.marker(initPos,{icon:createHeadingIcon(compassHeading||0),zIndexOffset:500}).addTo(mapReady)
+  // Place GPS marker at current position if known, else at route start
+  const gpsPos=lastPos?[lastPos.lat,lastPos.lng]:initPos
+  markerReady=L.marker(gpsPos,{icon:createHeadingIcon(compassHeading||0),zIndexOffset:500}).addTo(mapReady)
+  mapReady._gpsFitted=false
+  // Draw route — fitBounds to show full route
   drawRouteOnMap(mapReady,'routeLayerReady')
-  // Extend bounds to include GPS position so both route and user are visible
-  if(lastPos&&config.nodes&&config.nodes.length>=2){
-    const routeBounds=L.latLngBounds(config.nodes.map(n=>[n.lat,n.lng]))
-    routeBounds.extend([lastPos.lat,lastPos.lng])
-    mapReady.fitBounds(routeBounds,{padding:[30,30]})
-  }
+  // After route is drawn, also extend bounds to include GPS position
+  setTimeout(()=>{
+    if(!mapReady||!lastPos) return
+    try{
+      const b=window.routeLayerReady?window.routeLayerReady.getBounds().extend([lastPos.lat,lastPos.lng])
+                                    :L.latLngBounds(config.nodes.map(n=>[n.lat,n.lng])).extend([lastPos.lat,lastPos.lng])
+      mapReady.fitBounds(b,{padding:[36,36],maxZoom:16})
+    }catch(e){}
+  },300)
 }
 
 // ════════════════════════════════════
@@ -1381,7 +1388,14 @@ function onPos(p){
   if(mapReady&&markerReady){
     markerReady.setLatLng([lat,lng])
     if(!compassListening) markerReady.setIcon(createHeadingIcon(compassHeading||0))
-    mapReady.panTo([lat,lng],{animate:true,duration:.3})
+    // First GPS fix: extend route bounds to include position, then stop auto-panning
+    if(!mapReady._gpsFitted&&window.routeLayerReady){
+      try{
+        const b=window.routeLayerReady.getBounds().extend([lat,lng])
+        mapReady.fitBounds(b,{padding:[36,36],maxZoom:16})
+        mapReady._gpsFitted=true
+      }catch(e){}
+    }
   }
   if(cur&&!cur.endTime){
     if(mapSurvey&&markerSurvey){markerSurvey.setLatLng([lat,lng]);mapSurvey.setView([lat,lng],mapSurvey.getZoom()||16,{animate:true,duration:.5})}
