@@ -366,6 +366,14 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
     </div>
     <div class="progress-chips" id="progress-chips"></div>
     <button class="btn-start" id="btn-start" disabled onclick="startSurvey()">▶ 開始調查</button>
+    <!-- ── Device history ── -->
+    <div id="history-section" style="display:none;margin-top:8px">
+      <button id="hist-toggle-btn" onclick="toggleHistory()"
+        style="width:100%;padding:10px 14px;background:transparent;border:1px solid #334155;border-radius:10px;color:#94a3b8;font-size:13px;font-weight:600;cursor:pointer;text-align:left">
+        📋 過去調查記錄 <span id="hist-count-badge" style="color:#60a5fa"></span>
+      </button>
+      <div id="history-list" data-open="0" style="display:none;margin-top:6px;max-height:260px;overflow-y:auto"></div>
+    </div>
   </div>
 </div>
 
@@ -700,20 +708,29 @@ async function flushOfflineQueue(){
 const LS_PREFIX = 'survey_'
 
 function storageKey(){ return qrKey ? LS_PREFIX+qrKey : null }
+const HIST_PREFIX = 'survey_hist_'
+
+function todayStr(){ return new Date().toISOString().slice(0,10) }  // YYYY-MM-DD
 
 function saveTripsToStorage(){
   const k=storageKey(); if(!k) return
-  try{ localStorage.setItem(k, JSON.stringify(allTrips)) }catch(e){}
+  try{ localStorage.setItem(k, JSON.stringify({date:todayStr(), trips:allTrips})) }catch(e){}
 }
 
-// Returns number of trips restored (skips keys already in allTrips)
+// Returns number of trips restored (skips if a different day — new day = fresh start)
 function loadTripsFromStorage(){
   const k=storageKey(); if(!k) return 0
   try{
     const raw=localStorage.getItem(k); if(!raw) return 0
-    const saved=JSON.parse(raw); let count=0
-    Object.keys(saved).forEach(tripKey=>{
-      if(!allTrips[tripKey]){ allTrips[tripKey]=saved[tripKey]; count++ }
+    const parsed=JSON.parse(raw)
+    // Support legacy format (plain allTrips object without date field)
+    const savedDate = parsed.date
+    const savedTrips = parsed.trips || parsed
+    // If saved on a different day, don't restore (new day = fresh start)
+    if(savedDate && savedDate !== todayStr()) return 0
+    let count=0
+    Object.keys(savedTrips).forEach(tripKey=>{
+      if(!allTrips[tripKey]){ allTrips[tripKey]=savedTrips[tripKey]; count++ }
     })
     return count
   }catch(e){ return 0 }
@@ -722,6 +739,74 @@ function loadTripsFromStorage(){
 function clearTripStorage(){
   const k=storageKey(); if(!k) return
   try{ localStorage.removeItem(k) }catch(e){}
+}
+
+// ── Local survey history (per route, per device) ──────────────────
+function saveToLocalHistory(){
+  if(!cloudRouteId) return
+  const histKey = HIST_PREFIX + cloudRouteId
+  try{
+    const history = JSON.parse(localStorage.getItem(histKey)||'[]')
+    const entry = {
+      date: config.date || todayStr(),
+      surveyor: config.surveyor || '',
+      weather: config.weather || '',
+      trips: Object.fromEntries(
+        Object.entries(allTrips).map(([k,t])=>[k,{
+          travelS:t.travelS, runS:t.runS, totalDelayS:t.totalDelayS
+        }])
+      ),
+      uploadedAt: new Date().toISOString()
+    }
+    // Replace if same day + same surveyor, otherwise prepend
+    const idx = history.findIndex(h=>h.date===entry.date && h.surveyor===entry.surveyor)
+    if(idx>=0) history[idx]=entry
+    else history.unshift(entry)
+    if(history.length>30) history.length=30
+    localStorage.setItem(histKey, JSON.stringify(history))
+    renderLocalHistory()
+  }catch(e){}
+}
+
+function getLocalHistory(){
+  if(!cloudRouteId) return []
+  try{ return JSON.parse(localStorage.getItem(HIST_PREFIX+cloudRouteId)||'[]') }catch(e){ return [] }
+}
+
+function renderLocalHistory(){
+  const el=document.getElementById('history-section')
+  if(!el) return
+  const hist=getLocalHistory()
+  const countEl=document.getElementById('hist-count-badge')
+  if(countEl) countEl.textContent=hist.length?`(${hist.length})`:''
+  if(!hist.length){ el.style.display='none'; return }
+  el.style.display='block'
+  const listEl=document.getElementById('history-list')
+  if(!listEl||listEl.dataset.open!=='1') return
+  const COMBO_ZH={off_peak_bound:'離峰去',off_peak_return:'離峰回',peak_bound:'尖峰去',peak_return:'尖峰回'}
+  const WZH={sunny:'☀️',cloudy:'☁️',rainy:'🌧️'}
+  listEl.innerHTML = hist.map((h,i)=>{
+    const chips = Object.entries(h.trips||{}).map(([k,t])=>
+      `<span style="background:#1e293b;color:#93c5fd;padding:2px 7px;border-radius:6px;font-size:11px;white-space:nowrap">${COMBO_ZH[k]||k} ${fmtTime(t.travelS)}</span>`
+    ).join('')
+    return `<div style="background:#0f172a;border-radius:10px;padding:10px 12px;margin-bottom:6px">
+      <div style="font-size:12px;font-weight:700;color:#f1f5f9;margin-bottom:5px">
+        ${WZH[h.weather]||''} ${h.date} &nbsp;·&nbsp; ${h.surveyor}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px">${chips}</div>
+    </div>`
+  }).join('')
+}
+
+function toggleHistory(){
+  const listEl=document.getElementById('history-list')
+  const btn=document.getElementById('hist-toggle-btn')
+  if(!listEl||!btn) return
+  const open = listEl.dataset.open==='1'
+  listEl.dataset.open = open?'0':'1'
+  listEl.style.display = open?'none':'block'
+  btn.textContent = open?'📋 過去調查記錄':'📋 過去調查記錄 ▲'
+  if(!open) renderLocalHistory()
 }
 
 function updateRestoredBanner(count){
@@ -811,6 +896,7 @@ function startFromQR(){
   $('ready-title').textContent='🚗 '+config.routeName
   $('ready-route-info').textContent=config.routeFromTo
   updateRestoredBanner(Object.keys(allTrips).length)
+  renderLocalHistory()
   if(restored>0) showToast(`📂 已恢復 ${restored} 筆旅次記錄`)
 }
 
@@ -1423,7 +1509,7 @@ function goReport(){
     box.style.display='none'
   }
 }
-function goReady(){showScreen('screen-ready');checkStart();updateRestoredBanner(Object.keys(allTrips).length)}
+function goReady(){showScreen('screen-ready');checkStart();updateRestoredBanner(Object.keys(allTrips).length);renderLocalHistory()}
 
 // ════════════════════════════════════
 //  CLOUD SUBMIT
@@ -1447,6 +1533,7 @@ async function submitToCloud(){
   try{
     await cloudPostSurvey(cloudScriptUrl, cloudApiKey, body)
     cloudSubmitted=true
+    saveToLocalHistory()   // persist to device history
     statusEl.textContent='✅ 已成功上傳至雲端！'
     btnEl.textContent='✅ 已上傳'
     showToast('☁️ 調查結果已上傳')
