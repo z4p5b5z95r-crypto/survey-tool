@@ -120,18 +120,19 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
 .nd-line{height:2px;background:#334155;flex:1;min-width:8px}
 .nd-line.done{background:#4ade80}
 
-/* Next-node card — compact */
-.next-node-card{margin:5px 12px 0;border-radius:14px;padding:9px 14px;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;flex-shrink:0;position:relative;overflow:hidden}
+/* Next-node card — compact, info left + manual button right */
+.next-node-card{margin:5px 12px 0;border-radius:14px;padding:10px 14px;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;flex-shrink:0;display:flex;align-items:center;gap:10px;overflow:hidden}
 .next-node-card.arriving{background:linear-gradient(135deg,#15803d,#16a34a);animation:cardPulse 1s infinite}
 .next-node-card.done{background:#374151;animation:none}
 @keyframes cardPulse{0%,100%{opacity:1}50%{opacity:.85}}
+.nnc-info{flex:1;min-width:0}
 .nnc-label{font-size:9px;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.5px;margin-bottom:1px}
-.nnc-name{font-size:16px;font-weight:800;line-height:1.2;margin-bottom:2px}
+.nnc-name{font-size:17px;font-weight:800;line-height:1.2;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nnc-dist{font-size:12px;color:rgba(255,255,255,.85);display:flex;align-items:center;gap:6px}
 .nnc-dist .dist-num{font-size:15px;font-weight:800;color:white}
-/* Manual record button — standalone large button below card */
-.nnc-manual{display:block;width:calc(100% - 24px);margin:5px 12px 0;padding:13px 0;background:#1e40af;border:2px solid #60a5fa;border-radius:13px;color:white;font-size:15px;font-weight:800;cursor:pointer;text-align:center;font-family:inherit;letter-spacing:.3px}
-.nnc-manual:active{background:#1d4ed8}
+/* Manual record button — right side of card */
+.nnc-manual{flex-shrink:0;padding:10px 14px;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.5);border-radius:11px;color:white;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;text-align:center;line-height:1.3;white-space:nowrap}
+.nnc-manual:active{background:rgba(255,255,255,.32)}
 
 /* Scrollable delay area — side-by-side columns */
 .delay-columns{flex:1;overflow-y:auto;background:#1e293b;display:flex;gap:8px;padding:8px 10px 6px}
@@ -418,18 +419,19 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
   </div>
   <!-- Node progress dots -->
   <div class="node-progress" id="node-progress"></div>
-  <!-- Next node card: compact info only -->
+  <!-- Next node card: info left + manual button right -->
   <div class="next-node-card" id="next-node-card">
-    <div class="nnc-label" id="nnc-label">下一個節點</div>
-    <div class="nnc-name" id="nnc-name">-</div>
-    <div class="nnc-dist">
-      <span class="dist-num" id="nnc-dist-num">-</span>
-      <span id="nnc-dist-unit">m</span>
-      <span id="nnc-auto-hint" style="font-size:10px;opacity:.8">• 15m 內自動記錄</span>
+    <div class="nnc-info">
+      <div class="nnc-label" id="nnc-label">下一個節點</div>
+      <div class="nnc-name" id="nnc-name">-</div>
+      <div class="nnc-dist">
+        <span class="dist-num" id="nnc-dist-num">-</span>
+        <span id="nnc-dist-unit">m</span>
+        <span id="nnc-auto-hint" style="font-size:10px;opacity:.8">• 15m 內自動記錄</span>
+      </div>
     </div>
+    <button class="nnc-manual" id="nnc-manual-btn" onclick="manualRecordNode()">📍<br>手動<br>記錄</button>
   </div>
-  <!-- Large manual record button -->
-  <button class="nnc-manual" id="nnc-manual-btn" onclick="manualRecordNode()">📍 手動記錄節點</button>
   <!-- Side-by-side delay columns -->
   <div class="delay-columns">
     <div class="delay-col">
