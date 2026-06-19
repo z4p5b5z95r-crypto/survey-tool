@@ -612,7 +612,7 @@ function fmtHMS(d){
   const dt=(d instanceof Date)?d:new Date(d)
   return isNaN(dt.getTime())?'':dt.toTimeString().slice(0,8)
 }
-function showToast(m,isNode=false){const t=document.getElementById('toast');t.textContent=m;t.className='toast'+(isNode?' node-toast':'');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),isNode?3000:2500)}
+function showToast(m,isNode=false){const t=document.getElementById('toast');t.textContent=m;t.className='toast'+(isNode?' node-toast':'');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1000)}
 function $(id){return document.getElementById(id)}
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'))
