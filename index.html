@@ -563,7 +563,11 @@ let setupWeather='', manualSegs=[]
 // ════════════════════════════════════
 function fmtSec(s){const m=Math.floor(s/60),r=s%60;return`${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`}
 function fmtTime(s){if(!s&&s!==0)return'--';const m=Math.floor(s/60),r=s%60;return`${m}分${String(r).padStart(2,'0')}秒`}
-function fmtHMS(d){return d?d.toTimeString().slice(0,8):''}
+function fmtHMS(d){
+  if(!d) return ''
+  const dt=(d instanceof Date)?d:new Date(d)
+  return isNaN(dt.getTime())?'':dt.toTimeString().slice(0,8)
+}
 function showToast(m,isNode=false){const t=document.getElementById('toast');t.textContent=m;t.className='toast'+(isNode?' node-toast':'');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),isNode?3000:2500)}
 function $(id){return document.getElementById(id)}
 function showScreen(id){
