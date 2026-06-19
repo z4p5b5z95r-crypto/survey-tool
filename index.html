@@ -1107,16 +1107,28 @@ function autoSelectPeak(){
 //  HEADING (COMPASS) MARKER
 // ════════════════════════════════════
 let compassHeading=0, compassListening=false, _smoothH=null
+// Nav-map rotation — hybrid GPS (Course Up) / compass (Heading Up)
+const NAV_SPEED_MS = 2.2   // 8 km/h threshold
+let _gpsNavHistory=[], _navBearing=null, _lastSpeed=0
 
-function createHeadingIcon(heading){
+function createHeadingIcon(){
+  // Car icon always pointing up — map rotates instead of the icon
   return L.divIcon({
-    html:`<svg width="46" height="46" viewBox="-23 -23 46 46" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="0" cy="0" r="21" fill="#3b82f6" fill-opacity="0.18"/>
-      <circle cx="0" cy="0" r="13" fill="#3b82f6" stroke="white" stroke-width="3" filter="drop-shadow(0 2px 4px rgba(0,0,0,.35))"/>
-      <polygon transform="rotate(${heading})" points="0,-23 -5.5,-12 5.5,-12"
-        fill="#1d4ed8" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+    html:`<svg width="40" height="40" viewBox="-20 -20 40 40" xmlns="http://www.w3.org/2000/svg">
+      <filter id="carshadow"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="rgba(0,0,0,.45)"/></filter>
+      <!-- body -->
+      <rect x="-8" y="-14" width="16" height="26" rx="4.5" fill="#2563eb" stroke="white" stroke-width="1.8" filter="url(#carshadow)"/>
+      <!-- windshield -->
+      <rect x="-5.5" y="-12" width="11" height="7" rx="2" fill="rgba(186,230,253,.85)"/>
+      <!-- rear window -->
+      <rect x="-4.5" y="5" width="9" height="4.5" rx="1.5" fill="rgba(186,230,253,.6)"/>
+      <!-- wheels -->
+      <rect x="-12" y="-10" width="5" height="7" rx="2" fill="#1e293b" stroke="white" stroke-width="1"/>
+      <rect x="7"  y="-10" width="5" height="7" rx="2" fill="#1e293b" stroke="white" stroke-width="1"/>
+      <rect x="-12" y="5"  width="5" height="7" rx="2" fill="#1e293b" stroke="white" stroke-width="1"/>
+      <rect x="7"  y="5"  width="5" height="7" rx="2" fill="#1e293b" stroke="white" stroke-width="1"/>
     </svg>`,
-    className:'',iconSize:[46,46],iconAnchor:[23,23]
+    className:'',iconSize:[40,40],iconAnchor:[20,20]
   })
 }
 
@@ -1125,17 +1137,51 @@ function onCompassUpdate(e){
   if(e.webkitCompassHeading!=null) h=e.webkitCompassHeading   // iOS
   else if(e.alpha!=null) h=(360-e.alpha)%360                   // Android
   if(h===null) return
-  // Low-pass filter — α=0.12: smooths jitter, allows ~0.5s lag on fast turns
   if(_smoothH===null) _smoothH=h
-  const delta=((h-_smoothH+540)%360)-180   // shortest arc, -180~+180
+  const delta=((h-_smoothH+540)%360)-180
   _smoothH=(_smoothH+delta*0.12+360)%360
   compassHeading=_smoothH
-  if(markerSurvey) markerSurvey.setIcon(createHeadingIcon(_smoothH))
-  if(markerReady) markerReady.setIcon(createHeadingIcon(_smoothH))
-  // Nav-mode: rotate survey map so heading always points up
+  // Always update ready-screen marker
+  if(markerReady) markerReady.setIcon(createHeadingIcon())
+  // Low speed / stationary → Heading Up: compass drives the nav-map
+  if(_lastSpeed < NAV_SPEED_MS){
+    if(_navBearing===null) _navBearing=compassHeading
+    else{
+      const d=((compassHeading-_navBearing+540)%360)-180
+      _navBearing=(_navBearing+d*0.18+360)%360   // α=0.18 — responsive for walking
+    }
+    rotateNavMap(_navBearing)
+  }
+}
+
+// Apply bearing to nav-map CSS rotation
+function rotateNavMap(bearing){
   const wrap=document.getElementById('map-survey-wrap')
   if(wrap && document.getElementById('screen-survey').classList.contains('active')){
-    wrap.style.transform=`translate(-50%,-50%) rotate(${-_smoothH}deg)`
+    wrap.style.transform=`translate(-50%,-50%) rotate(${-bearing}deg)`
+  }
+}
+
+// Called from onPos — Course Up at speed ≥ 8 km/h; Heading Up (compass) below threshold
+function updateNavMapBearing(lat,lng,speed){
+  _lastSpeed=(speed!=null&&speed>=0)?speed:0
+  if(_lastSpeed>=NAV_SPEED_MS){
+    // High speed → GPS Course Up
+    _gpsNavHistory.push({lat,lng})
+    if(_gpsNavHistory.length>6) _gpsNavHistory.shift()
+    if(_gpsNavHistory.length<2) return
+    const from=_gpsNavHistory[0], to=_gpsNavHistory[_gpsNavHistory.length-1]
+    if(haversine(from.lat,from.lng,to.lat,to.lng)<5) return
+    const raw=calcBearing(from.lat,from.lng,to.lat,to.lng)
+    if(_navBearing===null){ _navBearing=raw }
+    else{
+      const d=((raw-_navBearing+540)%360)-180
+      _navBearing=(_navBearing+d*0.25+360)%360   // α=0.25 — snappier at driving speed
+    }
+    rotateNavMap(_navBearing)
+  } else {
+    // Low speed → compass takes over (handled in onCompassUpdate above)
+    _gpsNavHistory=[]   // reset so next high-speed run gets a clean bearing start
   }
 }
 
@@ -1380,7 +1426,7 @@ function initMaps(){
   mapReady.setView(initPos,14)
   // Place GPS marker at current position if known, else at route start
   const gpsPos=lastPos?[lastPos.lat,lastPos.lng]:initPos
-  markerReady=L.marker(gpsPos,{icon:createHeadingIcon(compassHeading||0),zIndexOffset:500}).addTo(mapReady)
+  markerReady=L.marker(gpsPos,{icon:createHeadingIcon(),zIndexOffset:500}).addTo(mapReady)
   mapReady._gpsFitted=false
   // Draw route — fitBounds to show full route
   drawRouteOnMap(mapReady,'routeLayerReady')
@@ -1491,7 +1537,7 @@ function onPos(p){
   checkStart()
   if(mapReady&&markerReady){
     markerReady.setLatLng([lat,lng])
-    if(!compassListening) markerReady.setIcon(createHeadingIcon(compassHeading||0))
+    if(!compassListening) markerReady.setIcon(createHeadingIcon())
     // First GPS fix: extend route bounds to include position, then stop auto-panning
     if(!mapReady._gpsFitted&&window.routeLayerReady){
       try{
@@ -1502,6 +1548,7 @@ function onPos(p){
     }
   }
   if(cur&&!cur.endTime){
+    updateNavMapBearing(lat,lng,speed)   // hybrid Course Up / Heading Up
     if(mapSurvey&&markerSurvey){markerSurvey.setLatLng([lat,lng]);mapSurvey.setView([lat,lng],mapSurvey.getZoom()||17,{animate:true,duration:.5})}
     {
       cur.gpsTrack.push({lat,lng,speed_ms:speed,accuracy_m:accuracy,ts:new Date().toISOString()})
@@ -1785,7 +1832,7 @@ function startSurvey(){
     const ip=lastPos?[lastPos.lat,lastPos.lng]:[25.04776,121.51755]
     mapSurvey.setView(ip,17)
     // Heading-aware marker (Google Maps style: circle + direction arrow)
-    markerSurvey=L.marker(ip,{icon:createHeadingIcon(compassHeading),zIndexOffset:1000}).addTo(mapSurvey)
+    markerSurvey=L.marker(ip,{icon:createHeadingIcon(),zIndexOffset:1000}).addTo(mapSurvey)
     // Fly to user location with animation
     setTimeout(()=>{
       if(lastPos) mapSurvey.flyTo([lastPos.lat,lastPos.lng],17,{duration:1.4})
