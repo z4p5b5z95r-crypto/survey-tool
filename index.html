@@ -650,7 +650,7 @@ function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'))
   $(id).classList.add('active')
   setTimeout(()=>{
-    if(id==='screen-survey'&&mapSurvey){ mapSurvey.invalidateSize(); const w=document.getElementById('map-survey-wrap'); if(w) w.style.transform=`translate(-50%,-50%) rotate(${-compassHeading}deg)` }
+    if(id==='screen-survey'&&mapSurvey){ mapSurvey.invalidateSize(); _cssRotDeg=null; _lastRotated=null; rotateNavMap(_navBearing??compassHeading) }
     if(id==='screen-report'&&mapResult)  mapResult.invalidateSize()
     if(id==='screen-ready'&&mapReady)    mapReady.invalidateSize()
   },120)
@@ -1154,17 +1154,29 @@ function onCompassUpdate(e){
   }
 }
 
-let _lastRotated=null  // last bearing actually applied to CSS
-// Apply bearing to nav-map CSS rotation — 5° deadband to suppress compass jitter ghosting
+let _lastRotated=null   // last bearing (0-360) applied — for deadband check
+let _cssRotDeg=null     // accumulated unbounded CSS degrees — prevents wrap-around jump
+// Apply bearing to nav-map CSS rotation
+// Uses unbounded accumulation so CSS transition always takes the SHORT arc,
+// never spins 320° because the 0°/360° boundary was crossed.
 function rotateNavMap(bearing){
+  // 5° deadband — ignore micro-jitter from compass
   if(_lastRotated!==null){
     const diff=Math.abs(((bearing-_lastRotated+540)%360)-180)
-    if(diff<5) return   // change too small — skip to avoid flickering
+    if(diff<5) return
   }
   _lastRotated=bearing
+  const target=-bearing   // CSS direction is opposite of map bearing
+  if(_cssRotDeg===null){
+    _cssRotDeg=target
+  } else {
+    // Always take shortest arc (delta is always within -180…+180)
+    const delta=((target-_cssRotDeg+540)%360)-180
+    _cssRotDeg+=delta
+  }
   const wrap=document.getElementById('map-survey-wrap')
   if(wrap && document.getElementById('screen-survey').classList.contains('active')){
-    wrap.style.transform=`translate(-50%,-50%) rotate(${-bearing}deg)`
+    wrap.style.transform=`translate(-50%,-50%) rotate(${_cssRotDeg}deg)`
   }
 }
 
@@ -1850,7 +1862,6 @@ function startSurvey(){
     mapSurvey=L.map('map-survey',{zoomControl:false,attributionControl:false})
     // When user manually drags/zooms, pause GPS auto-follow
     mapSurvey.on('dragstart zoomstart',()=>{ _mapFollowing=false; _updateLocateBtn() })
-    mapSurvey.on('moveend',()=>{ _lastRotated=null })
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapSurvey)
     const ip=lastPos?[lastPos.lat,lastPos.lng]:[25.04776,121.51755]
     mapSurvey.setView(ip,17)
