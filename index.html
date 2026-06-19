@@ -9,7 +9,9 @@
 <script src="https://unpkg.com/nosleep.js/dist/NoSleep.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC',sans-serif}
+html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC',sans-serif;touch-action:pan-x pan-y}
+/* Prevent iOS auto-zoom on input focus (font-size must be ≥16px) */
+input,select,textarea,button{font-size:max(16px,1em)!important}
 .screen{display:none;height:100dvh;flex-direction:column}
 .screen.active{display:flex}
 
@@ -2659,6 +2661,24 @@ window.addEventListener('load', async () => {
     showScreen('screen-setup')
   }
 })
+
+// ── Block pinch-zoom outside of map containers ──────────────────────
+document.addEventListener('touchstart', e=>{
+  if(e.touches.length>1){
+    const t=e.target
+    if(!t.closest('#map-ready')&&!t.closest('#map-survey')&&!t.closest('#map-result')&&!t.closest('#map-signin')){
+      e.preventDefault()
+    }
+  }
+},{passive:false})
+document.addEventListener('touchmove', e=>{
+  if(e.touches.length>1){
+    const t=e.target
+    if(!t.closest('#map-ready')&&!t.closest('#map-survey')&&!t.closest('#map-result')&&!t.closest('#map-signin')){
+      e.preventDefault()
+    }
+  }
+},{passive:false})
 </script>
 </body>
 </html>
