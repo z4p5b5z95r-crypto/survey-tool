@@ -115,7 +115,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 #screen-survey{position:relative}
 .map-wrap{height:24%;position:relative;flex-shrink:0;overflow:hidden}
 /* nav-mode: 110vw square centered in parent → diagonal ≈155vw, never clips at any angle */
-#map-survey-wrap{position:absolute;width:110vw;height:110vw;top:50%;left:50%;transform:translate(-50%,-50%);transition:transform 0.15s linear;will-change:transform}
+#map-survey-wrap{position:absolute;width:110vw;height:110vw;top:50%;left:50%;transform:translate(-50%,-50%);transition:transform 0.7s cubic-bezier(0.25,0.46,0.45,0.94);will-change:transform}
 #map-survey{width:100%;height:100%}
 .gps-badge{position:absolute;bottom:6px;right:8px;background:rgba(0,0,0,.65);color:#4ade80;padding:3px 8px;border-radius:10px;font-size:11px;z-index:999}
 .status-bar{background:#0f172a;padding:4px 10px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:8px}
@@ -1106,7 +1106,7 @@ function autoSelectPeak(){
 // ════════════════════════════════════
 //  HEADING (COMPASS) MARKER
 // ════════════════════════════════════
-let compassHeading=0, compassListening=false
+let compassHeading=0, compassListening=false, _smoothH=null
 
 function createHeadingIcon(heading){
   return L.divIcon({
@@ -1125,13 +1125,17 @@ function onCompassUpdate(e){
   if(e.webkitCompassHeading!=null) h=e.webkitCompassHeading   // iOS
   else if(e.alpha!=null) h=(360-e.alpha)%360                   // Android
   if(h===null) return
-  compassHeading=h
-  if(markerSurvey) markerSurvey.setIcon(createHeadingIcon(h))
-  if(markerReady) markerReady.setIcon(createHeadingIcon(h))
+  // Low-pass filter — α=0.12: smooths jitter, allows ~0.5s lag on fast turns
+  if(_smoothH===null) _smoothH=h
+  const delta=((h-_smoothH+540)%360)-180   // shortest arc, -180~+180
+  _smoothH=(_smoothH+delta*0.12+360)%360
+  compassHeading=_smoothH
+  if(markerSurvey) markerSurvey.setIcon(createHeadingIcon(_smoothH))
+  if(markerReady) markerReady.setIcon(createHeadingIcon(_smoothH))
   // Nav-mode: rotate survey map so heading always points up
   const wrap=document.getElementById('map-survey-wrap')
   if(wrap && document.getElementById('screen-survey').classList.contains('active')){
-    wrap.style.transform=`translate(-50%,-50%) rotate(${-h}deg)`
+    wrap.style.transform=`translate(-50%,-50%) rotate(${-_smoothH}deg)`
   }
 }
 
