@@ -636,8 +636,10 @@ async function prefetchRoutes(){
   routePolylines=[]
   for(let i=0;i<config.nodes.length-1;i++){
     const n1=config.nodes[i],n2=config.nodes[i+1]
+    const wps=(config.segments[i]?.waypoints||[]).map(w=>`${w.lng},${w.lat}`).join(';')
+    const coords=wps?`${n1.lng},${n1.lat};${wps};${n2.lng},${n2.lat}`:`${n1.lng},${n1.lat};${n2.lng},${n2.lat}`
     try{
-      const url=`https://router.project-osrm.org/route/v1/driving/${n1.lng},${n1.lat};${n2.lng},${n2.lat}?overview=full&geometries=geojson`
+      const url=`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`
       const res=await fetch(url,{signal:AbortSignal.timeout(8000)})
       const data=await res.json()
       if(data.code==='Ok'){routePolylines.push(data.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]));continue}
@@ -683,8 +685,8 @@ function applyConfig(cfg){
     return {name:n.n||n.r1||'節點',exitName:n.n2||n.exitName||'',lat:n.a,lng:n.o,radius:n.r||15}
   })
   config.segments=(cfg.segments||cfg.sg||[]).map(s=>{
-    if(s.name!==undefined) return {name:s.name,lanes:s.lanes||2,width:s.width||8,length:s.length||0}
-    return {name:s.n,lanes:s.l,width:s.w,length:s.d}
+    if(s.name!==undefined) return {name:s.name,lanes:s.lanes||2,width:s.width||8,length:s.length||0,waypoints:(s.waypoints||[]).map(w=>({lat:w.lat||w.a,lng:w.lng||w.o}))}
+    return {name:s.n,lanes:s.l,width:s.w,length:s.d,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o}))}
   })
 }
 
@@ -746,7 +748,7 @@ const LS_PREFIX = 'survey_'
 function storageKey(){ return qrKey ? LS_PREFIX+qrKey : null }
 const HIST_PREFIX = 'survey_hist_'
 
-function todayStr(){ return new Date().toISOString().slice(0,10) }  // YYYY-MM-DD
+function todayStr(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }  // YYYY-MM-DD local time
 
 function saveTripsToStorage(){
   const k=storageKey(); if(!k) return
@@ -2626,7 +2628,7 @@ window.addEventListener('load', async () => {
     await prefetchRoutes()
     showSigninScreen()
   }else{
-    $('s-date').value=new Date().toISOString().slice(0,10)
+    $('s-date').value=todayStr()
     showScreen('screen-setup')
   }
 })
