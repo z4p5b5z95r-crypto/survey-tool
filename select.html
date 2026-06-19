@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
+<title>選擇調查案件</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0f172a;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;color:#1e293b}
+
+/* ── Loading screen ── */
+#loading-screen{position:fixed;inset:0;background:#0f172a;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:20px;z-index:999}
+.ld-road-scene{width:min(420px,85vw);position:relative;padding-top:36px}
+.ld-road{width:100%;height:52px;background:#334155;border-radius:12px;
+  display:flex;align-items:center;overflow:hidden}
+.ld-dashes{display:flex;gap:10px;padding:0 12px;width:100%;flex-shrink:0}
+.ld-dash{flex:1;height:7px;background:#f59e0b;border-radius:3px;opacity:.9}
+.ld-car{position:absolute;font-size:52px;top:0;left:-60px;transform:scaleX(-1);
+  filter:drop-shadow(0 6px 10px rgba(0,0,0,.5));z-index:10;line-height:1}
+#ld-msg{color:white;font-size:14px;font-weight:700}
+#ld-sub{color:#475569;font-size:12px;margin-top:-12px}
+
+/* ── Error ── */
+#error-screen{display:none;position:fixed;inset:0;background:#0f172a;
+  flex-direction:column;align-items:center;justify-content:center;gap:12px}
+#error-screen p{color:#f87171;font-size:15px;font-weight:700;text-align:center;padding:0 24px}
+#error-screen small{color:#475569;font-size:12px}
+
+/* ── App ── */
+#app{display:none;width:100%;max-width:480px;min-height:100vh;
+  background:#f1f5f9;flex-direction:column}
+
+/* Header */
+.hdr{background:#1e293b;padding:20px 20px 16px;color:white;text-align:center}
+.hdr-icon{font-size:40px;margin-bottom:6px}
+.hdr h1{font-size:20px;font-weight:800;letter-spacing:.3px}
+.hdr p{font-size:11px;color:#64748b;margin-top:4px}
+
+/* Step indicator */
+.steps{display:flex;align-items:center;gap:0;background:#1e293b;padding:0 20px 16px}
+.step{flex:1;text-align:center;font-size:11px;font-weight:700;color:#475569;position:relative}
+.step.active{color:#60a5fa}
+.step.done{color:#34d399}
+.step-num{width:24px;height:24px;border-radius:50%;background:#334155;
+  display:inline-flex;align-items:center;justify-content:center;font-size:12px;
+  font-weight:800;margin-bottom:4px}
+.step.active .step-num{background:#3b82f6;color:white}
+.step.done .step-num{background:#10b981;color:white}
+.step-line{flex:0 0 24px;height:2px;background:#334155;margin-bottom:12px}
+.step-line.done{background:#10b981}
+
+/* Content area */
+.content{flex:1;padding:20px}
+
+/* Section card */
+.section-card{background:white;border-radius:16px;padding:20px;margin-bottom:16px;
+  box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.section-card h2{font-size:13px;font-weight:700;color:#64748b;
+  text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px}
+
+/* Engineer list */
+.eng-list{display:flex;flex-direction:column;gap:8px}
+.eng-btn{width:100%;padding:14px 18px;background:#f8fafc;border:2px solid #e2e8f0;
+  border-radius:12px;text-align:left;cursor:pointer;font-size:15px;font-weight:700;
+  color:#1e293b;display:flex;align-items:center;gap:12px;transition:.15s}
+.eng-btn:hover{border-color:#93c5fd;background:#eff6ff}
+.eng-btn.selected{border-color:#3b82f6;background:#eff6ff;color:#1d4ed8}
+.eng-avatar{width:36px;height:36px;border-radius:50%;background:#1e293b;
+  color:white;display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:800;flex-shrink:0}
+.eng-btn.selected .eng-avatar{background:#3b82f6}
+.eng-count{margin-left:auto;font-size:11px;color:#94a3b8;font-weight:600}
+
+/* Project list */
+.proj-list{display:flex;flex-direction:column;gap:10px}
+.proj-btn{width:100%;padding:14px 16px;background:#f8fafc;border:2px solid #e2e8f0;
+  border-radius:12px;text-align:left;cursor:pointer;transition:.15s}
+.proj-btn:hover{border-color:#93c5fd;background:#eff6ff}
+.proj-btn.selected{border-color:#3b82f6;background:#eff6ff}
+.proj-name{font-size:14px;font-weight:700;color:#1e293b;margin-bottom:4px}
+.proj-meta{font-size:11px;color:#94a3b8;display:flex;gap:10px;flex-wrap:wrap}
+.proj-tag{background:#e2e8f0;color:#475569;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700}
+
+/* Action bar */
+.action-bar{padding:16px 20px;background:white;border-top:1px solid #e2e8f0;position:sticky;bottom:0}
+.start-btn{width:100%;padding:16px;background:#3b82f6;color:white;border:none;
+  border-radius:14px;font-size:16px;font-weight:800;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:0 4px 14px rgba(59,130,246,.4);transition:.15s}
+.start-btn:disabled{background:#94a3b8;box-shadow:none;cursor:not-allowed}
+.start-btn:not(:disabled):active{transform:scale(.97)}
+
+/* Back btn */
+.back-btn{background:none;border:none;color:#3b82f6;font-size:13px;font-weight:700;
+  cursor:pointer;padding:4px 0;margin-bottom:12px;display:flex;align-items:center;gap:4px}
+
+/* Empty state */
+.empty{text-align:center;padding:32px 20px;color:#94a3b8}
+.empty-icon{font-size:36px;margin-bottom:10px}
+.empty p{font-size:13px}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading-screen">
+  <div class="ld-road-scene">
+    <div class="ld-road">
+      <div class="ld-dashes">
+        <div class="ld-dash"></div><div class="ld-dash"></div><div class="ld-dash"></div>
+        <div class="ld-dash"></div><div class="ld-dash"></div><div class="ld-dash"></div>
+        <div class="ld-dash"></div><div class="ld-dash"></div><div class="ld-dash"></div>
+        <div class="ld-dash"></div><div class="ld-dash"></div><div class="ld-dash"></div>
+      </div>
+      <div class="ld-car" id="ld-car">🚗</div>
+    </div>
+  </div>
+  <p id="ld-msg">載入人員資料...</p>
+  <small id="ld-sub"></small>
+</div>
+
+<!-- Error -->
+<div id="error-screen">
+  <div style="font-size:48px">⚠️</div>
+  <p id="err-msg">載入失敗</p>
+  <small id="err-sub">請確認網址參數正確</small>
+</div>
+
+<!-- App -->
+<div id="app">
+  <div class="hdr">
+    <div class="hdr-icon">🚗</div>
+    <h1>選擇調查案件</h1>
+    <p>無 QR Code 入口</p>
+  </div>
+
+  <!-- Steps -->
+  <div class="steps">
+    <div class="step active" id="step1">
+      <div class="step-num" id="step1-num">1</div>
+      <div>選工程師</div>
+    </div>
+    <div class="step-line" id="line1"></div>
+    <div class="step" id="step2">
+      <div class="step-num" id="step2-num">2</div>
+      <div>選案件</div>
+    </div>
+    <div class="step-line" id="line2"></div>
+    <div class="step" id="step3">
+      <div class="step-num" id="step3-num">3</div>
+      <div>開始調查</div>
+    </div>
+  </div>
+
+  <div class="content" id="main-content">
+    <!-- Step 1: Engineer select -->
+    <div id="panel-eng">
+      <div class="section-card">
+        <h2>👷 選擇工程師</h2>
+        <div class="eng-list" id="eng-list"></div>
+      </div>
+    </div>
+
+    <!-- Step 2: Project select -->
+    <div id="panel-proj" style="display:none">
+      <button class="back-btn" onclick="backToEng()">← 重新選擇工程師</button>
+      <div class="section-card">
+        <h2 id="proj-title">📁 選擇案件</h2>
+        <div class="proj-list" id="proj-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom action bar -->
+  <div class="action-bar">
+    <button class="start-btn" id="start-btn" disabled onclick="startSurvey()">
+      選擇案件後開始 →
+    </button>
+  </div>
+</div>
+
+<script>
+// ════════════════ URL PARAMS ════════════════
+const urlP = new URLSearchParams(location.search)
+const GS_URL = urlP.get('gs')
+const GS_KEY = urlP.get('k')
+// Optional: index.html base URL (defaults to ./index.html)
+const INDEX_URL = urlP.get('index') || './index.html'
+
+// ════════════════ STATE ════════════════
+let allUsers = []
+let allRoutes = []
+let selectedEng = null
+let selectedRoute = null
+
+// ════════════════ CLOUD ════════════════
+async function cloudGet(params){
+  const url = new URL(GS_URL)
+  Object.entries({...params, key: GS_KEY}).forEach(([k,v])=>url.searchParams.set(k,v))
+  const res = await fetch(url)
+  const data = await res.json()
+  if(data.error) throw new Error(data.error)
+  return data
+}
+
+// ════════════════ LOAD PROGRESS ════════════════
+let _ldCurrent=0, _ldTarget=0, _ldRaf=null
+function setLoadProgress(pct){ _ldTarget=pct; if(!_ldRaf) _ldRaf=requestAnimationFrame(_ldTick) }
+function _ldTick(){
+  const car=document.getElementById('ld-car')
+  const scene=document.querySelector('.ld-road-scene')
+  if(!car||!scene){_ldRaf=null;return}
+  const sceneW=scene.offsetWidth||420
+  const gap=_ldTarget-_ldCurrent
+  const step=Math.max(0.08,Math.abs(gap)*0.035)
+  if(Math.abs(gap)<0.05){_ldCurrent=_ldTarget;_ldRaf=null}
+  else{_ldCurrent+=Math.sign(gap)*step;_ldRaf=requestAnimationFrame(_ldTick)}
+  car.style.left=(-60+(_ldCurrent/100)*(sceneW+68))+'px'
+  car.style.transition='none'
+}
+
+// ════════════════ INIT ════════════════
+window.addEventListener('load', async ()=>{
+  if(!GS_URL||!GS_KEY){ showError('缺少 URL 參數 (gs / k)','請確認連結正確'); return }
+
+  try{
+    setLoadProgress(10)
+    document.getElementById('ld-msg').textContent='載入人員資料...'
+    const usersRes = await cloudGet({action:'getUsers'})
+    allUsers = (usersRes.users||usersRes||[]).filter(u=>u.name && u.name!=='admin')
+    setLoadProgress(55)
+
+    document.getElementById('ld-msg').textContent='載入案件資料...'
+    const routesRes = await cloudGet({action:'getRoutes'})
+    allRoutes = routesRes || []
+    setLoadProgress(100)
+
+    await new Promise(r=>setTimeout(r,450))
+    document.getElementById('loading-screen').style.display='none'
+    document.getElementById('app').style.display='flex'
+    renderEngList()
+
+  }catch(e){
+    showError('載入失敗：'+e.message,'請確認網路連線與系統網址')
+  }
+})
+
+function showError(msg, sub=''){
+  document.getElementById('loading-screen').style.display='none'
+  const s=document.getElementById('error-screen')
+  s.style.display='flex'
+  document.getElementById('err-msg').textContent=msg
+  document.getElementById('err-sub').textContent=sub
+}
+
+// ════════════════ STEP 1 — ENGINEERS ════════════════
+function renderEngList(){
+  const el=document.getElementById('eng-list')
+  if(!allUsers.length){
+    el.innerHTML=`<div class="empty"><div class="empty-icon">👤</div><p>找不到人員資料</p></div>`
+    return
+  }
+  el.innerHTML=allUsers.map(u=>{
+    const count=allRoutes.filter(r=>r.owner===u.name||(!r.owner&&false)).length
+    const myRoutes=getRoutesForUser(u.name)
+    const initials=u.name.slice(-2)||u.name[0]
+    return `<button class="eng-btn" id="eng-${encodeURIComponent(u.name)}" onclick="selectEng('${escQ(u.name)}')">
+      <div class="eng-avatar">${initials}</div>
+      <span>${u.name}</span>
+      <span class="eng-count">${myRoutes.length} 個案件</span>
+    </button>`
+  }).join('')
+}
+
+function getRoutesForUser(name){
+  return allRoutes.filter(r=>r.owner===name)
+}
+
+function selectEng(name){
+  selectedEng=name
+  selectedRoute=null
+  // Update button states
+  document.querySelectorAll('.eng-btn').forEach(b=>b.classList.remove('selected'))
+  const btn=document.getElementById('eng-'+encodeURIComponent(name))
+  if(btn) btn.classList.add('selected')
+  // Go to step 2
+  setTimeout(()=>showProjPanel(name), 180)
+}
+
+// ════════════════ STEP 2 — PROJECTS ════════════════
+function showProjPanel(name){
+  document.getElementById('panel-eng').style.display='none'
+  document.getElementById('panel-proj').style.display='block'
+  document.getElementById('proj-title').textContent='📁 '+name+' 的案件'
+  setStep(2)
+
+  const routes=getRoutesForUser(name)
+  const el=document.getElementById('proj-list')
+
+  if(!routes.length){
+    el.innerHTML=`<div class="empty">
+      <div class="empty-icon">📭</div>
+      <p>${name} 目前沒有指派的案件</p>
+    </div>`
+    return
+  }
+
+  el.innerHTML=routes.map(r=>`
+    <button class="proj-btn" id="proj-${r.id}" onclick="selectRoute('${r.id}')">
+      <div class="proj-name">${r.routeName||r.id}</div>
+      <div class="proj-meta">
+        <span class="proj-tag">${r.routeFromTo||'—'}</span>
+        <span>${r.totalLength?r.totalLength+'m':''}</span>
+        <span>${r.date||''}</span>
+      </div>
+    </button>
+  `).join('')
+}
+
+function selectRoute(id){
+  selectedRoute=allRoutes.find(r=>r.id===id)
+  document.querySelectorAll('.proj-btn').forEach(b=>b.classList.remove('selected'))
+  const btn=document.getElementById('proj-'+id)
+  if(btn) btn.classList.add('selected')
+
+  const startBtn=document.getElementById('start-btn')
+  startBtn.disabled=false
+  startBtn.textContent='🚀 開始調查 — '+((selectedRoute?.routeName)||id)
+  setStep(3)
+}
+
+function backToEng(){
+  selectedEng=null; selectedRoute=null
+  document.getElementById('panel-proj').style.display='none'
+  document.getElementById('panel-eng').style.display='block'
+  document.getElementById('start-btn').disabled=true
+  document.getElementById('start-btn').textContent='選擇案件後開始 →'
+  setStep(1)
+}
+
+// ════════════════ START SURVEY ════════════════
+function startSurvey(){
+  if(!selectedRoute) return
+  const url=new URL(INDEX_URL, location.href)
+  url.searchParams.set('id', selectedRoute.id)
+  url.searchParams.set('gs', GS_URL)
+  url.searchParams.set('k',  GS_KEY)
+  location.href=url.toString()
+}
+
+// ════════════════ STEP UI ════════════════
+function setStep(n){
+  for(let i=1;i<=3;i++){
+    const s=document.getElementById('step'+i)
+    s.classList.remove('active','done')
+    if(i<n) s.classList.add('done')
+    else if(i===n) s.classList.add('active')
+    if(i<=2){
+      const l=document.getElementById('line'+i)
+      l.classList.toggle('done', i<n)
+    }
+    // Icon
+    const num=document.getElementById('step'+i+'-num')
+    num.textContent=i<n?'✓':i
+  }
+}
+
+function escQ(s){ return s.replace(/'/g,"\\'") }
+</script>
+</body>
+</html>
