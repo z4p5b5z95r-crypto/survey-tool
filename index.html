@@ -241,19 +241,9 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
   </div>
   <div class="signin-body">
 
-    <!-- Route map preview -->
+    <!-- 1. Surveyor info FIRST -->
     <div class="signin-card">
-      <h3>📍 路線地圖</h3>
-      <div style="position:relative">
-        <div id="map-signin"></div>
-        <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapSignin)" title="定位目前位置">📍</button>
-      </div>
-      <div id="route-dir-text" style="font-size:12px;color:#64748b;margin-top:6px;text-align:center;line-height:1.8"></div>
-    </div>
-
-    <!-- Surveyor info -->
-    <div class="signin-card">
-      <h3>調查員資訊</h3>
+      <h3>📋 調查員資訊</h3>
       <div class="field" style="margin-bottom:12px">
         <label>調查員姓名</label>
         <input id="si-name" placeholder="請輸入姓名或代號" autocomplete="off"/>
@@ -268,9 +258,26 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
       </div>
     </div>
 
-    <!-- Segment preview -->
+    <!-- 2. Date selection -->
     <div class="signin-card">
-      <h3>路段清單</h3>
+      <h3>📅 調查日期</h3>
+      <p style="font-size:12px;color:#64748b;margin:0 0 8px">預設今天。若補充前一天未完成的資料，可選擇過去日期。</p>
+      <div id="date-chips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+
+    <!-- 3. Route map preview -->
+    <div class="signin-card">
+      <h3>📍 路線地圖</h3>
+      <div style="position:relative">
+        <div id="map-signin"></div>
+        <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapSignin)" title="定位目前位置">📍</button>
+      </div>
+      <div id="route-dir-text" style="font-size:12px;color:#64748b;margin-top:6px;text-align:center;line-height:1.8"></div>
+    </div>
+
+    <!-- 4. Segment list -->
+    <div class="signin-card">
+      <h3>🛣 路段清單</h3>
       <div class="seg-preview" id="si-seg-preview"></div>
     </div>
 
@@ -859,6 +866,150 @@ function initSigninMap(){
   }
 }
 
+// ════════════════════════════════════
+//  BEARING / ARROW HELPERS
+// ════════════════════════════════════
+function calcBearing(lat1,lng1,lat2,lng2){
+  const dL=(lng2-lng1)*Math.PI/180
+  const l1=lat1*Math.PI/180, l2=lat2*Math.PI/180
+  const y=Math.sin(dL)*Math.cos(l2)
+  const x=Math.cos(l1)*Math.sin(l2)-Math.sin(l1)*Math.cos(l2)*Math.cos(dL)
+  return((Math.atan2(y,x)*180/Math.PI)+360)%360
+}
+
+let routeArrowLayer=null
+function drawRouteArrows(direction){
+  if(!mapReady) return
+  if(routeArrowLayer){ try{mapReady.removeLayer(routeArrowLayer)}catch(e){} routeArrowLayer=null }
+  if(!direction||!config.nodes||config.nodes.length<2) return
+  const nodes=direction==='return'?[...config.nodes].reverse():config.nodes
+  const group=L.layerGroup()
+  for(let i=0;i<nodes.length-1;i++){
+    const a=nodes[i],b=nodes[i+1]
+    const midLat=(a.lat+b.lat)/2, midLng=(a.lng+b.lng)/2
+    const bear=calcBearing(a.lat,a.lng,b.lat,b.lng)
+    const color=direction==='return'?'#7c3aed':'#2563eb'
+    L.marker([midLat,midLng],{icon:L.divIcon({
+      html:`<svg width="22" height="22" viewBox="-11 -11 22 22" xmlns="http://www.w3.org/2000/svg">
+        <polygon transform="rotate(${bear})" points="0,-10 -5,4 0,1 5,4"
+          fill="${color}" stroke="white" stroke-width="1.5" stroke-linejoin="round" opacity="0.92"/>
+      </svg>`,
+      className:'',iconSize:[22,22],iconAnchor:[11,11]
+    })}).addTo(group)
+  }
+  routeArrowLayer=group.addTo(mapReady)
+}
+
+// ════════════════════════════════════
+//  AUTO PEAK DETECTION
+// ════════════════════════════════════
+function autoSelectPeak(){
+  if(selPeakType) return  // user already chose manually
+  const parseRange=label=>{
+    const m=label.match(/(\d{1,2}):(\d{2})[~\-](\d{1,2}):(\d{2})/)
+    if(!m) return null
+    return{start:+m[1]*60+ +m[2], end:+m[3]*60+ +m[4]}
+  }
+  const now=new Date(); const cur_min=now.getHours()*60+now.getMinutes()
+  const peakR=parseRange(config.peakLabel||'')
+  const offR =parseRange(config.offPeakLabel||'')
+  if(peakR&&cur_min>=peakR.start&&cur_min<=peakR.end) selPeak('peak')
+  else if(offR&&cur_min>=offR.start&&cur_min<=offR.end) selPeak('off_peak')
+}
+
+// ════════════════════════════════════
+//  HEADING (COMPASS) MARKER
+// ════════════════════════════════════
+let compassHeading=0, compassListening=false
+
+function createHeadingIcon(heading){
+  return L.divIcon({
+    html:`<svg width="46" height="46" viewBox="-23 -23 46 46" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="0" cy="0" r="21" fill="#3b82f6" fill-opacity="0.18"/>
+      <circle cx="0" cy="0" r="13" fill="#3b82f6" stroke="white" stroke-width="3" filter="drop-shadow(0 2px 4px rgba(0,0,0,.35))"/>
+      <polygon transform="rotate(${heading})" points="0,-23 -5.5,-12 5.5,-12"
+        fill="#1d4ed8" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>`,
+    className:'',iconSize:[46,46],iconAnchor:[23,23]
+  })
+}
+
+function onCompassUpdate(e){
+  let h=null
+  if(e.webkitCompassHeading!=null) h=e.webkitCompassHeading   // iOS
+  else if(e.alpha!=null) h=(360-e.alpha)%360                   // Android
+  if(h===null) return
+  compassHeading=h
+  if(markerSurvey) markerSurvey.setIcon(createHeadingIcon(h))
+}
+
+function initCompass(){
+  if(compassListening) return
+  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+    // iOS 13+ requires explicit permission
+    DeviceOrientationEvent.requestPermission().then(s=>{
+      if(s==='granted'){ window.addEventListener('deviceorientation',onCompassUpdate,true); compassListening=true }
+    }).catch(()=>{})
+  } else {
+    window.addEventListener('deviceorientation',onCompassUpdate,true)
+    compassListening=true
+  }
+}
+
+function siKey(){ return cloudRouteId ? 'si_'+cloudRouteId+'_'+todayStr() : null }
+
+function saveSurveyorInfo(){
+  const k=siKey(); if(!k) return
+  try{ localStorage.setItem(k, JSON.stringify({name:config.surveyor, weather:config.weather})) }catch(e){}
+}
+
+function loadSavedSurveyor(){
+  const k=siKey(); if(!k) return
+  try{
+    const raw=localStorage.getItem(k); if(!raw) return
+    const {name,weather}=JSON.parse(raw)
+    if(name){
+      $('si-name').value=name
+    }
+    if(weather) selSigninWeather(weather)
+    checkSigninReady()
+  }catch(e){}
+}
+
+function buildDateChips(){
+  const el=$('date-chips'); if(!el) return
+  const today=todayStr()
+  // Collect unique past dates from local history, most recent first
+  const hist=getLocalHistory()
+  const pastDates=[...new Set(hist.map(h=>h.date).filter(d=>d&&d!==today))].slice(0,5)
+  const allDates=[today,...pastDates]
+  // Default to today if not already set or if current date not in list
+  if(!config.date||!allDates.includes(config.date)) config.date=today
+  const WZH={sunny:'☀️',cloudy:'☁️',rainy:'🌧️'}
+  el.innerHTML=allDates.map(d=>{
+    const histEntry=hist.find(h=>h.date===d)
+    const extra=histEntry?` ${WZH[histEntry.weather]||''} ${histEntry.surveyor||''}`:'（今天）'
+    const active=d===config.date
+    return`<button onclick="selSurveyDate('${d}')" id="datebtn-${d}"
+      style="padding:7px 14px;border-radius:20px;border:2px solid ${active?'#2563eb':'#cbd5e1'};
+             background:${active?'#eff6ff':'white'};color:${active?'#1d4ed8':'#475569'};
+             font-size:12px;font-weight:${active?'700':'500'};cursor:pointer;white-space:nowrap">
+      ${d===today?'📅 今天':d}${extra}</button>`
+  }).join('')
+}
+
+function selSurveyDate(d){
+  config.date=d
+  // Refresh chip styles
+  document.querySelectorAll('[id^="datebtn-"]').forEach(b=>{
+    const sel=b.id==='datebtn-'+d
+    b.style.borderColor=sel?'#2563eb':'#cbd5e1'
+    b.style.background=sel?'#eff6ff':'white'
+    b.style.color=sel?'#1d4ed8':'#475569'
+    b.style.fontWeight=sel?'700':'500'
+  })
+}
+
 function showSigninScreen(){
   $('si-route-name').textContent=config.routeName||'旅行時間調查'
   $('si-fromto').textContent=config.routeFromTo
@@ -870,6 +1021,8 @@ function showSigninScreen(){
     <span style="flex:1;color:#1e293b;font-weight:600">${s.name}</span>
     <span style="color:#94a3b8;font-size:11px">${s.length}m</span></div>`).join('')
   showScreen('screen-signin')
+  loadSavedSurveyor()   // auto-fill today's last-used name & weather
+  buildDateChips()      // build date selection chips
   setTimeout(initSigninMap, 120)
 }
 
@@ -888,6 +1041,7 @@ function startFromQR(){
   config.surveyor=$('si-name').value.trim()
   config.weather=signinWeather
   qrMode=true
+  saveSurveyorInfo()   // remember this name+weather for today
   // Restore any trips recorded in earlier sessions for this QR
   const restored=loadTripsFromStorage()
   initMaps()
@@ -897,6 +1051,7 @@ function startFromQR(){
   $('ready-route-info').textContent=config.routeFromTo
   updateRestoredBanner(Object.keys(allTrips).length)
   renderLocalHistory()
+  autoSelectPeak()   // auto-detect by current time on first entry
   if(restored>0) showToast(`📂 已恢復 ${restored} 筆旅次記錄`)
 }
 
@@ -1289,7 +1444,7 @@ function updateNextNodeCard(){
 // ════════════════════════════════════
 let selPeakType=null,selDirection=null
 function selPeak(t){selPeakType=t;$('btn-peak').classList.toggle('pk',t==='peak');$('btn-offpeak').classList.toggle('pk',t==='off_peak');updateBadge()}
-function selDir(d){selDirection=d;$('btn-bound').classList.toggle('dr',d==='bound');$('btn-return').classList.toggle('dr',d==='return');updateBadge()}
+function selDir(d){selDirection=d;$('btn-bound').classList.toggle('dr',d==='bound');$('btn-return').classList.toggle('dr',d==='return');drawRouteArrows(d);updateBadge()}
 function updateBadge(){
   const b=$('sel-badge')
   if(selPeakType&&selDirection){b.style.display='block';b.textContent=`${PEAK_LABEL[selPeakType]}  ${DIR_LABEL[selDirection]}`}
@@ -1335,12 +1490,19 @@ function startSurvey(){
   $('status-combo').textContent=`● ${PEAK_LABEL[selPeakType]} ${DIR_LABEL[selDirection]}`
   showScreen('screen-survey')
 
+  initCompass()   // request compass permission on user gesture
+
   if(!mapSurvey){
     mapSurvey=L.map('map-survey',{zoomControl:false,attributionControl:false})
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapSurvey)
     const ip=lastPos?[lastPos.lat,lastPos.lng]:[25.04776,121.51755]
     mapSurvey.setView(ip,16)
-    markerSurvey=L.circleMarker(ip,{radius:11,fillColor:'#3B82F6',color:'#fff',weight:3,fillOpacity:.95}).addTo(mapSurvey)
+    // Heading-aware marker (Google Maps style: circle + direction arrow)
+    markerSurvey=L.marker(ip,{icon:createHeadingIcon(compassHeading),zIndexOffset:1000}).addTo(mapSurvey)
+    // Fly to user location with animation
+    setTimeout(()=>{
+      if(lastPos) mapSurvey.flyTo([lastPos.lat,lastPos.lng],17,{duration:1.4})
+    },300)
     // Draw route on survey map
     if(config.nodes&&config.nodes.length>=2){
       const ordered=getOrderedNodes()
@@ -1518,7 +1680,13 @@ function goReport(){
     box.style.display='none'
   }
 }
-function goReady(){showScreen('screen-ready');checkStart();updateRestoredBanner(Object.keys(allTrips).length);renderLocalHistory()}
+function goReady(){
+  showScreen('screen-ready')
+  checkStart()
+  updateRestoredBanner(Object.keys(allTrips).length)
+  renderLocalHistory()
+  autoSelectPeak()   // auto-detect peak/off-peak by current time (skips if user already chose)
+}
 
 // ════════════════════════════════════
 //  CLOUD SUBMIT
