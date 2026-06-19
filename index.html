@@ -676,6 +676,19 @@ function haversine(lat1,lng1,lat2,lng2){
   const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2
   return Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
 }
+// Ray-casting point-in-polygon — poly is [[lat,lng],...]
+function pointInPolygon(lat,lng,poly){
+  let inside=false
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const [yi,xi]=poly[i],[yj,xj]=poly[j]
+    if(((xi>lng)!==(xj>lng))&&(lat<(yj-yi)*(lng-xi)/(xj-xi)+yi)) inside=!inside
+  }
+  return inside
+}
+function nodeInRange(lat,lng,node){
+  if(node.polygon&&node.polygon.length>=3) return pointInPolygon(lat,lng,node.polygon)
+  return haversine(lat,lng,node.lat,node.lng)<=(node.radius||15)
+}
 
 // ════════════════════════════════════
 //  OSRM ROUTE PRE-FETCH
@@ -730,8 +743,8 @@ function applyConfig(cfg){
   config.peakLabel   =cfg.peakLabel   ||cfg.pk||'17:00~19:00'
   config.date        =todayStr()   // always default to today; surveyor picks their own date
   config.nodes=(cfg.nodes||cfg.nd||[]).map(n=>{
-    if(n.lat!==undefined) return {name:n.name||'節點',exitName:n.exitName||n.n2||'',lat:n.lat,lng:n.lng,radius:n.radius||15}
-    return {name:n.n||n.r1||'節點',exitName:n.n2||n.exitName||'',lat:n.a,lng:n.o,radius:n.r||15}
+    if(n.lat!==undefined) return {name:n.name||'節點',exitName:n.exitName||n.n2||'',lat:n.lat,lng:n.lng,radius:n.radius||15,polygon:n.polygon||null}
+    return {name:n.n||n.r1||'節點',exitName:n.n2||n.exitName||'',lat:n.a,lng:n.o,radius:n.r||15,polygon:n.pg||null}
   })
   config.segments=(cfg.segments||cfg.sg||[]).map(s=>{
     if(s.name!==undefined) return {name:s.name,lanes:s.lanes||2,width:s.width||8,length:s.length||0,waypoints:(s.waypoints||[]).map(w=>({lat:w.lat||w.a,lng:w.lng||w.o}))}
@@ -1629,11 +1642,12 @@ function checkNodeProximity(lat,lng){
   if(!nextNode) return
   const dist=haversine(lat,lng,nextNode.lat,nextNode.lng)
   const triggerR=nextNode.radius||AUTO_RECORD_DIST
+  const inRange=nodeInRange(lat,lng,nextNode)
   // Update distance display
   const card=$('next-node-card')
   $('nnc-dist-num').textContent=dist
-  $('nnc-auto-hint').textContent=`• ${triggerR}m 內自動記錄`
-  if(dist<=triggerR){
+  $('nnc-auto-hint').textContent=nextNode.polygon&&nextNode.polygon.length>=3?'• 自訂區域內自動記錄':`• ${triggerR}m 內自動記錄`
+  if(inRange){
     card.classList.add('arriving')
     if(!nodeAutoLock){
       nodeAutoLock=true
