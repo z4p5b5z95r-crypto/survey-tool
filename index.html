@@ -492,8 +492,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
   <!-- Top-level tab bar -->
   <div class="rpt-tab-bar">
     <button class="rpt-tab active" onclick="switchRptTab('overview',this)">總覽</button>
-    <button class="rpt-tab" onclick="switchRptTab('official',this)">官方調查表</button>
-    <button class="rpt-tab" onclick="switchRptTab('map',this)">地圖</button>
+    <button class="rpt-tab" onclick="switchRptTab('official',this)">調查紀錄</button>
   </div>
   <div class="scroll-body" style="margin-top:8px">
     <!-- 總覽 panel -->
@@ -509,16 +508,11 @@ input,select,textarea{font-size:max(16px,1em)!important}
       </div>
       <button style="width:100%;padding:15px;background:#e2e8f0;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px" onclick="goReady()">🔄 繼續補充旅次</button>
     </div>
-    <!-- 官方調查表 panel -->
+    <!-- 調查紀錄 panel: map + official form per combo -->
     <div id="rpt-panel-official" class="rpt-panel">
-      <div>
-        <div id="report-combo-tabs"></div>
-        <div id="official-forms"></div>
-      </div>
-    </div>
-    <!-- 地圖 panel -->
-    <div id="rpt-panel-map" class="rpt-panel">
-      <div id="map-result" style="height:340px;border-radius:14px;overflow:hidden;margin-bottom:8px"></div>
+      <div id="map-result" style="height:300px;border-radius:14px;overflow:hidden;margin-bottom:10px"></div>
+      <div id="report-combo-tabs"></div>
+      <div id="official-forms"></div>
     </div>
   </div>
 </div>
@@ -658,7 +652,7 @@ function switchRptTab(panel, btn){
   document.querySelectorAll('.rpt-panel').forEach(p=>p.classList.remove('active'))
   btn.classList.add('active')
   document.getElementById('rpt-panel-'+panel).classList.add('active')
-  if(panel==='map'&&mapResult) setTimeout(()=>mapResult.invalidateSize(),120)
+  if(panel==='official'&&mapResult) setTimeout(()=>mapResult.invalidateSize(),120)
 }
 function haversine(lat1,lng1,lat2,lng2){
   const R=6371000,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180
