@@ -865,7 +865,7 @@ async function loadCloudHistory(){
     const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey})
     const res=await fetch(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(10000)})
     const json=await res.json()
-    if(json.ok){ _histCache=json.data; renderHistory() }
+    if(json.ok){ _histCache=json.data; renderHistory(); syncChipsFromCloudHistory() }
     else{ console.error('[history] GAS error:', json.error) }
   }catch(e){ console.error('[history] fetch error:', e.message) }
 }
@@ -903,6 +903,30 @@ function renderHistory(){
 // Keep old name as alias for call sites
 function renderLocalHistory(){ renderHistory() }
 
+// After cloud history loads, restore today's trips into allTrips so chips turn green
+function syncChipsFromCloudHistory(){
+  const today=todayStr()
+  const hist=getHistory()
+  const entry=hist.find(h=>h.date===today)
+  if(!entry) return
+  let changed=false
+  Object.entries(entry.trips||{}).forEach(([k,t])=>{
+    if(allTrips[k]) return   // don't overwrite data recorded in this session
+    allTrips[k]={
+      peakType:   k.startsWith('peak')?'peak':'off_peak',
+      direction:  k.endsWith('bound')?'bound':'return',
+      travelS:    t.travelS   ||0,
+      runS:       t.runS      ||0,
+      totalDelayS:t.totalDelayS||0,
+      intTotalS:  t.intTotalS ||0,
+      roadTotalS: t.roadTotalS||0,
+      gpsTrack:[],segTimes:[],nodeTimestamps:[],roadDelays:{},intDelays:{},delayLog:[]
+    }
+    changed=true
+  })
+  if(changed){ saveTripsToStorage(); updateProgressChips(); checkStart() }
+}
+
 function viewHistoryReport(idx){
   const hist=getHistory()
   const h=hist[idx]; if(!h) return
@@ -918,6 +942,7 @@ function viewHistoryReport(idx){
       direction:k.endsWith('bound')?'bound':'return',
       startTime:null, endTime:null,
       travelS:t.travelS||0, runS:t.runS||0, totalDelayS:t.totalDelayS||0,
+      intTotalS:t.intTotalS||0, roadTotalS:t.roadTotalS||0,
       gpsTrack:[], segTimes:[], nodeTimestamps:[], roadDelays:{}, intDelays:{}, delayLog:[]
     }
   })
