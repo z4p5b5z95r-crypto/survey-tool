@@ -231,7 +231,7 @@ html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC'
              background:repeating-linear-gradient(90deg,#fbbf24 0 10px,transparent 10px 20px)"></div>
       </div>
       <!-- Car (scaleX(-1) flips to face right) -->
-      <div id="car-icon" style="position:absolute;bottom:18px;font-size:52px;left:2px;transform:scaleX(-1);transition:left 1.4s cubic-bezier(.4,0,.2,1)">🚗</div>
+      <div id="car-icon" style="position:absolute;bottom:20px;font-size:35px;left:2px;transform:scaleX(-1);transition:left 1.4s cubic-bezier(.4,0,.2,1)">🚗</div>
     </div>
     <!-- Progress bar -->
     <div style="height:5px;background:#1e293b;border-radius:3px;margin-top:4px">
@@ -952,26 +952,43 @@ function drawRouteArrows(direction){
   if(!mapReady) return
   if(routeArrowLayer){ try{mapReady.removeLayer(routeArrowLayer)}catch(e){} routeArrowLayer=null }
   if(!direction||!config.nodes||config.nodes.length<2) return
-  const nodes=direction==='return'?[...config.nodes].reverse():config.nodes
+  const color='#f97316'  // orange
   const group=L.layerGroup()
-  for(let i=0;i<nodes.length-1;i++){
-    const a=nodes[i],b=nodes[i+1]
-    const midLat=(a.lat+b.lat)/2, midLng=(a.lng+b.lng)/2
-    const bear=calcBearing(a.lat,a.lng,b.lat,b.lng)
-    const color=direction==='return'?'#7c3aed':'#1d4ed8'
-    const bg=direction==='return'?'rgba(124,58,237,.18)':'rgba(29,78,216,.18)'
-    L.marker([midLat,midLng],{icon:L.divIcon({
-      html:`<svg width="40" height="40" viewBox="-20 -20 40 40" xmlns="http://www.w3.org/2000/svg">
-        <defs><filter id="sh${i}" x="-60%" y="-60%" width="220%" height="220%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="rgba(0,0,0,.5)"/>
+  // Use actual OSRM polyline segments so arrows sit on the road
+  const segs=routePolylines.length>0
+    ?(direction==='return'?[...routePolylines].reverse().map(s=>[...s].reverse()):routePolylines)
+    :config.nodes.slice(0,-1).map((a,i)=>[[a.lat,a.lng],[config.nodes[i+1].lat,config.nodes[i+1].lng]])
+  segs.forEach((pts,i)=>{
+    if(pts.length<2) return
+    // walk along pts to find midpoint by cumulative distance
+    let total=0
+    const ds=[]
+    for(let j=1;j<pts.length;j++){
+      const d=Math.hypot(pts[j][0]-pts[j-1][0],pts[j][1]-pts[j-1][1])
+      ds.push(d); total+=d
+    }
+    let half=total/2, cum=0, midPt=pts[0], bear=0
+    for(let j=0;j<ds.length;j++){
+      if(cum+ds[j]>=half){
+        const t=(half-cum)/ds[j]
+        const a=pts[j],b=pts[j+1]
+        midPt=[a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]
+        bear=calcBearing(a[0],a[1],b[0],b[1])
+        break
+      }
+      cum+=ds[j]
+    }
+    L.marker(midPt,{icon:L.divIcon({
+      html:`<svg width="36" height="36" viewBox="-18 -18 36 36" xmlns="http://www.w3.org/2000/svg">
+        <defs><filter id="sha${i}" x="-60%" y="-60%" width="220%" height="220%">
+          <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="rgba(0,0,0,.6)"/>
         </filter></defs>
-        <circle r="18" fill="${bg}" stroke="${color}" stroke-width="1.5" opacity="0.7"/>
-        <polygon transform="rotate(${bear})" points="0,-13 -6,5 0,2 6,5"
-          fill="${color}" stroke="white" stroke-width="2" stroke-linejoin="round" filter="url(#sh${i})"/>
+        <polygon transform="rotate(${bear})" points="0,-13 -6,4 0,1 6,4"
+          fill="${color}" stroke="white" stroke-width="2" stroke-linejoin="round" filter="url(#sha${i})"/>
       </svg>`,
-      className:'',iconSize:[40,40],iconAnchor:[20,20]
+      className:'',iconSize:[36,36],iconAnchor:[18,18]
     })}).addTo(group)
-  }
+  })
   routeArrowLayer=group.addTo(mapReady)
 }
 
@@ -1667,21 +1684,37 @@ function startSurvey(){
         L.circleMarker([n.lat,n.lng],{radius:6,fillColor:color,color:'#fff',weight:2,fillOpacity:.9})
           .bindTooltip(n.name,{direction:'top'}).addTo(mapSurvey)
       })
-      // Direction arrows on survey map
-      const arrowColor=cur.direction==='return'?'#7c3aed':'#3b82f6'
-      for(let i=0;i<ordered.length-1;i++){
-        const a=ordered[i],b=ordered[i+1]
-        const midLat=(a.lat+b.lat)/2, midLng=(a.lng+b.lng)/2
-        const bear=calcBearing(a.lat,a.lng,b.lat,b.lng)
-        L.marker([midLat,midLng],{icon:L.divIcon({
+      // Direction arrows on survey map — follow OSRM polyline, orange
+      const surveySegs=routePolylines.length>0
+        ?(cur.direction==='return'?[...routePolylines].reverse().map(s=>[...s].reverse()):routePolylines)
+        :ordered.slice(0,-1).map((a,i)=>[[a.lat,a.lng],[ordered[i+1].lat,ordered[i+1].lng]])
+      surveySegs.forEach((pts,si)=>{
+        if(pts.length<2) return
+        let total=0; const ds=[]
+        for(let j=1;j<pts.length;j++){
+          const d=Math.hypot(pts[j][0]-pts[j-1][0],pts[j][1]-pts[j-1][1])
+          ds.push(d); total+=d
+        }
+        let half=total/2, cum=0, midPt=pts[0], bear=0
+        for(let j=0;j<ds.length;j++){
+          if(cum+ds[j]>=half){
+            const t=(half-cum)/ds[j], a=pts[j],b=pts[j+1]
+            midPt=[a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]
+            bear=calcBearing(a[0],a[1],b[0],b[1]); break
+          }
+          cum+=ds[j]
+        }
+        L.marker(midPt,{icon:L.divIcon({
           html:`<svg width="32" height="32" viewBox="-16 -16 32 32" xmlns="http://www.w3.org/2000/svg">
-            <circle r="14" fill="rgba(0,0,0,.3)" stroke="${arrowColor}" stroke-width="1.5" opacity="0.8"/>
-            <polygon transform="rotate(${bear})" points="0,-10 -4,4 0,1 4,4"
-              fill="${arrowColor}" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+            <defs><filter id="shs${si}" x="-60%" y="-60%" width="220%" height="220%">
+              <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="rgba(0,0,0,.6)"/>
+            </filter></defs>
+            <polygon transform="rotate(${bear})" points="0,-11 -5,4 0,1 5,4"
+              fill="#f97316" stroke="white" stroke-width="2" stroke-linejoin="round" filter="url(#shs${si})"/>
           </svg>`,
           className:'',iconSize:[32,32],iconAnchor:[16,16]
         })}).addTo(mapSurvey)
-      }
+      })
     }
   }
 
@@ -2562,7 +2595,7 @@ function setLoadPct(pct){
   const bar=document.getElementById('load-bar')
   if(!car||!bar) return
   const containerW=Math.min(window.innerWidth*0.86,320)
-  const carSize=64   // 52px font emoji ~64px rendered
+  const carSize=44   // 35px font emoji ~44px rendered
   car.style.left=Math.max(2,(containerW-carSize)*pct/100)+'px'
   bar.style.width=Math.max(3,pct)+'%'
 }
