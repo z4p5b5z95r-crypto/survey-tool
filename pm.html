@@ -143,13 +143,13 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .pc-actions{display:flex;align-items:center;justify-content:space-between;gap:6px}
 .pc-actions-l{display:flex;gap:6px}
 .pc-actions-r{display:flex;gap:5px}
-.pc-btn{padding:7px 14px;border:none;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;transition:filter .12s;font-family:inherit;white-space:nowrap}
+.pc-btn{padding:7px 14px;border:1.5px solid transparent;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;transition:filter .12s;font-family:inherit;white-space:nowrap}
 .pc-btn:hover{filter:brightness(.94)}
-.pc-btn.edit{background:#eff6ff;color:#1d4ed8}
-.pc-btn.qr{background:#f5f3ff;color:#6d28d9;border:1.5px solid #ddd6fe}
-.pc-btn.icon{padding:7px 10px;background:#f1f5f9;color:#64748b}
-.pc-btn.rec{background:#f0fdf4;color:#16a34a}
-.pc-btn.del{background:#fee2e2;color:#dc2626}
+.pc-btn.edit{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
+.pc-btn.qr{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
+.pc-btn.icon{padding:7px 10px;background:#f1f5f9;color:#64748b;border-color:#e2e8f0}
+.pc-btn.rec{background:#f0fdf4;color:#16a34a;border-color:#bbf7d0}
+.pc-btn.del{background:#fee2e2;color:#dc2626;border-color:#fecaca}
 .pc-active-tag{font-size:11px;color:#2563eb;font-weight:700;background:#dbeafe;padding:6px 11px;border-radius:8px}
 .no-projects{text-align:center;padding:50px 20px;color:#94a3b8}
 .no-projects-icon{font-size:44px;margin-bottom:14px;display:block}
@@ -2046,8 +2046,6 @@ function renderProjects(filter='') {
     const isEdit=t.id===currentTaskId&&_inEditView
     const metaParts=[]
     if(t.cfg.ft) metaParts.push(`<span>📍 ${t.cfg.ft}</span>`)
-    metaParts.push(`<span>${t.savedAt||''}</span>`)
-    metaParts.push(`<span>🔵 ${t.cfg.nd?.length||0} 節點</span>`)
     if(t.creator&&t.creator!=='未知') metaParts.push(`<span>👤 ${t.creator}</span>`)
     const metaHtml=metaParts.map((s,i)=>i<metaParts.length-1?s+`<span class="pc-dot">·</span>`:s).join('')
     return`<div class="pc${isEdit?' editing':''}">
@@ -2064,12 +2062,12 @@ function renderProjects(filter='') {
           ${isEdit
             ?`<span class="pc-active-tag">▶ 編輯中</span>`
             :`<button class="pc-btn edit" onclick="loadTask('${t.id}')">✏️ 編輯</button>`}
-          <button class="pc-btn qr" onclick="showListQR('${t.id}')">🔲 QR Code</button>
+          <button class="pc-btn qr" onclick="showListQR('${t.id}')">🔲 QR</button>
+          ${t.cloudId
+            ?`<button class="pc-btn rec" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}')">📋 記錄</button>`
+            :(gsUrl&&gsKey)?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
         </div>
         <div class="pc-actions-r">
-          ${t.cloudId
-            ?`<button class="pc-btn icon rec" title="監測記錄" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}')">📋</button>`
-            :(gsUrl&&gsKey)?`<button class="pc-btn icon" title="上傳雲端" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁</button>`:''}
           <button class="pc-btn icon del" title="刪除" onclick="deleteTask('${t.id}')">🗑</button>
         </div>
       </div>
