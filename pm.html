@@ -1400,7 +1400,7 @@ function autoTravelBearing(i){
 }
 function autoStopLineBearing(i){ return(autoTravelBearing(i)+90)%360 }
 function getNodeStopLinePts(i){
-  const n=nodes[i],halfM=(n.lineLength||10)/2
+  const n=nodes[i],halfM=7.5  // fixed 15m display length
   const bearing=n.lineAngle!=null?n.lineAngle:autoStopLineBearing(i)
   const R=bearing*Math.PI/180,cosLat=Math.cos(n.lat*Math.PI/180)
   const latOff=(halfM/111000)*Math.cos(R),lngOff=(halfM/(111000*cosLat))*Math.sin(R)
@@ -1455,7 +1455,6 @@ function refreshRadiusCircles(){
         let b=pmCalcBearing(nodes[i].lat,nodes[i].lng,lat,lng)
         if(ptIdx===1) b=(b+180)%360
         nodes[i].lineAngle=Math.round(b*10)/10
-        nodes[i].lineLength=Math.round(distMeter(nodes[i].lat,nodes[i].lng,lat,lng)*2*10)/10
         const newPts=getNodeStopLinePts(i)
         if(radiusCircles[i]) radiusCircles[i].setLatLngs(newPts)
         const pair=stopLineHandles[i]
@@ -1500,9 +1499,6 @@ function renderNodeList() {
             title="感應線角度（0°=南北向，90°=東西向）；空白=自動計算"
             onblur="saveNodeLine(${i})" onkeydown="if(event.key==='Enter')this.blur()"/>
           <span style="font-size:10px;color:#94a3b8">°</span>
-          <input class="node-radius-inp" id="nlength-${i}" type="number" value="${n.lineLength||10}" min="10" max="500" style="width:46px"
-            onblur="saveNodeLine(${i})" onkeydown="if(event.key==='Enter')this.blur()"/>
-          <span style="font-size:10px;color:#94a3b8">公尺</span>
           ${n.lineAngle!=null?`<button onclick="resetNodeLineAngle(${i})" style="padding:1px 7px;background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;border-radius:5px;font-size:10px;cursor:pointer" title="恢復自動角度">🔄</button>`:''}
         </div>
       </div>

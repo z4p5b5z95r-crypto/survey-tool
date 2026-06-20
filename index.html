@@ -2018,19 +2018,6 @@ function startSurvey(){
       ?(cur.direction==='return'?[...routePolylines].reverse().map(s=>[...s].reverse()).flat():routePolylines.flat())
       :ordered.map(n=>[n.lat,n.lng])
     L.polyline(lls,{color:'#6366f1',weight:7,opacity:.85}).addTo(surveyRouteLayer)
-    // ── Detection stop lines (perpendicular to route at each node) ──
-    ordered.forEach((n,i)=>{
-      const color=i===0?'#16a34a':i===ordered.length-1?'#dc2626':'#6366f1'
-      const dir=nodeDirections[i]
-      if(!dir) return
-      // Perpendicular direction: rotate route vector 90° in scaled space
-      const halfM=(n.lineLength||10)/2   // half-width from stored line length
-      const perpLat=-dir.dlng*halfM/111000
-      const perpLng=dir.dlat*halfM/(111000*(dir.cosLat||1))
-      const p1=[n.lat+perpLat,n.lng+perpLng]
-      const p2=[n.lat-perpLat,n.lng-perpLng]
-      L.polyline([p1,p2],{color,weight:4,opacity:0.9,interactive:false}).addTo(surveyRouteLayer)
-    })
     // ── Numbered node markers ──
     ordered.forEach((n,i)=>{
       const color=i===0?'#16a34a':i===ordered.length-1?'#dc2626':'#818cf8'
