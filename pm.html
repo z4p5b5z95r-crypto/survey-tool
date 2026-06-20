@@ -252,7 +252,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .qr-url-row input{width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;margin-bottom:8px}
 .qr-url-row input:focus{border-color:#2563eb}
 #qr-box{display:flex;justify-content:center;padding:12px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:10px;min-height:60px;align-items:center}
-#qr-box canvas,#qr-box-acc canvas{display:block!important;max-width:100%}
+#qr-box canvas,#qr-box-acc canvas{display:block!important;max-width:100%;margin:0 auto}
+#qr-box-acc{display:flex;flex-direction:column;align-items:center}
 #qr-box img,#qr-box-acc img{display:none!important}
 .qr-placeholder{color:#94a3b8;font-size:13px}
 .btn-gen{width:100%;padding:12px;background:#7c3aed;color:white;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:8px}
@@ -650,7 +651,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
         <!-- 固定底部儲存列 -->
         <div class="ev-footer">
           <button class="ev-save-btn" id="ev-save-btn" onclick="saveTaskFromSidebar()">
-            💾 儲存並同步雲端
+            💾 儲存
           </button>
         </div>
 
@@ -665,7 +666,6 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
       <!-- Map toolbar -->
       <div class="map-toolbar" id="map-toolbar">
         <button class="tool-btn" id="tool-node" onclick="toggleNodeMode()">📍 新增節點</button>
-        <button class="tool-btn" id="tool-route" onclick="toggleRouteEdit()">✏️ 調整路線走向</button>
         <button class="tool-btn" id="tool-measure" onclick="toggleMeasure()">📐 量測距離</button>
         <div style="height:1px;background:#e2e8f0;margin:2px 0"></div>
         <button class="tool-btn danger" onclick="clearAll()">🗑 清除全部</button>
@@ -1071,6 +1071,7 @@ function getPolylineMidpoint(poly) {
   return pts[pts.length-1]
 }
 function clearMidHandles() { midHandles.forEach(h=>map.removeLayer(h)); midHandles=[] }
+function ptToSegDist(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,len2=dx*dx+dy*dy;if(len2===0)return Math.hypot(p.x-a.x,p.y-a.y);const t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/len2));return Math.hypot(p.x-(a.x+t*dx),p.y-(a.y+t*dy))}
 function toggleRouteEdit() {
   routeEditMode=!routeEditMode
   const btn=document.getElementById('tool-route')
@@ -1128,7 +1129,7 @@ async function confirmMidInsert() {
   toast(`✅ 已插入真節點「${name}」`)
 }
 function refreshMidHandles() {
-  clearMidHandles(); if(!routeEditMode) return
+  clearMidHandles(); if(nodes.length<2) return
   for(let segIdx=0;segIdx<nodes.length-1;segIdx++){
     const poly=segPolylines[segIdx]; if(!poly) continue
     const n1=nodes[segIdx],n2=nodes[segIdx+1]
@@ -1160,7 +1161,7 @@ async function rebuildAllNodes(nodeList,preSegData=[]) {
   clearMidHandles();nodes=[]
   segData=nodeList.slice(0,-1).map((_,i)=>preSegData[i]?{...preSegData[i]}:{name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]})
   for(const n of nodeList) await addNode(n.lat,n.lng,n.name,n.radius||15,n.exitName||'',n.polygon||null,n.lineAngle??null,n.lineLength||10)
-  if(routeEditMode) refreshMidHandles()
+  refreshMidHandles()
 }
 
 // ════════════════════════════════════════════════════════
@@ -1214,7 +1215,6 @@ function toggleNodeMode() {
 }
 function setMode(m) {
   if(m!=='measure'&&measuring) stopMeasure()
-  if(m==='node'&&routeEditMode){routeEditMode=false;document.getElementById('tool-route').classList.remove('active');document.getElementById('tool-route').textContent='✏️ 調整路線走向';clearMidHandles()}
   mode=m
   const nodeBtn=document.getElementById('tool-node')
   nodeBtn.classList.toggle('active', m==='node')
@@ -1282,6 +1282,19 @@ map.on('click', e => {
   }
   if(mode!=='node') return
   if(!_inEditView) return   // don't place nodes in list view
+  // Detect if click is near an existing segment → insert in middle
+  const _clickPt=map.latLngToContainerPoint(e.latlng)
+  let _nearSeg=-1,_nearDist=28
+  for(let _si=0;_si<segPolylines.length;_si++){
+    const _p=segPolylines[_si];if(!_p)continue
+    const _lls=_p.getLatLngs().flat()
+    for(let _j=0;_j<_lls.length-1;_j++){
+      const _a=map.latLngToContainerPoint(_lls[_j]),_b=map.latLngToContainerPoint(_lls[_j+1])
+      const _d=ptToSegDist(_clickPt,_a,_b)
+      if(_d<_nearDist){_nearDist=_d;_nearSeg=_si}
+    }
+  }
+  if(_nearSeg>=0){ showInsertChoice(_nearSeg,e.latlng.lat,e.latlng.lng); return }
   pendingLatLng=e.latlng
   const pt=map.latLngToContainerPoint(e.latlng),mapRect=document.getElementById('map').getBoundingClientRect()
   const dialog=document.getElementById('node-dialog'),dw=240,dh=115
@@ -1722,7 +1735,7 @@ async function saveTaskFromSidebar() {
     await saveTask()
   } finally {
     btn.disabled = false
-    btn.innerHTML = '💾 儲存並同步雲端'
+    btn.innerHTML = '💾 儲存'
   }
 }
 
