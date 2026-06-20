@@ -1007,7 +1007,7 @@ map.on('click', () => { hideResults() })
 // ════════════════════════════════════════════════════════
 //  STATE
 // ════════════════════════════════════════════════════════
-let mode='browse', nodes=[], nodeMarkers=[], radiusCircles=[], segPolylines=[], midHandles=[], routeEditMode=false, pendingLatLng=null
+let mode='browse', nodes=[], nodeMarkers=[], radiusCircles=[], stopLineHandles=[], segPolylines=[], midHandles=[], routeEditMode=false, pendingLatLng=null
 let segData=[]
 // ── Polygon draw state ──
 let _polyDrawMode=false, _polyDrawNodeIdx=-1, _polyDrawPts=[], _polyDrawPreview=null, _polyDrawDotMarkers=[]
@@ -1155,11 +1155,11 @@ function refreshMidHandles() {
 }
 async function rebuildAllNodes(nodeList,preSegData=[]) {
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
-  radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[]
+  radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   clearMidHandles();nodes=[]
   segData=nodeList.slice(0,-1).map((_,i)=>preSegData[i]?{...preSegData[i]}:{name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]})
-  for(const n of nodeList) await addNode(n.lat,n.lng,n.name,n.radius||15,n.exitName||'',n.polygon||null,n.lineAngle??null,n.lineLength||50)
+  for(const n of nodeList) await addNode(n.lat,n.lng,n.name,n.radius||15,n.exitName||'',n.polygon||null,n.lineAngle??null,n.lineLength||20)
   if(routeEditMode) refreshMidHandles()
 }
 
@@ -1304,7 +1304,7 @@ document.getElementById('nd-name').addEventListener('keydown', e => { if(e.key==
 // ════════════════════════════════════════════════════════
 //  ADD NODE
 // ════════════════════════════════════════════════════════
-async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle=null,lineLength=50) {
+async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle=null,lineLength=20) {
   const idx=nodes.length
   nodes.push({lat,lng,name,exitName:exitName||'',radius,polygon:polygon||null,lineAngle,lineLength})
   const color=getNodeColor(idx)
@@ -1380,6 +1380,11 @@ function pmCalcBearing(lat1,lng1,lat2,lng2){
   const x=Math.cos(lat1r)*Math.sin(lat2r)-Math.sin(lat1r)*Math.cos(lat2r)*Math.cos(dLng)
   return(Math.atan2(y,x)*180/Math.PI+360)%360
 }
+function distMeter(lat1,lng1,lat2,lng2){
+  const R=6371000,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))
+}
 function autoTravelBearing(i){
   const n=nodes[i],prev=i>0?nodes[i-1]:null,next=i<nodes.length-1?nodes[i+1]:null
   if(prev&&next){
@@ -1393,7 +1398,7 @@ function autoTravelBearing(i){
 }
 function autoStopLineBearing(i){ return(autoTravelBearing(i)+90)%360 }
 function getNodeStopLinePts(i){
-  const n=nodes[i],halfM=(n.lineLength||50)/2
+  const n=nodes[i],halfM=(n.lineLength||20)/2
   const bearing=n.lineAngle!=null?n.lineAngle:autoStopLineBearing(i)
   const R=bearing*Math.PI/180,cosLat=Math.cos(n.lat*Math.PI/180)
   const latOff=(halfM/111000)*Math.cos(R),lngOff=(halfM/(111000*cosLat))*Math.sin(R)
@@ -1401,14 +1406,44 @@ function getNodeStopLinePts(i){
 }
 
 // ════════════════════════════════════════════════════════
-//  STOP LINE OVERLAYS  (replaces old radius circles)
+//  STOP LINE OVERLAYS + DRAGGABLE HANDLES
 // ════════════════════════════════════════════════════════
-function refreshRadiusCircles() {
+function _removeStopLineHandles(){
+  stopLineHandles.forEach(pair=>{pair&&pair.forEach(m=>{if(m)map.removeLayer(m)})})
+  stopLineHandles=[]
+}
+function refreshRadiusCircles(){
   radiusCircles.forEach(c=>{if(c)map.removeLayer(c)});radiusCircles=[]
+  _removeStopLineHandles()
   nodes.forEach((n,i)=>{
     const color=getNodeColor(i)
     const pts=getNodeStopLinePts(i)
-    radiusCircles.push(L.polyline(pts,{color,weight:4,opacity:.9,interactive:false}).addTo(map))
+    // Semi-transparent stop line
+    radiusCircles.push(L.polyline(pts,{color,weight:5,opacity:0.45,interactive:false}).addTo(map))
+    // Draggable endpoint handles
+    const mkHandle=(ptIdx)=>{
+      const m=L.marker(pts[ptIdx],{
+        draggable:true,
+        icon:L.divIcon({
+          html:`<div style="width:16px;height:16px;background:${color};border:3px solid white;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.55);cursor:grab;opacity:.85"></div>`,
+          className:'',iconSize:[16,16],iconAnchor:[8,8]
+        })
+      }).addTo(map)
+      m.on('drag',function(){
+        const {lat,lng}=this.getLatLng()
+        let bearing=pmCalcBearing(nodes[i].lat,nodes[i].lng,lat,lng)
+        if(ptIdx===1) bearing=(bearing+180)%360  // p2 is opposite end
+        nodes[i].lineAngle=Math.round(bearing*10)/10
+        nodes[i].lineLength=Math.round(distMeter(nodes[i].lat,nodes[i].lng,lat,lng)*2*10)/10
+        const newPts=getNodeStopLinePts(i)
+        if(radiusCircles[i]) radiusCircles[i].setLatLngs(newPts)
+        const pair=stopLineHandles[i]
+        if(pair){ pair[0].setLatLng(newPts[0]); pair[1].setLatLng(newPts[1]) }
+      })
+      m.on('dragend',()=>renderNodeList())
+      return m
+    }
+    stopLineHandles.push([mkHandle(0),mkHandle(1)])
   })
 }
 
@@ -1439,7 +1474,7 @@ function renderNodeList() {
             title="感應線角度（0°=南北向，90°=東西向）；空白=自動計算"
             onblur="saveNodeLine(${i})" onkeydown="if(event.key==='Enter')this.blur()"/>
           <span style="font-size:10px;color:#94a3b8">°</span>
-          <input class="node-radius-inp" id="nlength-${i}" type="number" value="${n.lineLength||50}" min="10" max="500" style="width:46px"
+          <input class="node-radius-inp" id="nlength-${i}" type="number" value="${n.lineLength||20}" min="10" max="500" style="width:46px"
             onblur="saveNodeLine(${i})" onkeydown="if(event.key==='Enter')this.blur()"/>
           <span style="font-size:10px;color:#94a3b8">公尺</span>
           ${n.lineAngle!=null?`<button onclick="resetNodeLineAngle(${i})" style="padding:1px 7px;background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;border-radius:5px;font-size:10px;cursor:pointer" title="恢復自動角度">🔄</button>`:''}
@@ -1559,7 +1594,7 @@ function renderSegTable() {
 function clearAll() {
   if(!confirm('清除所有節點與路線？'))return
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
-  radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[]
+  radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   clearMidHandles();nodes=[];segData=[];stopMeasure()
   renderNodeList();renderSegTable()
@@ -1583,7 +1618,7 @@ function buildConfig() {
     tl:parseInt(document.getElementById('tl').value)||0,
     op:document.getElementById('op').value.trim()||'14:00~16:00',
     pk:document.getElementById('pk').value.trim()||'17:00~19:00',
-    nd:nodes.map(n=>({n:n.name,n2:n.exitName||'',a:parseFloat(n.lat.toFixed(6)),o:parseFloat(n.lng.toFixed(6)),r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||50})),
+    nd:nodes.map(n=>({n:n.name,n2:n.exitName||'',a:parseFloat(n.lat.toFixed(6)),o:parseFloat(n.lng.toFixed(6)),r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||20})),
     sg:segData.map(s=>{const obj={n:s.name,l:s.lanes||2,w:s.width||8,d:s.length||0};if(s.waypoints?.length)obj.wp=s.waypoints.map(w=>({a:+w.lat.toFixed(6),o:+w.lng.toFixed(6)}));return obj})
   }
 }
@@ -1640,7 +1675,7 @@ async function saveTask() {
   if(gsUrl&&gsKey){
     toast('⏳ 同步至雲端...')
     try{
-      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||50})),segments:cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d}))}
+      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20})),segments:cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d}))}
       const result=await cloudPost(payload)
       const taskIdx=savedTasks.findIndex(t=>t.id===id)
       if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
@@ -1679,7 +1714,7 @@ async function uploadTask(id) {
       offPeakLabel: cfg.op,
       peakLabel:    cfg.pk,
       owner:        task.creator || getCurrentUser() || '',
-      nodes:    cfg.nd.map(n => ({ name:n.n, exitName:n.n2||'', lat:n.a, lng:n.o, radius:n.r, polygon:n.pg||null, lineAngle:n.la??null, lineLength:n.ll||50 })),
+      nodes:    cfg.nd.map(n => ({ name:n.n, exitName:n.n2||'', lat:n.a, lng:n.o, radius:n.r, polygon:n.pg||null, lineAngle:n.la??null, lineLength:n.ll||20 })),
       segments: cfg.sg.map(s => ({ name:s.n, lanes:s.l, width:s.w, length:s.d }))
     }
     const result = await cloudPost(payload)
@@ -1703,7 +1738,7 @@ function newTask() {
   document.getElementById('op').value='14:00~16:00'
   document.getElementById('pk').value='17:00~19:00'
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
-  radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[]
+  radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   clearMidHandles();nodes=[];segData=[];stopMeasure()
   renderNodeList();renderSegTable()
@@ -1724,11 +1759,11 @@ async function loadTask(id) {
   document.getElementById('op').value=cfg.op||'14:00~16:00'
   document.getElementById('pk').value=cfg.pk||'17:00~19:00'
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
-  radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[]
+  radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   nodes=[]
   segData=cfg.sg?cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:false,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o}))})):[]
-  if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||50)}
+  if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||20)}
   if(nodes.length>=2)map.fitBounds(L.polyline(nodes.map(n=>[n.lat,n.lng])).getBounds(),{padding:[40,40]})
   showEditView(cfg.rn||'未命名路線')
   toast('✅ 任務已載入')
@@ -1776,7 +1811,7 @@ async function syncFromCloud() {
       }
       // 不在本機：只匯入屬於自己的
       if(!isMine) continue
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||50})),sg:(r.segments||[]).map(s=>({n:s.name,l:s.lanes,w:s.width,d:s.length}))},savedAt:r.createdAt?.slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||20})),sg:(r.segments||[]).map(s=>({n:s.name,l:s.lanes,w:s.width,d:s.length}))},savedAt:r.createdAt?.slice(0,10)||'雲端'})
       changed++
     }
     if(changed>0){localStorage.setItem('pm_tasks',JSON.stringify(savedTasks));renderProjects();toast(`☁️ 雲端同步完成`)}
