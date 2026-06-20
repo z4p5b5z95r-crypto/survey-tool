@@ -458,6 +458,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
     <div class="nnc-info">
       <span class="nnc-label" id="nnc-label">節點</span>
       <span class="nnc-name" id="nnc-name">-</span>
+      <span id="nnc-auto-hint" style="font-size:11px;opacity:.7;margin-top:1px">• 15m 內自動記錄</span>
     </div>
     <div class="nnc-dist">
       <span class="dist-num" id="nnc-dist-num">-</span>
@@ -1671,9 +1672,7 @@ function checkNodeProximity(lat,lng){
   // Update distance display
   const card=$('next-node-card')
   $('nnc-dist-num').textContent=dist
-  // DEBUG: show actual detection values so we can diagnose
-  const _polyPts=nextNode.polygon&&nextNode.polygon.length>=3?nextNode.polygon.length:0
-  $('nnc-auto-hint').textContent=inRange?`✅ 感應中 (${dist}m / r${triggerR}m poly:${_polyPts})`:`• ${dist}m / r${triggerR}m poly:${_polyPts}`
+  $('nnc-auto-hint').textContent=nextNode.polygon&&nextNode.polygon.length>=3?'• 自訂區域內自動記錄':`• ${triggerR}m 內自動記錄`
   if(inRange){
     card.classList.add('arriving')
     if(!nodeAutoLock){
