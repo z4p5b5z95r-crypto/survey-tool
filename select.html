@@ -56,6 +56,10 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0f172a;min-h
 .step-line{flex:0 0 24px;height:2px;background:#334155;margin-bottom:12px}
 .step-line.done{background:#10b981}
 
+/* proj fade-in */
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+#panel-proj{animation:fadeUp .22s ease}
+
 /* Content area */
 .content{flex:1;padding:20px}
 
@@ -65,18 +69,14 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0f172a;min-h
 .section-card h2{font-size:13px;font-weight:700;color:#64748b;
   text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px}
 
-/* Engineer list */
-.eng-list{display:flex;flex-direction:column;gap:8px}
-.eng-btn{width:100%;padding:14px 18px;background:#f8fafc;border:2px solid #e2e8f0;
-  border-radius:12px;text-align:left;cursor:pointer;font-size:15px;font-weight:700;
-  color:#1e293b;display:flex;align-items:center;gap:12px;transition:.15s}
-.eng-btn:hover{border-color:#93c5fd;background:#eff6ff}
-.eng-btn.selected{border-color:#3b82f6;background:#eff6ff;color:#1d4ed8}
-.eng-avatar{width:36px;height:36px;border-radius:50%;background:#1e293b;
-  color:white;display:flex;align-items:center;justify-content:center;
-  font-size:14px;font-weight:800;flex-shrink:0}
-.eng-btn.selected .eng-avatar{background:#3b82f6}
-.eng-count{margin-left:auto;font-size:11px;color:#94a3b8;font-weight:600}
+/* Engineer dropdown */
+.eng-select-wrap{position:relative}
+.eng-select{width:100%;padding:14px 44px 14px 16px;background:white;
+  border:2px solid #e2e8f0;border-radius:12px;font-size:15px;font-weight:700;
+  color:#1e293b;appearance:none;-webkit-appearance:none;cursor:pointer;outline:none;transition:.15s}
+.eng-select:focus{border-color:#3b82f6}
+.eng-select-arrow{position:absolute;right:14px;top:50%;transform:translateY(-50%);
+  font-size:16px;pointer-events:none;color:#64748b}
 
 /* Project list */
 .proj-list{display:flex;flex-direction:column;gap:10px}
@@ -160,17 +160,19 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0f172a;min-h
   </div>
 
   <div class="content" id="main-content">
-    <!-- Step 1: Engineer select -->
-    <div id="panel-eng">
-      <div class="section-card">
-        <h2>👷 選擇工程師</h2>
-        <div class="eng-list" id="eng-list"></div>
+    <!-- Step 1: Engineer dropdown -->
+    <div class="section-card">
+      <h2>👷 選擇工程師</h2>
+      <div class="eng-select-wrap">
+        <select class="eng-select" id="eng-select" onchange="onEngChange(this.value)">
+          <option value="">— 請選擇 —</option>
+        </select>
+        <span class="eng-select-arrow">▾</span>
       </div>
     </div>
 
-    <!-- Step 2: Project select -->
+    <!-- Step 2: Project select (顯示在下方) -->
     <div id="panel-proj" style="display:none">
-      <button class="back-btn" onclick="backToEng()">← 重新選擇工程師</button>
       <div class="section-card">
         <h2 id="proj-title">📁 選擇案件</h2>
         <div class="proj-list" id="proj-list"></div>
@@ -245,7 +247,7 @@ window.addEventListener('load', async ()=>{
     await new Promise(r=>setTimeout(r,450))
     document.getElementById('loading-screen').style.display='none'
     document.getElementById('app').style.display='flex'
-    renderEngList()
+    renderEngDropdown()
 
   }catch(e){
     showError('載入失敗：'+e.message,'請確認網路連線與系統網址')
@@ -260,46 +262,42 @@ function showError(msg, sub=''){
   document.getElementById('err-sub').textContent=sub
 }
 
-// ════════════════ STEP 1 — ENGINEERS ════════════════
-function renderEngList(){
-  const el=document.getElementById('eng-list')
+// ════════════════ STEP 1 — ENGINEER DROPDOWN ════════════════
+function renderEngDropdown(){
+  const sel=document.getElementById('eng-select')
   if(!allUsers.length){
-    el.innerHTML=`<div class="empty"><div class="empty-icon">👤</div><p>找不到人員資料</p></div>`
+    sel.innerHTML='<option value="">找不到人員資料</option>'
     return
   }
-  el.innerHTML=allUsers.map(u=>{
-    const count=allRoutes.filter(r=>r.owner===u.name||(!r.owner&&false)).length
-    const myRoutes=getRoutesForUser(u.name)
-    const initials=u.name.slice(-2)||u.name[0]
-    return `<button class="eng-btn" id="eng-${encodeURIComponent(u.name)}" onclick="selectEng('${escQ(u.name)}')">
-      <div class="eng-avatar">${initials}</div>
-      <span>${u.name}</span>
-      <span class="eng-count">${myRoutes.length} 個案件</span>
-    </button>`
-  }).join('')
+  sel.innerHTML='<option value="">— 請選擇工程師 —</option>'
+    + allUsers.map(u=>{
+        const cnt=getRoutesForUser(u.name).length
+        return `<option value="${escQ(u.name)}">${u.name}（${cnt} 個案件）</option>`
+      }).join('')
+}
+
+function onEngChange(name){
+  selectedEng=name||null
+  selectedRoute=null
+  resetStartBtn()
+  if(!name){
+    document.getElementById('panel-proj').style.display='none'
+    setStep(1)
+    return
+  }
+  setStep(2)
+  showProjList(name)
 }
 
 function getRoutesForUser(name){
   return allRoutes.filter(r=>r.owner===name)
 }
 
-function selectEng(name){
-  selectedEng=name
-  selectedRoute=null
-  // Update button states
-  document.querySelectorAll('.eng-btn').forEach(b=>b.classList.remove('selected'))
-  const btn=document.getElementById('eng-'+encodeURIComponent(name))
-  if(btn) btn.classList.add('selected')
-  // Go to step 2
-  setTimeout(()=>showProjPanel(name), 180)
-}
-
 // ════════════════ STEP 2 — PROJECTS ════════════════
-function showProjPanel(name){
-  document.getElementById('panel-eng').style.display='none'
-  document.getElementById('panel-proj').style.display='block'
+function showProjList(name){
+  const panel=document.getElementById('panel-proj')
+  panel.style.display='block'
   document.getElementById('proj-title').textContent='📁 '+name+' 的案件'
-  setStep(2)
 
   const routes=getRoutesForUser(name)
   const el=document.getElementById('proj-list')
@@ -317,8 +315,8 @@ function showProjPanel(name){
       <div class="proj-name">${r.routeName||r.id}</div>
       <div class="proj-meta">
         <span class="proj-tag">${r.routeFromTo||'—'}</span>
-        <span>${r.totalLength?r.totalLength+'m':''}</span>
-        <span>${r.date||''}</span>
+        ${r.totalLength?`<span>${r.totalLength}m</span>`:''}
+        ${r.date?`<span>${r.date}</span>`:''}
       </div>
     </button>
   `).join('')
@@ -336,13 +334,10 @@ function selectRoute(id){
   setStep(3)
 }
 
-function backToEng(){
-  selectedEng=null; selectedRoute=null
-  document.getElementById('panel-proj').style.display='none'
-  document.getElementById('panel-eng').style.display='block'
-  document.getElementById('start-btn').disabled=true
-  document.getElementById('start-btn').textContent='選擇案件後開始 →'
-  setStep(1)
+function resetStartBtn(){
+  const b=document.getElementById('start-btn')
+  b.disabled=true
+  b.textContent='選擇案件後開始 →'
 }
 
 // ════════════════ START SURVEY ════════════════
