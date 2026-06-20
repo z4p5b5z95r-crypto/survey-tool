@@ -600,7 +600,7 @@ let markerReady=null, markerSurvey=null, surveyRouteLayer=null
 let lastPos=null, clockTimer=null, elapsedSec=0
 
 // Delay
-let activeDelay=null, delayLog=[]
+let activeDelay=null, delayLog=[], _resumeAboveSpeedSince=null
 
 // Nodes
 let nodeTimestamps=[], currentNodeIdx=0
@@ -1161,9 +1161,16 @@ let compassHeading=0, compassListening=false, _smoothH=null
 const NAV_SPEED_MS = 2.2   // 8 km/h threshold
 let _gpsNavHistory=[], _navBearing=null, _lastSpeed=0
 let _mapFollowing=true   // false when user manually pans/zooms
+let _mapFollowTimer=null  // auto re-center after 4s
 function _updateLocateBtn(){
   const btn=document.getElementById('locate-survey-btn')
   if(btn) btn.style.opacity=_mapFollowing?'0.5':'1'
+}
+function _startFollowTimer(){
+  if(_mapFollowTimer) clearTimeout(_mapFollowTimer)
+  _mapFollowTimer=setTimeout(()=>{
+    if(!_mapFollowing) surveyLocate()
+  },4000)
 }
 
 // Ready-screen marker: arrow rotates with compass heading
@@ -1571,6 +1578,7 @@ function centerOnPos(targetMap, lat, lng) {
 // Survey map locate button — re-enables GPS following + restores heading rotation
 function surveyLocate(){
   if(!mapSurvey||!lastPos) return
+  if(_mapFollowTimer){ clearTimeout(_mapFollowTimer); _mapFollowTimer=null }
   _mapFollowing=true
   _updateLocateBtn()
   _lastRotated=null   // force rotation to re-apply immediately
@@ -1653,21 +1661,28 @@ function onPos(p){
       cur.gpsTrack.push({lat,lng,speed_ms:speed,accuracy_m:accuracy,ts:new Date().toISOString()})
       // 節點感應用原始 GPS 座標（rl,ro），不用平滑後的座標，避免平滑延遲造成漏判
       checkNodeProximity(rl,ro)
-      // ── 移動自動結束延滯（與節點感應獨立判斷）──
-      if(activeDelay && activeDelay.startPos){
-        const delayDist=haversine(lat,lng,activeDelay.startPos.lat,activeDelay.startPos.lng)
-        // 條件 A：車速 > 3 m/s（約 11 km/h），明顯已在行駛
-        const bySpeed = speed != null && speed > 3
-        // 條件 B：GPS 精度合理（<60m）且移動距離超過 25m（避免漂移誤判）
-        const byDist  = accuracy < 60 && delayDist > 25
-        if(bySpeed || byDist){
-          const cause=activeDelay.cause,grp=activeDelay.group
-          const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===cause)
-          if(p){
-            toggleDelay(p,grp)
-            showToast(`▸ ${p.label} 自動結束（移動 ${Math.round(delayDist)}m）`)
+      // ── 移動自動結束延滯（3 秒緩衝，排除前車蠕行）──
+      if(activeDelay){
+        const RESUME_MS=5/3.6   // 5 km/h = 1.39 m/s
+        const overThreshold=(speed!=null && speed>RESUME_MS)
+        if(overThreshold){
+          if(_resumeAboveSpeedSince===null) _resumeAboveSpeedSince=Date.now()
+          else if(Date.now()-_resumeAboveSpeedSince>=3000){
+            // 持續超過 5 km/h 達 3 秒 → 確認解除，並扣除 3 秒緩衝時間
+            const cause=activeDelay.cause,grp=activeDelay.group
+            const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===cause)
+            if(p){
+              toggleDelay(p,grp,{deductSeconds:3})
+              showToast(`▸ ${p.label} 自動結束`)
+            }
+            _resumeAboveSpeedSince=null
           }
+        } else {
+          // 速度掉回 5 km/h 以下（蠕行）→ 重置計時，不解除
+          _resumeAboveSpeedSince=null
         }
+      } else {
+        _resumeAboveSpeedSince=null
       }
     }
   }
@@ -1954,7 +1969,7 @@ function startSurvey(){
     roadDelays:{},intDelays:{}}
   ROAD_DELAYS.forEach(d=>{cur.roadDelays[d.cause]=0})
   INT_DELAYS.forEach(d=>{cur.intDelays[d.cause]=0})
-  delayLog=[];activeDelay=null;elapsedSec=0
+  delayLog=[];activeDelay=null;_resumeAboveSpeedSince=null;elapsedSec=0
   nodeTimestamps=[]   // will be filled when nodes are hit
   currentNodeIdx=0    // 0 = waiting for node 1
   nodeAutoLock=false
@@ -1974,15 +1989,18 @@ function startSurvey(){
     mapSurvey=L.map('map-survey',{zoomControl:false,attributionControl:false})
     // Disable Leaflet's built-in drag — use custom handler to compensate for CSS rotation
     mapSurvey.dragging.disable()
-    mapSurvey.on('zoomstart',()=>{ _mapFollowing=false; _updateLocateBtn() })
+    mapSurvey.on('zoomstart',()=>{ _mapFollowing=false; _updateLocateBtn(); _startFollowTimer() })
     // Custom touch-pan: un-rotate screen delta → Leaflet internal delta
     ;(()=>{
       let _td=null
       const mc=mapSurvey.getContainer()
       mc.addEventListener('touchstart',e=>{
+        // Any touch = user is manually controlling → pause follow & start 4s timer
+        _mapFollowing=false; _updateLocateBtn(); _startFollowTimer()
         if(e.touches.length===1){
           _td={x:e.touches[0].clientX, y:e.touches[0].clientY}
-          _mapFollowing=false; _updateLocateBtn()
+        } else {
+          _td=null  // 2-finger pinch: let Leaflet handle zoom natively
         }
       },{passive:true})
       mc.addEventListener('touchmove',e=>{
@@ -2002,11 +2020,11 @@ function startSurvey(){
     mapSurvey.setView(ip,17)
     // Heading-aware marker (Google Maps style: circle + direction arrow)
     markerSurvey=L.marker(ip,{icon:createSurveyIcon(),zIndexOffset:1000}).addTo(mapSurvey)
-    // Fly to user location with animation
-    setTimeout(()=>{
-      if(lastPos) mapSurvey.flyTo([lastPos.lat,lastPos.lng],17,{duration:1.4})
-    },300)
   }
+  // ── Every time survey starts: re-center on current position ──
+  _mapFollowing=true; _updateLocateBtn()
+  if(_mapFollowTimer){ clearTimeout(_mapFollowTimer); _mapFollowTimer=null }
+  if(lastPos) mapSurvey.setView([lastPos.lat,lastPos.lng],17,{animate:false})
   // ── Draw/redraw route overlay for current direction ──
   if(surveyRouteLayer){ surveyRouteLayer.clearLayers() } else { surveyRouteLayer=L.layerGroup().addTo(mapSurvey) }
   if(config.nodes&&config.nodes.length>=2){
@@ -2017,7 +2035,7 @@ function startSurvey(){
     const lls=routePolylines.length>0
       ?(cur.direction==='return'?[...routePolylines].reverse().map(s=>[...s].reverse()).flat():routePolylines.flat())
       :ordered.map(n=>[n.lat,n.lng])
-    L.polyline(lls,{color:'#6366f1',weight:7,opacity:.85}).addTo(surveyRouteLayer)
+    L.polyline(lls,{color:'#f97316',weight:7,opacity:.9}).addTo(surveyRouteLayer)
     // ── Numbered node markers ──
     ordered.forEach((n,i)=>{
       const color=i===0?'#16a34a':i===ordered.length-1?'#dc2626':'#818cf8'
@@ -2056,7 +2074,7 @@ function startSurvey(){
             <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="rgba(0,0,0,.6)"/>
           </filter></defs>
           <polygon transform="rotate(${bear})" points="0,-11 -5,4 0,1 5,4"
-            fill="#f97316" stroke="white" stroke-width="2" stroke-linejoin="round" filter="url(#shs${si})"/>
+            fill="#6366f1" stroke="white" stroke-width="2" stroke-linejoin="round" filter="url(#shs${si})"/>
         </svg>`,
         className:'',iconSize:[32,32],iconAnchor:[16,16]
       })}).addTo(surveyRouteLayer)
@@ -2110,11 +2128,13 @@ function buildGrid(gid,types,group){
     b.onclick=()=>toggleDelay(d,group);g.appendChild(b)
   })
 }
-function toggleDelay(d,group){
+function toggleDelay(d,group,opts){
   if(activeDelay&&activeDelay.cause===d.cause){
     // ── Stop recording this delay ──
     clearInterval(activeDelay.timerId)
-    const end=new Date(),dur=Math.round((end-activeDelay.startedAt)/1000)
+    const end=new Date()
+    const rawDur=Math.round((end-activeDelay.startedAt)/1000)
+    const dur=Math.max(0,rawDur-(opts?.deductSeconds||0))  // 扣除緩衝判定時間
     if(group==='road')cur.roadDelays[d.cause]=(cur.roadDelays[d.cause]||0)+dur
     else cur.intDelays[d.cause]=(cur.intDelays[d.cause]||0)+dur
     delayLog.push({cause:d.cause,group,label:d.label,icon:d.icon,startedAt:activeDelay.startedAt,endedAt:end,durationS:dur,pos:activeDelay.startPos})

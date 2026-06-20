@@ -1225,10 +1225,18 @@ function refreshMidHandles() {
   for(let segIdx=0;segIdx<nodes.length-1;segIdx++){
     const poly=segPolylines[segIdx]; if(!poly) continue
     const midPt=getPolylineMidpoint(poly)
-    const insertHandle=L.marker(midPt,{interactive:true,zIndexOffset:2000,icon:createMidIcon(false),bubblingMouseEvents:false}).addTo(map)
-    insertHandle.on('mouseover',function(){this.setIcon(createMidIcon(true))})
-    insertHandle.on('mouseout',function(){this.setIcon(createMidIcon(false))})
-    insertHandle.on('click',function(){showInsertChoice(segIdx,midPt.lat,midPt.lng)})
+    const insertHandle=L.marker(midPt,{draggable:true,interactive:true,zIndexOffset:2000,icon:createMidIcon(false),bubblingMouseEvents:false}).addTo(map)
+    let _midDragged=false
+    insertHandle.on('dragstart',function(){_midDragged=true;this.setIcon(createMidIcon(true))})
+    insertHandle.on('drag',function(){this.setIcon(createMidIcon(true))})
+    insertHandle.on('dragend',async function(){
+      const pos=this.getLatLng()
+      await doInsertWaypoint(segIdx,pos.lat,pos.lng)
+      setTimeout(()=>{_midDragged=false},200)
+    })
+    insertHandle.on('mouseover',function(){if(!_midDragged)this.setIcon(createMidIcon(true))})
+    insertHandle.on('mouseout',function(){if(!_midDragged)this.setIcon(createMidIcon(false))})
+    insertHandle.on('click',function(){if(_midDragged)return;showInsertChoice(segIdx,midPt.lat,midPt.lng)})
     midHandles.push(insertHandle)
     ;(segData[segIdx]?.waypoints||[]).forEach((wp,wpIdx)=>{
       const wpHandle=L.marker([wp.lat,wp.lng],{draggable:true,zIndexOffset:1500,icon:createWaypointIcon(false),bubblingMouseEvents:false}).addTo(map)
