@@ -702,6 +702,7 @@ function pointInPolygon(lat,lng,poly){
   return inside
 }
 // Compute route direction unit vectors at each node (accounts for lat/lng scaling)
+// If node has a manually-set lineAngle, the travel direction = lineAngle - 90° (picks direction that matches route flow)
 function computeNodeDirections(ordered){
   return ordered.map((n,i)=>{
     const prev=i>0?ordered[i-1]:null
@@ -709,10 +710,20 @@ function computeNodeDirections(ordered){
     const p=prev||{lat:n.lat-(next.lat-n.lat),lng:n.lng-(next.lng-n.lng)}
     const nx=next||{lat:n.lat+(n.lat-prev.lat),lng:n.lng+(n.lng-prev.lng)}
     const cosLat=Math.cos(n.lat*Math.PI/180)
+    // Auto direction from route geometry
     const dlat=nx.lat-p.lat
-    const dlng=(nx.lng-p.lng)*cosLat   // scale lng to match lat units
+    const dlng=(nx.lng-p.lng)*cosLat
     const len=Math.sqrt(dlat*dlat+dlng*dlng)||1e-9
-    return{dlat:dlat/len,dlng:dlng/len,cosLat}
+    const autoDir={dlat:dlat/len,dlng:dlng/len}
+    if(n.lineAngle!=null){
+      // Stored line bearing → two possible travel directions (±90°)
+      const r1=(n.lineAngle+90)*Math.PI/180, r2=(n.lineAngle-90)*Math.PI/180
+      const d1={dlat:Math.cos(r1),dlng:Math.sin(r1),cosLat}
+      const d2={dlat:Math.cos(r2),dlng:Math.sin(r2),cosLat}
+      // Pick whichever aligns with the auto-computed route direction
+      return(d1.dlat*autoDir.dlat+d1.dlng*autoDir.dlng)>=0?d1:d2
+    }
+    return{dlat:autoDir.dlat,dlng:autoDir.dlng,cosLat}
   })
 }
 
@@ -769,8 +780,8 @@ function applyConfig(cfg){
   config.peakLabel   =cfg.peakLabel   ||cfg.pk||'17:00~19:00'
   config.date        =todayStr()   // always default to today; surveyor picks their own date
   config.nodes=(cfg.nodes||cfg.nd||[]).map(n=>{
-    if(n.lat!==undefined) return {name:n.name||'節點',exitName:n.exitName||n.n2||'',lat:n.lat,lng:n.lng,radius:n.radius||15,polygon:n.polygon||null}
-    return {name:n.n||n.r1||'節點',exitName:n.n2||n.exitName||'',lat:n.a,lng:n.o,radius:n.r||15,polygon:n.pg||null}
+    if(n.lat!==undefined) return {name:n.name||'節點',exitName:n.exitName||n.n2||'',lat:n.lat,lng:n.lng,radius:n.radius||15,polygon:n.polygon||null,lineAngle:n.lineAngle??null,lineLength:n.lineLength||50}
+    return {name:n.n||n.r1||'節點',exitName:n.n2||n.exitName||'',lat:n.a,lng:n.o,radius:n.r||15,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||50}
   })
   config.segments=(cfg.segments||cfg.sg||[]).map(s=>{
     if(s.name!==undefined) return {name:s.name,lanes:s.lanes||2,width:s.width||8,length:s.length||0,waypoints:(s.waypoints||[]).map(w=>({lat:w.lat||w.a,lng:w.lng||w.o}))}
@@ -2004,7 +2015,7 @@ function startSurvey(){
       const dir=nodeDirections[i]
       if(!dir) return
       // Perpendicular direction: rotate route vector 90° in scaled space
-      const halfM=25  // half-width of stop line in metres
+      const halfM=(n.lineLength||50)/2   // half-width from stored line length
       const perpLat=-dir.dlng*halfM/111000
       const perpLng=dir.dlat*halfM/(111000*(dir.cosLat||1))
       const p1=[n.lat+perpLat,n.lng+perpLng]

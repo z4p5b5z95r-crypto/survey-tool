@@ -1159,7 +1159,7 @@ async function rebuildAllNodes(nodeList,preSegData=[]) {
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   clearMidHandles();nodes=[]
   segData=nodeList.slice(0,-1).map((_,i)=>preSegData[i]?{...preSegData[i]}:{name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]})
-  for(const n of nodeList) await addNode(n.lat,n.lng,n.name,n.radius||15,n.exitName||'')
+  for(const n of nodeList) await addNode(n.lat,n.lng,n.name,n.radius||15,n.exitName||'',n.polygon||null,n.lineAngle??null,n.lineLength||50)
   if(routeEditMode) refreshMidHandles()
 }
 
@@ -1304,9 +1304,9 @@ document.getElementById('nd-name').addEventListener('keydown', e => { if(e.key==
 // ════════════════════════════════════════════════════════
 //  ADD NODE
 // ════════════════════════════════════════════════════════
-async function addNode(lat,lng,name,radius=15,exitName='',polygon=null) {
+async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle=null,lineLength=50) {
   const idx=nodes.length
-  nodes.push({lat,lng,name,exitName:exitName||'',radius,polygon:polygon||null})
+  nodes.push({lat,lng,name,exitName:exitName||'',radius,polygon:polygon||null,lineAngle,lineLength})
   const color=getNodeColor(idx)
   const marker=L.marker([lat,lng],{draggable:true,icon:createNodeIcon(idx+1,color),autoPan:true}).addTo(map)
   nodeMarkers.push(marker); updateAllIcons(); refreshRadiusCircles()
@@ -1320,7 +1320,7 @@ async function addNode(lat,lng,name,radius=15,exitName='',polygon=null) {
     nodes[i].lat=latlng.lat;nodes[i].lng=latlng.lng
     if(i>0&&segPolylines[i-1])segPolylines[i-1].setLatLngs([[nodes[i-1].lat,nodes[i-1].lng],[latlng.lat,latlng.lng]])
     if(i<nodes.length-1&&segPolylines[i])segPolylines[i].setLatLngs([[latlng.lat,latlng.lng],[nodes[i+1].lat,nodes[i+1].lng]])
-    if(radiusCircles[i])radiusCircles[i].setLatLng(latlng)
+    if(radiusCircles[i])radiusCircles[i].setLatLngs(getNodeStopLinePts(i))
   })
   marker.on('dragend',async function(){
     const i=nodeMarkers.indexOf(this); if(i<0) return
@@ -1371,18 +1371,44 @@ async function removeNode(idx) {
 }
 
 // ════════════════════════════════════════════════════════
-//  RADIUS CIRCLES
+//  STOP LINE HELPERS
+// ════════════════════════════════════════════════════════
+function pmCalcBearing(lat1,lng1,lat2,lng2){
+  const dLng=(lng2-lng1)*Math.PI/180
+  const lat1r=lat1*Math.PI/180,lat2r=lat2*Math.PI/180
+  const y=Math.sin(dLng)*Math.cos(lat2r)
+  const x=Math.cos(lat1r)*Math.sin(lat2r)-Math.sin(lat1r)*Math.cos(lat2r)*Math.cos(dLng)
+  return(Math.atan2(y,x)*180/Math.PI+360)%360
+}
+function autoTravelBearing(i){
+  const n=nodes[i],prev=i>0?nodes[i-1]:null,next=i<nodes.length-1?nodes[i+1]:null
+  if(prev&&next){
+    const b1=pmCalcBearing(prev.lat,prev.lng,n.lat,n.lng)*Math.PI/180
+    const b2=pmCalcBearing(n.lat,n.lng,next.lat,next.lng)*Math.PI/180
+    return(Math.atan2((Math.sin(b1)+Math.sin(b2))/2,(Math.cos(b1)+Math.cos(b2))/2)*180/Math.PI+360)%360
+  }
+  if(next) return pmCalcBearing(n.lat,n.lng,next.lat,next.lng)
+  if(prev) return pmCalcBearing(prev.lat,prev.lng,n.lat,n.lng)
+  return 0
+}
+function autoStopLineBearing(i){ return(autoTravelBearing(i)+90)%360 }
+function getNodeStopLinePts(i){
+  const n=nodes[i],halfM=(n.lineLength||50)/2
+  const bearing=n.lineAngle!=null?n.lineAngle:autoStopLineBearing(i)
+  const R=bearing*Math.PI/180,cosLat=Math.cos(n.lat*Math.PI/180)
+  const latOff=(halfM/111000)*Math.cos(R),lngOff=(halfM/(111000*cosLat))*Math.sin(R)
+  return[[n.lat+latOff,n.lng+lngOff],[n.lat-latOff,n.lng-lngOff]]
+}
+
+// ════════════════════════════════════════════════════════
+//  STOP LINE OVERLAYS  (replaces old radius circles)
 // ════════════════════════════════════════════════════════
 function refreshRadiusCircles() {
   radiusCircles.forEach(c=>{if(c)map.removeLayer(c)});radiusCircles=[]
   nodes.forEach((n,i)=>{
     const color=getNodeColor(i)
-    if(n.polygon && n.polygon.length>=3) {
-      // 自訂多邊形
-      radiusCircles.push(L.polygon(n.polygon,{color,fillColor:color,fillOpacity:.14,opacity:.7,weight:2,dashArray:'5,4',interactive:false}).addTo(map))
-    } else {
-      radiusCircles.push(L.circle([n.lat,n.lng],{radius:n.radius||15,color,fillColor:color,fillOpacity:.12,opacity:.45,weight:1.5,dashArray:'4,4',interactive:false}).addTo(map))
-    }
+    const pts=getNodeStopLinePts(i)
+    radiusCircles.push(L.polyline(pts,{color,weight:4,opacity:.9,interactive:false}).addTo(map))
   })
 }
 
@@ -1406,15 +1432,17 @@ function renderNodeList() {
         </div>
         ${!isLast?`<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px"><span style="font-size:10px;color:#94a3b8;white-space:nowrap;flex-shrink:0">↩ 離開路名</span><input class="node-name-inp" id="nexitname-${i}" value="${(n.exitName||'').replace(/"/g,'&quot;')}" onkeydown="if(event.key==='Enter'){saveNode(${i});this.blur()}" placeholder="轉彎時才填" style="font-size:11px;color:#475569"/></div>`:''}
         <div class="node-coords">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}</div>
-        <div class="node-radius-row">
-          ${n.polygon && n.polygon.length>=3
-            ? `<span class="node-poly-tag" onclick="clearNodePolygon(${i})" title="點擊移除自訂範圍">🔲 自訂區域 ✕</span>`
-            : `<span style="font-size:10px;color:#94a3b8">感應範圍</span>
-               <input class="node-radius-inp" id="nradius-${i}" type="number" value="${n.radius||15}" min="5" max="200"
-                 onblur="saveNodeRadius(${i})" onkeydown="if(event.key==='Enter')this.blur()"/>
-               <span style="font-size:10px;color:#94a3b8">公尺</span>`
-          }
-          <button onclick="startPolygonDraw(${i})" style="margin-left:4px;padding:1px 7px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">${n.polygon && n.polygon.length>=3 ? '重繪' : '🔲 自訂'}</button>
+        <div class="node-radius-row" style="flex-wrap:wrap;gap:4px">
+          <span style="font-size:10px;color:#94a3b8;white-space:nowrap">感應線</span>
+          <input class="node-radius-inp" id="nangle-${i}" type="number" value="${n.lineAngle!=null?Math.round(n.lineAngle):''}"
+            placeholder="${Math.round(autoStopLineBearing(i))}°" min="0" max="359" style="width:52px"
+            title="感應線角度（0°=南北向，90°=東西向）；空白=自動計算"
+            onblur="saveNodeLine(${i})" onkeydown="if(event.key==='Enter')this.blur()"/>
+          <span style="font-size:10px;color:#94a3b8">°</span>
+          <input class="node-radius-inp" id="nlength-${i}" type="number" value="${n.lineLength||50}" min="10" max="500" style="width:46px"
+            onblur="saveNodeLine(${i})" onkeydown="if(event.key==='Enter')this.blur()"/>
+          <span style="font-size:10px;color:#94a3b8">公尺</span>
+          ${n.lineAngle!=null?`<button onclick="resetNodeLineAngle(${i})" style="padding:1px 7px;background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;border-radius:5px;font-size:10px;cursor:pointer" title="恢復自動角度">🔄</button>`:''}
         </div>
       </div>
       <button class="node-del" onclick="removeNode(${i})">✕</button>
@@ -1429,10 +1457,23 @@ window.saveNode=function(i){
   renderSegTable(); updateAllIcons()
 }
 window.saveNodeName=window.saveNode
-window.saveNodeRadius=function(i){
-  const el=document.getElementById(`nradius-${i}`); if(!el||!nodes[i])return
-  nodes[i].radius=Math.min(200,Math.max(5,parseInt(el.value)||15)); el.value=nodes[i].radius
-  if(radiusCircles[i])radiusCircles[i].setRadius(nodes[i].radius); else refreshRadiusCircles()
+window.saveNodeLine=function(i){
+  const angleEl=document.getElementById(`nangle-${i}`),lenEl=document.getElementById(`nlength-${i}`)
+  if(!nodes[i]) return
+  const av=angleEl?.value.trim()
+  nodes[i].lineAngle=(av===''||av==null)?null:((parseFloat(av)%360+360)%360)
+  nodes[i].lineLength=Math.min(500,Math.max(10,parseFloat(lenEl?.value)||50))
+  if(lenEl) lenEl.value=nodes[i].lineLength
+  if(radiusCircles[i]) radiusCircles[i].setLatLngs(getNodeStopLinePts(i))
+  else refreshRadiusCircles()
+  renderNodeList()
+}
+window.resetNodeLineAngle=function(i){
+  if(!nodes[i]) return
+  nodes[i].lineAngle=null
+  if(radiusCircles[i]) radiusCircles[i].setLatLngs(getNodeStopLinePts(i))
+  else refreshRadiusCircles()
+  renderNodeList()
 }
 
 // ════════════════════════════════════════════════════════
@@ -1542,7 +1583,7 @@ function buildConfig() {
     tl:parseInt(document.getElementById('tl').value)||0,
     op:document.getElementById('op').value.trim()||'14:00~16:00',
     pk:document.getElementById('pk').value.trim()||'17:00~19:00',
-    nd:nodes.map(n=>({n:n.name,n2:n.exitName||'',a:parseFloat(n.lat.toFixed(6)),o:parseFloat(n.lng.toFixed(6)),r:n.radius||15,pg:n.polygon||null})),
+    nd:nodes.map(n=>({n:n.name,n2:n.exitName||'',a:parseFloat(n.lat.toFixed(6)),o:parseFloat(n.lng.toFixed(6)),r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||50})),
     sg:segData.map(s=>{const obj={n:s.name,l:s.lanes||2,w:s.width||8,d:s.length||0};if(s.waypoints?.length)obj.wp=s.waypoints.map(w=>({a:+w.lat.toFixed(6),o:+w.lng.toFixed(6)}));return obj})
   }
 }
@@ -1599,7 +1640,7 @@ async function saveTask() {
   if(gsUrl&&gsKey){
     toast('⏳ 同步至雲端...')
     try{
-      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null})),segments:cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d}))}
+      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||50})),segments:cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d}))}
       const result=await cloudPost(payload)
       const taskIdx=savedTasks.findIndex(t=>t.id===id)
       if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
@@ -1638,7 +1679,7 @@ async function uploadTask(id) {
       offPeakLabel: cfg.op,
       peakLabel:    cfg.pk,
       owner:        task.creator || getCurrentUser() || '',
-      nodes:    cfg.nd.map(n => ({ name:n.n, exitName:n.n2||'', lat:n.a, lng:n.o, radius:n.r, polygon:n.pg||null })),
+      nodes:    cfg.nd.map(n => ({ name:n.n, exitName:n.n2||'', lat:n.a, lng:n.o, radius:n.r, polygon:n.pg||null, lineAngle:n.la??null, lineLength:n.ll||50 })),
       segments: cfg.sg.map(s => ({ name:s.n, lanes:s.l, width:s.w, length:s.d }))
     }
     const result = await cloudPost(payload)
@@ -1687,7 +1728,7 @@ async function loadTask(id) {
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   nodes=[]
   segData=cfg.sg?cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:false,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o}))})):[]
-  if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null)}
+  if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||50)}
   if(nodes.length>=2)map.fitBounds(L.polyline(nodes.map(n=>[n.lat,n.lng])).getBounds(),{padding:[40,40]})
   showEditView(cfg.rn||'未命名路線')
   toast('✅ 任務已載入')
@@ -1735,7 +1776,7 @@ async function syncFromCloud() {
       }
       // 不在本機：只匯入屬於自己的
       if(!isMine) continue
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null})),sg:(r.segments||[]).map(s=>({n:s.name,l:s.lanes,w:s.width,d:s.length}))},savedAt:r.createdAt?.slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||50})),sg:(r.segments||[]).map(s=>({n:s.name,l:s.lanes,w:s.width,d:s.length}))},savedAt:r.createdAt?.slice(0,10)||'雲端'})
       changed++
     }
     if(changed>0){localStorage.setItem('pm_tasks',JSON.stringify(savedTasks));renderProjects();toast(`☁️ 雲端同步完成`)}
