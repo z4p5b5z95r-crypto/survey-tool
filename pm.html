@@ -665,7 +665,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 
       <!-- Map toolbar -->
       <div class="map-toolbar" id="map-toolbar">
-        <button class="tool-btn" id="tool-node" onclick="toggleNodeMode()">📍 新增節點</button>
+        <button class="tool-btn" id="tool-node" onclick="toggleNodeMode()">📍 節點新增/編輯</button>
         <button class="tool-btn" id="tool-measure" onclick="toggleMeasure()">📐 量測距離</button>
         <div style="height:1px;background:#e2e8f0;margin:2px 0"></div>
         <button class="tool-btn danger" onclick="clearAll()">🗑 清除全部</button>
@@ -1241,10 +1241,10 @@ function setMode(m) {
   mode=m
   const nodeBtn=document.getElementById('tool-node')
   nodeBtn.classList.toggle('active', m==='node')
-  nodeBtn.textContent = m==='node' ? '✕ 停止新增' : '📍 新增節點'
+  nodeBtn.textContent = m==='node' ? '✕ 停止編輯' : '📍 節點新增/編輯'
   // sync "btn-add-node" state
   const addBtn=document.getElementById('btn-add-node')
-  if(addBtn) { addBtn.classList.toggle('active', m==='node'); addBtn.textContent = m==='node' ? '✕ 點擊地圖放置（Esc 取消）' : '＋ 點擊地圖新增節點' }
+  if(addBtn) { addBtn.classList.toggle('active', m==='node'); addBtn.textContent = m==='node' ? '✕ 結束編輯（Esc）' : '＋ 節點新增/編輯' }
   document.getElementById('map-hint').style.display=m==='node'?'block':'none'
   map.getContainer().style.cursor=m==='node'?'crosshair':m==='measure'?'cell':''
   refreshMidHandles()
