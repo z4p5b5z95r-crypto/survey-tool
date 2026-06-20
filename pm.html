@@ -1418,27 +1418,39 @@ function refreshRadiusCircles(){
   nodes.forEach((n,i)=>{
     const color=getNodeColor(i)
     const pts=getNodeStopLinePts(i)
-    // Semi-transparent stop line
-    radiusCircles.push(L.polyline(pts,{color,weight:5,opacity:0.45,interactive:false}).addTo(map))
-    // Draggable endpoint handles
+    // Semi-transparent stop line (more transparent)
+    radiusCircles.push(L.polyline(pts,{color,weight:5,opacity:0.28,interactive:false}).addTo(map))
+    // Arrowhead cap icon — points outward from node center
+    const mkArrowIcon=(bearing)=>L.divIcon({
+      html:`<div style="width:24px;height:24px;transform:rotate(${bearing}deg);transform-origin:center;cursor:grab">
+        <svg width="24" height="24" viewBox="-12 -12 24 24" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="0,-11 -7,3 0,-1 7,3" fill="${color}" opacity="0.7" stroke="white" stroke-width="1.8" stroke-linejoin="round"/>
+        </svg>
+      </div>`,
+      className:'',iconSize:[24,24],iconAnchor:[12,12]
+    })
+    const getBearing=(ptIdx)=>{
+      const base=n.lineAngle!=null?n.lineAngle:autoStopLineBearing(i)
+      return ptIdx===0?base:(base+180)%360
+    }
     const mkHandle=(ptIdx)=>{
-      const m=L.marker(pts[ptIdx],{
-        draggable:true,
-        icon:L.divIcon({
-          html:`<div style="width:16px;height:16px;background:${color};border:3px solid white;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.55);cursor:grab;opacity:.85"></div>`,
-          className:'',iconSize:[16,16],iconAnchor:[8,8]
-        })
-      }).addTo(map)
+      const m=L.marker(pts[ptIdx],{draggable:true,icon:mkArrowIcon(getBearing(ptIdx))}).addTo(map)
       m.on('drag',function(){
         const {lat,lng}=this.getLatLng()
-        let bearing=pmCalcBearing(nodes[i].lat,nodes[i].lng,lat,lng)
-        if(ptIdx===1) bearing=(bearing+180)%360  // p2 is opposite end
-        nodes[i].lineAngle=Math.round(bearing*10)/10
+        let b=pmCalcBearing(nodes[i].lat,nodes[i].lng,lat,lng)
+        if(ptIdx===1) b=(b+180)%360
+        nodes[i].lineAngle=Math.round(b*10)/10
         nodes[i].lineLength=Math.round(distMeter(nodes[i].lat,nodes[i].lng,lat,lng)*2*10)/10
         const newPts=getNodeStopLinePts(i)
         if(radiusCircles[i]) radiusCircles[i].setLatLngs(newPts)
         const pair=stopLineHandles[i]
-        if(pair){ pair[0].setLatLng(newPts[0]); pair[1].setLatLng(newPts[1]) }
+        if(pair){
+          pair[0].setLatLng(newPts[0]); pair[1].setLatLng(newPts[1])
+          // Update arrow rotations live
+          const b0=nodes[i].lineAngle, b1=(nodes[i].lineAngle+180)%360
+          pair[0].getElement()?.firstChild?.style.setProperty('transform',`rotate(${b0}deg)`)
+          pair[1].getElement()?.firstChild?.style.setProperty('transform',`rotate(${b1}deg)`)
+        }
       })
       m.on('dragend',()=>renderNodeList())
       return m
