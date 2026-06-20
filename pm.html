@@ -1132,38 +1132,11 @@ function refreshMidHandles() {
   clearMidHandles(); if(mode!=='node'||nodes.length<2) return
   for(let segIdx=0;segIdx<nodes.length-1;segIdx++){
     const poly=segPolylines[segIdx]; if(!poly) continue
-    const n1=nodes[segIdx],n2=nodes[segIdx+1]
     const midPt=getPolylineMidpoint(poly)
-    const insertHandle=L.marker(midPt,{draggable:true,zIndexOffset:50,icon:createMidIcon(false)}).addTo(map)
-    let tmpA=null,tmpB=null,wasDragged=false
-    insertHandle.on('mouseover',function(){if(!this._drag)this.setIcon(createMidIcon(true))})
-    insertHandle.on('mouseout',function(){if(!this._drag)this.setIcon(createMidIcon(false))})
-    insertHandle.on('click',function(e){
-      L.DomEvent.stopPropagation(e)
-      if(wasDragged){wasDragged=false;return}
-      showInsertChoice(segIdx,midPt.lat,midPt.lng)
-    })
-    insertHandle.on('dragstart',function(){this._drag=true;wasDragged=false;this.setIcon(createMidIcon(true));dismissInsertChoice();if(segPolylines[segIdx])segPolylines[segIdx].setStyle({opacity:.25})})
-    insertHandle.on('drag',function(e){
-      wasDragged=true
-      const ll=e.target.getLatLng()
-      if(tmpA)map.removeLayer(tmpA);if(tmpB)map.removeLayer(tmpB)
-      tmpA=L.polyline([[n1.lat,n1.lng],[ll.lat,ll.lng]],{color:'#3b82f6',weight:4,opacity:.75,dashArray:'7,5'}).addTo(map)
-      tmpB=L.polyline([[ll.lat,ll.lng],[n2.lat,n2.lng]],{color:'#3b82f6',weight:4,opacity:.75,dashArray:'7,5'}).addTo(map)
-    })
-    insertHandle.on('dragend',async function(e){
-      this._drag=false;this.setIcon(createMidIcon(false))
-      if(tmpA){map.removeLayer(tmpA);tmpA=null}
-      if(tmpB){map.removeLayer(tmpB);tmpB=null}
-      if(segPolylines[segIdx])segPolylines[segIdx].setStyle({opacity:.85})
-      const ll=e.target.getLatLng()
-      if(!segData[segIdx])segData[segIdx]={name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]}
-      segData[segIdx].waypoints.push({lat:ll.lat,lng:ll.lng})
-      document.getElementById('route-loading').style.display='block'
-      await refreshSegment(segIdx)
-      document.getElementById('route-loading').style.display='none'
-      refreshMidHandles()
-    })
+    const insertHandle=L.marker(midPt,{interactive:true,zIndexOffset:50,icon:createMidIcon(false)}).addTo(map)
+    insertHandle.on('mouseover',function(){this.setIcon(createMidIcon(true))})
+    insertHandle.on('mouseout',function(){this.setIcon(createMidIcon(false))})
+    insertHandle.on('click',function(e){L.DomEvent.stopPropagation(e);showInsertChoice(segIdx,midPt.lat,midPt.lng)})
     midHandles.push(insertHandle)
     ;(segData[segIdx]?.waypoints||[]).forEach((wp,wpIdx)=>{
       const wpHandle=L.marker([wp.lat,wp.lng],{draggable:true,zIndexOffset:100,icon:createWaypointIcon(false)}).addTo(map)
