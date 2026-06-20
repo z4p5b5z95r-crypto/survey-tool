@@ -125,27 +125,32 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
   background:white;border:1.5px solid #e2e8f0;border-radius:13px;
   padding:13px 14px;margin-bottom:8px;transition:all .15s;
 }
-.pc:hover{border-color:#bfdbfe;box-shadow:0 2px 12px rgba(37,99,235,.09)}
+.pc:hover{border-color:#bfdbfe;box-shadow:0 3px 14px rgba(37,99,235,.1)}
 .pc.editing{border-color:#2563eb;background:#f0f6ff}
-.pc-top{display:flex;align-items:flex-start;gap:8px;margin-bottom:5px}
-.pc-name{font-size:14px;font-weight:800;color:#1e293b;flex:1;line-height:1.3}
+/* header row */
+.pc-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.pc-name{font-size:15px;font-weight:800;color:#0f172a;flex:1;line-height:1.3}
 .pc.editing .pc-name{color:#1d4ed8}
-.pc-chips{display:flex;gap:4px;flex-shrink:0;margin-top:1px}
-.pc-chip{font-size:10px;padding:2px 7px;border-radius:5px;font-weight:700}
+.pc-chips{display:flex;gap:4px;flex-shrink:0}
+.pc-chip{font-size:10px;padding:2px 8px;border-radius:6px;font-weight:700;white-space:nowrap}
 .pc-chip.cloud{background:#dbeafe;color:#1d4ed8}
 .pc-chip.local{background:#f1f5f9;color:#94a3b8}
 .pc-chip.editing-chip{background:#dcfce7;color:#16a34a}
-.pc-meta{font-size:11px;color:#94a3b8;margin-bottom:9px;display:flex;gap:10px;flex-wrap:wrap}
-.pc-actions{display:flex;gap:5px;flex-wrap:wrap}
-.pc-btn{
-  padding:5px 11px;border:none;border-radius:7px;
-  font-size:12px;font-weight:600;cursor:pointer;
-  display:flex;align-items:center;gap:4px;transition:opacity .12s;
-}
+/* meta row */
+.pc-meta{font-size:11.5px;color:#94a3b8;margin-bottom:12px;display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.pc-dot{color:#cbd5e1;font-size:10px}
+/* actions */
+.pc-actions{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.pc-actions-l{display:flex;gap:6px}
+.pc-actions-r{display:flex;gap:5px}
+.pc-btn{padding:7px 14px;border:none;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;transition:filter .12s;font-family:inherit;white-space:nowrap}
+.pc-btn:hover{filter:brightness(.94)}
 .pc-btn.edit{background:#eff6ff;color:#1d4ed8}
-.pc-btn.qr{background:#7c3aed;color:white}
+.pc-btn.qr{background:#f5f3ff;color:#6d28d9;border:1.5px solid #ddd6fe}
+.pc-btn.icon{padding:7px 10px;background:#f1f5f9;color:#64748b}
 .pc-btn.rec{background:#f0fdf4;color:#16a34a}
 .pc-btn.del{background:#fee2e2;color:#dc2626}
+.pc-active-tag{font-size:11px;color:#2563eb;font-weight:700;background:#dbeafe;padding:6px 11px;border-radius:8px}
 .no-projects{text-align:center;padding:50px 20px;color:#94a3b8}
 .no-projects-icon{font-size:44px;margin-bottom:14px;display:block}
 .no-projects p{font-size:14px;line-height:1.6}
@@ -201,22 +206,26 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 
 /* Nodes */
 .node-list{display:flex;flex-direction:column;gap:5px}
-.node-item{
-  background:#f8fafc;border-radius:9px;padding:8px 10px;
-  border:1px solid #e2e8f0;display:flex;align-items:flex-start;gap:8px;
-}
-.node-num{width:22px;height:22px;border-radius:50%;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.node-card{background:#fff;border-radius:10px;border:1px solid #e2e8f0;overflow:hidden;transition:border-color .15s}
+.node-card.expanded{border-color:#93c5fd}
+.node-card-header{display:flex;align-items:center;gap:8px;padding:9px 11px;cursor:pointer;user-select:none;transition:background .12s}
+.node-card-header:hover{background:#f8fafc}
+.node-card.expanded .node-card-header{background:#eff6ff}
+.node-num{width:22px;height:22px;border-radius:50%;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .node-num.start{background:#16a34a}
 .node-num.end{background:#dc2626}
 .node-num.mid{background:#3b82f6}
-.node-info{flex:1;min-width:0}
-.node-name-inp{font-size:13px;font-weight:600;color:#1e293b;border:none;outline:none;background:transparent;width:100%;padding:0;line-height:1.4}
-.node-name-inp:focus{background:#eff6ff;border-radius:5px;padding:1px 5px;margin:-1px -5px}
-.node-radius-row{display:flex;align-items:center;gap:4px;margin-top:3px}
-.node-radius-inp{width:44px;padding:1px 4px;border:1px solid #e2e8f0;border-radius:5px;font-size:11px;outline:none;text-align:center;color:#475569}
-.node-radius-inp:focus{border-color:#2563eb}
-.node-coords{font-size:10px;color:#94a3b8;margin-top:1px}
-.node-del{background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;flex-shrink:0}
+.node-card-title{flex:1;min-width:0}
+.node-card-name{font-size:13px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node-card-name.empty{color:#94a3b8;font-weight:400;font-style:italic}
+.node-coords{font-size:10.5px;color:#94a3b8;margin-top:1px}
+.node-chevron{flex-shrink:0;transition:color .12s}
+.node-card.expanded .node-chevron{color:#3b82f6}
+.node-card-body{border-top:1px solid #e2e8f0;padding:10px 12px;background:#f8fafc}
+.node-field-label{font-size:11px;color:#94a3b8;margin-bottom:4px}
+.node-name-inp{font-size:12px;color:#1e293b;border:1px solid #e2e8f0;border-radius:7px;padding:5px 8px;width:100%;outline:none;background:#fff;font-family:inherit;box-sizing:border-box}
+.node-name-inp:focus{border-color:#2563eb}
+.node-card-actions{display:flex;justify-content:flex-end;gap:5px;margin-top:10px}
 .btn-add-node{
   width:100%;margin-top:9px;padding:10px;
   background:#eff6ff;color:#2563eb;
@@ -265,12 +274,25 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .qr-info{font-size:11px;color:#94a3b8;margin-top:6px;text-align:center}
 
 /* ══ MAP OVERLAYS ══ */
-.map-toolbar{position:absolute;top:10px;left:10px;z-index:999;display:flex;flex-direction:column;gap:6px;display:none}
-.tool-btn{padding:8px 14px;background:white;border:1.5px solid #cbd5e1;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.12);color:#374151;white-space:nowrap;display:flex;align-items:center;gap:6px;transition:all .15s}
-.tool-btn:hover{box-shadow:0 3px 10px rgba(0,0,0,.15)}
-.tool-btn.active{background:#1d4ed8;border-color:#1d4ed8;color:white}
-.tool-btn.active-measure{background:#d97706;border-color:#d97706;color:white}
-.tool-btn.danger{background:#dc2626;border-color:#dc2626;color:white}
+.map-toolbar{position:absolute;top:10px;left:10px;z-index:999;display:none;flex-direction:column;background:white;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.18);border:1px solid #e2e8f0;overflow:hidden;min-width:156px}
+/* undo/redo row */
+.tb-row{display:flex;align-items:stretch}
+.tb-icon-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:11px 6px 9px;border:none;background:transparent;cursor:pointer;color:#64748b;font-size:10px;font-weight:700;letter-spacing:.2px;transition:background .12s,color .12s;line-height:1;font-family:inherit}
+.tb-icon-btn svg{flex-shrink:0}
+.tb-icon-btn:hover:not(:disabled){background:#f1f5f9;color:#1d4ed8}
+.tb-icon-btn:disabled{opacity:.3;cursor:default}
+.tb-vline{width:1px;background:#e2e8f0;margin:9px 0}
+.tb-hline{height:1px;background:#e2e8f0}
+/* main action buttons */
+.tb-btn{display:flex;align-items:center;gap:9px;padding:11px 15px;border:none;background:transparent;cursor:pointer;color:#374151;font-size:13px;font-weight:600;text-align:left;transition:background .12s,color .12s;white-space:nowrap;font-family:inherit;width:100%}
+.tb-btn:hover{background:#f8fafc}
+.tb-btn.active{background:#eff6ff;color:#1d4ed8}
+.tb-btn.active svg{stroke:#1d4ed8}
+.tb-btn.active-measure{background:#fffbeb;color:#b45309}
+.tb-btn.active-measure svg{stroke:#b45309}
+.tb-btn.danger{color:#dc2626}
+.tb-btn.danger svg{stroke:#dc2626}
+.tb-btn.danger:hover{background:#fff1f2}
 .sat-btn{position:absolute;top:10px;right:10px;z-index:999;padding:8px 14px;background:white;border:1.5px solid #cbd5e1;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.12);color:#374151;display:flex;align-items:center;gap:6px;transition:all .15s}
 .sat-btn:hover{box-shadow:0 3px 10px rgba(0,0,0,.18)}
 .sat-btn.active{background:#0f172a;border-color:#0f172a;color:white}
@@ -576,7 +598,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
           <div class="acc-sec" id="acc-time">
             <div class="acc-hd" onclick="toggleAcc('acc-time')">
               <span class="acc-hd-icon">⏰</span>
-              <span class="acc-hd-label">調查時間區間</span>
+              <span class="acc-hd-label">離/尖峰時間設定</span>
               <svg class="acc-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
             <div class="acc-bd">
@@ -584,7 +606,6 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
                 <div class="field"><label>離峰時間</label><input id="op" value="14:00~16:00"/></div>
                 <div class="field"><label>尖峰時間</label><input id="pk" value="17:00~19:00"/></div>
               </div>
-              <p style="font-size:11px;color:#94a3b8;margin-top:5px">去程：節點1→最後節點　回程：自動逆向</p>
             </div>
           </div>
 
@@ -609,7 +630,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
           <div class="acc-sec" id="acc-segs">
             <div class="acc-hd" onclick="toggleAcc('acc-segs')">
               <span class="acc-hd-icon">🛣</span>
-              <span class="acc-hd-label">路段資訊</span>
+              <span class="acc-hd-label">路段資訊（車道、路寬、路長）</span>
               <span class="acc-hd-badge" style="background:#f0fdf4;color:#16a34a">自動計算</span>
               <svg class="acc-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
@@ -628,7 +649,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
           <div class="acc-sec" id="acc-qr">
             <div class="acc-hd" onclick="toggleAcc('acc-qr')">
               <span class="acc-hd-icon">📱</span>
-              <span class="acc-hd-label">QR Code 派發</span>
+              <span class="acc-hd-label">產生任務 QR Code</span>
               <svg class="acc-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
             <div class="acc-bd">
@@ -665,10 +686,33 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 
       <!-- Map toolbar -->
       <div class="map-toolbar" id="map-toolbar">
-        <button class="tool-btn" id="tool-node" onclick="toggleNodeMode()">📍 節點新增/編輯</button>
-        <button class="tool-btn" id="tool-measure" onclick="toggleMeasure()">📐 量測距離</button>
-        <div style="height:1px;background:#e2e8f0;margin:2px 0"></div>
-        <button class="tool-btn danger" onclick="clearAll()">🗑 清除全部</button>
+        <!-- undo / redo -->
+        <div class="tb-row">
+          <button class="tb-icon-btn" id="tool-undo" onclick="undo()" disabled title="復原 Ctrl+Z">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h11a5 5 0 0 1 0 10H7"/><polyline points="7 6 3 10 7 14"/></svg>
+            復原
+          </button>
+          <div class="tb-vline"></div>
+          <button class="tb-icon-btn" id="tool-redo" onclick="redo()" disabled title="取消復原 Ctrl+Y">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10H10a5 5 0 0 0 0 10h7"/><polyline points="17 6 21 10 17 14"/></svg>
+            取消復原
+          </button>
+        </div>
+        <div class="tb-hline"></div>
+        <!-- main actions -->
+        <button class="tb-btn" id="tool-node" onclick="toggleNodeMode()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-7-6.5-7-12a7 7 0 1 1 14 0c0 5.5-7 12-7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>
+          <span id="tool-node-label">節點新增/編輯</span>
+        </button>
+        <button class="tb-btn" id="tool-measure" onclick="toggleMeasure()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20M2 12l3.5-3.5M2 12l3.5 3.5M22 12l-3.5-3.5M22 12l-3.5 3.5"/><line x1="8" y1="9" x2="8" y2="15"/><line x1="12" y1="7" x2="12" y2="17"/><line x1="16" y1="9" x2="16" y2="15"/></svg>
+          <span id="tool-measure-label">量測距離</span>
+        </button>
+        <div class="tb-hline"></div>
+        <button class="tb-btn danger" onclick="clearAll()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          清除全部
+        </button>
       </div>
 
       <!-- Search -->
@@ -957,7 +1001,7 @@ function onSearchInput() {
   document.getElementById('search-clear').style.display = q ? 'block' : 'none'
   clearTimeout(searchTimer)
   if (!q) { hideResults(); return }
-  searchTimer = setTimeout(() => doSearch(), 450)
+  searchTimer = setTimeout(() => doSearch(), 280)
 }
 function onSearchKey(e) {
   const items = document.querySelectorAll('.map-search-item')
@@ -976,11 +1020,24 @@ async function doSearch() {
     const lat=parseFloat(coordMatch[1]), lng=parseFloat(coordMatch[2])
     if (lat>=-90&&lat<=90&&lng>=-180&&lng<=180) { lastResults=[{ type:'coord', lat, lng, display:`座標 ${lat.toFixed(5)}, ${lng.toFixed(5)}`, sub:'直接跳至此座標' }]; renderResults(lastResults); return }
   }
+  // viewbox centered on current map view for proximity boost
+  const c=map.getCenter(), vb=`${(c.lng-0.5).toFixed(4)},${(c.lat+0.4).toFixed(4)},${(c.lng+0.5).toFixed(4)},${(c.lat-0.4).toFixed(4)}`
+  const base=`https://nominatim.openstreetmap.org/search?format=json&limit=10&addressdetails=1&accept-language=zh-TW&viewbox=${vb}&bounded=0`
+  function parseResults(data){
+    return data.map(d=>{
+      const pts=d.display_name.split(',').map(s=>s.trim())
+      return{type:'nominatim',lat:parseFloat(d.lat),lng:parseFloat(d.lon),display:pts.slice(0,2).join('，'),sub:pts.join(' › '),bbox:d.boundingbox}
+    })
+  }
   try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1&countrycodes=tw&accept-language=zh-TW`, { headers:{ 'Accept-Language':'zh-TW,zh;q=0.9' } })
-    const data = await res.json()
-    lastResults = data.map(d => ({ type:'nominatim', lat:parseFloat(d.lat), lng:parseFloat(d.lon), display:d.display_name.split(',').slice(0,3).join(', '), sub:d.display_name, bbox:d.boundingbox }))
-    renderResults(lastResults)
+    // 1st: Taiwan priority
+    const res1=await fetch(`${base}&q=${encodeURIComponent(q)}&countrycodes=tw`,{headers:{'Accept-Language':'zh-TW,zh;q=0.9'}})
+    const data1=await res1.json()
+    if(data1.length>0){ lastResults=parseResults(data1); renderResults(lastResults); return }
+    // 2nd: broader fallback (remove country restriction)
+    const res2=await fetch(`${base}&q=${encodeURIComponent(q)}`,{headers:{'Accept-Language':'zh-TW,zh;q=0.9'}})
+    const data2=await res2.json()
+    lastResults=parseResults(data2); renderResults(lastResults)
   } catch { box.innerHTML = '<div class="map-search-none">⚠️ 搜尋失敗，請檢查網路連線</div>' }
 }
 function renderResults(results) {
@@ -1008,6 +1065,39 @@ map.on('click', () => { hideResults() })
 //  STATE
 // ════════════════════════════════════════════════════════
 let mode='browse', nodes=[], nodeMarkers=[], radiusCircles=[], stopLineHandles=[], segPolylines=[], midHandles=[], routeEditMode=false, pendingLatLng=null
+let _undoHistory=[], _redoHistory=[], _suppressHistory=false
+function _syncHistoryBtns(){
+  const u=document.getElementById('tool-undo'),r=document.getElementById('tool-redo')
+  if(u) u.disabled=_undoHistory.length===0
+  if(r) r.disabled=_redoHistory.length===0
+}
+function pushHistory(){
+  if(_suppressHistory) return   // ignore calls during rebuild
+  _undoHistory.push({nodes:JSON.parse(JSON.stringify(nodes)),segData:JSON.parse(JSON.stringify(segData))})
+  if(_undoHistory.length>30)_undoHistory.shift()
+  _redoHistory=[]  // new action clears redo stack
+  _syncHistoryBtns()
+}
+async function undo(){
+  if(_undoHistory.length===0)return
+  _redoHistory.push({nodes:JSON.parse(JSON.stringify(nodes)),segData:JSON.parse(JSON.stringify(segData))})
+  const snap=_undoHistory.pop()
+  _suppressHistory=true
+  await rebuildAllNodes(snap.nodes,snap.segData)
+  _suppressHistory=false
+  _syncHistoryBtns()
+  toast('↩ 已復原')
+}
+async function redo(){
+  if(_redoHistory.length===0)return
+  _undoHistory.push({nodes:JSON.parse(JSON.stringify(nodes)),segData:JSON.parse(JSON.stringify(segData))})
+  const snap=_redoHistory.pop()
+  _suppressHistory=true
+  await rebuildAllNodes(snap.nodes,snap.segData)
+  _suppressHistory=false
+  _syncHistoryBtns()
+  toast('↪ 已取消復原')
+}
 let segData=[]
 // ── Polygon draw state ──
 let _polyDrawMode=false, _polyDrawNodeIdx=-1, _polyDrawPts=[], _polyDrawPreview=null, _polyDrawDotMarkers=[]
@@ -1096,6 +1186,7 @@ function showInsertChoice(segIdx,lat,lng) {
 function cancelInsertChoice() { dismissInsertChoice(); refreshMidHandles() }
 async function doInsertWaypoint(segIdx,lat,lng) {
   dismissInsertChoice()
+  pushHistory()
   const newWp={lat,lng}
   if(!segData[segIdx].waypoints)segData[segIdx].waypoints=[]
   const wpIdx=waypointInsertIdx(segIdx,newWp)
@@ -1117,6 +1208,7 @@ async function doInsertRealNode(segIdx,lat,lng) {
 let _pendingMidInsert=null, _midInsertConfirm=false
 async function confirmMidInsert() {
   if(!_pendingMidInsert) return
+  pushHistory()
   const {segIdx,lat,lng}=_pendingMidInsert; _pendingMidInsert=null; _midInsertConfirm=false
   document.getElementById('node-dialog').style.display='none'
   const name=document.getElementById('nd-name').value.trim()||`節點${nodes.length+1}`
@@ -1133,19 +1225,19 @@ function refreshMidHandles() {
   for(let segIdx=0;segIdx<nodes.length-1;segIdx++){
     const poly=segPolylines[segIdx]; if(!poly) continue
     const midPt=getPolylineMidpoint(poly)
-    const insertHandle=L.marker(midPt,{interactive:true,zIndexOffset:50,icon:createMidIcon(false)}).addTo(map)
+    const insertHandle=L.marker(midPt,{interactive:true,zIndexOffset:2000,icon:createMidIcon(false),bubblingMouseEvents:false}).addTo(map)
     insertHandle.on('mouseover',function(){this.setIcon(createMidIcon(true))})
     insertHandle.on('mouseout',function(){this.setIcon(createMidIcon(false))})
-    insertHandle.on('click',function(e){L.DomEvent.stopPropagation(e);showInsertChoice(segIdx,midPt.lat,midPt.lng)})
+    insertHandle.on('click',function(){showInsertChoice(segIdx,midPt.lat,midPt.lng)})
     midHandles.push(insertHandle)
     ;(segData[segIdx]?.waypoints||[]).forEach((wp,wpIdx)=>{
-      const wpHandle=L.marker([wp.lat,wp.lng],{draggable:true,zIndexOffset:100,icon:createWaypointIcon(false)}).addTo(map)
+      const wpHandle=L.marker([wp.lat,wp.lng],{draggable:true,zIndexOffset:1500,icon:createWaypointIcon(false),bubblingMouseEvents:false}).addTo(map)
       wpHandle.on('mouseover',function(){this.setIcon(createWaypointIcon(true))})
       wpHandle.on('mouseout',function(){if(!this._drag)this.setIcon(createWaypointIcon(false))})
       wpHandle.on('dragstart',function(){this._drag=true})
       wpHandle.on('drag',function(e){const ll=e.target.getLatLng();segData[segIdx].waypoints[wpIdx]={lat:ll.lat,lng:ll.lng}})
-      wpHandle.on('dragend',async function(e){this._drag=false;this.setIcon(createWaypointIcon(false));const ll=e.target.getLatLng();segData[segIdx].waypoints[wpIdx]={lat:ll.lat,lng:ll.lng};document.getElementById('route-loading').style.display='block';await refreshSegment(segIdx);document.getElementById('route-loading').style.display='none';refreshMidHandles()})
-      wpHandle.on('click',async function(e){L.DomEvent.stopPropagation(e);segData[segIdx].waypoints.splice(wpIdx,1);document.getElementById('route-loading').style.display='block';await refreshSegment(segIdx);document.getElementById('route-loading').style.display='none';refreshMidHandles();toast('途徑點已移除')})
+      wpHandle.on('dragend',async function(e){this._drag=false;this.setIcon(createWaypointIcon(false));pushHistory();const ll=e.target.getLatLng();segData[segIdx].waypoints[wpIdx]={lat:ll.lat,lng:ll.lng};document.getElementById('route-loading').style.display='block';await refreshSegment(segIdx);document.getElementById('route-loading').style.display='none';refreshMidHandles()})
+      wpHandle.on('click',async function(e){L.DomEvent.stopPropagation(e);pushHistory();segData[segIdx].waypoints.splice(wpIdx,1);document.getElementById('route-loading').style.display='block';await refreshSegment(segIdx);document.getElementById('route-loading').style.display='none';refreshMidHandles();toast('途徑點已移除')})
       midHandles.push(wpHandle)
     })
   }
@@ -1214,7 +1306,8 @@ function setMode(m) {
   mode=m
   const nodeBtn=document.getElementById('tool-node')
   nodeBtn.classList.toggle('active', m==='node')
-  nodeBtn.textContent = m==='node' ? '✕ 停止編輯' : '📍 節點新增/編輯'
+  const nodeLbl=document.getElementById('tool-node-label')
+  if(nodeLbl) nodeLbl.textContent = m==='node' ? '停止編輯' : '節點新增/編輯'
   // sync "btn-add-node" state
   const addBtn=document.getElementById('btn-add-node')
   if(addBtn) { addBtn.classList.toggle('active', m==='node'); addBtn.textContent = m==='node' ? '✕ 結束編輯（Esc）' : '＋ 節點新增/編輯' }
@@ -1223,18 +1316,22 @@ function setMode(m) {
   refreshMidHandles()
 }
 setMode('browse')
-document.addEventListener('keydown', e => { if(e.key==='Escape'){cancelNode();stopMeasure();if(_polyDrawMode)cancelPolygonDraw();setMode('browse')} })
+document.addEventListener('keydown', e => {
+  if(e.key==='Escape'){cancelNode();stopMeasure();if(_polyDrawMode)cancelPolygonDraw();setMode('browse')}
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.shiftKey){e.preventDefault();undo()}
+  if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.key==='z'&&e.shiftKey))){e.preventDefault();redo()}
+})
 
 // ════════════════════════════════════════════════════════
 //  MEASURE
 // ════════════════════════════════════════════════════════
 function toggleMeasure() {
   if(measuring){stopMeasure();setMode('browse')}
-  else{measuring=true;mode='measure';document.getElementById('tool-measure').classList.add('active-measure');document.getElementById('tool-measure').textContent='✕ 結束量測';document.getElementById('measure-badge').style.display='block';map.getContainer().style.cursor='cell'}
+  else{measuring=true;mode='measure';document.getElementById('tool-measure').classList.add('active-measure');const ml=document.getElementById('tool-measure-label');if(ml)ml.textContent='結束量測';document.getElementById('measure-badge').style.display='block';map.getContainer().style.cursor='cell'}
 }
 function stopMeasure() {
   measuring=false;mode='browse'
-  document.getElementById('tool-measure').classList.remove('active-measure');document.getElementById('tool-measure').textContent='📐 量測距離'
+  document.getElementById('tool-measure').classList.remove('active-measure');const ml=document.getElementById('tool-measure-label');if(ml)ml.textContent='量測距離'
   document.getElementById('measure-badge').style.display='none'
   if(measurePolyline){map.removeLayer(measurePolyline);measurePolyline=null}
   measureMarkers.forEach(m=>map.removeLayer(m));measureMarkers=[]
@@ -1315,13 +1412,15 @@ document.getElementById('nd-name').addEventListener('keydown', e => { if(e.key==
 //  ADD NODE
 // ════════════════════════════════════════════════════════
 async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle=null,lineLength=10) {
+  pushHistory()
   const idx=nodes.length
   nodes.push({lat,lng,name,exitName:exitName||'',radius,polygon:polygon||null,lineAngle,lineLength})
   const color=getNodeColor(idx)
-  const marker=L.marker([lat,lng],{draggable:true,icon:createNodeIcon(idx+1,color),autoPan:true}).addTo(map)
+  const marker=L.marker([lat,lng],{draggable:true,icon:createNodeIcon(idx+1,color),autoPan:true,bubblingMouseEvents:false}).addTo(map)
   nodeMarkers.push(marker); updateAllIcons(); refreshRadiusCircles()
-  marker.on('click',function(){
-    const i=nodeMarkers.indexOf(this); if(i<0||mode==='node') return
+  marker.on('click',function(e){
+    if(mode==='node'){L.DomEvent.stop(e);if(e.originalEvent)e.originalEvent.stopPropagation();return}
+    const i=nodeMarkers.indexOf(this); if(i<0) return
     const n=nodes[i]; this.unbindPopup()
     this.bindPopup(`<div style="min-width:140px"><div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px">節點 ${i+1}：${n.name}</div><div style="font-size:11px;color:#64748b;margin-bottom:8px">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}<br>📡 觸發範圍 ${n.radius||15}m</div><div style="display:flex;gap:6px"><button class="node-popup-save" onclick="focusSidebarNode(${i});map.closePopup()" style="flex:1">✏️ 改名</button><button class="node-popup-del" onclick="popupDelete(${i})">🗑</button></div></div>`,{maxWidth:200}).openPopup()
   })
@@ -1334,6 +1433,7 @@ async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle
     const _pair=stopLineHandles[i]
     if(_pair){const _pts=getNodeStopLinePts(i);_pair[0].setLatLng(_pts[0]);_pair[1].setLatLng(_pts[1])}
   })
+  marker.on('dragstart',function(){pushHistory()})
   marker.on('dragend',async function(){
     const i=nodeMarkers.indexOf(this); if(i<0) return
     const latlng=this.getLatLng(); nodes[i].lat=latlng.lat;nodes[i].lng=latlng.lng
@@ -1373,6 +1473,7 @@ window.popupDelete = async function(i) { map.closePopup(); await removeNode(i) }
 //  REMOVE NODE
 // ════════════════════════════════════════════════════════
 async function removeNode(idx) {
+  pushHistory()
   const n=nodes.length,newSegData=[]
   for(let j=0;j<n-2;j++){
     if(j<idx-1)newSegData[j]={...segData[j],waypoints:[...(segData[j]?.waypoints||[])]}
@@ -1485,48 +1586,65 @@ function refreshRadiusCircles(){
 // ════════════════════════════════════════════════════════
 //  RENDER NODE LIST
 // ════════════════════════════════════════════════════════
+let _expandedNodes=new Set()
+window.toggleNodeCard=function(i){
+  if(_expandedNodes.has(i))_expandedNodes.delete(i)
+  else _expandedNodes.add(i)
+  renderNodeList()
+}
 function renderNodeList() {
   const cnt=nodes.length
   document.getElementById('node-count-badge').textContent=`${cnt} 個`
   document.getElementById('node-list').innerHTML=nodes.map((n,i)=>{
     const isLast=i===cnt-1
     const numClass=i===0?'start':isLast?'end':'mid'
-    return `<div class="node-item">
-      <div class="node-num ${numClass}">${i+1}</div>
-      <div class="node-info">
-        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
-          <input class="node-name-inp" id="nname-${i}" value="${n.name.replace(/"/g,'&quot;')}"
-            onkeydown="if(event.key==='Enter'){saveNode(${i});this.blur()}"
-            placeholder="到達路名"/>
-          <button onclick="saveNode(${i})" style="padding:3px 8px;background:#dbeafe;color:#1d4ed8;border:none;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">✓</button>
-        </div>
-        ${!isLast?`<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px"><span style="font-size:10px;color:#94a3b8;white-space:nowrap;flex-shrink:0">↩ 離開路名</span><input class="node-name-inp" id="nexitname-${i}" value="${(n.exitName||'').replace(/"/g,'&quot;')}" onkeydown="if(event.key==='Enter'){saveNode(${i});this.blur()}" placeholder="轉彎時才填" style="font-size:11px;color:#475569"/></div>`:''}
-        <div class="node-coords">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}</div>
-        <div class="node-radius-row" style="flex-wrap:wrap;gap:4px">
-          <span style="font-size:10px;color:#94a3b8;white-space:nowrap">感應線</span>
-          <input class="node-radius-inp" id="nangle-${i}" type="number" value="${n.lineAngle!=null?Math.round(n.lineAngle):''}"
-            placeholder="${Math.round(autoStopLineBearing(i))}°" min="0" max="359" style="width:52px"
-            title="感應線角度（0°=南北向，90°=東西向）；空白=自動計算"
-            onblur="saveNodeLine(${i})" onkeydown="if(event.key==='Enter')this.blur()"/>
-          <span style="font-size:10px;color:#94a3b8">°</span>
-          ${n.lineAngle!=null?`<button onclick="resetNodeLineAngle(${i})" style="padding:1px 7px;background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;border-radius:5px;font-size:10px;cursor:pointer" title="恢復自動角度">🔄</button>`:''}
-        </div>
+    const expanded=_expandedNodes.has(i)
+    const displayName=n.name||''
+    const nameClass=displayName?'':'empty'
+    const chevronD=expanded?'M18 15 L12 9 L6 15':'M6 9 L12 15 L18 9'
+    const chevronColor=expanded?'#3b82f6':'#cbd5e1'
+    const bodyHtml=expanded?`<div class="node-card-body">
+      <div class="node-field-label">到達路名</div>
+      <input class="node-name-inp" id="nname-${i}" value="${n.name.replace(/"/g,'&quot;')}"
+        onkeydown="if(event.key==='Enter'){saveNode(${i});this.blur()}" placeholder="到達路名"/>
+      ${!isLast?`<div class="node-field-label" style="margin-top:8px">↩ 離開路名</div>
+      <input class="node-name-inp" id="nexitname-${i}" value="${(n.exitName||'').replace(/"/g,'&quot;')}"
+        onkeydown="if(event.key==='Enter'){saveNode(${i});this.blur()}" placeholder="轉彎時才填"/>`:``}
+      <input type="hidden" id="nangle-${i}" value="${n.lineAngle!=null?Math.round(n.lineAngle):''}"/>
+      <div class="node-card-actions">
+        <button onclick="saveNode(${i})" style="display:flex;align-items:center;gap:4px;padding:5px 13px;background:#dbeafe;color:#1d4ed8;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 儲存
+        </button>
+        <button onclick="removeNode(${i})" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:#fee2e2;color:#dc2626;border:none;border-radius:7px;font-size:14px;cursor:pointer" title="刪除節點">✕</button>
       </div>
-      <button class="node-del" onclick="removeNode(${i})">✕</button>
+    </div>`:'<input type="hidden" id="nangle-'+i+'" value="'+(n.lineAngle!=null?Math.round(n.lineAngle):'')+'">'
+    return `<div class="node-card${expanded?' expanded':''}">
+      <div class="node-card-header" onclick="toggleNodeCard(${i})">
+        <div class="node-num ${numClass}">${i+1}</div>
+        <div class="node-card-title">
+          <div class="node-card-name ${nameClass}">${displayName||'（點擊命名）'}</div>
+          <div class="node-coords">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}</div>
+        </div>
+        <svg class="node-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${chevronColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="${chevronD}"/></svg>
+      </div>
+      ${bodyHtml}
     </div>`
   }).join('')
 }
 window.saveNode=function(i){
   const nameEl=document.getElementById(`nname-${i}`),exitEl=document.getElementById(`nexitname-${i}`)
   if(!nameEl||!nodes[i])return
+  pushHistory()
   nodes[i].name=nameEl.value.trim()||nodes[i].name; nameEl.value=nodes[i].name
   if(exitEl)nodes[i].exitName=exitEl.value.trim()
-  renderSegTable(); updateAllIcons()
+  _expandedNodes.delete(i)
+  renderNodeList(); renderSegTable(); updateAllIcons()
 }
 window.saveNodeName=window.saveNode
 window.saveNodeLine=function(i){
   const angleEl=document.getElementById(`nangle-${i}`),lenEl=document.getElementById(`nlength-${i}`)
   if(!nodes[i]) return
+  pushHistory()
   const av=angleEl?.value.trim()
   nodes[i].lineAngle=(av===''||av==null)?null:((parseFloat(av)%360+360)%360)
   nodes[i].lineLength=Math.min(500,Math.max(1,parseFloat(lenEl?.value)||10))
@@ -1540,6 +1658,7 @@ window.saveNodeLine=function(i){
 }
 window.resetNodeLineAngle=function(i){
   if(!nodes[i]) return
+  pushHistory()
   nodes[i].lineAngle=null
   const newPts=getNodeStopLinePts(i)
   if(radiusCircles[i]) radiusCircles[i].setLatLngs(newPts)
@@ -1631,6 +1750,7 @@ function renderSegTable() {
 // ════════════════════════════════════════════════════════
 function clearAll() {
   if(!confirm('清除所有節點與路線？'))return
+  pushHistory()
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
   radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
@@ -1820,6 +1940,48 @@ async function deleteTask(id) {
 }
 async function loadAndQR(id){await loadTask(id);openAcc('acc-qr');generateQR()}
 
+function showListQR(taskId){
+  const t=savedTasks.find(t=>t.id===taskId); if(!t){toast('找不到任務');return}
+  const appBase=(document.getElementById('app-url')?.value||'').trim().replace(/\/$/,'')||location.href.replace(/\/[^\/]*$/,'')
+  let url
+  if(t.cloudId&&gsUrl&&gsKey){
+    url=`${appBase}/?id=${encodeURIComponent(t.cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(gsKey)}`
+  } else if(t.cfg){
+    url=`${appBase}/?d=${encodeConfig(t.cfg)}`
+  } else {toast('無法產生 QR Code，請先儲存任務');return}
+  const name=t.cfg?.rn||'任務'
+  const shortUrl=url.length>55?url.slice(0,55)+'…':url
+  const overlay=document.createElement('div')
+  overlay.id='list-qr-overlay'
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px'
+  overlay.innerHTML=`
+    <div style="background:white;border-radius:20px;padding:24px 22px 20px;width:100%;max-width:320px;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div style="font-size:15px;font-weight:800;color:#0f172a;flex:1;padding-right:8px;line-height:1.3">${name}</div>
+        <button id="lqr-close" style="background:#f1f5f9;border:none;border-radius:9px;width:30px;height:30px;font-size:14px;cursor:pointer;color:#64748b;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
+      </div>
+      <div id="list-qr-box" style="display:flex;justify-content:center;align-items:center;padding:16px;background:#f8fafc;border-radius:14px;border:1px solid #e2e8f0;margin-bottom:12px;min-height:200px"></div>
+      <div style="font-size:10.5px;color:#94a3b8;text-align:center;margin-bottom:14px;word-break:break-all;line-height:1.5">${shortUrl}</div>
+      <div style="display:flex;gap:8px">
+        <button id="lqr-copy" style="flex:1;padding:11px;background:#eff6ff;color:#1d4ed8;border:none;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔗 複製連結</button>
+        <button id="lqr-dl" style="flex:1;padding:11px;background:#f0fdf4;color:#16a34a;border:none;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⬇ 下載 QR</button>
+      </div>
+    </div>`
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()})
+  overlay.querySelector('#lqr-close').addEventListener('click',()=>overlay.remove())
+  overlay.querySelector('#lqr-copy').addEventListener('click',()=>{
+    navigator.clipboard.writeText(url).then(()=>toast('✅ 連結已複製')).catch(()=>prompt('複製連結：',url))
+  })
+  overlay.querySelector('#lqr-dl').addEventListener('click',()=>{
+    const c=document.querySelector('#list-qr-box canvas'); if(!c)return
+    const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download=`QR_${name}.png`;a.click()
+  })
+  document.body.appendChild(overlay)
+  setTimeout(()=>{
+    new QRCode(document.getElementById('list-qr-box'),{text:url,width:200,height:200,correctLevel:QRCode.CorrectLevel.M,colorDark:'#1e293b',colorLight:'#ffffff'})
+  },30)
+}
+
 // ════════════════════════════════════════════════════════
 //  SYNC FROM CLOUD
 // ════════════════════════════════════════════════════════
@@ -1874,29 +2036,34 @@ function renderProjects(filter='') {
   }
   wrap.innerHTML=list.map(t=>{
     const isEdit=t.id===currentTaskId&&_inEditView
+    const metaParts=[]
+    if(t.cfg.ft) metaParts.push(`<span>📍 ${t.cfg.ft}</span>`)
+    metaParts.push(`<span>${t.savedAt||''}</span>`)
+    metaParts.push(`<span>🔵 ${t.cfg.nd?.length||0} 節點</span>`)
+    if(t.creator&&t.creator!=='未知') metaParts.push(`<span>👤 ${t.creator}</span>`)
+    const metaHtml=metaParts.map((s,i)=>i<metaParts.length-1?s+`<span class="pc-dot">·</span>`:s).join('')
     return`<div class="pc${isEdit?' editing':''}">
       <div class="pc-top">
-        <div class="pc-name${isEdit?' editing-name':''}">${t.cfg.rn||'未命名路線'}</div>
+        <div class="pc-name">${t.cfg.rn||'未命名路線'}</div>
         <div class="pc-chips">
-          ${isEdit?'<span class="pc-chip editing-chip">編輯中</span>':''}
+          ${isEdit?'<span class="pc-chip editing-chip">▶ 編輯中</span>':''}
           ${t.cloudId?'<span class="pc-chip cloud">☁ 雲端</span>':'<span class="pc-chip local">本地</span>'}
         </div>
       </div>
-      <div class="pc-meta">
-        ${t.cfg.ft?`<span>📍 ${t.cfg.ft}</span>`:''}
-        <span>📆 ${t.savedAt||''}</span>
-        <span>🔵 ${t.cfg.nd?.length||0} 節點</span>
-        ${t.creator&&t.creator!=='未知'?`<span>👤 ${t.creator}</span>`:''}
-      </div>
+      <div class="pc-meta">${metaHtml}</div>
       <div class="pc-actions">
-        ${isEdit
-          ?`<span style="font-size:11px;color:#2563eb;font-weight:600;background:#dbeafe;padding:4px 9px;border-radius:6px;align-self:center">▶ 編輯中</span>`
-          :`<button class="pc-btn edit" onclick="loadTask('${t.id}')">✏️ 編輯</button>`}
-        <button class="pc-btn qr" onclick="loadAndQR('${t.id}')">🔲 QR</button>
-        ${t.cloudId
-          ?`<button class="pc-btn rec" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}')">📋 監測記錄</button>`
-          :(gsUrl&&gsKey)?`<button class="pc-btn" style="background:#f0fdf4;color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳雲端</button>`:''}
-        <button class="pc-btn del" onclick="deleteTask('${t.id}')">🗑</button>
+        <div class="pc-actions-l">
+          ${isEdit
+            ?`<span class="pc-active-tag">▶ 編輯中</span>`
+            :`<button class="pc-btn edit" onclick="loadTask('${t.id}')">✏️ 編輯</button>`}
+          <button class="pc-btn qr" onclick="showListQR('${t.id}')">🔲 QR Code</button>
+        </div>
+        <div class="pc-actions-r">
+          ${t.cloudId
+            ?`<button class="pc-btn icon rec" title="監測記錄" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}')">📋</button>`
+            :(gsUrl&&gsKey)?`<button class="pc-btn icon" title="上傳雲端" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁</button>`:''}
+          <button class="pc-btn icon del" title="刪除" onclick="deleteTask('${t.id}')">🗑</button>
+        </div>
       </div>
     </div>`
   }).join('')
