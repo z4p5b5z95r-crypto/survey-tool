@@ -243,20 +243,19 @@ input,select,textarea{font-size:max(16px,1em)!important}
 <div id="screen-loading" class="screen" style="background:#0f172a;align-items:center;justify-content:center;flex-direction:column;gap:28px">
   <div style="width:min(86vw,320px)">
     <!-- Road + traffic light scene -->
-    <div style="position:relative;height:72px;overflow:hidden">
-      <!-- Road -->
+    <div style="position:relative;height:80px">
+      <!-- Road (full width) -->
       <div style="position:absolute;bottom:6px;left:0;right:0;height:26px;background:#374151;border-radius:6px">
-        <!-- Dashed center line -->
-        <div style="position:absolute;top:50%;transform:translateY(-50%);left:4px;right:38px;height:3px;
+        <!-- Dashed center line — stops before traffic light at 2/3 -->
+        <div style="position:absolute;top:50%;transform:translateY(-50%);left:4px;right:4px;height:3px;
              background:repeating-linear-gradient(90deg,#fbbf24 0 10px,transparent 10px 20px)"></div>
       </div>
       <!-- Car -->
       <div id="car-icon" style="position:absolute;bottom:22px;font-size:35px;left:2px;transform:scaleX(-1);transition:left 1.2s cubic-bezier(.4,0,.2,1)">🚗</div>
-      <!-- Traffic light pole -->
-      <div style="position:absolute;right:12px;bottom:6px;width:3px;height:50px;background:#4b5563;border-radius:2px"></div>
-      <!-- Traffic light box -->
-      <div id="tl-box" style="position:absolute;right:4px;bottom:38px;width:22px;background:#1e293b;border-radius:5px;padding:3px 4px;display:flex;flex-direction:column;gap:3px;box-shadow:0 2px 6px rgba(0,0,0,.5)">
-        <div id="tl-red"    style="width:14px;height:14px;background:#ef4444;border-radius:50%;box-shadow:0 0 6px #ef4444"></div>
+      <!-- Traffic light — positioned at 66% of container via JS, use left: calc(66% - 14px) -->
+      <div id="tl-pole" style="position:absolute;left:calc(66% - 1px);bottom:6px;width:3px;height:56px;background:#4b5563;border-radius:2px"></div>
+      <div id="tl-box" style="position:absolute;left:calc(66% - 11px);bottom:44px;width:24px;background:#1e293b;border-radius:5px;padding:3px 5px;display:flex;flex-direction:column;gap:3px;box-shadow:0 2px 8px rgba(0,0,0,.6)">
+        <div id="tl-red"    style="width:14px;height:14px;background:#ef4444;border-radius:50%;box-shadow:0 0 7px #ef4444"></div>
         <div id="tl-yellow" style="width:14px;height:14px;background:#374151;border-radius:50%"></div>
         <div id="tl-green"  style="width:14px;height:14px;background:#374151;border-radius:50%"></div>
       </div>
@@ -2877,23 +2876,25 @@ function setLoadPct(pct){
   if(!car||!bar) return
   const containerW=Math.min(window.innerWidth*0.86,320)
   const carSize=44
-  const stopLine=containerW-70   // car stops nose-to-light
+  const lightX=containerW*0.66           // traffic light at 2/3
+  const stopPos=lightX-carSize-4         // car nose stops just before the pole
 
   if(pct>=100){
-    // 🟢 Green light — car drives off right
+    // 🟡→🟢 Yellow then green — car drives to end of road
     const red=document.getElementById('tl-red'),grn=document.getElementById('tl-green'),ylw=document.getElementById('tl-yellow')
     if(red){ red.style.background='#374151'; red.style.boxShadow='none' }
     if(ylw){ ylw.style.background='#fbbf24'; ylw.style.boxShadow='0 0 6px #fbbf24' }
+    bar.style.width='100%'
     setTimeout(()=>{
       if(ylw){ ylw.style.background='#374151'; ylw.style.boxShadow='none' }
-      if(grn){ grn.style.background='#22c55e'; grn.style.boxShadow='0 0 8px #22c55e' }
-      car.style.transition='left 0.85s cubic-bezier(.4,0,.8,1)'
-      car.style.left=(containerW+10)+'px'
-    },400)
-    bar.style.width='100%'
+      if(grn){ grn.style.background='#22c55e'; grn.style.boxShadow='0 0 9px #22c55e' }
+      // Car drives to the very end of the road
+      car.style.transition='left 1.0s cubic-bezier(.2,0,.6,1)'
+      car.style.left=(containerW-carSize)+'px'
+    },420)
   } else {
-    // 🔴 Red light — car drives toward traffic light but stops
-    const maxPos=Math.max(2, stopLine*Math.min(pct,95)/95)
+    // 🔴 Red — car approaches light and stops in front of it
+    const maxPos=Math.max(2, stopPos*Math.min(pct,94)/94)
     car.style.left=maxPos+'px'
     bar.style.width=Math.max(3,pct)+'%'
   }
