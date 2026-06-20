@@ -699,11 +699,10 @@ function pointInPolygon(lat,lng,poly){
 }
 function nodeInRange(lat,lng,node){
   const d=haversine(lat,lng,node.lat,node.lng)
-  if(node.polygon&&node.polygon.length>=3){
-    // polygon zone OR within radius — union prevents GPS-edge false negatives
-    return pointInPolygon(lat,lng,node.polygon)||(d<=(node.radius||15))
-  }
-  return d<=(node.radius||15)
+  const r=node.radius||15
+  if(d<=r) return true                                         // within radius → always trigger
+  if(node.polygon&&node.polygon.length>=3) return pointInPolygon(lat,lng,node.polygon)  // outside radius but inside polygon → also trigger
+  return false
 }
 
 // ════════════════════════════════════
@@ -1672,7 +1671,9 @@ function checkNodeProximity(lat,lng){
   // Update distance display
   const card=$('next-node-card')
   $('nnc-dist-num').textContent=dist
-  $('nnc-auto-hint').textContent=nextNode.polygon&&nextNode.polygon.length>=3?'• 自訂區域內自動記錄':`• ${triggerR}m 內自動記錄`
+  // DEBUG: show actual detection values so we can diagnose
+  const _polyPts=nextNode.polygon&&nextNode.polygon.length>=3?nextNode.polygon.length:0
+  $('nnc-auto-hint').textContent=inRange?`✅ 感應中 (${dist}m / r${triggerR}m poly:${_polyPts})`:`• ${dist}m / r${triggerR}m poly:${_polyPts}`
   if(inRange){
     card.classList.add('arriving')
     if(!nodeAutoLock){
