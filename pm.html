@@ -1523,17 +1523,23 @@ window.saveNodeLine=function(i){
   if(!nodes[i]) return
   const av=angleEl?.value.trim()
   nodes[i].lineAngle=(av===''||av==null)?null:((parseFloat(av)%360+360)%360)
-  nodes[i].lineLength=Math.min(500,Math.max(10,parseFloat(lenEl?.value)||50))
+  nodes[i].lineLength=Math.min(500,Math.max(1,parseFloat(lenEl?.value)||10))
   if(lenEl) lenEl.value=nodes[i].lineLength
-  if(radiusCircles[i]) radiusCircles[i].setLatLngs(getNodeStopLinePts(i))
+  const newPts=getNodeStopLinePts(i)
+  if(radiusCircles[i]) radiusCircles[i].setLatLngs(newPts)
   else refreshRadiusCircles()
+  const pair=stopLineHandles[i]
+  if(pair){pair[0].setLatLng(newPts[0]);pair[1].setLatLng(newPts[1])}
   renderNodeList()
 }
 window.resetNodeLineAngle=function(i){
   if(!nodes[i]) return
   nodes[i].lineAngle=null
-  if(radiusCircles[i]) radiusCircles[i].setLatLngs(getNodeStopLinePts(i))
+  const newPts=getNodeStopLinePts(i)
+  if(radiusCircles[i]) radiusCircles[i].setLatLngs(newPts)
   else refreshRadiusCircles()
+  const pair=stopLineHandles[i]
+  if(pair){pair[0].setLatLng(newPts[0]);pair[1].setLatLng(newPts[1])}
   renderNodeList()
 }
 
