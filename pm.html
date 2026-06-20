@@ -252,8 +252,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .qr-url-row input{width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;margin-bottom:8px}
 .qr-url-row input:focus{border-color:#2563eb}
 #qr-box{display:flex;justify-content:center;padding:12px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:10px;min-height:60px;align-items:center}
-#qr-box canvas{display:block!important;max-width:100%}
-#qr-box img{display:none!important}
+#qr-box canvas,#qr-box-acc canvas{display:block!important;max-width:100%}
+#qr-box img,#qr-box-acc img{display:none!important}
 .qr-placeholder{color:#94a3b8;font-size:13px}
 .btn-gen{width:100%;padding:12px;background:#7c3aed;color:white;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:8px}
 .btn-gen:hover{background:#6d28d9}
@@ -636,7 +636,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
                 <input id="app-url" value="https://z4p5b5z95r-crypto.github.io/survey-tool/"/>
               </div>
               <button class="btn-gen" onclick="generateQR()">🔲 產生 QR Code</button>
-              <div id="qr-box"><span class="qr-placeholder">按上方按鈕產生</span></div>
+              <div id="qr-box-acc"><span class="qr-placeholder">按上方按鈕產生</span></div>
               <div class="copy-row">
                 <button class="copy-btn link" onclick="copyLink()">🔗 複製連結</button>
                 <button class="copy-btn png" onclick="downloadQR()">⬇ 下載 QR</button>
@@ -1468,7 +1468,9 @@ function finishPolygonDraw() {
   map.getContainer().style.cursor=''
   refreshRadiusCircles()
   renderNodeList()
-  toast(`✅ 感應區域已設定（${nodes[idx]?.polygon?.length} 個頂點）`)
+  toast(`✅ 感應區域已設定（${nodes[idx]?.polygon?.length} 個頂點）正在儲存...`)
+  // Auto-save so cloud always has the latest polygon data
+  if(currentTaskId) saveTask().catch(()=>toast('⚠️ 自動儲存失敗，請手動儲存'))
 }
 
 function cancelPolygonDraw() {
@@ -1567,14 +1569,14 @@ let lastURL=''
 function generateQR() {
   const url=buildURL();if(!url)return
   lastURL=url
-  const box=document.getElementById('qr-box');box.innerHTML=''
+  const box=document.getElementById('qr-box-acc');box.innerHTML=''
   new QRCode(box,{text:url,width:220,height:220,correctLevel:QRCode.CorrectLevel.M,colorDark:'#1e293b',colorLight:'#ffffff'})
   toast('✅ QR Code 已產生')
 }
 function copyLink() { const url=buildURL();if(!url)return; navigator.clipboard.writeText(url).then(()=>toast('✅ 連結已複製')).catch(()=>prompt('複製連結：',url)) }
 function downloadQR() {
   if(!lastURL){generateQR();return}
-  const canvas=document.querySelector('#qr-box canvas');if(!canvas){toast('請先產生 QR Code');return}
+  const canvas=document.querySelector('#qr-box-acc canvas');if(!canvas){toast('請先產生 QR Code');return}
   const a=document.createElement('a');a.href=canvas.toDataURL('image/png');a.download=`QR_${document.getElementById('rn').value||'survey'}.png`;a.click()
 }
 

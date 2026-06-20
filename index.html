@@ -698,8 +698,12 @@ function pointInPolygon(lat,lng,poly){
   return inside
 }
 function nodeInRange(lat,lng,node){
-  if(node.polygon&&node.polygon.length>=3) return pointInPolygon(lat,lng,node.polygon)
-  return haversine(lat,lng,node.lat,node.lng)<=(node.radius||15)
+  const d=haversine(lat,lng,node.lat,node.lng)
+  if(node.polygon&&node.polygon.length>=3){
+    // polygon zone OR within radius — union prevents GPS-edge false negatives
+    return pointInPolygon(lat,lng,node.polygon)||(d<=(node.radius||15))
+  }
+  return d<=(node.radius||15)
 }
 
 // ════════════════════════════════════
@@ -2002,13 +2006,14 @@ function startSurvey(){
 //  NODE UI
 // ════════════════════════════════════
 function getNodeNames(){
+  const isReturn=cur&&cur.direction==='return'
   if(config.nodes&&config.nodes.length>0){
-    const ns=cur.direction==='return'?[...config.nodes].reverse():config.nodes
+    const ns=isReturn?[...config.nodes].reverse():config.nodes
     return ns.map(n=>n.name||'節點')
   }
   const segs=config.segments
   const names=['起點',...segs.map(s=>{const p=s.name.split(/[-→至]/);return p[1]||p[0]})]
-  return cur.direction==='return'?[...names].reverse():names
+  return isReturn?[...names].reverse():names
 }
 function buildNodeUI(){
   const names=getNodeNames()
