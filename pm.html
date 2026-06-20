@@ -362,6 +362,16 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .admin-add-btn:hover{background:#1d4ed8}
 .admin-empty{text-align:center;padding:40px 20px;color:#94a3b8;font-size:14px}
 .admin-loading{padding:20px;color:#64748b;font-size:13px}
+/* 帳號狀態 */
+.status-badge{display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700}
+.status-badge.on{background:#dcfce7;color:#15803d}
+.status-badge.off{background:#fee2e2;color:#dc2626}
+.status-badge.hide{background:#fef9c3;color:#a16207}
+.status-btns{display:inline-flex;gap:4px;margin-left:8px}
+.st-btn{padding:3px 8px;border:1.5px solid;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;background:transparent;transition:all .12s}
+.st-btn.on{border-color:#16a34a;color:#16a34a}.st-btn.on:hover,.st-btn.on.cur{background:#16a34a;color:white}
+.st-btn.off{border-color:#dc2626;color:#dc2626}.st-btn.off:hover,.st-btn.off.cur{background:#dc2626;color:white}
+.st-btn.hide{border-color:#d97706;color:#d97706}.st-btn.hide:hover,.st-btn.hide.cur{background:#d97706;color:white}
 </style>
 </head>
 <body>
@@ -1587,7 +1597,7 @@ async function saveTask() {
   if(gsUrl&&gsKey){
     toast('⏳ 同步至雲端...')
     try{
-      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null})),segments:cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d}))}
+      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null})),segments:cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d}))}
       const result=await cloudPost(payload)
       const taskIdx=savedTasks.findIndex(t=>t.id===id)
       if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
@@ -1625,6 +1635,7 @@ async function uploadTask(id) {
       totalLength:  cfg.tl,
       offPeakLabel: cfg.op,
       peakLabel:    cfg.pk,
+      owner:        task.creator || getCurrentUser() || '',
       nodes:    cfg.nd.map(n => ({ name:n.n, exitName:n.n2||'', lat:n.a, lng:n.o, radius:n.r, polygon:n.pg||null })),
       segments: cfg.sg.map(s => ({ name:s.n, lanes:s.l, width:s.w, length:s.d }))
     }
@@ -1948,18 +1959,32 @@ async function loadAdminUsers() {
     const users = await cloudGet({ action: 'getUsers' })
     adminCloudOk()
     if (!users.length) { el.innerHTML = '<div class="admin-empty">尚無帳號</div>'; return }
+    const statusLabel = s => s==='停用'?'off':s==='隱藏'?'hide':'on'
+    const statusText  = s => s==='停用'?'停用':s==='隱藏'?'隱藏':'啟用'
     el.innerHTML = `<table class="admin-table">
-      <thead><tr><th>姓名</th><th>建立時間</th><th style="width:200px">操作</th></tr></thead>
-      <tbody>${users.map(u => `<tr>
-        <td><strong>${u.name}</strong></td>
-        <td style="color:#94a3b8;font-size:12px">${u.createdAt ? String(u.createdAt).slice(0,10) : '—'}</td>
-        <td>
-          <button class="adm-btn reset" onclick="adminResetPwd('${u.name}')">🔑 重設密碼</button>
-          ${u.name !== 'admin'
-            ? `<button class="adm-btn del" onclick="adminDeleteUser('${u.name}')">🗑 刪除</button>`
-            : '<span style="font-size:11px;color:#94a3b8">（此帳號受保護）</span>'}
-        </td>
-      </tr>`).join('')}</tbody>
+      <thead><tr><th>姓名</th><th>建立時間</th><th>狀態</th><th style="width:220px">操作</th></tr></thead>
+      <tbody>${users.map(u => {
+        const st = u.status || '啟用'
+        const sl = statusLabel(st)
+        return `<tr>
+          <td><strong>${u.name}</strong></td>
+          <td style="color:#94a3b8;font-size:12px">${u.createdAt ? String(u.createdAt).slice(0,10) : '—'}</td>
+          <td>${u.name === 'admin' ? '<span style="font-size:11px;color:#94a3b8">—</span>' : `
+            <span class="status-badge ${sl}">${statusText(st)}</span>
+            <span class="status-btns">
+              <button class="st-btn on${st==='啟用'?' cur':''}" onclick="adminChangeUserStatus('${u.name}','啟用',this)">啟用</button>
+              <button class="st-btn off${st==='停用'?' cur':''}" onclick="adminChangeUserStatus('${u.name}','停用',this)">停用</button>
+              <button class="st-btn hide${st==='隱藏'?' cur':''}" onclick="adminChangeUserStatus('${u.name}','隱藏',this)">隱藏</button>
+            </span>`}
+          </td>
+          <td>
+            <button class="adm-btn reset" onclick="adminResetPwd('${u.name}')">🔑 重設密碼</button>
+            ${u.name !== 'admin'
+              ? `<button class="adm-btn del" onclick="adminDeleteUser('${u.name}')">🗑 刪除</button>`
+              : '<span style="font-size:11px;color:#94a3b8">（受保護）</span>'}
+          </td>
+        </tr>`
+      }).join('')}</tbody>
     </table>`
   } catch(e) {
     adminCloudErr()
@@ -1998,6 +2023,25 @@ async function adminDeleteUser(name) {
     toast(`✅ 已刪除「${name}」`)
     loadAdminUsers()
   } catch(e) { toast('❌ ' + e.message) }
+}
+
+async function adminChangeUserStatus(name, status, btn) {
+  // 更新按鈕群組樣式
+  const row = btn.closest('tr')
+  row.querySelectorAll('.st-btn').forEach(b => b.classList.remove('cur'))
+  btn.classList.add('cur')
+  const badge = row.querySelector('.status-badge')
+  const labelMap = { '啟用':'on', '停用':'off', '隱藏':'hide' }
+  badge.className = `status-badge ${labelMap[status]}`
+  badge.textContent = status
+  try {
+    await cloudPost({ action: 'updateUserStatus', name, status })
+    toast(`✅ 「${name}」已設為${status}`)
+  } catch(e) {
+    toast('❌ ' + e.message)
+    // 失敗時重新載入還原
+    loadAdminUsers()
+  }
 }
 
 // ── 專案資料 ─────────────────────────────────────────────

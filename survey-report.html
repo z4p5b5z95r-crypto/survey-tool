@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>旅行時間調查 — 監測報告</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color:#1e293b;min-height:100vh}
+
+/* ── Loading / Error ── */
+#loading-screen{position:fixed;inset:0;background:#0f172a;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;z-index:999}
+#loading-screen p{color:white;font-size:15px;font-weight:700;letter-spacing:.3px}
+#loading-screen small{color:#64748b;font-size:12px;margin-top:-12px}
+
+/* Loading road scene */
+.ld-road-scene{width:440px;position:relative;padding-top:36px} /* padding makes room for car above road */
+.ld-road{width:100%;height:52px;background:#334155;border-radius:12px;display:flex;align-items:center;overflow:hidden}
+.ld-dashes{display:flex;gap:10px;padding:0 12px;width:100%;flex-shrink:0}
+.ld-dash{flex:1;height:7px;background:#f59e0b;border-radius:3px;opacity:.9}
+/* Car sits above road — position driven by JS progress */
+.ld-car{position:absolute;font-size:52px;top:0;left:-60px;
+  transform:scaleX(-1);
+  transition:left 0.5s ease-out;
+  filter:drop-shadow(0 6px 10px rgba(0,0,0,.5));
+  z-index:10;line-height:1}
+
+/* ── Download overlay ── */
+#dl-overlay{position:fixed;inset:0;background:#0f172a;display:none;align-items:center;justify-content:center;flex-direction:column;gap:20px;z-index:2000}
+#dl-overlay .dl-label{color:white;font-size:15px;font-weight:700;letter-spacing:.3px}
+#dl-overlay .dl-sub{color:#64748b;font-size:12px;margin-top:-12px}
+
+/* Road scene */
+.dl-road-scene{width:440px;position:relative;padding-top:36px}
+.dl-road{width:100%;height:52px;background:#334155;border-radius:12px;display:flex;align-items:center;overflow:hidden}
+.dl-dashes{display:flex;gap:10px;padding:0 12px;width:100%;flex-shrink:0}
+.dl-dash{flex:1;height:7px;background:#f59e0b;border-radius:3px;opacity:.9}
+.dl-car{position:absolute;font-size:52px;top:0;left:-60px;
+  transform:scaleX(-1);
+  animation:car-drive var(--dl-dur,2.5s) linear forwards;
+  filter:drop-shadow(0 6px 10px rgba(0,0,0,.5));
+  z-index:10;line-height:1}
+@keyframes car-drive{
+  0%  {left:-60px}
+  100%{left:calc(100% + 8px)}
+}
+
+/* Progress bar */
+.dl-progress-track{width:440px;height:5px;background:#1e293b;border-radius:10px;overflow:hidden}
+.dl-progress-bar{height:100%;background:#3b82f6;border-radius:10px;width:0%;animation:dl-fill var(--dl-dur,2.5s) linear forwards}
+@keyframes dl-fill{0%{width:0%}100%{width:100%}}
+
+/* ── Page header ── */
+.page-header{background:#1e293b;color:white;padding:16px 20px 0;position:sticky;top:0;z-index:100}
+.rpt-title{font-size:11px;font-weight:700;color:#60a5fa;letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px}
+.page-header h1{font-size:20px;font-weight:800;margin-bottom:3px}
+.page-header .sub{font-size:11px;color:#94a3b8;margin-bottom:14px;line-height:1.6}
+.tab-bar{display:flex;gap:2px}
+.tab-btn{padding:11px 20px;font-size:13px;font-weight:700;border:none;background:transparent;color:#64748b;cursor:pointer;border-radius:8px 8px 0 0;transition:.15s;border-bottom:3px solid transparent}
+.tab-btn.active{background:#f1f5f9;color:#1e293b;border-bottom-color:#3b82f6}
+
+/* ── Panels ── */
+.panel{display:none;padding:20px;animation:fadeIn .2s;max-width:1200px;margin:0 auto}
+.panel.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ── Cards ── */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px}
+.card{background:white;border-radius:14px;padding:16px;text-align:center;box-shadow:0 1px 4px #0001}
+.card .val{font-size:24px;font-weight:800;color:#1e40af}
+.card .lbl{font-size:11px;color:#64748b;margin-top:4px}
+
+/* ── Tables ── */
+.section{background:white;border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 1px 4px #0001}
+.section h3{font-size:13px;font-weight:700;color:#334155;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:6px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#1e293b;color:white;font-weight:600;padding:8px 10px;text-align:center;white-space:nowrap}
+td{padding:7px 10px;border:1px solid #e2e8f0;text-align:center}
+tr:nth-child(even) td{background:#fafafa}
+td:first-child{text-align:left;font-weight:500}
+.total-row td{background:#eff6ff!important;font-weight:700;color:#1e40af}
+.highlight{color:#1e40af;font-weight:700}
+
+/* ── 調查紀錄 combo selector ── */
+.combo-selector{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+.combo-sel-btn{flex:1;min-width:120px;padding:12px 10px;border:2px solid #e2e8f0;border-radius:12px;background:white;cursor:pointer;font-size:13px;font-weight:700;color:#64748b;text-align:center;transition:.15s;line-height:1.4}
+.combo-sel-btn:hover{border-color:#93c5fd;color:#1d4ed8}
+.combo-sel-btn.active.peak{background:#dc2626;border-color:#dc2626;color:white}
+.combo-sel-btn.active.offpeak{background:#2563eb;border-color:#2563eb;color:white}
+.combo-sel-btn .cs-label{font-size:15px;font-weight:800;display:block}
+.combo-sel-btn .cs-sub{font-size:10px;opacity:.8;display:block;margin-top:2px}
+.no-data-msg{text-align:center;padding:40px;color:#94a3b8;background:white;border-radius:14px}
+
+/* ── Survey record card ── */
+.sv-record{background:white;border-radius:14px;margin-bottom:14px;box-shadow:0 1px 4px #0001;overflow:hidden}
+.sv-rec-header{background:#1e293b;color:white;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;font-size:13px}
+.sv-rec-header .sv-num{font-size:11px;color:#60a5fa;font-weight:700;margin-bottom:2px}
+.sv-rec-header .sv-info{font-size:14px;font-weight:700}
+.sv-rec-header .sv-meta{font-size:11px;color:#94a3b8;text-align:right;line-height:1.6}
+.sv-rec-body{padding:0}
+
+/* ── SGS-style table inside record ── */
+.sgs-table{width:100%;border-collapse:collapse;font-size:12px}
+.sgs-table th{background:#2c3e50;color:white;padding:7px 10px;text-align:center;font-weight:600;white-space:nowrap;border:1px solid #1e293b}
+.sgs-table td{padding:7px 10px;border:1px solid #e2e8f0;text-align:center;vertical-align:middle}
+.sgs-table .info-row td{background:#f8fafc;font-size:11px;color:#475569;text-align:left}
+.sgs-table .total-row td{background:#eff6ff!important;font-weight:700;color:#1e40af}
+.sgs-table td.left{text-align:left}
+.sgs-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid #e2e8f0}
+.sgs-kv{padding:12px 16px;border-right:1px solid #e2e8f0;text-align:center}
+.sgs-kv:last-child{border-right:none}
+.sgs-kv .k{font-size:10px;color:#64748b;margin-bottom:4px}
+.sgs-kv .v{font-size:18px;font-weight:800;color:#1e293b}
+.sgs-kv .v.green{color:#16a34a}
+.sgs-kv .v.red{color:#dc2626}
+
+/* ── Download ── */
+.dl-section{background:white;border-radius:14px;padding:28px;text-align:center;max-width:600px;margin:0 auto}
+.dl-section h3{font-size:18px;font-weight:800;margin-bottom:8px}
+.dl-btn{display:inline-flex;align-items:center;gap:8px;color:white;border:none;padding:15px 32px;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;margin:10px;transition:.15s;box-shadow:0 4px 14px #0002}
+.dl-btn.green{background:#16a34a}
+.dl-btn.green:hover{background:#15803d}
+.dl-btn.blue{background:#2563eb}
+.dl-btn.blue:hover{background:#1d4ed8}
+.dl-note{font-size:12px;color:#64748b;margin-top:8px;line-height:1.7;text-align:left;background:#f8fafc;padding:14px;border-radius:10px}
+</style>
+</head>
+<body>
+
+<div id="loading-screen">
+  <div class="ld-road-scene">
+    <div class="ld-road">
+      <div class="ld-dashes">
+        <div class="ld-dash"></div><div class="ld-dash"></div><div class="ld-dash"></div>
+        <div class="ld-dash"></div><div class="ld-dash"></div><div class="ld-dash"></div>
+        <div class="ld-dash"></div><div class="ld-dash"></div><div class="ld-dash"></div>
+        <div class="ld-dash"></div><div class="ld-dash"></div><div class="ld-dash"></div>
+      </div>
+      <div class="ld-car" id="ld-car">🚗</div>
+    </div>
+  </div>
+  <p id="ld-msg">載入調查結果...</p>
+  <small id="ld-sub"></small>
+</div>
+
+<!-- Download overlay -->
+<div id="dl-overlay">
+  <p class="dl-label" id="dl-overlay-label">產生報告中...</p>
+  <div class="dl-road-scene">
+    <div class="dl-road">
+      <div class="dl-dashes">
+        <div class="dl-dash"></div><div class="dl-dash"></div><div class="dl-dash"></div>
+        <div class="dl-dash"></div><div class="dl-dash"></div><div class="dl-dash"></div>
+        <div class="dl-dash"></div><div class="dl-dash"></div><div class="dl-dash"></div>
+        <div class="dl-dash"></div><div class="dl-dash"></div><div class="dl-dash"></div>
+      </div>
+      <div class="dl-car" id="dl-car">🚗</div>
+    </div>
+  </div>
+  <div class="dl-progress-track">
+    <div class="dl-progress-bar" id="dl-progress-bar"></div>
+  </div>
+  <small class="dl-sub" id="dl-overlay-sub">請稍候</small>
+</div>
+
+<div id="app" style="display:none">
+  <div class="page-header">
+    <div class="rpt-title">📊 調查報告</div>
+    <h1 id="hdr-title">—</h1>
+    <div class="sub" id="hdr-sub">—</div>
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="stats" onclick="switchTab('stats')">📊 統計表</button>
+      <button class="tab-btn" data-tab="trips" onclick="switchTab('trips')">📋 調查紀錄</button>
+      <button class="tab-btn" data-tab="dl" onclick="switchTab('dl')">📥 下載報告</button>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div id="panel-stats" class="panel active">
+    <div class="cards" id="stat-cards"></div>
+    <div class="section">
+      <h3>📋 各路段平均旅行時間及行駛時間統計表（秒）</h3>
+      <div style="overflow-x:auto"><table id="tbl-travel"></table></div>
+    </div>
+    <div class="section">
+      <h3>🚗 各路段平均旅行速率及行駛速率統計表（公里/時）</h3>
+      <div style="overflow-x:auto"><table id="tbl-speed"></table></div>
+    </div>
+    <div class="section">
+      <h3>⏱ 延滯統計摘要</h3>
+      <div style="overflow-x:auto"><table id="tbl-delay"></table></div>
+    </div>
+  </div>
+
+  <!-- TRIPS -->
+  <div id="panel-trips" class="panel">
+    <!-- Combo selector -->
+    <div class="combo-selector" id="combo-selector"></div>
+    <!-- Survey records for selected combo -->
+    <div id="combo-records"></div>
+  </div>
+
+  <!-- DOWNLOAD -->
+  <div id="panel-dl" class="panel">
+    <div class="dl-section">
+      <h3>下載 SGS 公版報告</h3>
+      <p style="font-size:13px;color:#64748b;margin:8px 0 20px">依據「主次要幹道行駛時間及延滯調查表」格式產出報告</p>
+      <button class="dl-btn green" onclick="downloadSGS()">📥 下載 SGS Excel (.xlsx)</button>
+      <button class="dl-btn blue" onclick="downloadCSV()">📄 下載原始數據 (.csv)</button>
+      <div class="dl-note" style="margin-top:20px">
+        <b>SGS Excel 包含：</b><br>
+        ・行駛速率統計表（各路段旅行時間 / 行駛時間 / 速率）<br>
+        ・延滯統計表（交叉口延滯 / 路段延滯 / 比例）<br>
+        ・每趟旅次詳細記錄（主次要幹道行駛時間及延滯調查表格式）
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════ GLOBALS ════════════════
+let route = null
+let surveys = []
+let avgTrips = {}  // {combo: {travelS, runS, intTotalS, roadTotalS, totalDelayS, segTimes:[{travelS,runS}]}}
+let currentCombo = 'peak_bound'
+
+const COMBO_KEYS = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
+const COMBO_LABEL = {
+  off_peak_bound: '離峰 去程',
+  off_peak_return:'離峰 回程',
+  peak_bound:     '尖峰 去程',
+  peak_return:    '尖峰 回程'
+}
+const TRACK_COLOR = {
+  off_peak_bound:'#2563eb',
+  off_peak_return:'#60a5fa',
+  peak_bound:'#dc2626',
+  peak_return:'#f87171'
+}
+
+const ROAD_DELAYS = [
+  {cause:'congestion', label:'阻塞'},
+  {cause:'bus_stop',   label:'公車停靠'},
+  {cause:'taxi_stop',  label:'計程車停靠'},
+  {cause:'parking',    label:'路邊停靠'},
+  {cause:'ped_cross',  label:'行人穿越'},
+  {cause:'road_other', label:'其他'},
+]
+const INT_DELAYS = [
+  {cause:'red_light',  label:'紅燈'},
+  {cause:'left_same',  label:'左轉同向'},
+  {cause:'left_opp',   label:'左轉對向'},
+  {cause:'right_turn', label:'右轉'},
+  {cause:'cross_veh',  label:'橫越車輛'},
+  {cause:'ped_int',    label:'行人'},
+  {cause:'int_other',  label:'其他'},
+]
+
+// ════════════════ LOAD PROGRESS ════════════════
+let _ldCurrent = 0
+let _ldTarget  = 0
+let _ldRaf     = null
+
+function setLoadProgress(pct){
+  _ldTarget = pct
+  if(!_ldRaf) _ldRaf = requestAnimationFrame(_ldTick)
+}
+
+function _ldTick(){
+  const car = document.getElementById('ld-car')
+  const scene = document.querySelector('.ld-road-scene')
+  if(!car||!scene){ _ldRaf=null; return }
+  const sceneW = scene.offsetWidth || 440
+
+  // Ease toward target — fast when far, slow when close (natural feel)
+  const gap = _ldTarget - _ldCurrent
+  const step = Math.max(0.08, Math.abs(gap) * 0.035)  // min crawl, proportional
+  if(Math.abs(gap) < 0.05){
+    _ldCurrent = _ldTarget
+    _ldRaf = null
+  } else {
+    _ldCurrent += Math.sign(gap) * step
+    _ldRaf = requestAnimationFrame(_ldTick)
+  }
+  const pos = -60 + (_ldCurrent/100) * (sceneW + 68)
+  car.style.left = pos + 'px'
+  car.style.transition = 'none'  // JS drives position directly
+}
+
+// ════════════════ INIT ════════════════
+window.addEventListener('load', async () => {
+  const p = new URLSearchParams(location.search)
+  const id  = p.get('id')
+  const gs  = p.get('gs')
+  const k   = p.get('k')
+  if(!id||!gs||!k){ showError('缺少 URL 參數 (id / gs / k)'); return }
+
+  try{
+    setLoadProgress(5)
+    ld('從雲端載入路線設定...')
+    const routeRes = await cloudGet(gs, k, {action:'getRoute', id})
+    if(!routeRes.ok) throw new Error(routeRes.error)
+    route = routeRes.data
+    setLoadProgress(45)
+
+    ld('載入調查結果...')
+    const surveyRes = await cloudGet(gs, k, {action:'getSurveys', routeId: id})
+    if(!surveyRes.ok) throw new Error(surveyRes.error)
+    surveys = surveyRes.data || []
+    setLoadProgress(80)
+
+    ld('計算統計...')
+    calcAverages()
+    setLoadProgress(92)
+
+    ld('繪製頁面...')
+    renderPage()
+    setLoadProgress(100)
+
+    // Wait for car to reach end before hiding
+    await new Promise(r=>setTimeout(r, 450))
+    document.getElementById('loading-screen').style.display='none'
+    document.getElementById('app').style.display='block'
+
+  }catch(e){
+    showError(e.message)
+  }
+})
+
+function ld(msg){ document.getElementById('ld-msg').textContent = msg }
+function showError(msg){
+  document.getElementById('ld-msg').textContent = '❌ 載入失敗'
+  document.getElementById('ld-sub').textContent = msg
+}
+
+async function cloudGet(gsUrl, key, params){
+  const q = new URLSearchParams({...params, key})
+  const res = await fetch(`${gsUrl}?${q}`, {signal: AbortSignal.timeout(20000)})
+  return res.json()
+}
+
+// ════════════════ CALCULATE AVERAGES ════════════════
+function calcAverages(){
+  COMBO_KEYS.forEach(combo=>{
+    const [peakType, direction] = parseCombo(combo)
+    const tripsList = []
+    surveys.forEach(sv=>{
+      const t = sv.trips?.find(t=>t.peakType===peakType && t.direction===direction)
+      if(t) tripsList.push(t)
+    })
+    if(!tripsList.length){ avgTrips[combo]=null; return }
+    const n = tripsList.length
+    const avg = {
+      count: n,
+      travelS:   Math.round(tripsList.reduce((a,t)=>a+(+t.travelS||0),0)/n),
+      runS:      Math.round(tripsList.reduce((a,t)=>a+(+t.runS||0),0)/n),
+      intTotalS: Math.round(tripsList.reduce((a,t)=>a+(+t.intTotalS||0),0)/n),
+      roadTotalS:Math.round(tripsList.reduce((a,t)=>a+(+t.roadTotalS||0),0)/n),
+      totalDelayS:Math.round(tripsList.reduce((a,t)=>a+(+t.totalDelayS||0),0)/n),
+      intDelays:{}, roadDelays:{},
+      segTimes: []
+    }
+    // Average per-segment times
+    const nSegs = route.segments?.length||0
+    for(let i=0;i<nSegs;i++){
+      const validT = tripsList.filter(t=>t.segTimes?.[i]?.travelS)
+      const validR = tripsList.filter(t=>t.segTimes?.[i]?.runS)
+      avg.segTimes.push({
+        travelS: validT.length ? Math.round(validT.reduce((a,t)=>a+t.segTimes[i].travelS,0)/validT.length) : null,
+        runS:    validR.length ? Math.round(validR.reduce((a,t)=>a+t.segTimes[i].runS,0)/validR.length) : null
+      })
+    }
+    // Average delay breakdown
+    ;[...ROAD_DELAYS,...INT_DELAYS].forEach(d=>{
+      const isRoad = ROAD_DELAYS.find(x=>x.cause===d.cause)
+      const obj = isRoad ? avg.roadDelays : avg.intDelays
+      obj[d.cause] = Math.round(tripsList.reduce((a,t)=>{
+        const src = isRoad ? t.roadDelays : t.intDelays
+        return a + (+src?.[d.cause]||0)
+      },0)/n)
+    })
+    avgTrips[combo] = avg
+  })
+}
+
+function parseCombo(k){
+  if(k.startsWith('off_peak_')) return ['off_peak', k.replace('off_peak_','')]
+  return ['peak', k.replace('peak_','')]
+}
+
+function spd(len, secs){ return (len>0&&secs>0) ? (len/secs*3.6).toFixed(1) : '—' }
+function fmt(v){ return (v==null||v===''||isNaN(v)) ? '—' : v }
+
+// ════════════════ RENDER PAGE ════════════════
+function renderPage(){
+  document.title = route.routeName + ' — 調查報告'
+  document.getElementById('hdr-title').textContent = route.routeName
+  const dateRange = surveys.length ? surveys.map(s=>s.date).filter(Boolean).join('、') : '—'
+  const weathers = [...new Set(surveys.map(s=>s.weather).filter(Boolean))].join('/')
+  document.getElementById('hdr-sub').textContent =
+    `${route.routeFromTo||''}　調查日期：${dateRange}　天氣：${weathers||'—'}　全長：${route.totalLength}m`
+
+  // Summary cards
+  const totalTrips = surveys.reduce((a,s)=>a+(s.trips?.length||0),0)
+  const completedCombos = COMBO_KEYS.filter(k=>avgTrips[k]).length
+  document.getElementById('stat-cards').innerHTML = `
+    <div class="card"><div class="val">${route.totalLength}m</div><div class="lbl">路線全長</div></div>
+    <div class="card"><div class="val">${route.segments?.length||0}</div><div class="lbl">路段數</div></div>
+    <div class="card"><div class="val">${surveys.length}</div><div class="lbl">調查次數</div></div>
+    <div class="card"><div class="val">${totalTrips}</div><div class="lbl">總旅次數</div></div>
+    <div class="card"><div class="val">${completedCombos}/4</div><div class="lbl">完成組合</div></div>
+  `
+  renderTravelTable()
+  renderSpeedTable()
+  renderDelayTable()
+  renderComboSelector()
+  switchCombo(currentCombo)
+}
+
+// ── Travel Time Table ──
+function renderTravelTable(){
+  const segs = route.segments || []
+  const OB = avgTrips.off_peak_bound, OR = avgTrips.off_peak_return
+  const PB = avgTrips.peak_bound,     PR = avgTrips.peak_return
+  const offLabel = route.offPeakLabel||'離峰'
+  const pkLabel  = route.peakLabel||'尖峰'
+
+  let html = `<tr>
+    <th rowspan="2">路段位置</th><th rowspan="2">車道數</th><th rowspan="2">路寬(m)</th><th rowspan="2">路段長(m)</th>
+    <th colspan="2">${offLabel} 旅行時間(秒)</th>
+    <th colspan="2">${pkLabel} 旅行時間(秒)</th>
+    <th colspan="2">${offLabel} 行駛時間(秒)</th>
+    <th colspan="2">${pkLabel} 行駛時間(秒)</th>
+  </tr><tr>
+    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
+    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
+  </tr>`
+
+  let totTvl = [0,0,0,0], totRun = [0,0,0,0], totLen = 0
+  segs.forEach((seg,i)=>{
+    const tv = [OB,OR,PB,PR].map(t=>t?.segTimes?.[i]?.travelS)
+    const rv = [OB,OR,PB,PR].map(t=>t?.segTimes?.[i]?.runS)
+    tv.forEach((v,j)=>{ if(v) totTvl[j]+=v })
+    rv.forEach((v,j)=>{ if(v) totRun[j]+=v })
+    totLen += seg.length||0
+    html += `<tr>
+      <td>${seg.name}</td><td>${seg.lanes||'—'}</td><td>${seg.width||'—'}</td><td>${seg.length||'—'}</td>
+      ${tv.map(v=>`<td>${fmt(v)}</td>`).join('')}
+      ${rv.map(v=>`<td>${fmt(v)}</td>`).join('')}
+    </tr>`
+  })
+  html += `<tr class="total-row">
+    <td>合計</td><td></td><td></td><td>${totLen}</td>
+    ${[OB,OR,PB,PR].map(t=>`<td class="highlight">${fmt(t?.travelS)}</td>`).join('')}
+    ${[OB,OR,PB,PR].map(t=>`<td class="highlight">${fmt(t?.runS)}</td>`).join('')}
+  </tr>`
+  document.getElementById('tbl-travel').innerHTML = html
+}
+
+// ── Speed Table ──
+function renderSpeedTable(){
+  const segs = route.segments || []
+  const OB = avgTrips.off_peak_bound, OR = avgTrips.off_peak_return
+  const PB = avgTrips.peak_bound,     PR = avgTrips.peak_return
+  const offLabel = route.offPeakLabel||'離峰'
+  const pkLabel  = route.peakLabel||'尖峰'
+
+  let html = `<tr>
+    <th rowspan="2">路段位置</th><th rowspan="2">路段長(m)</th>
+    <th colspan="2">${offLabel} 旅行速率(km/h)</th>
+    <th colspan="2">${pkLabel} 旅行速率(km/h)</th>
+    <th colspan="2">${offLabel} 行駛速率(km/h)</th>
+    <th colspan="2">${pkLabel} 行駛速率(km/h)</th>
+  </tr><tr>
+    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
+    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
+  </tr>`
+
+  segs.forEach((seg,i)=>{
+    const L = seg.length||0
+    const trips = [OB,OR,PB,PR]
+    const tv = trips.map(t=>spd(L,t?.segTimes?.[i]?.travelS))
+    const rv = trips.map(t=>spd(L,t?.segTimes?.[i]?.runS))
+    html += `<tr>
+      <td>${seg.name}</td><td>${L}</td>
+      ${tv.map(v=>`<td>${v}</td>`).join('')}
+      ${rv.map(v=>`<td>${v}</td>`).join('')}
+    </tr>`
+  })
+  const TL = route.totalLength||0
+  html += `<tr class="total-row">
+    <td>合計</td><td>${TL}</td>
+    ${[OB,OR,PB,PR].map(t=>`<td class="highlight">${spd(TL,t?.travelS)}</td>`).join('')}
+    ${[OB,OR,PB,PR].map(t=>`<td class="highlight">${spd(TL,t?.runS)}</td>`).join('')}
+  </tr>`
+  document.getElementById('tbl-speed').innerHTML = html
+}
+
+// ── Delay Table ──
+function renderDelayTable(){
+  const OB = avgTrips.off_peak_bound, OR = avgTrips.off_peak_return
+  const PB = avgTrips.peak_bound,     PR = avgTrips.peak_return
+  const trips = [OB,OR,PB,PR]
+  const offLabel = route.offPeakLabel||'離峰'
+  const pkLabel  = route.peakLabel||'尖峰'
+
+  const r = (label, vals) =>
+    `<tr><td>${label}</td>${vals.map(v=>`<td>${fmt(v)}</td>`).join('')}</tr>`
+
+  let html = `<tr>
+    <th>指標</th>
+    <th>${offLabel}<br>去程</th><th>${offLabel}<br>回程</th>
+    <th>${pkLabel}<br>去程</th><th>${pkLabel}<br>回程</th>
+  </tr>`
+  html += r('平均總旅行速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.travelS)))
+  html += r('平均總行駛速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.runS)))
+  html += r('行駛時間 (秒)', trips.map(t=>t?.runS))
+  html += r('行駛時間 (%)', trips.map(t=>t?.travelS>0?((t.runS/t.travelS)*100).toFixed(1):null))
+  html += r('交叉口延滯 (秒)', trips.map(t=>t?.intTotalS))
+  html += r('交叉口延滯 (%)', trips.map(t=>t?.travelS>0?((t.intTotalS/t.travelS)*100).toFixed(1):null))
+  html += r('路段延滯 (秒)', trips.map(t=>t?.roadTotalS))
+  html += r('路段延滯 (%)', trips.map(t=>t?.travelS>0?((t.roadTotalS/t.travelS)*100).toFixed(1):null))
+  html += `<tr class="total-row"><td><b>合計旅行時間 (秒)</b></td>${trips.map(t=>`<td class="highlight">${fmt(t?.travelS)}</td>`).join('')}</tr>`
+
+  // Int delay breakdown
+  html += `<tr><td colspan="5" style="background:#fef9c3;font-weight:700;padding:6px 8px">交叉口延滯明細</td></tr>`
+  INT_DELAYS.forEach(d=>{
+    html += r(d.label+' (秒)', trips.map(t=>t?.intDelays?.[d.cause]||0))
+  })
+  html += `<tr><td colspan="5" style="background:#fef9c3;font-weight:700;padding:6px 8px">路段延滯明細</td></tr>`
+  ROAD_DELAYS.forEach(d=>{
+    html += r(d.label+' (秒)', trips.map(t=>t?.roadDelays?.[d.cause]||0))
+  })
+  document.getElementById('tbl-delay').innerHTML = html
+}
+
+// ════════════════ COMBO SELECTOR ════════════════
+function renderComboSelector(){
+  const COMBOS = [
+    {key:'peak_bound',    label:'尖峰去程', cls:'peak'},
+    {key:'peak_return',   label:'尖峰回程', cls:'peak'},
+    {key:'off_peak_bound',label:'離峰去程', cls:'offpeak'},
+    {key:'off_peak_return',label:'離峰回程',cls:'offpeak'},
+  ]
+  document.getElementById('combo-selector').innerHTML = COMBOS.map(c=>{
+    const [pt,dir]=parseCombo(c.key)
+    const count=surveys.filter(sv=>sv.trips?.find(t=>t.peakType===pt&&t.direction===dir)).length
+    return `<button class="combo-sel-btn ${c.cls}" data-combo="${c.key}" onclick="switchCombo('${c.key}')">
+      <span class="cs-label">${c.label}</span>
+      <span class="cs-sub">${count} 筆紀錄</span>
+    </button>`
+  }).join('')
+}
+
+function switchCombo(combo){
+  currentCombo = combo
+  // Update button active states
+  document.querySelectorAll('.combo-sel-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.combo===combo)
+  })
+  renderComboRecords(combo)
+}
+
+function renderComboRecords(combo){
+  const [pt, dir] = parseCombo(combo)
+  const el = document.getElementById('combo-records')
+  const isReturn = dir==='return'
+  const segs = route.segments || []
+  const segOrder = isReturn ? [...segs].reverse() : segs
+
+  // Filter surveys that have this combo
+  const matchSurveys = surveys.map((sv,si)=>({sv,si,trip:sv.trips?.find(t=>t.peakType===pt&&t.direction===dir)})).filter(x=>x.trip)
+
+  if(!matchSurveys.length){
+    el.innerHTML=`<div class="no-data-msg">
+      <div style="font-size:40px;margin-bottom:12px">${pt==='peak'?'🔴':'🔵'}</div>
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px">尚無此組合的調查紀錄</div>
+      <div style="font-size:12px;color:#94a3b8">${COMBO_LABEL[combo]} 旅次尚未調查</div>
+    </div>`; return
+  }
+
+  el.innerHTML = matchSurveys.map(({sv,si,trip})=>{
+    const isPeak = pt==='peak'
+    const off=route.offPeakLabel||'14:00~16:00', pk=route.peakLabel||'17:00~19:00'
+    const st=trip.startTime?new Date(trip.startTime):null
+    const et=trip.endTime?new Date(trip.endTime):null
+    const hms=d=>{
+      if(!d)return['—','—','—']
+      const s=d.toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'})
+      return s.split(':')
+    }
+    const [sH,sM,sS]=hms(st), [eH,eM,eS]=hms(et)
+    const nodeTs=(trip.nodeTimestamps||[]).map(t=>t?new Date(t):null)
+    const startNode=route.nodes?.[0], endNode=route.nodes?.[route.nodes.length-1]
+    const fromNode=isReturn?endNode:startNode
+    const toNode=isReturn?startNode:endNode
+    const TL=route.totalLength||0
+
+    const segRows=segOrder.map((seg,i)=>{
+      // For each segment: from node i, to node i+1 (last segment ends at final node)
+      const fromNodeIdx = isReturn ? segs.length-i   : i
+      const toNodeIdx   = isReturn ? segs.length-1-i : i+1
+      const fromTime = nodeTs[fromNodeIdx] || (i===0 ? st : null)
+      const toTime   = nodeTs[toNodeIdx]   || (i===segOrder.length-1 ? et : null)
+      const [fH,fM,fS]=hms(fromTime)
+      const [tH,tM,tS]=hms(toTime)
+      const segIdx = isReturn ? segs.length-1-i : i
+      const st2=trip.segTimes?.[segIdx]
+      const toName = i<segOrder.length-1 ? (segOrder[i+1]?.name||'—') : (isReturn?startNode?.name:endNode?.name)||'終點'
+      return `<tr>
+        <td class="left">${seg.name}</td>
+        <td class="left">${toName}</td>
+        <td>${seg.length||'—'}</td>
+        <td>${fH}</td><td>${fM}</td><td>${fS}</td>
+        <td>${tH}</td><td>${tM}</td><td>${tS}</td>
+        <td>${st2?.travelS??'—'}</td>
+        <td>${st2?.runS??'—'}</td>
+      </tr>`
+    }).join('')
+
+    return `<div class="sv-record">
+      <div class="sv-rec-header">
+        <div>
+          <div class="sv-num">調查 #${si+1}</div>
+          <div class="sv-info">👤 ${sv.surveyor||'未知'}</div>
+        </div>
+        <div class="sv-meta">
+          📅 ${sv.date||'—'}<br>
+          🌤 ${sv.weather||'—'}
+        </div>
+      </div>
+      <!-- Summary KV row -->
+      <div class="sgs-summary">
+        <div class="sgs-kv"><div class="k">旅行時間</div><div class="v">${fmtSec(trip.travelS)}</div></div>
+        <div class="sgs-kv"><div class="k">行駛時間</div><div class="v">${fmtSec(trip.runS)}</div></div>
+        <div class="sgs-kv"><div class="k">延滯時間</div><div class="v red">${fmtSec(trip.totalDelayS)}</div></div>
+        <div class="sgs-kv"><div class="k">旅行速率</div><div class="v green">${spd(TL,trip.travelS)} km/h</div></div>
+      </div>
+      <!-- SGS table -->
+      <div style="overflow-x:auto;padding:0">
+        <table class="sgs-table">
+          <tr style="background:#0f172a">
+            <td colspan="11" style="color:#60a5fa;font-size:11px;font-weight:700;text-align:center;padding:8px;border:none">
+              主次要幹道行駛時間及延滯調查表
+            </td>
+          </tr>
+          <tr class="info-row">
+            <td colspan="3">站名：${route.routeName}</td>
+            <td colspan="4">方向往：${isReturn?'■ 回 □ 去':'□ 回 ■ 去'}</td>
+            <td colspan="4">時間：${isPeak?'□ 離峰  ■ 尖峰':'■ 離峰  □ 尖峰'} (${isPeak?pk:off})</td>
+          </tr>
+          <tr class="info-row">
+            <td colspan="3">起點：${fromNode?.name||'—'}</td>
+            <td colspan="4">終點：${toNode?.name||'—'}</td>
+            <td colspan="2">出發：${sH}:${sM}:${sS}</td>
+            <td colspan="2">到達：${eH}:${eM}:${eS}</td>
+          </tr>
+          <tr>
+            <th rowspan="2">路起點</th>
+            <th rowspan="2">路終點</th>
+            <th rowspan="2">距離(m)</th>
+            <th colspan="3">起點時刻</th>
+            <th colspan="3">終點時刻</th>
+            <th rowspan="2">旅行時間(秒)</th>
+            <th rowspan="2">行駛時間(秒)</th>
+          </tr>
+          <tr>
+            <th>時</th><th>分</th><th>秒</th>
+            <th>時</th><th>分</th><th>秒</th>
+          </tr>
+          ${segRows}
+          <tr class="total-row">
+            <td class="left" colspan="2">${fromNode?.name||'起點'} → ${toNode?.name||'終點'}</td>
+            <td>${TL}</td>
+            <td>${sH}</td><td>${sM}</td><td>${sS}</td>
+            <td>${eH}</td><td>${eM}</td><td>${eS}</td>
+            <td><b>${trip.travelS||'—'}</b></td>
+            <td><b>${trip.runS||'—'}</b></td>
+          </tr>
+          <tr class="info-row">
+            <td colspan="9">交叉口延滯：${trip.intTotalS||0} 秒</td>
+            <td colspan="2">路段延滯：${trip.roadTotalS||0} 秒</td>
+          </tr>
+        </table>
+      </div>
+    </div>`
+  }).join('')
+}
+
+function fmtSec(s){
+  if(!s&&s!==0) return '—'
+  const m=Math.floor(s/60), sec=s%60
+  return m>0 ? `${m}分${sec}秒` : `${sec}秒`
+}
+
+
+// ════════════════ TABS ════════════════
+function switchTab(tab){
+  document.querySelectorAll('.tab-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.tab===tab)
+  })
+  document.querySelectorAll('.panel').forEach(p=>{
+    p.classList.toggle('active', p.id===`panel-${tab}`)
+  })
+}
+
+// ── Download overlay helpers ──
+function showDlOverlay(msg='產生報告中...',sub='請稍候', durMs=2500){
+  const o=document.getElementById('dl-overlay')
+  document.getElementById('dl-overlay-sub').textContent=sub
+  document.getElementById('dl-overlay-label').textContent=msg
+  // Reset animations
+  const car=document.getElementById('dl-car')
+  const bar=document.getElementById('dl-progress-bar')
+  const dur=(durMs/1000)+'s'
+  o.style.setProperty('--dl-dur', dur)
+  // Force reflow to restart animation
+  car.style.animation='none'; bar.style.animation='none'
+  void car.offsetWidth
+  car.style.animation=`car-drive ${dur} linear forwards`
+  bar.style.animation=`dl-fill ${dur} linear forwards`
+  o.style.display='flex'
+}
+function hideDlOverlay(){ document.getElementById('dl-overlay').style.display='none' }
+
+// Wrapper: show animation, run fn after delay, hide when done
+async function withDlAnim(msg, sub, fn, durMs=2200){
+  showDlOverlay(msg, sub, durMs)
+  await new Promise(r=>setTimeout(r, 80))  // let overlay render
+  try{ fn() }finally{
+    // Hide exactly when animation ends
+    setTimeout(hideDlOverlay, Math.max(0, durMs-80))
+  }
+}
+
+// ════════════════ XLSX DOWNLOAD ════════════════
+function downloadSGS(){
+  if(!route||!surveys.length){ alert('尚無資料'); return }
+  withDlAnim('產生 SGS Excel 中...','正在計算各路段數據', ()=>{
+  const wb = XLSX.utils.book_new()
+
+  // Sheet 1: Speed/Time summary
+  XLSX.utils.book_append_sheet(wb, buildSpeedSheet(), '行駛速率')
+  // Sheet 2: Delay summary
+  XLSX.utils.book_append_sheet(wb, buildDelaySheet(), '延滯統計')
+  // Per-trip sheets
+  let tripIdx = {off_peak_bound:0, off_peak_return:0, peak_bound:0, peak_return:0}
+  surveys.forEach(sv=>{
+    COMBO_KEYS.forEach(combo=>{
+      const [pt,dir] = parseCombo(combo)
+      const trip = sv.trips?.find(t=>t.peakType===pt&&t.direction===dir)
+      if(!trip) return
+      tripIdx[combo]++
+      const sheetName = buildTripSheetName(combo, tripIdx[combo])
+      XLSX.utils.book_append_sheet(wb, buildTripSheet(trip, sv, combo), sheetName)
+    })
+  })
+
+  const fname = `${route.routeName}_旅行時間調查_${new Date().toLocaleDateString('zh-TW').replace(/\//g,'')}.xlsx`
+  XLSX.writeFile(wb, fname)
+  })
+}
+
+function buildTripSheetName(combo, n){
+  const map = {off_peak_bound:'離峰去',off_peak_return:'離峰回',peak_bound:'尖峰去',peak_return:'尖峰回'}
+  return `${map[combo]}_${n}`
+}
+
+function buildSpeedSheet(){
+  const segs = route.segments || []
+  const OB=avgTrips.off_peak_bound, OR=avgTrips.off_peak_return
+  const PB=avgTrips.peak_bound, PR=avgTrips.peak_return
+  const off=route.offPeakLabel||'離峰', pk=route.peakLabel||'尖峰'
+
+  const rows = [
+    ['各路段平均旅行時間及行駛時間統計表'],
+    [`路線：${route.routeName}　起迄：${route.routeFromTo}　全長：${route.totalLength}m`],
+    [],
+    ['路段位置','車道數','路寬(m)','路段長(m)',
+     `${off} 去程 旅行時間(秒)`,`${off} 回程 旅行時間(秒)`,
+     `${pk} 去程 旅行時間(秒)`,`${pk} 回程 旅行時間(秒)`,
+     `${off} 去程 行駛時間(秒)`,`${off} 回程 行駛時間(秒)`,
+     `${pk} 去程 行駛時間(秒)`,`${pk} 回程 行駛時間(秒)`,
+     `${off} 去程 旅行速率(km/h)`,`${off} 回程 旅行速率(km/h)`,
+     `${pk} 去程 旅行速率(km/h)`,`${pk} 回程 旅行速率(km/h)`],
+    ...segs.map((seg,i)=>[
+      seg.name, seg.lanes||'', seg.width||'', seg.length||0,
+      OB?.segTimes?.[i]?.travelS??'', OR?.segTimes?.[i]?.travelS??'',
+      PB?.segTimes?.[i]?.travelS??'', PR?.segTimes?.[i]?.travelS??'',
+      OB?.segTimes?.[i]?.runS??'',    OR?.segTimes?.[i]?.runS??'',
+      PB?.segTimes?.[i]?.runS??'',    PR?.segTimes?.[i]?.runS??'',
+      spd(seg.length,OB?.segTimes?.[i]?.travelS), spd(seg.length,OR?.segTimes?.[i]?.travelS),
+      spd(seg.length,PB?.segTimes?.[i]?.travelS), spd(seg.length,PR?.segTimes?.[i]?.travelS)
+    ]),
+    ['合計','','', route.totalLength||0,
+     OB?.travelS??'', OR?.travelS??'', PB?.travelS??'', PR?.travelS??'',
+     OB?.runS??'',    OR?.runS??'',    PB?.runS??'',    PR?.runS??'',
+     spd(route.totalLength,OB?.travelS), spd(route.totalLength,OR?.travelS),
+     spd(route.totalLength,PB?.travelS), spd(route.totalLength,PR?.travelS)]
+  ]
+  return XLSX.utils.aoa_to_sheet(rows)
+}
+
+function buildDelaySheet(){
+  const OB=avgTrips.off_peak_bound, OR=avgTrips.off_peak_return
+  const PB=avgTrips.peak_bound, PR=avgTrips.peak_return
+  const trips=[OB,OR,PB,PR]
+  const off=route.offPeakLabel||'離峰', pk=route.peakLabel||'尖峰'
+  const hdr = [`${off} 去程`,`${off} 回程`,`${pk} 去程`,`${pk} 回程`]
+
+  const v=(t,key)=>t?t[key]??'':'—'
+  const pct=(t,key)=>t&&t.travelS>0 ? ((t[key]/t.travelS)*100).toFixed(1)+'%' : '—'
+  const d=(t,grp,cause)=>t?(grp==='int'?t.intDelays?.[cause]:t.roadDelays?.[cause])??0:'—'
+
+  return XLSX.utils.aoa_to_sheet([
+    ['延滯統計表'],
+    [`路線：${route.routeName}`],
+    [],
+    ['指標', ...hdr],
+    ['平均總旅行速率 (km/h)', ...trips.map(t=>spd(route.totalLength,t?.travelS))],
+    ['平均總行駛速率 (km/h)', ...trips.map(t=>spd(route.totalLength,t?.runS))],
+    ['行駛時間 (秒)', ...trips.map(t=>v(t,'runS'))],
+    ['行駛時間 (%)', ...trips.map(t=>pct(t,'runS'))],
+    ['交叉口延滯 (秒)', ...trips.map(t=>v(t,'intTotalS'))],
+    ['交叉口延滯 (%)', ...trips.map(t=>pct(t,'intTotalS'))],
+    ['路段延滯 (秒)', ...trips.map(t=>v(t,'roadTotalS'))],
+    ['路段延滯 (%)', ...trips.map(t=>pct(t,'roadTotalS'))],
+    ['合計旅行時間 (秒)', ...trips.map(t=>v(t,'travelS'))],
+    [],
+    ['交叉口延滯明細 (秒)', ...hdr],
+    ...INT_DELAYS.map(dd=>[ dd.label, ...trips.map(t=>d(t,'int',dd.cause)) ]),
+    [],
+    ['路段延滯明細 (秒)', ...hdr],
+    ...ROAD_DELAYS.map(dd=>[ dd.label, ...trips.map(t=>d(t,'road',dd.cause)) ]),
+  ])
+}
+
+function buildTripSheet(trip, survey, combo){
+  const isReturn = trip.direction === 'return'
+  const isPeak   = trip.peakType  === 'peak'
+  const fromNode = route.nodes[0]
+  const toNode   = route.nodes[route.nodes.length-1]
+  const startNode= isReturn ? toNode : fromNode
+  const endNode  = isReturn ? fromNode : toNode
+  const segs     = route.segments || []
+  const segOrder = isReturn ? [...segs].reverse() : segs
+  const times    = trip.segTimes || []
+
+  const st = trip.startTime ? new Date(trip.startTime) : null
+  const et = trip.endTime   ? new Date(trip.endTime)   : null
+  const hms = d => {
+    if(!d) return ['','','']
+    const s=d.toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'})
+    return s.split(':').map(Number)
+  }
+  const [sH,sM,sS] = hms(st)
+  const [eH,eM,eS] = hms(et)
+  const off=route.offPeakLabel||'14:00~16:00', pk=route.peakLabel||'17:00~19:00'
+
+  const nodeTs = (trip.nodeTimestamps||[]).map(t=>t?new Date(t):null)
+
+  const rows = [
+    ['','','','','','','','','主次要幹道行駛時間及延滯調查表'],
+    ['站名:','',route.routeName,'','','','','日期：',survey.date||''],
+    ['旅次編號:','','','','','','','',''],
+    ['方向往:','',isReturn?'□去 ■回':'■去 □回','','','','','天氣：',survey.weather||''],
+    ['時間:','',`${isPeak?'□離峰 ■尖峰':'■離峰 □尖峰'} (${isPeak?pk:off})`,
+     '','','','','',''],
+    ['調查員：','',survey.surveyor||''],
+    [],
+    ['路線','','','','距離(m)','起點','','','終點','','','合計(秒)','交叉口延滯(秒)','路段延滯(秒)','行駛時間(秒)','旅行速率(km/h)'],
+    ['起點','','終點','','','時','分','秒','時','分','秒','','','','',''],
+    [startNode.name,'',endNode.name,'',route.totalLength,
+     sH,sM,sS,eH,eM,eS,
+     trip.travelS||'', trip.intTotalS||'', trip.roadTotalS||'', trip.runS||'',
+     spd(route.totalLength, trip.travelS)],
+    [],
+    ['經過路口','','時刻','','',
+     '路段延滯(秒)','','','','','',
+     '交叉口延滯(秒)','','','','','','',
+     '旅行時間(秒)','距離(m)'],
+    ['','','時','分','秒',
+     '阻塞','公車停靠','計程車','路邊停車','行人穿越','其他',
+     '紅燈','左轉同向','左轉對向','右轉','橫越車輛','行人','其他',
+     '',''],
+    ...segOrder.map((seg,i)=>{
+      const nodeTime = nodeTs[isReturn ? segs.length - i : i]
+      const [nH,nM,nS] = hms(nodeTime)
+      return [
+        seg.name,'',nH,nM,nS,
+        0,0,0,0,0,0,
+        0,0,0,0,0,0,0,
+        times[i]?.travelS??'', seg.length||''
+      ]
+    }),
+    [],
+    ['延滯時間(秒)','小計','','','',
+     trip.roadDelays?.congestion||0, trip.roadDelays?.bus_stop||0, trip.roadDelays?.taxi_stop||0,
+     trip.roadDelays?.parking||0, trip.roadDelays?.ped_cross||0, trip.roadDelays?.road_other||0,
+     trip.intDelays?.red_light||0, trip.intDelays?.left_same||0, trip.intDelays?.left_opp||0,
+     trip.intDelays?.right_turn||0, trip.intDelays?.cross_veh||0, trip.intDelays?.ped_int||0,
+     trip.intDelays?.int_other||0,'',''],
+    ['','合計','','','',trip.roadTotalS||0,'','','','','',trip.intTotalS||0,'','','','','','','',''],
+    ['延滯時間百分比','小計','','','',
+     ...ROAD_DELAYS.map(d=>trip.travelS>0?((trip.roadDelays?.[d.cause]||0)/trip.travelS*100).toFixed(1)+'%':'0%'),
+     ...INT_DELAYS.map(d=>trip.travelS>0?((trip.intDelays?.[d.cause]||0)/trip.travelS*100).toFixed(1)+'%':'0%'),
+     '',''],
+  ]
+  return XLSX.utils.aoa_to_sheet(rows)
+}
+
+function downloadCSV(){
+  if(!surveys.length){ alert('尚無資料'); return }
+  withDlAnim('產生 CSV 中...','整理原始調查數據', ()=>{
+    const rows = [['調查次','調查員','日期','天氣','時期','方向','旅行時間(秒)','行駛時間(秒)','交叉口延滯(秒)','路段延滯(秒)','旅行速率(km/h)']]
+    surveys.forEach((sv,si)=>{
+      sv.trips?.forEach(t=>{
+        rows.push([si+1, sv.surveyor||'', sv.date||'', sv.weather||'',
+          t.peakType==='peak'?'尖峰':'離峰', t.direction==='bound'?'去程':'回程',
+          t.travelS||0, t.runS||0, t.intTotalS||0, t.roadTotalS||0,
+          spd(route.totalLength, t.travelS)])
+      })
+    })
+    const csv = rows.map(r=>r.join(',')).join('\n')
+    const blob = new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'})
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `${route.routeName}_原始數據.csv`
+    a.click()
+  })
+}
+</script>
+</body>
+</html>

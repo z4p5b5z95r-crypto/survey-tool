@@ -4,6 +4,11 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
 <title>選擇調查案件</title>
+<link rel="apple-touch-icon" sizes="512x512" href="icon.png"/>
+<link rel="icon" type="image/png" href="icon.png"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-title" content="調查選案"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0f172a;min-height:100vh;
@@ -12,13 +17,13 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0f172a;min-h
 /* ── Loading screen ── */
 #loading-screen{position:fixed;inset:0;background:#0f172a;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:20px;z-index:999}
-.ld-road-scene{width:min(420px,85vw);position:relative;padding-top:36px}
-.ld-road{width:100%;height:52px;background:#334155;border-radius:12px;
+.ld-road-scene{width:min(360px,88vw);position:relative;padding-top:52px}
+.ld-road{width:100%;height:64px;background:#334155;border-radius:16px;
   display:flex;align-items:center;overflow:hidden}
-.ld-dashes{display:flex;gap:10px;padding:0 12px;width:100%;flex-shrink:0}
-.ld-dash{flex:1;height:7px;background:#f59e0b;border-radius:3px;opacity:.9}
-.ld-car{position:absolute;font-size:52px;top:0;left:-60px;transform:scaleX(-1);
-  filter:drop-shadow(0 6px 10px rgba(0,0,0,.5));z-index:10;line-height:1}
+.ld-dashes{display:flex;gap:12px;padding:0 16px;width:100%;flex-shrink:0}
+.ld-dash{flex:1;height:9px;background:#f59e0b;border-radius:4px;opacity:.9}
+.ld-car{position:absolute;font-size:72px;top:0;left:-80px;transform:scaleX(-1);
+  filter:drop-shadow(0 6px 12px rgba(0,0,0,.6));z-index:10;line-height:1}
 #ld-msg{color:white;font-size:14px;font-weight:700}
 #ld-sub{color:#475569;font-size:12px;margin-top:-12px}
 
@@ -217,7 +222,7 @@ function _ldTick(){
   const step=Math.max(0.08,Math.abs(gap)*0.035)
   if(Math.abs(gap)<0.05){_ldCurrent=_ldTarget;_ldRaf=null}
   else{_ldCurrent+=Math.sign(gap)*step;_ldRaf=requestAnimationFrame(_ldTick)}
-  car.style.left=(-60+(_ldCurrent/100)*(sceneW+68))+'px'
+  car.style.left=(-80+(_ldCurrent/100)*(sceneW+88))+'px'
   car.style.transition='none'
 }
 
@@ -229,7 +234,7 @@ window.addEventListener('load', async ()=>{
     setLoadProgress(10)
     document.getElementById('ld-msg').textContent='載入人員資料...'
     const usersRes = await cloudGet({action:'getUsers'})
-    allUsers = (usersRes.data || []).filter(u=>u.name && u.name!=='admin')
+    allUsers = (usersRes.data || []).filter(u=>u.name && u.name!=='admin' && u.status!=='停用' && u.status!=='隱藏')
     setLoadProgress(55)
 
     document.getElementById('ld-msg').textContent='載入案件資料...'
