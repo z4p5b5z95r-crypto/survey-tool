@@ -134,9 +134,9 @@ input,select,textarea{font-size:max(16px,1em)!important}
 /* Next-node card — compact, info left + manual button right */
 /* ── Next node card (two-row) ── */
 .next-node-card{margin:4px 10px 0;border-radius:10px;padding:10px 10px 10px 12px;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;flex-shrink:0;display:flex;align-items:center;gap:10px;overflow:hidden}
-.next-node-card.arriving{background:linear-gradient(135deg,#15803d,#16a34a);animation:cardPulse 1s infinite}
+.next-node-card.warning{background:linear-gradient(135deg,#92400e,#b45309);animation:cardWarn .55s ease-in-out infinite}
 .next-node-card.done{background:#374151;animation:none}
-@keyframes cardPulse{0%,100%{opacity:1}50%{opacity:.85}}
+@keyframes cardWarn{0%,100%{opacity:1;border-color:transparent}50%{opacity:.7;box-shadow:0 0 0 3px #fbbf24}}
 .nnc-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;overflow:hidden}
 .nnc-label{font-size:11px;color:rgba(255,255,255,.7);white-space:nowrap}
 .nnc-name{font-size:17px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -780,7 +780,7 @@ function applyConfig(cfg){
   config.peakLabel   =cfg.peakLabel   ||cfg.pk||'17:00~19:00'
   config.date        =todayStr()   // always default to today; surveyor picks their own date
   config.nodes=(cfg.nodes||cfg.nd||[]).map(n=>{
-    if(n.lat!==undefined) return {name:n.name||'節點',exitName:n.exitName||n.n2||'',lat:n.lat,lng:n.lng,radius:n.radius||15,polygon:n.polygon||null,lineAngle:n.lineAngle??null,lineLength:n.lineLength||20}
+    if(n.lat!==undefined) return {name:n.name||'節點',exitName:n.exitName||n.n2||'',lat:n.lat,lng:n.lng,radius:n.radius||15,polygon:n.polygon||null,lineAngle:n.lineAngle??null,lineLength:n.lineLength||10}
     return {name:n.n||n.r1||'節點',exitName:n.n2||n.exitName||'',lat:n.a,lng:n.o,radius:n.r||15,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20}
   })
   config.segments=(cfg.segments||cfg.sg||[]).map(s=>{
@@ -1681,6 +1681,13 @@ function getOrderedNodes(){
   const ns=config.nodes||[]
   return cur&&cur.direction==='return'?[...ns].reverse():ns
 }
+// Speed-adaptive approach distance (speed in m/s → threshold in metres)
+function getApproachDist(){
+  const kmh=_lastSpeed*3.6
+  if(kmh>40) return 40
+  if(kmh>20) return 35
+  return 20
+}
 function checkNodeProximity(lat,lng){
   const names=getNodeNames()
   if(currentNodeIdx>=names.length) return
@@ -1692,12 +1699,13 @@ function checkNodeProximity(lat,lng){
   const card=$('next-node-card')
   $('nnc-dist-num').textContent=dist
   $('nnc-auto-hint').textContent='• 通過感應線自動記錄'
-  // Approaching indicator: card turns green within 40m, beep once on entry
-  if(dist<=40){
-    card.classList.add('arriving')
-    if(!nodeApproaching){ nodeApproaching=true; playApproachBeep() }
+  // Speed-adaptive approach indicator: yellow flashing card
+  const approachDist=getApproachDist()
+  if(dist<=approachDist){
+    card.classList.add('warning')
+    if(!nodeApproaching){ nodeApproaching=true }
   }else{
-    card.classList.remove('arriving')
+    card.classList.remove('warning')
     nodeApproaching=false
   }
   // ── Line-crossing detection ──
@@ -1714,6 +1722,7 @@ function checkNodeProximity(lat,lng){
     if(!nodeAutoLock){
       nodeAutoLock=true
       setTimeout(()=>{nodeAutoLock=false},3000)  // always reset, even if recordNode throws
+      playApproachBeep()  // single beep at moment of crossing
       try{ recordNode(true) }catch(e){ console.error('recordNode err',e) }
     }
   }
@@ -1848,7 +1857,7 @@ function updateNextNodeCard(){
   const names=getNodeNames()
   const card=$('next-node-card')
   if(currentNodeIdx>=names.length){
-    card.classList.add('done');card.classList.remove('arriving')
+    card.classList.add('done');card.classList.remove('arriving','warning')
     $('nnc-label').textContent='調查完成'
     $('nnc-name').textContent='✅ 已到終點'
     $('nnc-dist-num').textContent=''
@@ -1857,7 +1866,7 @@ function updateNextNodeCard(){
     $('nnc-manual-btn').style.display='none'
     return
   }
-  card.classList.remove('done','arriving')
+  card.classList.remove('done','arriving','warning')
   $('nnc-label').textContent=currentNodeIdx===0?`⏳ 等待第一個節點計時開始`:`節點 ${currentNodeIdx+1} / ${names.length}`
   $('nnc-name').textContent=names[currentNodeIdx]
   $('nnc-dist-num').textContent=lastPos?haversine(lastPos.lat,lastPos.lng,...getOrderedNodes()[currentNodeIdx]?[getOrderedNodes()[currentNodeIdx].lat,getOrderedNodes()[currentNodeIdx].lng]:[0,0]):'-'
@@ -2015,7 +2024,7 @@ function startSurvey(){
       const dir=nodeDirections[i]
       if(!dir) return
       // Perpendicular direction: rotate route vector 90° in scaled space
-      const halfM=(n.lineLength||20)/2   // half-width from stored line length
+      const halfM=(n.lineLength||10)/2   // half-width from stored line length
       const perpLat=-dir.dlng*halfM/111000
       const perpLng=dir.dlat*halfM/(111000*(dir.cosLat||1))
       const p1=[n.lat+perpLat,n.lng+perpLng]
