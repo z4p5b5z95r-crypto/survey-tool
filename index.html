@@ -605,6 +605,8 @@ let activeDelay=null, delayLog=[]
 // Nodes
 let nodeTimestamps=[], currentNodeIdx=0
 let nodeAutoLock = false   // prevent double-trigger within 3s
+let nodeDirections=[]      // unit direction vectors along route at each node
+let nodeLineSide=[]        // last GPS side of each node's detection line (null=uninit,-1=before,1=past)
 
 // Audio — single context created on user gesture in startSurvey(), reused for auto-trigger
 let audioCtx = null
@@ -698,12 +700,19 @@ function pointInPolygon(lat,lng,poly){
   }
   return inside
 }
-function nodeInRange(lat,lng,node){
-  const d=haversine(lat,lng,node.lat,node.lng)
-  const r=node.radius||15
-  if(d<=r) return true                                         // within radius → always trigger
-  if(node.polygon&&node.polygon.length>=3) return pointInPolygon(lat,lng,node.polygon)  // outside radius but inside polygon → also trigger
-  return false
+// Compute route direction unit vectors at each node (accounts for lat/lng scaling)
+function computeNodeDirections(ordered){
+  return ordered.map((n,i)=>{
+    const prev=i>0?ordered[i-1]:null
+    const next=i<ordered.length-1?ordered[i+1]:null
+    const p=prev||{lat:n.lat-(next.lat-n.lat),lng:n.lng-(next.lng-n.lng)}
+    const nx=next||{lat:n.lat+(n.lat-prev.lat),lng:n.lng+(n.lng-prev.lng)}
+    const cosLat=Math.cos(n.lat*Math.PI/180)
+    const dlat=nx.lat-p.lat
+    const dlng=(nx.lng-p.lng)*cosLat   // scale lng to match lat units
+    const len=Math.sqrt(dlat*dlat+dlng*dlng)||1e-9
+    return{dlat:dlat/len,dlng:dlng/len,cosLat}
+  })
 }
 
 // ════════════════════════════════════
@@ -1667,21 +1676,29 @@ function checkNodeProximity(lat,lng){
   const nextNode=ordered[currentNodeIdx]
   if(!nextNode) return
   const dist=haversine(lat,lng,nextNode.lat,nextNode.lng)
-  const triggerR=nextNode.radius||AUTO_RECORD_DIST
-  const inRange=nodeInRange(lat,lng,nextNode)
   // Update distance display
   const card=$('next-node-card')
   $('nnc-dist-num').textContent=dist
-  $('nnc-auto-hint').textContent=nextNode.polygon&&nextNode.polygon.length>=3?'• 自訂區域內自動記錄':`• ${triggerR}m 內自動記錄`
-  if(inRange){
-    card.classList.add('arriving')
+  $('nnc-auto-hint').textContent='• 通過感應線自動記錄'
+  // Approaching indicator: card turns green within 40m
+  if(dist<=40) card.classList.add('arriving')
+  else card.classList.remove('arriving')
+  // ── Line-crossing detection ──
+  const dir=nodeDirections[currentNodeIdx]
+  if(!dir) return
+  const dLat=(lat-nextNode.lat)
+  const dLng=(lng-nextNode.lng)*dir.cosLat   // scale lng to match lat units
+  const dot=dLat*dir.dlat+dLng*dir.dlng      // positive = past node, negative = before node
+  const side=dot>=0?1:-1
+  const prev=nodeLineSide[currentNodeIdx]
+  nodeLineSide[currentNodeIdx]=side
+  if(prev===null) return   // first GPS reading: just initialize side
+  if(prev===-1&&side===1){ // crossed from before → past (forward crossing)
     if(!nodeAutoLock){
       nodeAutoLock=true
       setTimeout(()=>{nodeAutoLock=false},3000)  // always reset, even if recordNode throws
       try{ recordNode(true) }catch(e){ console.error('recordNode err',e) }
     }
-  }else{
-    card.classList.remove('arriving')
   }
 }
 function manualRecordNode(){
@@ -1948,19 +1965,25 @@ function startSurvey(){
   if(surveyRouteLayer){ surveyRouteLayer.clearLayers() } else { surveyRouteLayer=L.layerGroup().addTo(mapSurvey) }
   if(config.nodes&&config.nodes.length>=2){
     const ordered=getOrderedNodes()
+    // Compute line-crossing detection state for this trip direction
+    nodeDirections=computeNodeDirections(ordered)
+    nodeLineSide=ordered.map(()=>null)
     const lls=routePolylines.length>0
       ?(cur.direction==='return'?[...routePolylines].reverse().map(s=>[...s].reverse()).flat():routePolylines.flat())
       :ordered.map(n=>[n.lat,n.lng])
     L.polyline(lls,{color:'#6366f1',weight:7,opacity:.85}).addTo(surveyRouteLayer)
-    // ── Detection zone overlays (drawn first so markers appear on top) ──
+    // ── Detection stop lines (perpendicular to route at each node) ──
     ordered.forEach((n,i)=>{
-      const zc=i===0?'#16a34a':i===ordered.length-1?'#dc2626':'#6366f1'
-      const zOpts={color:zc,weight:2,opacity:0.65,fillColor:zc,fillOpacity:0.18,interactive:false}
-      if(n.polygon&&n.polygon.length>=3){
-        L.polygon(n.polygon,zOpts).addTo(surveyRouteLayer)
-      }else{
-        L.circle([n.lat,n.lng],{...zOpts,radius:n.radius||15}).addTo(surveyRouteLayer)
-      }
+      const color=i===0?'#16a34a':i===ordered.length-1?'#dc2626':'#6366f1'
+      const dir=nodeDirections[i]
+      if(!dir) return
+      // Perpendicular direction: rotate route vector 90° in scaled space
+      const halfM=25  // half-width of stop line in metres
+      const perpLat=-dir.dlng*halfM/111000
+      const perpLng=dir.dlat*halfM/(111000*(dir.cosLat||1))
+      const p1=[n.lat+perpLat,n.lng+perpLng]
+      const p2=[n.lat-perpLat,n.lng-perpLng]
+      L.polyline([p1,p2],{color,weight:4,opacity:0.9,interactive:false}).addTo(surveyRouteLayer)
     })
     // ── Numbered node markers ──
     ordered.forEach((n,i)=>{
