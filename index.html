@@ -240,34 +240,33 @@ input,select,textarea{font-size:max(16px,1em)!important}
 <body>
 
 <!-- ══ Screen: Cloud Loading ══ -->
-<div id="screen-loading" class="screen" style="background:#0f172a;align-items:center;justify-content:center;flex-direction:column;gap:24px">
-  <div id="loading-msg" style="color:#f1f5f9;font-size:20px;font-weight:700;letter-spacing:.5px">任務下載中</div>
-  <div id="loading-sub" style="color:#64748b;font-size:13px;text-align:center;max-width:220px;line-height:1.6"></div>
+<div id="screen-loading" class="screen" style="background:#0f172a;align-items:center;justify-content:center;flex-direction:column;gap:28px">
   <div style="width:min(86vw,320px)">
-    <!-- Road + traffic light scene — 120px tall so everything fits:
-         pole bottom:24 height:46 → top 70px; box bottom:68 height:48 → top 116px < 120 ✓ -->
-    <div style="position:relative;height:120px;overflow:visible">
-      <!-- Traffic light pole (sits on road surface) -->
-      <div id="tl-pole" style="position:absolute;left:calc(66% - 1px);bottom:24px;width:3px;height:46px;background:#6b7280;border-radius:1px 1px 0 0"></div>
-      <!-- Traffic light box (atop pole; fully inside the 120px container) -->
-      <div id="tl-box" style="position:absolute;left:calc(66% - 11px);bottom:68px;width:23px;height:48px;background:#111827;border-radius:4px;padding:3px 4px;display:flex;flex-direction:column;justify-content:space-around;box-shadow:0 2px 10px rgba(0,0,0,.7)">
-        <div id="tl-red"    style="width:15px;height:15px;background:#ef4444;border-radius:50%;box-shadow:0 0 8px #ef4444"></div>
-        <div id="tl-yellow" style="width:15px;height:15px;background:#1f2937;border-radius:50%"></div>
-        <div id="tl-green"  style="width:15px;height:15px;background:#1f2937;border-radius:50%"></div>
-      </div>
-      <!-- Road surface at very bottom -->
-      <div style="position:absolute;bottom:0;left:0;right:0;height:24px;background:#374151;border-radius:6px 6px 0 0">
-        <div style="position:absolute;top:50%;transform:translateY(-50%);left:6px;right:6px;height:2px;
+    <!-- Road + traffic light scene -->
+    <div style="position:relative;height:80px">
+      <!-- Road (full width) -->
+      <div style="position:absolute;bottom:6px;left:0;right:0;height:26px;background:#374151;border-radius:6px">
+        <!-- Dashed center line -->
+        <div style="position:absolute;top:50%;transform:translateY(-50%);left:4px;right:4px;height:3px;
              background:repeating-linear-gradient(90deg,#fbbf24 0 10px,transparent 10px 20px)"></div>
       </div>
-      <!-- Car sits on road surface (bottom:24px = top of road), flipped to face right -->
-      <div id="car-icon" style="position:absolute;bottom:24px;font-size:30px;left:2px;transform:scaleX(-1);transition:left 1.5s cubic-bezier(.35,0,.25,1)">🚗</div>
+      <!-- Car -->
+      <div id="car-icon" style="position:absolute;bottom:22px;font-size:35px;left:2px;transform:scaleX(-1);transition:left 1.2s cubic-bezier(.4,0,.2,1)">🚗</div>
+      <!-- Traffic light at 2/3 position -->
+      <div id="tl-pole" style="position:absolute;left:calc(66% - 1px);bottom:6px;width:3px;height:56px;background:#4b5563;border-radius:2px"></div>
+      <div id="tl-box" style="position:absolute;left:calc(66% - 11px);bottom:44px;width:24px;background:#1e293b;border-radius:5px;padding:3px 5px;display:flex;flex-direction:column;gap:3px;box-shadow:0 2px 8px rgba(0,0,0,.6)">
+        <div id="tl-red"    style="width:14px;height:14px;background:#ef4444;border-radius:50%;box-shadow:0 0 7px #ef4444"></div>
+        <div id="tl-yellow" style="width:14px;height:14px;background:#374151;border-radius:50%"></div>
+        <div id="tl-green"  style="width:14px;height:14px;background:#374151;border-radius:50%"></div>
+      </div>
     </div>
     <!-- Progress bar -->
-    <div style="height:5px;background:#1e293b;border-radius:3px;margin-top:6px">
+    <div style="height:5px;background:#1e293b;border-radius:3px;margin-top:4px">
       <div id="load-bar" style="height:100%;width:3%;background:#3b82f6;border-radius:3px;transition:width 1.2s cubic-bezier(.4,0,.2,1)"></div>
     </div>
   </div>
+  <div id="loading-msg" style="color:#f1f5f9;font-size:20px;font-weight:700;letter-spacing:.5px">任務下載中</div>
+  <div id="loading-sub" style="color:#64748b;font-size:13px;text-align:center;max-width:220px;line-height:1.6"></div>
 </div>
 
 <!-- ══ Screen -1: Sign-in ══ -->
@@ -1678,8 +1677,8 @@ function checkNodeProximity(lat,lng){
     card.classList.add('arriving')
     if(!nodeAutoLock){
       nodeAutoLock=true
-      recordNode(true)
-      setTimeout(()=>{nodeAutoLock=false},3000)
+      setTimeout(()=>{nodeAutoLock=false},3000)  // always reset, even if recordNode throws
+      try{ recordNode(true) }catch(e){ console.error('recordNode err',e) }
     }
   }else{
     card.classList.remove('arriving')
@@ -2881,34 +2880,23 @@ function setLoadPct(pct){
   const bar=document.getElementById('load-bar')
   if(!car||!bar) return
   const containerW=Math.min(window.innerWidth*0.86,320)
-  const carSize=34                        // approx px width of 🚗 at font-size:30px
-  const lightX=containerW*0.66           // traffic light pole at 2/3
-  const stopPos=lightX-carSize-8         // car front stops 8px before the pole
-
+  const carSize=44
+  const lightX=containerW*0.66
+  const stopPos=lightX-carSize-4
   if(pct>=100){
-    // 1) First snap bar to 100%
-    bar.style.width='100%'
-    // 2) Bring car fully to stop position (in case not already there)
-    car.style.transition='left 0.8s cubic-bezier(.35,0,.2,1)'
-    car.style.left=stopPos+'px'
     const red=document.getElementById('tl-red'),grn=document.getElementById('tl-green'),ylw=document.getElementById('tl-yellow')
-    // 3) After car settles: red off → yellow on
+    if(red){ red.style.background='#374151'; red.style.boxShadow='none' }
+    if(ylw){ ylw.style.background='#fbbf24'; ylw.style.boxShadow='0 0 6px #fbbf24' }
+    bar.style.width='100%'
     setTimeout(()=>{
-      if(red){ red.style.background='#374151'; red.style.boxShadow='none' }
-      if(ylw){ ylw.style.background='#fbbf24'; ylw.style.boxShadow='0 0 7px #fbbf24' }
-    },600)
-    // 4) Yellow → green, car accelerates off-screen to the right
-    setTimeout(()=>{
-      if(ylw){ ylw.style.background='#1f2937'; ylw.style.boxShadow='none' }
-      if(grn){ grn.style.background='#22c55e'; grn.style.boxShadow='0 0 10px #22c55e' }
-      car.style.transition='left 0.9s cubic-bezier(.4,0,.8,1)'
-      car.style.left=(containerW+30)+'px'    // exits right side of road
-    },1050)
+      if(ylw){ ylw.style.background='#374151'; ylw.style.boxShadow='none' }
+      if(grn){ grn.style.background='#22c55e'; grn.style.boxShadow='0 0 9px #22c55e' }
+      car.style.transition='left 1.0s cubic-bezier(.2,0,.6,1)'
+      car.style.left=(containerW-carSize)+'px'
+    },420)
   } else {
-    // 🔴 Red light — car smoothly approaches and slows to stop
-    const pos=Math.max(2, stopPos*Math.min(pct,94)/94)
-    car.style.transition='left 1.5s cubic-bezier(.35,0,.25,1)'
-    car.style.left=pos+'px'
+    const maxPos=Math.max(2, stopPos*Math.min(pct,94)/94)
+    car.style.left=maxPos+'px'
     bar.style.width=Math.max(3,pct)+'%'
   }
 }
