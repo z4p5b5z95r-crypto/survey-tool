@@ -605,6 +605,7 @@ let activeDelay=null, delayLog=[]
 // Nodes
 let nodeTimestamps=[], currentNodeIdx=0
 let nodeAutoLock = false   // prevent double-trigger within 3s
+let nodeApproaching = false  // true while within 40m of next node (to fire approach beep once)
 let nodeDirections=[]      // unit direction vectors along route at each node
 let nodeLineSide=[]        // last GPS side of each node's detection line (null=uninit,-1=before,1=past)
 
@@ -1680,9 +1681,14 @@ function checkNodeProximity(lat,lng){
   const card=$('next-node-card')
   $('nnc-dist-num').textContent=dist
   $('nnc-auto-hint').textContent='• 通過感應線自動記錄'
-  // Approaching indicator: card turns green within 40m
-  if(dist<=40) card.classList.add('arriving')
-  else card.classList.remove('arriving')
+  // Approaching indicator: card turns green within 40m, beep once on entry
+  if(dist<=40){
+    card.classList.add('arriving')
+    if(!nodeApproaching){ nodeApproaching=true; playApproachBeep() }
+  }else{
+    card.classList.remove('arriving')
+    nodeApproaching=false
+  }
   // ── Line-crossing detection ──
   const dir=nodeDirections[currentNodeIdx]
   if(!dir) return
@@ -1741,6 +1747,24 @@ async function playDelayBeep(isStart){
   }catch(e){}
 }
 
+function playApproachBeep(){
+  try{
+    if(!audioCtx||audioCtx.state==='closed') return
+    if(audioCtx.state==='suspended') audioCtx.resume()
+    const ctx=audioCtx, t=ctx.currentTime
+    // Soft rising two-tone: gentle alert that node is coming up
+    const play=(freq,startT,dur,vol)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain()
+      o.connect(g);g.connect(ctx.destination)
+      o.type='sine';o.frequency.setValueAtTime(freq,startT)
+      g.gain.setValueAtTime(vol||0.3,startT)
+      g.gain.exponentialRampToValueAtTime(0.001,startT+dur)
+      o.start(startT);o.stop(startT+dur)
+    }
+    play(660,t,0.1,0.25);play(780,t+0.12,0.15,0.2)
+  }catch(e){}
+}
+
 function playNodeBeep(isFinal){
   try{
     // Reuse the unlocked AudioContext created on user gesture in startSurvey()
@@ -1791,6 +1815,7 @@ function recordNode(auto){
   if(line) line.className='nd-line done'
   const justRecorded=currentNodeIdx+1
   currentNodeIdx++
+  nodeApproaching=false   // reset so next node fires its own approach beep
   const isFinal=currentNodeIdx>=names.length
   playNodeBeep(isFinal)
 
@@ -1913,6 +1938,7 @@ function startSurvey(){
   nodeTimestamps=[]   // will be filled when nodes are hit
   currentNodeIdx=0    // 0 = waiting for node 1
   nodeAutoLock=false
+  nodeApproaching=false
   totalPausedMs=0
   unlockAudio()          // unlock AudioContext while we still have the user gesture
   startAudioKeepAlive()  // silent loop keeps iOS from suspending the context
