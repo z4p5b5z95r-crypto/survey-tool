@@ -1420,21 +1420,34 @@ function refreshRadiusCircles(){
     const pts=getNodeStopLinePts(i)
     // Semi-transparent stop line (more transparent)
     radiusCircles.push(L.polyline(pts,{color,weight:5,opacity:0.28,interactive:false}).addTo(map))
-    // Arrowhead cap icon — points outward from node center
-    const mkArrowIcon=(bearing)=>L.divIcon({
-      html:`<div style="width:24px;height:24px;transform:rotate(${bearing}deg);transform-origin:center;cursor:grab">
-        <svg width="24" height="24" viewBox="-12 -12 24 24" xmlns="http://www.w3.org/2000/svg">
-          <polygon points="0,-11 -7,3 0,-1 7,3" fill="${color}" opacity="0.7" stroke="white" stroke-width="1.8" stroke-linejoin="round"/>
+    // Curved double-arrow rotation handle (arc opens toward node center)
+    // Arc: CW semicircle on right side → concave faces LEFT (west) by default
+    // Rotation: p1 = lineAngle-90°, p2 = lineAngle+90° (so concave always faces node)
+    const baseAngle=n.lineAngle!=null?n.lineAngle:autoStopLineBearing(i)
+    const makeArcHtml=(rotDeg)=>{
+      const uid=`sl${i}r${rotDeg|0}`
+      return `<div style="width:30px;height:30px;transform:rotate(${rotDeg}deg);transform-origin:center;cursor:grab">
+        <svg width="30" height="30" viewBox="-15 -15 30 30" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="${uid}s" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+              <path d="M 0,0 L 8,4 L 0,8 L 2,4 Z" fill="${color}" opacity="0.8"/>
+            </marker>
+            <marker id="${uid}e" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="4" markerHeight="4" orient="auto">
+              <path d="M 0,0 L 8,4 L 0,8 L 2,4 Z" fill="${color}" opacity="0.8"/>
+            </marker>
+          </defs>
+          <path d="M 5,-9 A 10.3 10.3 0 0 1 5,9"
+            fill="none" stroke="${color}" stroke-width="2.8" opacity="0.72"
+            marker-start="url(#${uid}s)" marker-end="url(#${uid}e)"/>
         </svg>
-      </div>`,
-      className:'',iconSize:[24,24],iconAnchor:[12,12]
-    })
-    const getBearing=(ptIdx)=>{
-      const base=n.lineAngle!=null?n.lineAngle:autoStopLineBearing(i)
-      return ptIdx===0?base:(base+180)%360
+      </div>`
     }
     const mkHandle=(ptIdx)=>{
-      const m=L.marker(pts[ptIdx],{draggable:true,icon:mkArrowIcon(getBearing(ptIdx))}).addTo(map)
+      const rotDeg=ptIdx===0?baseAngle-90:baseAngle+90
+      const m=L.marker(pts[ptIdx],{
+        draggable:true,
+        icon:L.divIcon({html:makeArcHtml(rotDeg),className:'',iconSize:[30,30],iconAnchor:[15,15]})
+      }).addTo(map)
       m.on('drag',function(){
         const {lat,lng}=this.getLatLng()
         let b=pmCalcBearing(nodes[i].lat,nodes[i].lng,lat,lng)
@@ -1446,10 +1459,9 @@ function refreshRadiusCircles(){
         const pair=stopLineHandles[i]
         if(pair){
           pair[0].setLatLng(newPts[0]); pair[1].setLatLng(newPts[1])
-          // Update arrow rotations live
-          const b0=nodes[i].lineAngle, b1=(nodes[i].lineAngle+180)%360
-          pair[0].getElement()?.firstChild?.style.setProperty('transform',`rotate(${b0}deg)`)
-          pair[1].getElement()?.firstChild?.style.setProperty('transform',`rotate(${b1}deg)`)
+          const nb=nodes[i].lineAngle
+          pair[0].getElement()?.firstChild?.style.setProperty('transform',`rotate(${nb-90}deg)`)
+          pair[1].getElement()?.firstChild?.style.setProperty('transform',`rotate(${nb+90}deg)`)
         }
       })
       m.on('dragend',()=>renderNodeList())
