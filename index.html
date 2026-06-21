@@ -2310,7 +2310,15 @@ function buildTripsPayload(){
       segTimes:        t.segTimes,
       nodeTimestamps:  (t.nodeTimestamps||[]).map(ts=>ts instanceof Date?ts.toISOString():ts),
       roadDelays:      t.roadDelays,
-      intDelays:       t.intDelays
+      intDelays:       t.intDelays,
+      // GPS track (1 point every 5 — reduce payload size while keeping shape)
+      gpsTrack: (t.gpsTrack||[]).filter((_,i)=>i%5===0).map(p=>({lat:p.lat,lng:p.lng})),
+      // Delay events with GPS position (for map markers)
+      delayLog: (t.delayLog||[]).filter(d=>d.pos?.lat&&d.pos?.lng).map(d=>({
+        cause:d.cause, label:d.label, icon:d.icon, durationS:d.durationS,
+        pos:{lat:d.pos.lat,lng:d.pos.lng},
+        startedAt:d.startedAt instanceof Date?d.startedAt.toISOString():d.startedAt
+      }))
     }
   })
   return out
