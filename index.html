@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no,viewport-fit=cover"/>
-<title>旅行時間調查</title>
+<title>---🚗---</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/nosleep.js/dist/NoSleep.min.js"></script>
@@ -662,9 +662,9 @@ function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'))
   $(id).classList.add('active')
   setTimeout(()=>{
-    if(id==='screen-survey'&&mapSurvey){ mapSurvey.invalidateSize(); _cssRotDeg=null; _lastRotated=null; rotateNavMap(_navBearing??compassHeading) }
-    if(id==='screen-report'&&mapResult)  mapResult.invalidateSize()
-    if(id==='screen-ready'&&mapReady)    mapReady.invalidateSize()
+    if(id==='screen-survey'&&mapSurvey){ mapSurvey.invalidateSize(); requestAnimationFrame(()=>{ if(mapSurvey)mapSurvey.invalidateSize() }); _cssRotDeg=null; _lastRotated=null; rotateNavMap(_navBearing??compassHeading) }
+    if(id==='screen-report'&&mapResult)  { mapResult.invalidateSize(); requestAnimationFrame(()=>{ if(mapResult)mapResult.invalidateSize() }) }
+    if(id==='screen-ready'&&mapReady)    { mapReady.invalidateSize(); requestAnimationFrame(()=>{ if(mapReady)mapReady.invalidateSize() }) }
   },120)
   // Reset report to 總覽 tab when entering report screen
   if(id==='screen-report'){
@@ -1432,11 +1432,11 @@ function startFromQR(){
   saveSurveyorInfo()   // remember this name+weather for today
   // Restore any trips recorded in earlier sessions for this QR
   const restored=loadTripsFromStorage()
-  initMaps()
   initCompass()   // request compass on user gesture (sign-in button click)
   updateProgressChips()
-  showScreen('screen-ready')
+  showScreen('screen-ready')   // show FIRST so container has real size
   $('ready-title').textContent='🚗 '+config.routeName
+  requestAnimationFrame(()=>initMaps())  // init map AFTER browser paints the screen
   $('ready-route-info').textContent=config.routeFromTo
   updateRestoredBanner(Object.keys(allTrips).length)
   renderHistory()
@@ -1479,10 +1479,10 @@ function saveSetup(){
   if(!config.routeName){showToast('請填路線名稱');return}
   if(!config.segments.length){showToast('請至少新增一個路段');return}
   if(!config.weather){showToast('請選擇天氣');return}
-  initMaps()
   updateProgressChips()
   $('ready-title').textContent='🚗 '+config.routeName
-  showScreen('screen-ready')
+  showScreen('screen-ready')   // show FIRST so container has real size
+  requestAnimationFrame(()=>initMaps())  // init map AFTER browser paints
   setTimeout(()=>{const d=$('gps-dot');if(!d.classList.contains('good')&&!d.classList.contains('poor')){d.className='gps-dot poor';$('gps-text').textContent='GPS訊號弱，可嘗試開始';checkStart()}},5000)
 }
 
@@ -2024,7 +2024,10 @@ function startSurvey(){
   // ── Every time survey starts: re-center on current position ──
   _mapFollowing=true; _updateLocateBtn()
   if(_mapFollowTimer){ clearTimeout(_mapFollowTimer); _mapFollowTimer=null }
-  if(lastPos) mapSurvey.setView([lastPos.lat,lastPos.lng],17,{animate:false})
+  if(lastPos){
+    if(markerSurvey) markerSurvey.setLatLng([lastPos.lat,lastPos.lng])
+    mapSurvey.setView([lastPos.lat,lastPos.lng],17,{animate:false})
+  }
   // ── Draw/redraw route overlay for current direction ──
   if(surveyRouteLayer){ surveyRouteLayer.clearLayers() } else { surveyRouteLayer=L.layerGroup().addTo(mapSurvey) }
   if(config.nodes&&config.nodes.length>=2){

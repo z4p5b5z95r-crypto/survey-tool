@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>交通行駛速率與延滯調查</title>
+<title>---🚗---</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -290,6 +290,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .tb-btn.active svg{stroke:#1d4ed8}
 .tb-btn.active-measure{background:#fffbeb;color:#b45309}
 .tb-btn.active-measure svg{stroke:#b45309}
+.tb-btn.active-stopline{background:#f0fdf4;color:#16a34a}
+.tb-btn.active-stopline svg{stroke:#16a34a}
 .tb-btn.danger{color:#dc2626}
 .tb-btn.danger svg{stroke:#dc2626}
 .tb-btn.danger:hover{background:#fff1f2}
@@ -571,7 +573,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
       <!-- EDIT VIEW -->
       <div id="view-edit">
         <div class="ev-header">
-          <button class="btn-back" onclick="showListView()">
+          <button class="btn-back" onclick="maybeLeaveEdit()">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
             專案列表
           </button>
@@ -707,6 +709,10 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
         <button class="tb-btn" id="tool-measure" onclick="toggleMeasure()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20M2 12l3.5-3.5M2 12l3.5 3.5M22 12l-3.5-3.5M22 12l-3.5 3.5"/><line x1="8" y1="9" x2="8" y2="15"/><line x1="12" y1="7" x2="12" y2="17"/><line x1="16" y1="9" x2="16" y2="15"/></svg>
           <span id="tool-measure-label">量測距離</span>
+        </button>
+        <button class="tb-btn" id="tool-stopline" onclick="toggleStopLineMode()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="7" x2="4" y2="17"/><line x1="20" y1="7" x2="20" y2="17"/><path d="M9 12 A3 3 0 0 1 15 12" stroke-width="2"/></svg>
+          <span id="tool-stopline-label">旋轉偵測線</span>
         </button>
         <div class="tb-hline"></div>
         <button class="tb-btn danger" onclick="clearAll()">
@@ -897,6 +903,36 @@ function enterApp(name) {
 // ════════════════════════════════════════════════════════
 let _inEditView = false
 
+let _leaveDialogEl=null
+function _dismissLeaveDialog(){ if(_leaveDialogEl){_leaveDialogEl.remove();_leaveDialogEl=null} }
+function maybeLeaveEdit(){
+  if(!_dirty){ showListView(); return }
+  _dismissLeaveDialog()
+  const el=document.createElement('div')
+  el.style.cssText='position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center'
+  el.innerHTML=`<div style="background:white;border-radius:14px;padding:22px 22px 16px;max-width:300px;width:88%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+    <div style="font-size:14px;font-weight:600;color:#1e293b;margin-bottom:6px">離開前是否儲存？</div>
+    <div style="font-size:12px;color:#64748b;margin-bottom:18px">此專案有未儲存的變更。</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button onclick="_leaveAndSave()" style="width:100%;padding:10px;background:#3b82f6;color:white;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">💾 儲存</button>
+      <button onclick="_leaveNoSave()" style="width:100%;padding:10px;background:#f1f5f9;color:#374151;border:none;border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">不儲存</button>
+      <button onclick="_dismissLeaveDialog()" style="width:100%;padding:10px;background:transparent;color:#94a3b8;border:none;border-radius:9px;font-size:13px;cursor:pointer;font-family:inherit">取消</button>
+    </div>
+  </div>`
+  document.body.appendChild(el); _leaveDialogEl=el
+}
+window._leaveAndSave=async function(){ await saveTask(); _dismissLeaveDialog(); showListView() }
+window._leaveNoSave=function(){ _dirty=false; _dismissLeaveDialog(); showListView() }
+function clearMapDisplay() {
+  nodeMarkers.forEach(m=>map.removeLayer(m)); nodeMarkers=[]
+  radiusCircles.forEach(c=>map.removeLayer(c)); radiusCircles=[]
+  _removeStopLineHandles()
+  segPolylines.forEach(p=>map.removeLayer(p)); segPolylines=[]
+  clearMidHandles()
+  nodes=[]; segData=[]
+  dismissInsertChoice(); dismissWaypointMenu()
+}
+
 function showListView() {
   _inEditView = false
   document.getElementById('view-list').style.display = 'flex'
@@ -904,6 +940,7 @@ function showListView() {
   document.getElementById('map-toolbar').style.display = 'none'
   document.getElementById('tb-save').style.display = 'none'
   updateCrumb(null)
+  clearMapDisplay()
   renderProjects()
   if (mode === 'node') setMode('browse')
 }
@@ -932,7 +969,7 @@ function updateCrumb(cur) {
     el.innerHTML = '<span class="tb-crumb-home">所有專案</span>'
   } else {
     el.innerHTML = `
-      <span class="tb-crumb-home" onclick="showListView()">所有專案</span>
+      <span class="tb-crumb-home" onclick="maybeLeaveEdit()">所有專案</span>
       <span class="tb-crumb-sep">›</span>
       <span class="tb-crumb-cur">${cur}</span>`
   }
@@ -1065,14 +1102,17 @@ map.on('click', () => { hideResults() })
 //  STATE
 // ════════════════════════════════════════════════════════
 let mode='browse', nodes=[], nodeMarkers=[], radiusCircles=[], stopLineHandles=[], segPolylines=[], midHandles=[], routeEditMode=false, pendingLatLng=null
+let _stopLineMode=false
 let _undoHistory=[], _redoHistory=[], _suppressHistory=false
 function _syncHistoryBtns(){
   const u=document.getElementById('tool-undo'),r=document.getElementById('tool-redo')
   if(u) u.disabled=_undoHistory.length===0
   if(r) r.disabled=_redoHistory.length===0
 }
+let _dirty=false
 function pushHistory(){
   if(_suppressHistory) return   // ignore calls during rebuild
+  _dirty=true
   _undoHistory.push({nodes:JSON.parse(JSON.stringify(nodes)),segData:JSON.parse(JSON.stringify(segData))})
   if(_undoHistory.length>30)_undoHistory.shift()
   _redoHistory=[]  // new action clears redo stack
@@ -1150,7 +1190,8 @@ function getNodeColor(i) { return i===0 ? '#16a34a' : i===nodes.length-1 ? '#dc2
 // ════════════════════════════════════════════════════════
 function createMidIcon(active) {
   const inner=active?18:12
-  return L.divIcon({ html:`<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:grab"><div style="width:${inner}px;height:${inner}px;background:white;border:3px solid #3b82f6;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.4);transition:width .1s,height .1s;${active?'border-color:#1d4ed8':''}"></div></div>`, className:'', iconSize:[32,32], iconAnchor:[16,16] })
+  // pointer-events:none on inner content — Leaflet drag handler needs to receive events on the outer icon element
+  return L.divIcon({ html:`<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:grab;pointer-events:none"><div style="width:${inner}px;height:${inner}px;background:white;border:3px solid ${active?'#1d4ed8':'#3b82f6'};border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.4);transition:width .1s,height .1s;pointer-events:none"></div></div>`, className:'', iconSize:[32,32], iconAnchor:[16,16] })
 }
 function getPolylineMidpoint(poly) {
   const pts=poly.getLatLngs(); if(pts.length<2) return pts[0]
@@ -1171,21 +1212,94 @@ function toggleRouteEdit() {
   else clearMidHandles()
 }
 
-let _insertChoiceEl=null
-function dismissInsertChoice() { if(_insertChoiceEl){_insertChoiceEl.remove();_insertChoiceEl=null} }
-function showInsertChoice(segIdx,lat,lng) {
-  dismissInsertChoice()
-  const el=document.createElement('div')
-  el.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3000;background:#0f172a;border:1px solid #334155;border-radius:14px;padding:14px 14px 10px;min-width:230px;box-shadow:0 8px 32px rgba(0,0,0,.6)'
-  el.innerHTML=`<div style="font-size:11px;color:#64748b;font-weight:700;text-align:center;margin-bottom:10px;letter-spacing:.4px">插入哪種節點？</div>
-    <button onclick="doInsertRealNode(${segIdx},${lat},${lng})" style="width:100%;padding:10px 12px;background:#172554;border:1px solid #2563eb;color:#93c5fd;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:7px;font-family:inherit;text-align:left">📍 真節點<span style="font-size:11px;font-weight:400;color:#60a5fa;display:block;margin-top:2px">加入節點清單，產生新路段</span></button>
-    <button onclick="doInsertWaypoint(${segIdx},${lat},${lng})" style="width:100%;padding:10px 12px;background:#1a0a2e;border:1px solid #7c3aed;color:#c4b5fd;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:7px;font-family:inherit;text-align:left">✏️ 途徑點（假節點）<span style="font-size:11px;font-weight:400;color:#a78bfa;display:block;margin-top:2px">只調整路線走向，不計入節點</span></button>
-    <button onclick="cancelInsertChoice()" style="width:100%;padding:7px;background:transparent;border:1px solid #334155;color:#64748b;border-radius:9px;font-size:12px;cursor:pointer;font-family:inherit">取消</button>`
-  document.body.appendChild(el); _insertChoiceEl=el
+let _insertChoiceEl=null, _insertTooltipCb=null
+function dismissInsertChoice() { if(_insertChoiceEl){_insertChoiceEl.remove();_insertChoiceEl=null}; _insertTooltipCb=null }
+function cancelInsertChoice() { dismissInsertChoice(); pendingLatLng=null; refreshMidHandles() }
+window._confirmInsert=function(){
+  const name=(document.getElementById('_ins_name_inp')?.value||'').trim()||`節點${nodes.length+1}`
+  const cb=_insertTooltipCb; dismissInsertChoice(); if(cb) cb(name)
 }
-function cancelInsertChoice() { dismissInsertChoice(); refreshMidHandles() }
-async function doInsertWaypoint(segIdx,lat,lng) {
+let _wpMenuEl=null
+function dismissWaypointMenu(){ if(_wpMenuEl){_wpMenuEl.remove();_wpMenuEl=null} }
+function showWaypointMenu(lat,lng,segIdx,wpIdx){
+  dismissWaypointMenu(); dismissInsertChoice()
+  const containerPt=map.latLngToContainerPoint([lat,lng])
+  const mapRect=map.getContainer().getBoundingClientRect()
+  const sx=mapRect.left+containerPt.x, sy=mapRect.top+containerPt.y
+  const CARD_W=130, CARD_H=52, ARROW=10
+  const flip=sy-CARD_H-ARROW-6<64
+  const arrowDown=`<div style="width:${ARROW}px;height:${ARROW}px;background:white;border-right:0.5px solid #e2e8f0;border-bottom:0.5px solid #e2e8f0;transform:rotate(45deg);margin:-${ARROW/2}px auto 0;position:relative;z-index:1"></div>`
+  const arrowUp=`<div style="width:${ARROW}px;height:${ARROW}px;background:white;border-left:0.5px solid #e2e8f0;border-top:0.5px solid #e2e8f0;transform:rotate(45deg);margin:0 auto -${ARROW/2}px;position:relative;z-index:1"></div>`
+  const el=document.createElement('div')
+  el.style.cssText=`position:fixed;z-index:3000;width:${CARD_W}px`
+  el.innerHTML=`${flip?arrowUp:''}
+    <div style="background:white;border-radius:9px;box-shadow:0 4px 16px rgba(0,0,0,.16);border:0.5px solid #e2e8f0;padding:9px 11px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span style="font-size:11px;color:#64748b;font-weight:500">途徑點</span>
+      <button onclick="deleteWaypoint(${segIdx},${wpIdx})" style="font-size:11px;font-weight:600;padding:4px 10px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;cursor:pointer;font-family:inherit">🗑 刪除</button>
+    </div>
+    ${flip?'':arrowDown}`
+  let left=sx-CARD_W/2
+  let top=flip?sy+ARROW/2+4:sy-CARD_H-ARROW/2-4
+  left=Math.max(8,Math.min(left,window.innerWidth-CARD_W-8))
+  top=Math.max(64,top)
+  el.style.left=left+'px'; el.style.top=top+'px'
+  document.body.appendChild(el); _wpMenuEl=el
+  // dismiss on map click
+  setTimeout(()=>map.once('click',dismissWaypointMenu),50)
+}
+window.deleteWaypoint=async function(segIdx,wpIdx){
+  dismissWaypointMenu()
+  pushHistory()
+  segData[segIdx].waypoints.splice(wpIdx,1)
+  document.getElementById('route-loading').style.display='block'
+  await refreshSegment(segIdx)
+  document.getElementById('route-loading').style.display='none'
+  refreshMidHandles()
+  toast('途徑點已移除')
+}
+function showInsertTooltip(lat,lng,cb){
   dismissInsertChoice()
+  const containerPt=map.latLngToContainerPoint([lat,lng])
+  const mapRect=map.getContainer().getBoundingClientRect()
+  const sx=mapRect.left+containerPt.x, sy=mapRect.top+containerPt.y
+  const CARD_W=178, CARD_H=112, ARROW=10
+  const flip=sy-CARD_H-ARROW-6<64
+  const arrowDown=`<div style="width:${ARROW}px;height:${ARROW}px;background:white;border-right:0.5px solid #e2e8f0;border-bottom:0.5px solid #e2e8f0;transform:rotate(45deg);margin:-${ARROW/2}px auto 0;position:relative;z-index:1"></div>`
+  const arrowUp=`<div style="width:${ARROW}px;height:${ARROW}px;background:white;border-left:0.5px solid #e2e8f0;border-top:0.5px solid #e2e8f0;transform:rotate(45deg);margin:0 auto -${ARROW/2}px;position:relative;z-index:1"></div>`
+  const defName=`節點${nodes.length+1}`
+  const el=document.createElement('div')
+  el.style.cssText=`position:fixed;z-index:3000;width:${CARD_W}px`
+  el.innerHTML=`${flip?arrowUp:''}
+    <div style="background:white;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.18);border:0.5px solid #e2e8f0;padding:11px 13px">
+      <div style="font-size:12px;font-weight:600;color:#1e293b;margin-bottom:7px">＋ 插入節點</div>
+      <input id="_ins_name_inp" value="${defName}" style="width:100%;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;padding:5px 8px;margin-bottom:7px;outline:none;font-family:inherit;box-sizing:border-box;color:#1e293b"
+        onkeydown="if(event.key==='Enter')_confirmInsert();if(event.key==='Escape')cancelInsertChoice()"/>
+      <div style="display:flex;gap:5px">
+        <button onclick="_confirmInsert()" style="flex:1;font-size:12px;font-weight:600;padding:5px 0;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit">確認</button>
+        <button onclick="cancelInsertChoice()" style="font-size:12px;padding:5px 9px;background:#f1f5f9;color:#64748b;border:none;border-radius:6px;cursor:pointer;font-family:inherit">✕</button>
+      </div>
+    </div>
+    ${flip?'':arrowDown}`
+  let left=sx-CARD_W/2
+  let top=flip?sy+ARROW/2+4:sy-CARD_H-ARROW/2-4
+  left=Math.max(8,Math.min(left,window.innerWidth-CARD_W-8))
+  top=Math.max(64,top)
+  el.style.left=left+'px'; el.style.top=top+'px'
+  document.body.appendChild(el); _insertChoiceEl=el; _insertTooltipCb=cb
+  setTimeout(()=>{const i=document.getElementById('_ins_name_inp');if(i){i.focus();i.select()}},30)
+}
+function showInsertChoice(segIdx,lat,lng){
+  showInsertTooltip(lat,lng,async(name)=>{
+    pushHistory()
+    const newNodeList=[...nodes.slice(0,segIdx+1),{lat,lng,name,exitName:'',radius:15,lineAngle:null,lineLength:10},...nodes.slice(segIdx+1)]
+    const newSegData=[...segData.slice(0,segIdx),{name:'',lanes:segData[segIdx]?.lanes||2,width:segData[segIdx]?.width||8,length:0,_auto:true,waypoints:[]},{name:'',lanes:segData[segIdx]?.lanes||2,width:segData[segIdx]?.width||8,length:0,_auto:true,waypoints:[]},...segData.slice(segIdx+1)]
+    document.getElementById('route-loading').style.display='block'
+    await rebuildAllNodes(newNodeList,newSegData)
+    document.getElementById('route-loading').style.display='none'
+    toast(`✅ 已插入節點「${name}」`)
+  })
+}
+async function doInsertWaypoint(segIdx,lat,lng) {
   pushHistory()
   const newWp={lat,lng}
   if(!segData[segIdx].waypoints)segData[segIdx].waypoints=[]
@@ -1196,30 +1310,6 @@ async function doInsertWaypoint(segIdx,lat,lng) {
   document.getElementById('route-loading').style.display='none'
   refreshMidHandles()
 }
-async function doInsertRealNode(segIdx,lat,lng) {
-  dismissInsertChoice()
-  _pendingMidInsert={segIdx,lat,lng}
-  const dialog=document.getElementById('node-dialog')
-  dialog.style.left='50%';dialog.style.top='50%';dialog.style.transform='translate(-50%,-50%)'
-  dialog.style.display='block'
-  const inp=document.getElementById('nd-name'); inp.value=`節點${nodes.length+1}`; inp.focus(); inp.select()
-  _midInsertConfirm=true
-}
-let _pendingMidInsert=null, _midInsertConfirm=false
-async function confirmMidInsert() {
-  if(!_pendingMidInsert) return
-  pushHistory()
-  const {segIdx,lat,lng}=_pendingMidInsert; _pendingMidInsert=null; _midInsertConfirm=false
-  document.getElementById('node-dialog').style.display='none'
-  const name=document.getElementById('nd-name').value.trim()||`節點${nodes.length+1}`
-  document.getElementById('nd-name').value=''
-  const newNodeList=[...nodes.slice(0,segIdx+1),{lat,lng,name,exitName:'',radius:15},...nodes.slice(segIdx+1)]
-  const newSegData=[...segData.slice(0,segIdx),{name:'',lanes:segData[segIdx]?.lanes||2,width:segData[segIdx]?.width||8,length:0,_auto:true,waypoints:[]},{name:'',lanes:segData[segIdx]?.lanes||2,width:segData[segIdx]?.width||8,length:0,_auto:true,waypoints:[]},...segData.slice(segIdx+1)]
-  document.getElementById('route-loading').style.display='block'
-  await rebuildAllNodes(newNodeList,newSegData)
-  document.getElementById('route-loading').style.display='none'
-  toast(`✅ 已插入真節點「${name}」`)
-}
 function refreshMidHandles() {
   clearMidHandles(); if(mode!=='node'||nodes.length<2) return
   for(let segIdx=0;segIdx<nodes.length-1;segIdx++){
@@ -1227,8 +1317,7 @@ function refreshMidHandles() {
     const midPt=getPolylineMidpoint(poly)
     const insertHandle=L.marker(midPt,{draggable:true,interactive:true,zIndexOffset:2000,icon:createMidIcon(false),bubblingMouseEvents:false}).addTo(map)
     let _midDragged=false
-    insertHandle.on('dragstart',function(){_midDragged=true;this.setIcon(createMidIcon(true))})
-    insertHandle.on('drag',function(){this.setIcon(createMidIcon(true))})
+    insertHandle.on('dragstart',function(){_midDragged=true})
     insertHandle.on('dragend',async function(){
       const pos=this.getLatLng()
       await doInsertWaypoint(segIdx,pos.lat,pos.lng)
@@ -1240,12 +1329,17 @@ function refreshMidHandles() {
     midHandles.push(insertHandle)
     ;(segData[segIdx]?.waypoints||[]).forEach((wp,wpIdx)=>{
       const wpHandle=L.marker([wp.lat,wp.lng],{draggable:true,zIndexOffset:1500,icon:createWaypointIcon(false),bubblingMouseEvents:false}).addTo(map)
-      wpHandle.on('mouseover',function(){this.setIcon(createWaypointIcon(true))})
-      wpHandle.on('mouseout',function(){if(!this._drag)this.setIcon(createWaypointIcon(false))})
-      wpHandle.on('dragstart',function(){this._drag=true})
+      wpHandle.on('mouseover',function(){if(!this._drag){const d=this.getElement()?.firstChild;if(d)d.style.background='#ef4444'}})
+      wpHandle.on('mouseout',function(){if(!this._drag){const d=this.getElement()?.firstChild;if(d)d.style.background='#f59e0b'}})
+      wpHandle.on('dragstart',function(){this._drag=true;dismissWaypointMenu()})
       wpHandle.on('drag',function(e){const ll=e.target.getLatLng();segData[segIdx].waypoints[wpIdx]={lat:ll.lat,lng:ll.lng}})
-      wpHandle.on('dragend',async function(e){this._drag=false;this.setIcon(createWaypointIcon(false));pushHistory();const ll=e.target.getLatLng();segData[segIdx].waypoints[wpIdx]={lat:ll.lat,lng:ll.lng};document.getElementById('route-loading').style.display='block';await refreshSegment(segIdx);document.getElementById('route-loading').style.display='none';refreshMidHandles()})
-      wpHandle.on('click',async function(e){L.DomEvent.stopPropagation(e);pushHistory();segData[segIdx].waypoints.splice(wpIdx,1);document.getElementById('route-loading').style.display='block';await refreshSegment(segIdx);document.getElementById('route-loading').style.display='none';refreshMidHandles();toast('途徑點已移除')})
+      wpHandle.on('dragend',async function(e){this._drag=false;pushHistory();const ll=e.target.getLatLng();segData[segIdx].waypoints[wpIdx]={lat:ll.lat,lng:ll.lng};document.getElementById('route-loading').style.display='block';await refreshSegment(segIdx);document.getElementById('route-loading').style.display='none';refreshMidHandles()})
+      wpHandle.on('click',function(e){
+        L.DomEvent.stopPropagation(e)
+        if(this._drag) return
+        const ll=this.getLatLng()
+        showWaypointMenu(ll.lat,ll.lng,segIdx,wpIdx)
+      })
       midHandles.push(wpHandle)
     })
   }
@@ -1311,7 +1405,11 @@ function toggleNodeMode() {
 }
 function setMode(m) {
   if(m!=='measure'&&measuring) stopMeasure()
+  if(_stopLineMode){ _stopLineMode=false; document.getElementById('tool-stopline')?.classList.remove('active-stopline'); const sl=document.getElementById('tool-stopline-label');if(sl)sl.textContent='旋轉偵測線'; refreshRadiusCircles(); renderNodeList() }
   mode=m
+  // node dragging only allowed in node edit mode
+  if(m==='node') nodeMarkers.forEach(mk=>mk.dragging?.enable())
+  else nodeMarkers.forEach(mk=>mk.dragging?.disable())
   const nodeBtn=document.getElementById('tool-node')
   nodeBtn.classList.toggle('active', m==='node')
   const nodeLbl=document.getElementById('tool-node-label')
@@ -1397,24 +1495,16 @@ map.on('click', e => {
     }
   }
   if(_nearSeg>=0){ showInsertChoice(_nearSeg,e.latlng.lat,e.latlng.lng); return }
-  pendingLatLng=e.latlng
-  const pt=map.latLngToContainerPoint(e.latlng),mapRect=document.getElementById('map').getBoundingClientRect()
-  const dialog=document.getElementById('node-dialog'),dw=240,dh=115
-  let dx=pt.x+mapRect.left+12,dy=pt.y+mapRect.top-10
-  if(dx+dw>window.innerWidth)dx=window.innerWidth-dw-12
-  if(dy+dh>window.innerHeight)dy=window.innerHeight-dh-12
-  if(dy<60)dy=70
-  dialog.style.left=dx+'px';dialog.style.top=dy+'px';dialog.style.display='block'
-  const inp=document.getElementById('nd-name'); inp.value=`節點${nodes.length+1}`; inp.focus(); inp.select()
+  const {lat,lng}=e.latlng
+  showInsertTooltip(lat,lng,(name)=>{ addNode(lat,lng,name); cancelInsertChoice() })
 })
 map.on('dblclick', e => { if(mode==='measure'){L.DomEvent.stopPropagation(e);stopMeasure();setMode('browse')} })
 
 // ════════════════════════════════════════════════════════
 //  NODE DIALOG
 // ════════════════════════════════════════════════════════
-function confirmNode() { if(_midInsertConfirm){confirmMidInsert();return}; if(!pendingLatLng)return; const name=document.getElementById('nd-name').value.trim()||`節點${nodes.length+1}`; addNode(pendingLatLng.lat,pendingLatLng.lng,name); cancelNode() }
-function cancelNode() { if(_midInsertConfirm){_midInsertConfirm=false;_pendingMidInsert=null}; pendingLatLng=null; document.getElementById('node-dialog').style.display='none'; document.getElementById('nd-name').value=''; refreshMidHandles() }
-document.getElementById('nd-name').addEventListener('keydown', e => { if(e.key==='Enter')confirmNode(); if(e.key==='Escape')cancelNode() })
+function confirmNode() { _confirmInsert() }
+function cancelNode() { cancelInsertChoice() }
 
 // ════════════════════════════════════════════════════════
 //  ADD NODE
@@ -1424,10 +1514,11 @@ async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle
   const idx=nodes.length
   nodes.push({lat,lng,name,exitName:exitName||'',radius,polygon:polygon||null,lineAngle,lineLength})
   const color=getNodeColor(idx)
-  const marker=L.marker([lat,lng],{draggable:true,icon:createNodeIcon(idx+1,color),autoPan:true,bubblingMouseEvents:false}).addTo(map)
+  const marker=L.marker([lat,lng],{draggable:mode==='node',icon:createNodeIcon(idx+1,color),autoPan:true,bubblingMouseEvents:false}).addTo(map)
   nodeMarkers.push(marker); updateAllIcons(); refreshRadiusCircles()
   marker.on('click',function(e){
-    if(mode==='node'){L.DomEvent.stop(e);if(e.originalEvent)e.originalEvent.stopPropagation();return}
+    if(mode!=='node') return
+    L.DomEvent.stop(e); if(e.originalEvent)e.originalEvent.stopPropagation()
     const i=nodeMarkers.indexOf(this); if(i<0) return
     const n=nodes[i]; this.unbindPopup()
     this.bindPopup(`<div style="min-width:140px"><div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px">節點 ${i+1}：${n.name}</div><div style="font-size:11px;color:#64748b;margin-bottom:8px">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}<br>📡 觸發範圍 ${n.radius||15}m</div><div style="display:flex;gap:6px"><button class="node-popup-save" onclick="focusSidebarNode(${i});map.closePopup()" style="flex:1">✏️ 改名</button><button class="node-popup-del" onclick="popupDelete(${i})">🗑</button></div></div>`,{maxWidth:200}).openPopup()
@@ -1460,8 +1551,6 @@ async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle
     if(result.source==='straight')toast('⚠️ 使用直線距離（OSRM 無回應）')
     updateTotalLength()
   }
-  if(nodes.length===1) map.setView([lat,lng],16)
-  else if(nodes.length===2) map.fitBounds([[nodes[0].lat,nodes[0].lng],[lat,lng]],{padding:[60,60]})
   renderNodeList(); renderSegTable(); refreshMidHandles()
   // auto-expand nodes section
   openAcc('acc-nodes')
@@ -1525,6 +1614,17 @@ function getNodeStopLinePts(i){
   const latOff=(halfM/111000)*Math.cos(R),lngOff=(halfM/(111000*cosLat))*Math.sin(R)
   return[[n.lat+latOff,n.lng+lngOff],[n.lat-latOff,n.lng-lngOff]]
 }
+// Handle positions: zoom-adaptive so arc handles always appear ~50px from node on screen
+function getNodeHandlePts(i){
+  const n=nodes[i]
+  const bearing=n.lineAngle!=null?n.lineAngle:autoStopLineBearing(i)
+  const cosLat=Math.cos(n.lat*Math.PI/180)
+  const metersPerPx=40075016.686*cosLat/Math.pow(2,(map.getZoom()||17)+8)
+  const halfM=Math.max(7.5, 50*metersPerPx)  // at least 7.5m, grows when zoomed out
+  const R=bearing*Math.PI/180
+  const latOff=(halfM/111000)*Math.cos(R),lngOff=(halfM/(111000*cosLat))*Math.sin(R)
+  return[[n.lat+latOff,n.lng+lngOff],[n.lat-latOff,n.lng-lngOff]]
+}
 
 // ════════════════════════════════════════════════════════
 //  STOP LINE OVERLAYS + DRAGGABLE HANDLES
@@ -1533,58 +1633,76 @@ function _removeStopLineHandles(){
   stopLineHandles.forEach(pair=>{pair&&pair.forEach(m=>{if(m)map.removeLayer(m)})})
   stopLineHandles=[]
 }
+function _updateHandlePositions(){
+  nodes.forEach((n,i)=>{
+    const pair=stopLineHandles[i]; if(!pair) return
+    const pts=getNodeHandlePts(i)
+    pair[0].setLatLng(pts[0]); pair[1].setLatLng(pts[1])
+  })
+}
+function toggleStopLineMode(){
+  _stopLineMode=!_stopLineMode
+  const btn=document.getElementById('tool-stopline')
+  const lbl=document.getElementById('tool-stopline-label')
+  if(_stopLineMode){
+    if(measuring) stopMeasure()
+    nodeMarkers.forEach(m=>m.dragging?.disable())
+    btn?.classList.add('active-stopline')
+    if(lbl) lbl.textContent='結束偵測線設定'
+  } else {
+    if(mode==='node') nodeMarkers.forEach(m=>m.dragging?.enable())
+    btn?.classList.remove('active-stopline')
+    if(lbl) lbl.textContent='旋轉偵測線'
+  }
+  refreshRadiusCircles()
+  renderNodeList()
+}
+
+function _makeStopHandleIcon(active, lineAngleDeg){
+  if(!active) return L.divIcon({html:`<div style="width:30px;height:30px;cursor:default"></div>`,className:'',iconSize:[30,30],iconAnchor:[15,15]})
+  const rot=lineAngleDeg??0
+  const html=`<div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:grab;pointer-events:none">
+    <svg width="28" height="28" viewBox="-14 -14 28 28" xmlns="http://www.w3.org/2000/svg" style="transform:rotate(${rot}deg)">
+      <line x1="0" y1="-11" x2="0" y2="11" stroke="#16a34a" stroke-width="3.5" stroke-linecap="round" stroke-opacity="0.85"/>
+      <circle r="5" fill="white" stroke="#16a34a" stroke-width="2.5"/>
+    </svg>
+  </div>`
+  return L.divIcon({html,className:'',iconSize:[30,30],iconAnchor:[15,15]})
+}
+
 function refreshRadiusCircles(){
   radiusCircles.forEach(c=>{if(c)map.removeLayer(c)});radiusCircles=[]
   _removeStopLineHandles()
   nodes.forEach((n,i)=>{
     const color=getNodeColor(i)
-    const pts=getNodeStopLinePts(i)
-    // Semi-transparent stop line (more transparent)
-    radiusCircles.push(L.polyline(pts,{color,weight:5,opacity:0.28,interactive:false}).addTo(map))
-    // Curved double-arrow rotation handle (arc opens toward node center)
-    // Arc: CW semicircle on right side → concave faces LEFT (west) by default
-    // Rotation: p1 = lineAngle-90°, p2 = lineAngle+90° (so concave always faces node)
+    const linePts=getNodeStopLinePts(i)
+    const lineOpacity=_stopLineMode?0.75:0.28
+    radiusCircles.push(L.polyline(linePts,{color:_stopLineMode?'#16a34a':color,weight:_stopLineMode?4:5,opacity:lineOpacity,interactive:false}).addTo(map))
     const baseAngle=n.lineAngle!=null?n.lineAngle:autoStopLineBearing(i)
-    const makeArcHtml=(rotDeg)=>{
-      const uid=`sl${i}r${rotDeg|0}`
-      return `<div style="width:30px;height:30px;transform:rotate(${rotDeg}deg);transform-origin:center;cursor:grab">
-        <svg width="30" height="30" viewBox="-15 -15 30 30" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <marker id="${uid}s" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="4.5" markerHeight="4.5" orient="auto-start-reverse">
-              <path d="M 0,0 L 8,4 L 0,8 L 2,4 Z" fill="${color}" fill-opacity="0.5"/>
-            </marker>
-            <marker id="${uid}e" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="4.5" markerHeight="4.5" orient="auto">
-              <path d="M 0,0 L 8,4 L 0,8 L 2,4 Z" fill="${color}" fill-opacity="0.5"/>
-            </marker>
-          </defs>
-          <path d="M 0,-10 A 11.2 11.2 0 0 1 0,10"
-            fill="none" stroke="${color}" stroke-width="3" opacity="0.35"
-            marker-start="url(#${uid}s)" marker-end="url(#${uid}e)"/>
-        </svg>
-      </div>`
-    }
     const mkHandle=(ptIdx)=>{
-      const rotDeg=ptIdx===0?baseAngle-90:baseAngle+90
-      const m=L.marker(pts[ptIdx],{
-        draggable:true,
-        icon:L.divIcon({html:makeArcHtml(rotDeg),className:'',iconSize:[30,30],iconAnchor:[15,15]})
+      const m=L.marker(linePts[ptIdx],{
+        draggable:_stopLineMode,
+        icon:_makeStopHandleIcon(_stopLineMode, baseAngle)
       }).addTo(map)
-      m.on('drag',function(){
-        const {lat,lng}=this.getLatLng()
-        let b=pmCalcBearing(nodes[i].lat,nodes[i].lng,lat,lng)
-        if(ptIdx===1) b=(b+180)%360
-        nodes[i].lineAngle=Math.round(b*10)/10
-        const newPts=getNodeStopLinePts(i)
-        if(radiusCircles[i]) radiusCircles[i].setLatLngs(newPts)
-        const pair=stopLineHandles[i]
-        if(pair){
-          pair[0].setLatLng(newPts[0]); pair[1].setLatLng(newPts[1])
-          const nb=nodes[i].lineAngle
-          pair[0].getElement()?.firstChild?.style.setProperty('transform',`rotate(${nb-90}deg)`)
-          pair[1].getElement()?.firstChild?.style.setProperty('transform',`rotate(${nb+90}deg)`)
-        }
-      })
-      m.on('dragend',()=>renderNodeList())
+      if(_stopLineMode){
+        m.on('drag',function(){
+          const {lat,lng}=this.getLatLng()
+          let b=pmCalcBearing(nodes[i].lat,nodes[i].lng,lat,lng)
+          if(ptIdx===1) b=(b+180)%360
+          nodes[i].lineAngle=Math.round(b*10)/10
+          const newLinePts=getNodeStopLinePts(i)
+          if(radiusCircles[i]) radiusCircles[i].setLatLngs(newLinePts)
+          const pair=stopLineHandles[i]
+          if(pair){
+            pair[0].setLatLng(newLinePts[0]); pair[1].setLatLng(newLinePts[1])
+            // rotate bar icons to match new angle
+            const na=nodes[i].lineAngle
+            const updateRot=(mk)=>{const svg=mk.getElement()?.querySelector('svg');if(svg)svg.style.transform=`rotate(${na}deg)`}
+            updateRot(pair[0]); updateRot(pair[1])
+          }
+        })
+        m.on('dragend',()=>{ pushHistory(); renderNodeList() })
+      }
       return m
     }
     stopLineHandles.push([mkHandle(0),mkHandle(1)])
@@ -1623,7 +1741,7 @@ function renderNodeList() {
         <button onclick="saveNode(${i})" style="display:flex;align-items:center;gap:4px;padding:5px 13px;background:#dbeafe;color:#1d4ed8;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 儲存
         </button>
-        <button onclick="removeNode(${i})" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:#fee2e2;color:#dc2626;border:none;border-radius:7px;font-size:14px;cursor:pointer" title="刪除節點">✕</button>
+<button onclick="removeNode(${i})" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:#fee2e2;color:#dc2626;border:none;border-radius:7px;font-size:14px;cursor:pointer" title="刪除節點">✕</button>
       </div>
     </div>`:'<input type="hidden" id="nangle-'+i+'" value="'+(n.lineAngle!=null?Math.round(n.lineAngle):'')+'">'
     return `<div class="node-card${expanded?' expanded':''}">
@@ -1661,7 +1779,7 @@ window.saveNodeLine=function(i){
   if(radiusCircles[i]) radiusCircles[i].setLatLngs(newPts)
   else refreshRadiusCircles()
   const pair=stopLineHandles[i]
-  if(pair){pair[0].setLatLng(newPts[0]);pair[1].setLatLng(newPts[1])}
+  if(pair){const hp=getNodeStopLinePts(i);pair[0].setLatLng(hp[0]);pair[1].setLatLng(hp[1])}
   renderNodeList()
 }
 window.resetNodeLineAngle=function(i){
@@ -1672,7 +1790,7 @@ window.resetNodeLineAngle=function(i){
   if(radiusCircles[i]) radiusCircles[i].setLatLngs(newPts)
   else refreshRadiusCircles()
   const pair=stopLineHandles[i]
-  if(pair){pair[0].setLatLng(newPts[0]);pair[1].setLatLng(newPts[1])}
+  if(pair){const hp=getNodeStopLinePts(i);pair[0].setLatLng(hp[0]);pair[1].setLatLng(hp[1])}
   renderNodeList()
 }
 
@@ -1836,6 +1954,7 @@ async function saveTask() {
   if(existingTask){const idx=savedTasks.findIndex(t=>t.id===id);savedTasks[idx]=taskObj}
   else{savedTasks.unshift(taskObj);if(savedTasks.length>30)savedTasks.pop()}
   localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
+  _dirty=false
   document.getElementById('ev-title').textContent=cfg.rn
   updateCrumb(cfg.rn)
   if(gsUrl&&gsKey){
@@ -1931,6 +2050,7 @@ async function loadTask(id) {
   segData=cfg.sg?cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:false,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o}))})):[]
   if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||20)}
   if(nodes.length>=2)map.fitBounds(L.polyline(nodes.map(n=>[n.lat,n.lng])).getBounds(),{padding:[40,40]})
+  _dirty=false
   showEditView(cfg.rn||'未命名路線')
   toast('✅ 任務已載入')
 }
@@ -2100,20 +2220,43 @@ async function refreshSurveyModal() {
   try{
     const surveys=await cloudGet({action:'getSurveys',routeId:_svModalCloudId})
     _svModalSurveys=surveys
-    const CZH={off_peak_bound:'離峰去',off_peak_return:'離峰回',peak_bound:'尖峰去',peak_return:'尖峰回'}
     const WZH={sunny:'☀️',cloudy:'☁️',rainy:'🌧️'}
     if(!surveys.length){body.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8">尚無監測記錄</div>';return}
-    body.innerHTML=surveys.map((sv,i)=>{
-      const tripKeys=Object.keys(sv.trips||{})
-      const chips=tripKeys.map(k=>`<span style="background:#f1f5f9;color:#475569;padding:1px 6px;border-radius:5px;font-size:10px">${CZH[k]||k}</span>`).join(' ')
-      const dateStr=sv.date?String(sv.date).slice(0,10):'-'
-      return`<div class="sv-row"><div class="sv-row-info"><div class="sv-row-date">${WZH[sv.weather]||''} ${dateStr} · ${sv.surveyor||'-'}</div><div class="sv-row-meta">${chips} &nbsp;·&nbsp; 提交 ${sv.submittedAt?new Date(sv.submittedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'-'}</div></div><button class="sv-btn sv-btn-view" onclick="viewSurveyFromModal(${i})">📊 查看</button><button class="sv-btn sv-btn-del" onclick="deleteSurveyRecord('${sv.id}')">🗑</button></div>`
+    // group by date
+    const byDate={}
+    surveys.forEach((sv,i)=>{
+      const d=sv.date?String(sv.date).slice(0,10):'-'
+      if(!byDate[d])byDate[d]=[]
+      byDate[d].push({sv,i})
+    })
+    const dates=Object.keys(byDate).sort((a,b)=>b.localeCompare(a))
+    body.innerHTML=dates.map(date=>{
+      const items=byDate[date]
+      const weathers=[...new Set(items.map(({sv})=>WZH[sv.weather]||''))].join('')
+      const firstIdx=items[0].i
+      const allIds=items.map(({sv})=>sv.id)
+      return`<div class="sv-row">
+        <div class="sv-row-info" style="cursor:pointer" onclick="viewSurveyFromModal(${firstIdx})">
+          <div class="sv-row-date">${weathers} ${date}</div>
+          <div class="sv-row-meta"><span style="background:#e2e8f0;color:#64748b;font-size:11px;padding:1px 7px;border-radius:10px">${items.length} 筆調查</span></div>
+        </div>
+        <button class="sv-btn sv-btn-view" onclick="viewSurveyFromModal(${firstIdx})">📊 查看</button>
+        <button class="sv-btn sv-btn-del" onclick="deleteSurveyDate(${JSON.stringify(allIds)})">🗑</button>
+      </div>`
     }).join('')
   }catch(e){body.innerHTML=`<div style="padding:16px;color:#dc2626">載入失敗：${e.message}</div>`}
 }
+window.deleteSurveyDate=async function(ids){
+  if(!confirm(`確定刪除這天共 ${ids.length} 筆監測記錄？`))return
+  try{
+    for(const id of ids) await cloudPost({action:'deleteSurvey',surveyId:id})
+    toast('✅ 已刪除');await refreshSurveyModal()
+  }catch(e){toast('❌ 刪除失敗：'+e.message)}
+}
 function viewSurveyFromModal(idx) {
   const sv=_svModalSurveys[idx];if(!sv)return
-  window.open(`survey-report.html?id=${encodeURIComponent(_svModalCloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(gsKey)}`,'_blank')
+  const date=sv.date?String(sv.date).slice(0,10):''
+  window.open(`survey-report.html?id=${encodeURIComponent(_svModalCloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(gsKey)}&date=${encodeURIComponent(date)}`,'_blank')
 }
 async function deleteSurveyRecord(surveyId) {
   if(!confirm('確定刪除這筆監測記錄？'))return

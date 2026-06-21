@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>旅行時間調查 — 監測報告</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color:#1e293b;min-height:100vh}
@@ -124,6 +126,11 @@ td:first-child{text-align:left;font-weight:500}
 .dl-btn.blue{background:#2563eb}
 .dl-btn.blue:hover{background:#1d4ed8}
 .dl-note{font-size:12px;color:#64748b;margin-top:8px;line-height:1.7;text-align:left;background:#f8fafc;padding:14px;border-radius:10px}
+
+/* ── Trip map ── */
+.trip-map-wrap{position:relative;height:220px;background:#e2e8f0}
+.trip-map{width:100%;height:100%}
+.trip-map-legend{position:absolute;bottom:8px;left:8px;background:rgba(255,255,255,.92);border-radius:8px;padding:5px 9px;font-size:10px;line-height:1.8;z-index:500;pointer-events:none;box-shadow:0 1px 4px #0002}
 </style>
 </head>
 <body>
@@ -224,6 +231,8 @@ let route = null
 let surveys = []
 let avgTrips = {}  // {combo: {travelS, runS, intTotalS, roadTotalS, totalDelayS, segTimes:[{travelS,runS}]}}
 let currentCombo = 'peak_bound'
+let _filterDate = ''  // YYYY-MM-DD or ''
+let _tripMaps = {}  // mapId -> L.map instance
 
 const COMBO_KEYS = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
 const COMBO_LABEL = {
@@ -294,6 +303,7 @@ window.addEventListener('load', async () => {
   const id  = p.get('id')
   const gs  = p.get('gs')
   const k   = p.get('k')
+  _filterDate = p.get('date') || ''
   if(!id||!gs||!k){ showError('缺少 URL 參數 (id / gs / k)'); return }
 
   try{
@@ -307,7 +317,9 @@ window.addEventListener('load', async () => {
     ld('載入調查結果...')
     const surveyRes = await cloudGet(gs, k, {action:'getSurveys', routeId: id})
     if(!surveyRes.ok) throw new Error(surveyRes.error)
-    surveys = surveyRes.data || []
+    const allSurveys = surveyRes.data || []
+    // Filter to date if provided
+    surveys = _filterDate ? allSurveys.filter(sv=>String(sv.date||'').slice(0,10)===_filterDate) : allSurveys
     setLoadProgress(80)
 
     ld('計算統計...')
@@ -396,7 +408,7 @@ function fmt(v){ return (v==null||v===''||isNaN(v)) ? '—' : v }
 function renderPage(){
   document.title = route.routeName + ' — 調查報告'
   document.getElementById('hdr-title').textContent = route.routeName
-  const dateRange = surveys.length ? surveys.map(s=>s.date).filter(Boolean).join('、') : '—'
+  const dateRange = _filterDate || (surveys.length ? surveys.map(s=>s.date).filter(Boolean).join('、') : '—')
   const weathers = [...new Set(surveys.map(s=>s.weather).filter(Boolean))].join('/')
   document.getElementById('hdr-sub').textContent =
     `${route.routeFromTo||''}　調查日期：${dateRange}　天氣：${weathers||'—'}　全長：${route.totalLength}m`
@@ -580,6 +592,10 @@ function renderComboRecords(combo){
     </div>`; return
   }
 
+  // Destroy old maps before re-rendering
+  Object.values(_tripMaps).forEach(m=>m.remove())
+  _tripMaps={}
+
   el.innerHTML = matchSurveys.map(({sv,si,trip})=>{
     const isPeak = pt==='peak'
     const off=route.offPeakLabel||'14:00~16:00', pk=route.peakLabel||'17:00~19:00'
@@ -596,9 +612,9 @@ function renderComboRecords(combo){
     const fromNode=isReturn?endNode:startNode
     const toNode=isReturn?startNode:endNode
     const TL=route.totalLength||0
+    const mapId=`trip-map-${si}-${combo}`
 
     const segRows=segOrder.map((seg,i)=>{
-      // For each segment: from node i, to node i+1 (last segment ends at final node)
       const fromNodeIdx = isReturn ? segs.length-i   : i
       const toNodeIdx   = isReturn ? segs.length-1-i : i+1
       const fromTime = nodeTs[fromNodeIdx] || (i===0 ? st : null)
@@ -619,6 +635,8 @@ function renderComboRecords(combo){
       </tr>`
     }).join('')
 
+    const delayCount=(trip.delayLog||[]).filter(d=>d.pos).length
+
     return `<div class="sv-record">
       <div class="sv-rec-header">
         <div>
@@ -636,6 +654,14 @@ function renderComboRecords(combo){
         <div class="sgs-kv"><div class="k">行駛時間</div><div class="v">${fmtSec(trip.runS)}</div></div>
         <div class="sgs-kv"><div class="k">延滯時間</div><div class="v red">${fmtSec(trip.totalDelayS)}</div></div>
         <div class="sgs-kv"><div class="k">旅行速率</div><div class="v green">${spd(TL,trip.travelS)} km/h</div></div>
+      </div>
+      <!-- GPS Track Map -->
+      <div class="trip-map-wrap">
+        <div id="${mapId}" class="trip-map"></div>
+        <div class="trip-map-legend">
+          <div>── 軌跡</div>
+          ${delayCount>0?`<div>📍 延滯地點（${delayCount} 處）</div>`:''}
+        </div>
       </div>
       <!-- SGS table -->
       <div style="overflow-x:auto;padding:0">
@@ -686,6 +712,68 @@ function renderComboRecords(combo){
       </div>
     </div>`
   }).join('')
+
+  // Init maps after DOM update
+  requestAnimationFrame(()=>{
+    matchSurveys.forEach(({sv,si,trip})=>{
+      const mapId=`trip-map-${si}-${combo}`
+      initTripMap(mapId, trip, combo)
+    })
+  })
+}
+
+function initTripMap(mapId, trip, combo){
+  const el=document.getElementById(mapId);if(!el)return
+  if(_tripMaps[mapId]) return
+
+  const trackColor = TRACK_COLOR[combo]||'#2563eb'
+  const nodes = route.nodes||[]
+
+  const m = L.map(el,{zoomControl:true,attributionControl:false,scrollWheelZoom:false})
+  _tripMaps[mapId]=m
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(m)
+
+  // Route path (grey dashed)
+  if(nodes.length>=2){
+    L.polyline(nodes.map(n=>[n.lat,n.lng]),{color:'#94a3b8',weight:3,dashArray:'6 4',opacity:.7}).addTo(m)
+  }
+
+  // GPS track
+  const gpsLL=(trip.gpsTrack||[]).filter(p=>p.lat&&p.lng).map(p=>[p.lat,p.lng])
+  if(gpsLL.length>=2){
+    L.polyline(gpsLL,{color:trackColor,weight:4,opacity:.85}).addTo(m)
+  }
+
+  // Node markers
+  nodes.forEach((n,i)=>{
+    const isStart=i===0, isEnd=i===nodes.length-1
+    const color=isStart?'#16a34a':isEnd?'#dc2626':'#3b82f6'
+    L.marker([n.lat,n.lng],{icon:L.divIcon({
+      html:`<div style="width:22px;height:22px;background:${color};border:2.5px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:white;box-shadow:0 2px 6px #0004">${i+1}</div>`,
+      className:'',iconSize:[22,22],iconAnchor:[11,11]
+    })}).bindTooltip(n.name||`節點${i+1}`,{permanent:false}).addTo(m)
+  })
+
+  // Delay event markers
+  ;(trip.delayLog||[]).filter(d=>d.pos?.lat&&d.pos?.lng).forEach(d=>{
+    const icon=d.icon||'⚠️'
+    const tooltip=`${icon} ${d.label||''} ${d.durationS?d.durationS+'秒':''}`
+    L.marker([d.pos.lat,d.pos.lng],{icon:L.divIcon({
+      html:`<div style="font-size:20px;filter:drop-shadow(0 1px 3px #0006);line-height:1">${icon}</div>`,
+      className:'',iconSize:[24,24],iconAnchor:[12,12]
+    })}).bindTooltip(tooltip,{permanent:false}).addTo(m)
+  })
+
+  // Fit bounds
+  const allPts=[...gpsLL,...nodes.map(n=>[n.lat,n.lng])]
+  if(allPts.length>=2){
+    m.fitBounds(L.latLngBounds(allPts).pad(0.1))
+  } else if(allPts.length===1){
+    m.setView(allPts[0],16)
+  } else {
+    m.setView([25.04776,121.51755],13)
+  }
 }
 
 function fmtSec(s){
