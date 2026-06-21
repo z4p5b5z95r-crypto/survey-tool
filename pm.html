@@ -2217,6 +2217,8 @@ async function openSurveyManager(cloudId,routeName) {
 }
 async function refreshSurveyModal() {
   const body=document.getElementById('sv-modal-body');if(!body)return
+  const btn=document.querySelector('[onclick="refreshSurveyModal()"]')
+  if(btn){btn.textContent='⏳ 更新中…';btn.disabled=true}
   try{
     const surveys=await cloudGet({action:'getSurveys',routeId:_svModalCloudId})
     _svModalSurveys=surveys
@@ -2246,6 +2248,7 @@ async function refreshSurveyModal() {
       </div>`
     }).join('')
   }catch(e){body.innerHTML=`<div style="padding:16px;color:#dc2626">載入失敗：${e.message}</div>`}
+  finally{if(btn){btn.textContent='↺ 重新整理';btn.disabled=false}}
 }
 window.deleteSurveyDate=async function(ids){
   if(!confirm(`確定刪除這天共 ${ids.length} 筆監測記錄？`))return
