@@ -2210,7 +2210,7 @@ async function openSurveyManager(cloudId,routeName) {
   _svModalCloudId=cloudId;_svModalRouteName=routeName
   const overlay=document.createElement('div')
   overlay.id='sv-modal-overlay';overlay.className='sv-modal-overlay'
-  overlay.innerHTML=`<div class="sv-modal"><div class="sv-modal-head"><h3>📋 監測記錄 · ${routeName}</h3><button class="sv-modal-close" onclick="closeSurveyModal()">✕</button></div><div class="sv-modal-body" id="sv-modal-body"><div style="padding:20px;text-align:center;color:#64748b">載入中...</div></div></div>`
+  overlay.innerHTML=`<div class="sv-modal"><div class="sv-modal-head"><h3>📋 監測記錄 · ${routeName}</h3><div style="display:flex;align-items:center;gap:6px"><button onclick="refreshSurveyModal()" title="重新整理" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:4px 10px;font-size:13px;cursor:pointer;color:#64748b">↺ 重新整理</button><button class="sv-modal-close" onclick="closeSurveyModal()">✕</button></div></div><div class="sv-modal-body" id="sv-modal-body"><div style="padding:20px;text-align:center;color:#64748b">載入中...</div></div></div>`
   overlay.addEventListener('click',e=>{if(e.target===overlay)closeSurveyModal()})
   document.body.appendChild(overlay)
   await refreshSurveyModal()

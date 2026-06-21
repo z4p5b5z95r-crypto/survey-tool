@@ -511,6 +511,8 @@ input,select,textarea{font-size:max(16px,1em)!important}
       <h3>調查進度</h3>
       <div id="combo-progress-list"></div>
     </div>
+    <!-- Cloud upload status — visible only in cloud mode -->
+    <div id="td-cloud-status" style="display:none;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:600;text-align:center;margin-bottom:4px">⏳ 上傳中...</div>
     <button class="btn-blue" id="btn-next-combo" onclick="goNextCombo()">繼續下一個組合 →</button>
     <button class="btn-purple" onclick="goReport()">📊 產出調查報告</button>
     <button style="width:100%;padding:13px;background:#1e293b;border:1.5px solid #334155;border-radius:14px;font-size:13px;font-weight:600;color:#94a3b8;cursor:pointer" onclick="confirmClearStorage()">🗑 清除所有調查記錄（重新開始）</button>
@@ -2232,6 +2234,8 @@ function endSurvey(){
   // Capture cur.key NOW (synchronously) — cur may be cleared before the timeout fires
   if(cloudRouteId && cloudScriptUrl && cloudApiKey) {
     const _uploadKey = cur.key
+    const tdStatus = document.getElementById('td-cloud-status')
+    if(tdStatus){ tdStatus.style.display='block'; tdStatus.style.background='#f0f9ff'; tdStatus.style.color='#0369a1'; tdStatus.textContent='⏳ 上傳雲端中...' }
     setTimeout(()=>submitToCloud(_uploadKey), 800)
   }
   showScreen('screen-tripdone')
@@ -2299,6 +2303,7 @@ async function submitToCloud(tripKey){
     trips:    buildTripsPayload(tripKey)
   }
 
+  const tdStatus = document.getElementById('td-cloud-status')
   try{
     await cloudPostSurvey(cloudScriptUrl, cloudApiKey, body)
     cloudSubmitted=true
@@ -2307,11 +2312,13 @@ async function submitToCloud(tripKey){
     loadCloudHistory()      // refresh history from cloud
     if(statusEl) statusEl.textContent='✅ 已成功上傳至雲端！'
     if(btnEl){ btnEl.textContent='✅ 已上傳' }
+    if(tdStatus){ tdStatus.style.background='#f0fdf4'; tdStatus.style.color='#16a34a'; tdStatus.textContent='✅ 已成功上傳至雲端' }
     showToast('☁️ 調查結果已上傳')
     flushOfflineQueue()
   }catch(e){
     if(statusEl) statusEl.textContent='❌ 上傳失敗：'+e.message
     if(btnEl){ btnEl.disabled=false; btnEl.textContent='🔄 重新上傳' }
+    if(tdStatus){ tdStatus.style.background='#fef2f2'; tdStatus.style.color='#dc2626'; tdStatus.textContent='❌ 上傳失敗：'+e.message }
     enqueueOffline({gsUrl:cloudScriptUrl,apiKey:cloudApiKey,body})
     showToast('⚠️ 上傳失敗，已存入離線佇列')
   } finally {
