@@ -682,6 +682,12 @@ function fmtHMS(d){
   if(isNaN(dt.getTime())) return ''
   return dt.toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'})
 }
+// 取台北時間的時/分/秒（固定 Asia/Taipei，不跟裝置時區走）
+function tpHMS(d){
+  if(!d||isNaN(d.getTime())) return ['','','']
+  const s=d.toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'})
+  return s.split(':').map(v=>v.padStart(2,'0'))
+}
 function showToast(m,isNode=false){const t=document.getElementById('toast');t.textContent=m;t.className='toast'+(isNode?' node-toast':'');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1000)}
 function $(id){return document.getElementById(id)}
 function showScreen(id){
@@ -1346,11 +1352,11 @@ function buildDateSelect(){
     hist.map(h=>h.date?h.date.slice(0,10):null)
        .filter(d=>d&&d!==today)
   )].slice(0,5)
-  // Normalize config.date; default to today
-  const curDate=(config.date||'').slice(0,10)
+  // Always reset to today — never carry over yesterday's date into a new session
+  config.date=today
+  const curDate=today
   const allKnown=[today,...pastDates]
-  const isCustom=curDate&&!allKnown.includes(curDate)
-  config.date=curDate||today
+  const isCustom=false
   const WZH={sunny:'☀️',cloudy:'☁️',rainy:'🌧️'}
   sel.innerHTML=''
   // Today
@@ -2437,8 +2443,8 @@ function buildOneOfficialForm(trip,pt,dir){
   const _st=trip.startTime?new Date(trip.startTime):null
   const _et=trip.endTime?new Date(trip.endTime):null
   const _ok=d=>d&&!isNaN(d.getTime())
-  const tH=_ok(_st)?_st.getHours():'—',tM=_ok(_st)?String(_st.getMinutes()).padStart(2,'0'):'—',tS=_ok(_st)?String(_st.getSeconds()).padStart(2,'0'):'—'
-  const eH=_ok(_et)?_et.getHours():'—',eM=_ok(_et)?String(_et.getMinutes()).padStart(2,'0'):'—',eS=_ok(_et)?String(_et.getSeconds()).padStart(2,'0'):'—'
+  const [tH,tM,tS]=_ok(_st)?tpHMS(_st):['—','—','—']
+  const [eH,eM,eS]=_ok(_et)?tpHMS(_et):['—','—','—']
 
   const travelSpd = spd(len,trip.travelS)
   const runSpd    = spd(len,trip.runS)
@@ -2448,8 +2454,7 @@ function buildOneOfficialForm(trip,pt,dir){
   const segT = trip.segTimes||[]
   const arrT = segs.map((_,i)=>{
     const ts=trip.nodeTimestamps?.[i+1]; if(!ts) return{h:'',m:'',s:''}
-    const d=new Date(ts)
-    return{h:d.getHours(),m:String(d.getMinutes()).padStart(2,'0'),s:String(d.getSeconds()).padStart(2,'0')}
+    const [h,m,s]=tpHMS(new Date(ts)); return{h,m,s}
   })
 
   // Column totals
@@ -2928,7 +2933,8 @@ function exportReport(){
 '  var segT=trip.segTimes||[];\n' +
 '  var arrT=segs.map(function(_,i){\n' +
 '    var ts=trip.nodeTimestamps&&trip.nodeTimestamps[i+1]; if(!ts) return["","",""];\n' +
-'    var d=new Date(ts); return[d.getHours(),String(d.getMinutes()).padStart(2,"0"),String(d.getSeconds()).padStart(2,"0")];\n' +
+'    var s=new Date(ts).toLocaleTimeString("zh-TW",{timeZone:"Asia/Taipei",hour12:false,hour:"2-digit",minute:"2-digit",second:"2-digit"});\n' +
+'    return s.split(":").map(function(v){return v.padStart(2,"0");});\n' +
 '  });\n' +
 '  var colT={};\n' +
 '  RC.concat(IC).forEach(function(c){colT[c]=segD.reduce(function(s,d){return s+(d[c]||0);},0);});\n' +
@@ -2945,7 +2951,9 @@ function exportReport(){
 '  aoa.push(["","時間：",(pt==="off_peak"?"■":"□")+" 離峰（"+CFG.offPeakLabel+"）  "+(pt==="peak"?"■":"□")+" 尖峰（"+CFG.peakLabel+"）","","","","","","","","","","","","","","","","","","",""]);\n' +
 // Summary header
 '  aoa.push(["起點","終點","距離(m)","起點時","分","秒","終點時","分","秒","旅行時間(秒)","交叉口延滯(秒)","路段延滯(秒)","行駛時間(秒)","旅行速率(km/h)","","行駛速率(km/h)",""]);\n' +
-'  aoa.push([startN,endN,CFG.totalLength,st.getHours(),String(st.getMinutes()).padStart(2,"0"),String(st.getSeconds()).padStart(2,"0"),et.getHours(),String(et.getMinutes()).padStart(2,"0"),String(et.getSeconds()).padStart(2,"0"),trip.travelS,trip.intTotalS,trip.roadTotalS||0,trip.runS,xSpd(CFG.totalLength,trip.travelS),"",xSpd(CFG.totalLength,trip.runS),""]);\n' +
+'  var _stStr=st.toLocaleTimeString("zh-TW",{timeZone:"Asia/Taipei",hour12:false,hour:"2-digit",minute:"2-digit",second:"2-digit"}).split(":").map(function(v){return v.padStart(2,"0");});\n' +
+'  var _etStr=et.toLocaleTimeString("zh-TW",{timeZone:"Asia/Taipei",hour12:false,hour:"2-digit",minute:"2-digit",second:"2-digit"}).split(":").map(function(v){return v.padStart(2,"0");});\n' +
+'  aoa.push([startN,endN,CFG.totalLength,_stStr[0],_stStr[1],_stStr[2],_etStr[0],_etStr[1],_etStr[2],trip.travelS,trip.intTotalS,trip.roadTotalS||0,trip.runS,xSpd(CFG.totalLength,trip.travelS),"",xSpd(CFG.totalLength,trip.runS),""]);\n' +
 '  aoa.push(["百分比","","","","","","","","","",xPct(trip.travelS,trip.travelS),xPct(trip.intTotalS,trip.travelS),xPct(trip.roadTotalS||0,trip.travelS),xPct(trip.runS,trip.travelS),"","",""]);\n' +
 // Segment header
 '  aoa.push(["經過路口（路段）","","到達時刻","","","阻塞","公車停靠","計程車靠","路邊停車","行人穿越","路段其他","紅燈","左轉同向","左轉對向","右轉","橫越車輛","行人","路口其他","旅行時間(秒)","距離(m)","行駛時間(秒)","旅行速率","行駛速率"]);\n' +
