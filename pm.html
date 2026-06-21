@@ -1117,7 +1117,7 @@ function _syncHistoryBtns(){
   if(u) u.disabled=_undoHistory.length===0
   if(r) r.disabled=_redoHistory.length===0
 }
-let _dirty=false
+let _dirty=false,_loadingTask=false
 function pushHistory(){
   if(_suppressHistory) return   // ignore calls during rebuild
   _dirty=true
@@ -1895,8 +1895,10 @@ function renderSegTable() {
   if(nodes.length<2){tbody.innerHTML='';hint.style.display='block';return}
   hint.style.display='none'
   const needed=nodes.length-1
-  while(segData.length<needed)segData.push({name:'',lanes:2,width:8,length:0,_auto:true})
-  segData.length=needed
+  if(!_loadingTask){
+    while(segData.length<needed)segData.push({name:'',lanes:2,width:8,length:0,_auto:true})
+    segData.length=needed
+  }
   tbody.innerHTML=nodes.slice(0,-1).map((n,i)=>{
     const autoName=`${n.exitName||n.name}→${nodes[i+1].name}`
     if(!segData[i]._nameCustom)segData[i].name=autoName
@@ -2091,7 +2093,10 @@ async function loadTask(id) {
   nodes=[]
   segData=cfg.sg?cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:false,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o})),mode:s.m||'foot',_latlngs:s.ll||null})):[]
   console.log('[load] segments with latlngs:',segData.filter(s=>s._latlngs?.length>=2).length,'/',segData.length,segData.map(s=>s._latlngs?.length||0),'lengths:',segData.map(s=>s.length||0),'total:',segData.reduce((a,s)=>a+(s.length||0),0))
+  _loadingTask=true
   if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||20)}
+  _loadingTask=false
+  renderSegTable()
   if(nodes.length>=2)map.fitBounds(L.polyline(nodes.map(n=>[n.lat,n.lng])).getBounds(),{padding:[40,40]})
   _dirty=false
   showEditView(cfg.rn||'未命名路線')
