@@ -1778,7 +1778,7 @@ function renderNodeList() {
           <div class="node-card-name ${nameClass}">${displayName||'（點擊命名）'}</div>
           <div class="node-coords">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}</div>
         </div>
-        <svg class="node-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${chevronColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="${chevronD}"/></svg>
+        <svg class="node-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${chevronColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="${chevronD}"/></svg>
       </div>
       ${bodyHtml}
     </div>`
