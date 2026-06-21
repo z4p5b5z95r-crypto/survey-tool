@@ -2110,7 +2110,7 @@ async function saveTask() {
   if(gsUrl&&gsKey){
     toast('⏳ 同步至雲端...')
     try{
-      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'foot'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
+      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'foot'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
       const result=await cloudPost(payload)
       const taskIdx=savedTasks.findIndex(t=>t.id===id)
       if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
@@ -2149,7 +2149,7 @@ async function uploadTask(id) {
       offPeakLabel: cfg.op,
       peakLabel:    cfg.pk,
       owner:        task.creator || getCurrentUser() || '',
-      nodes:    cfg.nd.map(n => ({ name:n.n, exitName:n.n2||'', lat:n.a, lng:n.o, radius:n.r, polygon:n.pg||null, lineAngle:n.la??null, lineLength:n.ll||20 })),
+      nodes:    cfg.nd.map(n => ({ name:n.n, exitName:n.n2||'', lat:n.a, lng:n.o, radius:n.r, polygon:n.pg||null, lineAngle:n.la??null, lineLength:n.ll||20, ghost:n.gh||false })),
       segments: cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'foot'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})
     }
     const result = await cloudPost(payload)
