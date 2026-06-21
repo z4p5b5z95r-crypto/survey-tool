@@ -2462,9 +2462,9 @@ function segLabel(i){
 function buildReport(){
   $('report-subtitle').textContent=`${config.routeName}  ${config.date}`
   buildResultMap();buildOfficialForms();buildTable1();buildTable2();buildTable3()
-  // Show patch button in 調查紀錄 tab if GPS data exists
+  // Show patch button in 調查紀錄 tab if GPS data exists (don't require cloudSubmitted — history view may not have it set)
   const srcTrips=_liveTripsForPatch||allTrips
-  const hasGpsOfficial=cloudSubmitted&&cloudRouteId&&Object.values(srcTrips).some(t=>t?.gpsTrack?.length>0||t?.delayLog?.length>0)
+  const hasGpsOfficial=cloudRouteId&&cloudScriptUrl&&Object.values(srcTrips).some(t=>t?.gpsTrack?.length>0||t?.delayLog?.length>0)
   const obox=document.getElementById('patch-gps-official-box')
   if(obox) obox.style.display=hasGpsOfficial?'block':'none'
 }
