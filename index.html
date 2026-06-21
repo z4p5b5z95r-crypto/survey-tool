@@ -215,7 +215,16 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .btn-ex.html{background:#7c3aed;color:white}
 .btn-ex.csv{background:#2563eb;color:white}
 .sec-title{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:6px}
-#map-result{height:240px;border-radius:14px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+#map-result{height:340px;overflow:hidden}
+.result-map-wrap{border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:10px;background:#fff}
+.result-map-hdr{padding:10px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
+.result-map-hdr-title{font-size:12px;color:#475569;display:flex;align-items:center;gap:5px}
+.result-map-legrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:11px;color:#64748b}
+.rml-item{display:flex;align-items:center;gap:5px}
+.rml-dashed{width:20px;height:0;border-top:2px dashed #94a3b8;display:inline-block}
+.rml-solid{width:20px;height:3px;border-radius:2px;display:inline-block;background:#2563eb}
+.rml-node{width:16px;height:16px;border-radius:50%;background:#22c55e;border:2px solid #fff;display:inline-flex;align-items:center;justify-content:center;font-size:7px;color:#fff;font-weight:700}
+.result-map-note{padding:7px 14px;font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;display:flex;gap:14px;flex-wrap:wrap;background:#fafafa}
 
 /* ── SGS Official Form ── */
 .sgs-form{background:white;border-radius:10px;overflow-x:auto;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.1);border:2px solid #1e293b}
@@ -535,7 +544,22 @@ input,select,textarea{font-size:max(16px,1em)!important}
     </div>
     <!-- 調查紀錄 panel: map + official form per combo -->
     <div id="rpt-panel-official" class="rpt-panel">
-      <div id="map-result" style="height:300px;border-radius:14px;overflow:hidden;margin-bottom:10px"></div>
+      <div class="result-map-wrap">
+        <div class="result-map-hdr">
+          <div class="result-map-hdr-title">🗺 監測軌跡圖</div>
+          <div class="result-map-legrow">
+            <div class="rml-item"><span class="rml-dashed"></span>規劃路線</div>
+            <div class="rml-item"><span class="rml-solid" id="rml-track-swatch"></span>GPS軌跡</div>
+            <div class="rml-item"><span class="rml-node">1</span>節點</div>
+            <div class="rml-item" style="font-size:14px">🚦 延滯</div>
+          </div>
+        </div>
+        <div id="map-result"></div>
+        <div class="result-map-note">
+          <span>🖱 滑鼠滾輪縮放</span>
+          <span>✋ 拖曳移動</span>
+        </div>
+      </div>
       <div id="report-combo-tabs"></div>
       <div id="official-forms"></div>
     </div>
@@ -2293,35 +2317,36 @@ async function submitToCloud(){
   }
 }
 
+function buildTripEntry(t){
+  return {
+    peakType:    t.peakType,
+    direction:   t.direction,
+    startTime:   t.startTime instanceof Date ? t.startTime.toISOString() : t.startTime,
+    endTime:     t.endTime   instanceof Date ? t.endTime.toISOString()   : t.endTime,
+    travelS:     t.travelS,
+    runS:        t.runS,
+    intTotalS:   t.intTotalS,
+    roadTotalS:  t.roadTotalS,
+    totalDelayS: t.totalDelayS,
+    segTimes:        t.segTimes,
+    nodeTimestamps:  (t.nodeTimestamps||[]).map(ts=>ts instanceof Date?ts.toISOString():ts),
+    roadDelays:      t.roadDelays,
+    intDelays:       t.intDelays,
+    gpsTrack: (t.gpsTrack||[]).filter((_,i)=>i%5===0).map(p=>({lat:p.lat,lng:p.lng})),
+    delayLog: (t.delayLog||[]).filter(d=>d.pos?.lat&&d.pos?.lng).map(d=>({
+      cause:d.cause, label:d.label, icon:d.icon, durationS:d.durationS,
+      pos:{lat:d.pos.lat,lng:d.pos.lng},
+      startedAt:d.startedAt instanceof Date?d.startedAt.toISOString():d.startedAt
+    }))
+  }
+}
 function buildTripsPayload(){
-  const out={}
-  Object.entries(allTrips).forEach(([k,t])=>{
-    if(!t) return
-    out[k]={
-      peakType:    t.peakType,
-      direction:   t.direction,
-      startTime:   t.startTime instanceof Date ? t.startTime.toISOString() : t.startTime,
-      endTime:     t.endTime   instanceof Date ? t.endTime.toISOString()   : t.endTime,
-      travelS:     t.travelS,
-      runS:        t.runS,
-      intTotalS:   t.intTotalS,
-      roadTotalS:  t.roadTotalS,
-      totalDelayS: t.totalDelayS,
-      segTimes:        t.segTimes,
-      nodeTimestamps:  (t.nodeTimestamps||[]).map(ts=>ts instanceof Date?ts.toISOString():ts),
-      roadDelays:      t.roadDelays,
-      intDelays:       t.intDelays,
-      // GPS track (1 point every 5 — reduce payload size while keeping shape)
-      gpsTrack: (t.gpsTrack||[]).filter((_,i)=>i%5===0).map(p=>({lat:p.lat,lng:p.lng})),
-      // Delay events with GPS position (for map markers)
-      delayLog: (t.delayLog||[]).filter(d=>d.pos?.lat&&d.pos?.lng).map(d=>({
-        cause:d.cause, label:d.label, icon:d.icon, durationS:d.durationS,
-        pos:{lat:d.pos.lat,lng:d.pos.lng},
-        startedAt:d.startedAt instanceof Date?d.startedAt.toISOString():d.startedAt
-      }))
-    }
-  })
-  return out
+  // Only send the CURRENT trip — one cloud survey per combo
+  // (prevents duplicate data when multiple combos are done in one session)
+  if(!cur) return {}
+  const key=cur.key
+  const t=allTrips[key]; if(!t) return {}
+  const out={}; out[key]=buildTripEntry(t); return out
 }
 
 // ════════════════════════════════════
@@ -2579,37 +2604,36 @@ function buildOneOfficialForm(trip,pt,dir){
   wrapper.innerHTML=html
   return wrapper.firstElementChild
 }
+const RESULT_TRACK_COLORS={
+  off_peak_bound:'#2563eb', off_peak_return:'#60a5fa',
+  peak_bound:'#dc2626',     peak_return:'#f87171'
+}
 let _resultGpsLayer=null
 function buildResultMap(){
   if(mapResult){mapResult.remove();mapResult=null;_resultGpsLayer=null}
-  mapResult=L.map('map-result',{zoomControl:true,attributionControl:false})
+  mapResult=L.map('map-result',{zoomControl:true,attributionControl:false,scrollWheelZoom:true})
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapResult)
-  // Draw planned route (dashed)
+  // Planned route (grey dashed)
   if(config.nodes&&config.nodes.length>=2){
     const lls=routePolylines.length>0?routePolylines.flat():config.nodes.map(n=>[n.lat,n.lng])
-    L.polyline(lls,{color:'#6366f1',weight:2,opacity:.5,dashArray:'6,4'}).addTo(mapResult)
-    // ── Numbered node markers (start=green, end=red, mid=blue) ──
+    L.polyline(lls,{color:'#94a3b8',weight:3,opacity:.75,dashArray:'8,5'}).addTo(mapResult)
+    // Numbered node markers — start=green, end=red, mid=blue
     const ns=config.nodes
     ns.forEach((n,i)=>{
       const isFirst=i===0,isLast=i===ns.length-1
-      const fill=isFirst?'#16a34a':isLast?'#dc2626':'#6366f1'
+      const fill=isFirst?'#22c55e':isLast?'#ef4444':'#3b82f6'
       const num=i+1
-      const fs=num>=10?9:11
+      const fs=num>=10?'8px':'10px'
       L.marker([n.lat,n.lng],{icon:L.divIcon({
-        html:`<svg width="28" height="28" viewBox="-14 -14 28 28" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="0" cy="0" r="12" fill="${fill}" stroke="white" stroke-width="2.5"/>
-          <text x="0" y="4.5" text-anchor="middle" font-size="${fs}" font-weight="700" fill="white" font-family="sans-serif">${num}</text>
-        </svg>`,
+        html:`<div style="width:28px;height:28px;background:${fill};border:2.5px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:${fs};font-weight:800;color:white;box-shadow:0 2px 6px rgba(0,0,0,.3)">${num}</div>`,
         className:'',iconSize:[28,28],iconAnchor:[14,14]
       }),zIndexOffset:500}).bindTooltip(n.name||`節點${num}`,{direction:'top'}).addTo(mapResult)
     })
   }
-  // Initial view: fit nodes or last GPS pos
+  // Initial view
   if(config.nodes&&config.nodes.length>=2){
-    const lls=config.nodes.map(n=>[n.lat,n.lng])
-    mapResult.fitBounds(L.latLngBounds(lls),{padding:[30,30]})
+    mapResult.fitBounds(L.latLngBounds(config.nodes.map(n=>[n.lat,n.lng])),{padding:[30,30]})
   } else if(lastPos){mapResult.setView([lastPos.lat,lastPos.lng],14)}
-  // Draw GPS track for active tab (or first available)
   const firstKey=COMBO_KEYS.find(k=>allTrips[k])
   if(firstKey) updateResultMapTrack(firstKey)
 }
@@ -2618,17 +2642,24 @@ function updateResultMapTrack(key){
   if(!mapResult) return
   if(_resultGpsLayer){try{mapResult.removeLayer(_resultGpsLayer)}catch(e){};_resultGpsLayer=null}
   const t=allTrips[key]; if(!t) return
+  const color=RESULT_TRACK_COLORS[key]||'#3b82f6'
+  // Update legend swatch color
+  const swatch=document.getElementById('rml-track-swatch')
+  if(swatch) swatch.style.background=color
   const group=L.layerGroup()
   if(t.gpsTrack&&t.gpsTrack.length>=2){
     const ll=t.gpsTrack.map(p=>[p.lat,p.lng])
-    const poly=L.polyline(ll,{color:'#3b82f6',weight:3.5,opacity:.85}).addTo(group)
+    const poly=L.polyline(ll,{color,weight:4,opacity:.85}).addTo(group)
     mapResult.fitBounds(poly.getBounds(),{padding:[20,20]})
   }
   if(t.delayLog){
     t.delayLog.forEach(r=>{
       if(!r.pos)return
-      L.marker([r.pos.lat,r.pos.lng],{icon:L.divIcon({html:`<div style="font-size:18px">${r.icon}</div>`,className:'',iconSize:[20,20],iconAnchor:[10,10]})})
-        .bindPopup(`${r.icon} ${r.label}<br>${fmtHMS(r.startedAt)}<br>${r.durationS}秒`).addTo(group)
+      // In-app: show icon only, no popup
+      L.marker([r.pos.lat,r.pos.lng],{icon:L.divIcon({
+        html:`<div style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1">${r.icon}</div>`,
+        className:'',iconSize:[26,26],iconAnchor:[13,13]
+      })}).addTo(group)
     })
   }
   _resultGpsLayer=group.addTo(mapResult)

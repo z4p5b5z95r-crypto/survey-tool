@@ -128,9 +128,17 @@ td:first-child{text-align:left;font-weight:500}
 .dl-note{font-size:12px;color:#64748b;margin-top:8px;line-height:1.7;text-align:left;background:#f8fafc;padding:14px;border-radius:10px}
 
 /* ── Trip map ── */
-.trip-map-wrap{position:relative;height:220px;background:#e2e8f0}
+.trip-map-section{border-top:1px solid #e2e8f0}
+.trip-map-header{padding:10px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#fff;flex-wrap:wrap;gap:6px}
+.trip-map-header .tmap-title{font-size:12px;color:#475569;display:flex;align-items:center;gap:5px}
+.trip-map-legrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.tmap-leg{display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b}
+.tmap-leg .ll-solid{width:20px;height:3px;border-radius:2px;display:inline-block}
+.tmap-leg .ll-dashed{width:20px;height:0;border-top:2px dashed #94a3b8;display:inline-block}
+.tmap-leg .ll-node{width:16px;height:16px;border-radius:50%;background:#22c55e;border:2px solid #fff;display:inline-flex;align-items:center;justify-content:center;font-size:7px;color:#fff;font-weight:700}
+.trip-map-wrap{position:relative;height:380px;background:#e2e8f0}
 .trip-map{width:100%;height:100%}
-.trip-map-legend{position:absolute;bottom:8px;left:8px;background:rgba(255,255,255,.92);border-radius:8px;padding:5px 9px;font-size:10px;line-height:1.8;z-index:500;pointer-events:none;box-shadow:0 1px 4px #0002}
+.trip-map-note{padding:7px 14px;font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;display:flex;gap:14px;flex-wrap:wrap;background:#fafafa}
 </style>
 </head>
 <body>
@@ -656,11 +664,23 @@ function renderComboRecords(combo){
         <div class="sgs-kv"><div class="k">旅行速率</div><div class="v green">${spd(TL,trip.travelS)} km/h</div></div>
       </div>
       <!-- GPS Track Map -->
-      <div class="trip-map-wrap">
-        <div id="${mapId}" class="trip-map"></div>
-        <div class="trip-map-legend">
-          <div>── 軌跡</div>
-          ${delayCount>0?`<div>📍 延滯地點（${delayCount} 處）</div>`:''}
+      <div class="trip-map-section">
+        <div class="trip-map-header">
+          <div class="tmap-title">🗺 監測軌跡圖</div>
+          <div class="trip-map-legrow">
+            <div class="tmap-leg"><span class="ll-dashed"></span>規劃路線</div>
+            <div class="tmap-leg"><span class="ll-solid" style="background:${TRACK_COLOR[combo]||'#2563eb'}"></span>GPS軌跡</div>
+            <div class="tmap-leg"><span class="ll-node">1</span>節點</div>
+            ${delayCount>0?`<div class="tmap-leg" style="font-size:14px">🚦 延滯</div>`:''}
+          </div>
+        </div>
+        <div class="trip-map-wrap">
+          <div id="${mapId}" class="trip-map"></div>
+        </div>
+        <div class="trip-map-note">
+          <span>🖱 滑鼠滾輪縮放</span>
+          <span>✋ 拖曳移動</span>
+          <span>👆 點擊節點或延滯標記查看資訊</span>
         </div>
       </div>
       <!-- SGS table -->
@@ -728,8 +748,10 @@ function initTripMap(mapId, trip, combo){
 
   const trackColor = TRACK_COLOR[combo]||'#2563eb'
   const nodes = route.nodes||[]
+  const startTime = trip.startTime ? new Date(trip.startTime) : null
+  const nodeTs = (trip.nodeTimestamps||[]).map(t=>t?new Date(t):null)
 
-  const m = L.map(el,{zoomControl:true,attributionControl:false,scrollWheelZoom:false})
+  const m = L.map(el,{zoomControl:true,attributionControl:false,scrollWheelZoom:true})
   _tripMaps[mapId]=m
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(m)
@@ -739,41 +761,61 @@ function initTripMap(mapId, trip, combo){
     L.polyline(nodes.map(n=>[n.lat,n.lng]),{color:'#94a3b8',weight:3,dashArray:'6 4',opacity:.7}).addTo(m)
   }
 
-  // GPS track
+  // GPS track (colored by combo)
   const gpsLL=(trip.gpsTrack||[]).filter(p=>p.lat&&p.lng).map(p=>[p.lat,p.lng])
   if(gpsLL.length>=2){
     L.polyline(gpsLL,{color:trackColor,weight:4,opacity:.85}).addTo(m)
   }
 
-  // Node markers
+  // Node markers — click to show crossing time & elapsed
   nodes.forEach((n,i)=>{
     const isStart=i===0, isEnd=i===nodes.length-1
-    const color=isStart?'#16a34a':isEnd?'#dc2626':'#3b82f6'
+    const color=isStart?'#22c55e':isEnd?'#ef4444':'#3b82f6'
+    const ts=nodeTs[i]
+    const timeStr = ts ? fmtDTLocal(ts) : '—'
+    const elapsedStr = (ts&&startTime) ? fmtSec(Math.round((ts-startTime)/1000)) : '—'
     L.marker([n.lat,n.lng],{icon:L.divIcon({
-      html:`<div style="width:22px;height:22px;background:${color};border:2.5px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:white;box-shadow:0 2px 6px #0004">${i+1}</div>`,
-      className:'',iconSize:[22,22],iconAnchor:[11,11]
-    })}).bindTooltip(n.name||`節點${i+1}`,{permanent:false}).addTo(m)
+      html:`<div style="width:28px;height:28px;background:${color};border:2.5px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:${i>=9?'7':'10'}px;font-weight:800;color:white;box-shadow:0 2px 6px rgba(0,0,0,.35)">${i+1}</div>`,
+      className:'',iconSize:[28,28],iconAnchor:[14,14]
+    })})
+    .bindPopup(`<div style="font-size:12px;min-width:170px;line-height:1.8">
+      <div style="font-weight:700;margin-bottom:4px">${n.name||`節點${i+1}`}</div>
+      <div style="color:#475569">⏱ 經過時間：${timeStr}</div>
+      <div style="color:#475569">🔢 旅程第 ${elapsedStr}</div>
+    </div>`,{maxWidth:220})
+    .addTo(m)
   })
 
-  // Delay event markers
+  // Delay event markers — click to show type, time, duration
   ;(trip.delayLog||[]).filter(d=>d.pos?.lat&&d.pos?.lng).forEach(d=>{
     const icon=d.icon||'⚠️'
-    const tooltip=`${icon} ${d.label||''} ${d.durationS?d.durationS+'秒':''}`
+    const timeStr = d.startedAt ? fmtDTLocal(new Date(d.startedAt)) : '—'
     L.marker([d.pos.lat,d.pos.lng],{icon:L.divIcon({
-      html:`<div style="font-size:20px;filter:drop-shadow(0 1px 3px #0006);line-height:1">${icon}</div>`,
-      className:'',iconSize:[24,24],iconAnchor:[12,12]
-    })}).bindTooltip(tooltip,{permanent:false}).addTo(m)
+      html:`<div style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.45));line-height:1">${icon}</div>`,
+      className:'',iconSize:[26,26],iconAnchor:[13,13]
+    })})
+    .bindPopup(`<div style="font-size:12px;min-width:160px;line-height:1.8">
+      <div style="font-weight:700;margin-bottom:4px">${icon} ${d.label||''}</div>
+      <div style="color:#475569">⏰ 按下時間：${timeStr}</div>
+      <div style="color:#475569">⌛ 延滯時長：${d.durationS||0} 秒</div>
+    </div>`,{maxWidth:220})
+    .addTo(m)
   })
 
   // Fit bounds
   const allPts=[...gpsLL,...nodes.map(n=>[n.lat,n.lng])]
   if(allPts.length>=2){
-    m.fitBounds(L.latLngBounds(allPts).pad(0.1))
+    m.fitBounds(L.latLngBounds(allPts).pad(0.12))
   } else if(allPts.length===1){
     m.setView(allPts[0],16)
   } else {
     m.setView([25.04776,121.51755],13)
   }
+}
+
+function fmtDTLocal(d){
+  if(!d||isNaN(d)) return '—'
+  return d.toLocaleString('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})
 }
 
 function fmtSec(s){
