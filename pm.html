@@ -1391,6 +1391,7 @@ async function refreshSegment(segIdx) {
   const result=await fetchRoute(n1.lat,n1.lng,n2.lat,n2.lng,wps,mode)
   segPolylines[segIdx]=L.polyline(result.latlngs,{color:'#3b82f6',weight:4,opacity:.85}).addTo(map)
   if(!segData[segIdx])segData[segIdx]={name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]}
+  segData[segIdx]._latlngs=result.latlngs
   if(segData[segIdx]._auto!==false){segData[segIdx].length=result.distance;segData[segIdx]._source=result.source;updateTotalLength();renderSegTable()}
   if(result.source==='straight')toast('⚠️ 使用直線距離（OSRM 無回應）')
 }
@@ -1553,10 +1554,18 @@ async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle
   if(idx>0){
     const prev=nodes[idx-1]; document.getElementById('route-loading').style.display='block'
     const preWps=segData[idx-1]?.waypoints||[]
-    const result=await fetchRoute(prev.lat,prev.lng,lat,lng,preWps)
+    const preMode=segData[idx-1]?.mode||'foot'
+    const savedLatlngs=segData[idx-1]?._latlngs
+    let result
+    if(savedLatlngs&&savedLatlngs.length>=2){
+      result={latlngs:savedLatlngs,distance:segData[idx-1].length||0,source:segData[idx-1]._source||'saved'}
+    }else{
+      result=await fetchRoute(prev.lat,prev.lng,lat,lng,preWps,preMode)
+    }
     document.getElementById('route-loading').style.display='none'
     segPolylines.push(L.polyline(result.latlngs,{color:'#3b82f6',weight:4,opacity:.85}).addTo(map))
     if(!segData[idx-1])segData[idx-1]={name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]}
+    segData[idx-1]._latlngs=result.latlngs
     if(segData[idx-1]._auto!==false){segData[idx-1].length=result.distance;segData[idx-1]._source=result.source}
     if(result.source==='straight')toast('⚠️ 使用直線距離（OSRM 無回應）')
     updateTotalLength()
@@ -1927,7 +1936,7 @@ function buildConfig() {
     op:document.getElementById('op').value.trim()||'14:00~16:00',
     pk:document.getElementById('pk').value.trim()||'17:00~19:00',
     nd:nodes.map(n=>({n:n.name,n2:n.exitName||'',a:parseFloat(n.lat.toFixed(6)),o:parseFloat(n.lng.toFixed(6)),r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10})),
-    sg:segData.map(s=>{const obj={n:s.name,l:s.lanes||2,w:s.width||8,d:s.length||0};if(s.waypoints?.length)obj.wp=s.waypoints.map(w=>({a:+w.lat.toFixed(6),o:+w.lng.toFixed(6)}));if(s.mode&&s.mode!=='foot')obj.m=s.mode;return obj})
+    sg:segData.map(s=>{const obj={n:s.name,l:s.lanes||2,w:s.width||8,d:s.length||0};if(s.waypoints?.length)obj.wp=s.waypoints.map(w=>({a:+w.lat.toFixed(6),o:+w.lng.toFixed(6)}));if(s.mode&&s.mode!=='foot')obj.m=s.mode;if(s._latlngs?.length)obj.ll=s._latlngs.map(p=>[+p[0].toFixed(6),+p[1].toFixed(6)]);return obj})
   }
 }
 function encodeConfig(cfg) { return btoa(unescape(encodeURIComponent(JSON.stringify(cfg)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'') }
@@ -1984,7 +1993,7 @@ async function saveTask() {
   if(gsUrl&&gsKey){
     toast('⏳ 同步至雲端...')
     try{
-      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'foot'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));return seg})}
+      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'foot'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
       const result=await cloudPost(payload)
       const taskIdx=savedTasks.findIndex(t=>t.id===id)
       if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
@@ -2024,7 +2033,7 @@ async function uploadTask(id) {
       peakLabel:    cfg.pk,
       owner:        task.creator || getCurrentUser() || '',
       nodes:    cfg.nd.map(n => ({ name:n.n, exitName:n.n2||'', lat:n.a, lng:n.o, radius:n.r, polygon:n.pg||null, lineAngle:n.la??null, lineLength:n.ll||20 })),
-      segments: cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'foot'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));return seg})
+      segments: cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'foot'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})
     }
     const result = await cloudPost(payload)
     const idx = savedTasks.findIndex(t => t.id === id)
@@ -2071,7 +2080,7 @@ async function loadTask(id) {
   radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   nodes=[]
-  segData=cfg.sg?cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:false,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o})),mode:s.m||'foot'})):[]
+  segData=cfg.sg?cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:false,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o})),mode:s.m||'foot',_latlngs:s.ll||null})):[]
   if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||20)}
   if(nodes.length>=2)map.fitBounds(L.polyline(nodes.map(n=>[n.lat,n.lng])).getBounds(),{padding:[40,40]})
   _dirty=false
@@ -2163,7 +2172,7 @@ async function syncFromCloud() {
       }
       // 不在本機：只匯入屬於自己的
       if(!isMine) continue
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='foot')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='foot')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
       changed++
     }
     if(changed>0){localStorage.setItem('pm_tasks',JSON.stringify(savedTasks));renderProjects();toast(`☁️ 雲端同步完成`)}
