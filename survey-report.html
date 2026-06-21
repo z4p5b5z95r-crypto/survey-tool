@@ -320,12 +320,28 @@ window.addEventListener('load', async () => {
     const routeRes = await cloudGet(gs, k, {action:'getRoute', id})
     if(!routeRes.ok) throw new Error(routeRes.error)
     route = routeRes.data
+    // GAS may return arrays/objects as JSON strings — parse defensively
+    const _tryParse = (v, fallback) => { if(typeof v!=='string') return v??fallback; try{return JSON.parse(v)}catch{return fallback} }
+    route.nodes    = _tryParse(route.nodes,    [])
+    route.segments = _tryParse(route.segments, [])
     setLoadProgress(45)
 
     ld('載入調查結果...')
     const surveyRes = await cloudGet(gs, k, {action:'getSurveys', routeId: id})
     if(!surveyRes.ok) throw new Error(surveyRes.error)
     const allSurveys = surveyRes.data || []
+    // Parse JSON-string fields inside each survey/trip
+    allSurveys.forEach(sv => {
+      sv.trips = _tryParse(sv.trips, [])
+      ;(Array.isArray(sv.trips) ? sv.trips : []).forEach(t => {
+        t.gpsTrack       = _tryParse(t.gpsTrack,       [])
+        t.delayLog       = _tryParse(t.delayLog,        [])
+        t.nodeTimestamps = _tryParse(t.nodeTimestamps,  [])
+        t.segTimes       = _tryParse(t.segTimes,        [])
+        t.roadDelays     = _tryParse(t.roadDelays,      {})
+        t.intDelays      = _tryParse(t.intDelays,       {})
+      })
+    })
     // Filter to date if provided
     surveys = _filterDate ? allSurveys.filter(sv=>String(sv.date||'').slice(0,10)===_filterDate) : allSurveys
     setLoadProgress(80)
