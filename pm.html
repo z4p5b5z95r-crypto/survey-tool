@@ -2062,7 +2062,7 @@ function buildURL() {
   const base=document.getElementById('app-url').value.trim().replace(/\/$/,'')
   const task=currentTaskId?savedTasks.find(t=>t.id===currentTaskId):null
   if(task&&task.cloudId&&gsUrl&&gsKey){
-    document.getElementById('qr-info').textContent=`☁️ 雲端路線 ${task.cloudId}（節點 ${cfg.nd.length} 個）`
+    document.getElementById('qr-info').textContent=`☁️ 雲端路線 ${task.cloudId}（節點 ${cfg.nd.filter(n=>!n.gh).length} 個）`
     return`${base}/?id=${encodeURIComponent(task.cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(gsKey)}`
   }
   const encoded=encodeConfig(cfg)
