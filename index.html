@@ -2229,8 +2229,10 @@ function endSurvey(){
   updateRestoredBanner(Object.keys(allTrips).length)
   buildTripDoneUI(travelS,totalDelayS,runS)
   // ── Auto-upload to cloud after every trip end ──
+  // Capture cur.key NOW (synchronously) — cur may be cleared before the timeout fires
   if(cloudRouteId && cloudScriptUrl && cloudApiKey) {
-    setTimeout(submitToCloud, 800)
+    const _uploadKey = cur.key
+    setTimeout(()=>submitToCloud(_uploadKey), 800)
   }
   showScreen('screen-tripdone')
 }
@@ -2278,7 +2280,7 @@ function goReady(){
 //  CLOUD SUBMIT
 // ════════════════════════════════════
 let _uploadBusy=false
-async function submitToCloud(){
+async function submitToCloud(tripKey){
   if(!cloudRouteId||!cloudScriptUrl||!cloudApiKey) return
   if(_uploadBusy) return
   _uploadBusy=true
@@ -2294,7 +2296,7 @@ async function submitToCloud(){
     surveyor: config.surveyor,
     weather:  config.weather,
     date:     config.date,
-    trips:    buildTripsPayload()
+    trips:    buildTripsPayload(tripKey)
   }
 
   try{
@@ -2340,11 +2342,11 @@ function buildTripEntry(t){
     }))
   }
 }
-function buildTripsPayload(){
-  // Only send the CURRENT trip — one cloud survey per combo
-  // (prevents duplicate data when multiple combos are done in one session)
-  if(!cur) return {}
-  const key=cur.key
+function buildTripsPayload(tripKey){
+  // Only send the specified trip — one cloud survey per combo
+  // tripKey is captured synchronously in endSurvey before cur may be cleared
+  const key = tripKey || (cur && cur.key)
+  if(!key) return {}
   const t=allTrips[key]; if(!t) return {}
   const out={}; out[key]=buildTripEntry(t); return out
 }
