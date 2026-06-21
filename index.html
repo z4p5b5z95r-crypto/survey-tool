@@ -433,12 +433,6 @@ input,select,textarea{font-size:max(16px,1em)!important}
     <div style="font-size:11px;font-weight:700;color:#64748b;letter-spacing:.4px;margin-top:10px;margin-bottom:4px">本次監測記錄</div>
     <div class="progress-chips" id="progress-chips"></div>
     <button class="btn-start" id="btn-start" disabled onclick="startSurvey()">▶ 開始調查</button>
-    <!-- ── Patch GPS button (shown when today's trips have GPS data but patch not yet sent) ── -->
-    <div id="patch-gps-ready-box" style="display:none;margin-top:8px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:10px 14px">
-      <div style="font-size:12px;color:#15803d;margin-bottom:6px">📍 本次調查有 GPS 軌跡與延滯點資料尚未補傳</div>
-      <button id="patch-gps-ready-btn" onclick="patchGpsData()" style="width:100%;padding:8px;background:#15803d;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">🗺 補傳地圖資料至雲端</button>
-      <div id="patch-gps-ready-status" style="font-size:12px;color:#64748b;margin-top:4px;text-align:center"></div>
-    </div>
     <!-- ── Device history ── -->
     <div id="history-section" style="display:none;margin-top:8px">
       <button id="hist-toggle-btn" onclick="toggleHistory()"
@@ -547,8 +541,6 @@ input,select,textarea{font-size:max(16px,1em)!important}
         <div style="font-size:13px;font-weight:700;color:#0369a1;margin-bottom:8px">☁️ 雲端資料上傳</div>
         <div id="cloud-upload-status" style="font-size:13px;color:#475569;margin-bottom:8px">準備中...</div>
         <button id="cloud-upload-btn" onclick="submitToCloud()" style="width:100%;padding:11px;background:#0369a1;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">☁ 上傳調查結果</button>
-        <button id="patch-gps-btn" onclick="patchGpsData()" style="display:none;width:100%;padding:9px;background:#f0fdf4;color:#15803d;border:1.5px solid #86efac;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px">🗺 補傳地圖資料（GPS＋延滯點）</button>
-        <div id="patch-gps-status" style="display:none;font-size:12px;color:#64748b;margin-top:4px;text-align:center"></div>
       </div>
       <button style="width:100%;padding:15px;background:#e2e8f0;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px" onclick="goReady()">🔄 繼續補充旅次</button>
     </div>
@@ -569,12 +561,6 @@ input,select,textarea{font-size:max(16px,1em)!important}
           <span>🖱 滑鼠滾輪縮放</span>
           <span>✋ 拖曳移動</span>
         </div>
-      </div>
-      <!-- 補傳地圖資料按鈕（有GPS資料時顯示） -->
-      <div id="patch-gps-official-box" style="display:none;margin:8px 0;background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:10px 14px">
-        <div style="font-size:12px;color:#15803d;margin-bottom:6px">📍 本次調查有 GPS 軌跡與延滯點資料可補傳至雲端</div>
-        <button id="patch-gps-official-btn" onclick="patchGpsData()" style="width:100%;padding:8px;background:#15803d;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">🗺 補傳地圖資料（GPS＋延滯點）</button>
-        <div id="patch-gps-official-status" style="font-size:12px;color:#64748b;margin-top:4px;text-align:center"></div>
       </div>
       <div id="report-combo-tabs"></div>
       <div id="official-forms"></div>
@@ -632,7 +618,6 @@ let cloudRouteId  = ''
 let cloudScriptUrl = ''
 let cloudApiKey   = ''
 let cloudSubmitted = false  // prevent double-submit
-let _liveTripsForPatch = null  // holds real allTrips when viewHistoryReport replaces it with synth
 
 // GPS
 let watchId=null, mapReady=null, mapSurvey=null, mapResult=null, mapSignin=null
@@ -785,7 +770,8 @@ async function prefetchRoutes(){
     const wps=(config.segments[i]?.waypoints||[]).map(w=>`${w.lng},${w.lat}`).join(';')
     const coords=wps?`${n1.lng},${n1.lat};${wps};${n2.lng},${n2.lat}`:`${n1.lng},${n1.lat};${n2.lng},${n2.lat}`
     try{
-      const url=`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`
+      const profile=(config.segments[i]?.mode==='driving')?'driving':'foot'
+      const url=`https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson`
       const res=await fetch(url,{signal:AbortSignal.timeout(8000)})
       const data=await res.json()
       if(data.code==='Ok'){routePolylines.push(data.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]));continue}
@@ -1050,7 +1036,6 @@ function viewHistoryReport(idx){
   })
   // Swap allTrips temporarily and show report screen
   const origAllTrips=allTrips
-  _liveTripsForPatch=origAllTrips  // keep real trips accessible for patch button
   allTrips=synth
   config.date=(h.date||'').slice(0,10)
   buildReport()
@@ -1060,7 +1045,6 @@ function viewHistoryReport(idx){
   if(backBtn){
     backBtn.onclick=()=>{
       allTrips=origAllTrips
-      _liveTripsForPatch=null
       config.date=savedDate
       backBtn.onclick=()=>goReady()  // reset to normal
       showScreen('screen-ready')
@@ -2301,10 +2285,6 @@ function goReady(){
   renderHistory()
   loadCloudHistory()   // refresh from cloud in background
   autoSelectPeak()     // auto-detect peak/off-peak by current time (skips if user already chose)
-  // 若已上傳且本機有 GPS/延滯資料，顯示補傳提示
-  const hasGps=cloudSubmitted&&cloudRouteId&&Object.values(allTrips).some(t=>t?.gpsTrack?.length>0||t?.delayLog?.length>0)
-  const box=document.getElementById('patch-gps-ready-box')
-  if(box) box.style.display=hasGps?'block':'none'
 }
 
 // ════════════════════════════════════
@@ -2341,10 +2321,6 @@ async function submitToCloud(tripKey){
     if(btnEl){ btnEl.textContent='✅ 已上傳' }
     if(tdStatus){ tdStatus.style.background='#f0fdf4'; tdStatus.style.color='#16a34a'; tdStatus.textContent='✅ 已成功上傳至雲端' }
     showToast('☁️ 調查結果已上傳')
-    // 若有 GPS/延滯資料，顯示補傳按鈕
-    const hasGps=Object.values(allTrips).some(t=>t?.gpsTrack?.length>0||t?.delayLog?.length>0)
-    const patchBtn=document.getElementById('patch-gps-btn')
-    if(patchBtn&&hasGps) patchBtn.style.display='block'
     flushOfflineQueue()
   }catch(e){
     if(statusEl) statusEl.textContent='❌ 上傳失敗：'+e.message
@@ -2357,59 +2333,6 @@ async function submitToCloud(tripKey){
   }
 }
 
-async function patchGpsData(){
-  const btn=document.getElementById('patch-gps-btn')
-  const st=document.getElementById('patch-gps-status')
-  const rbtn=document.getElementById('patch-gps-ready-btn')
-  const rst=document.getElementById('patch-gps-ready-status')
-  const obtn=document.getElementById('patch-gps-official-btn')
-  const ost=document.getElementById('patch-gps-official-status')
-  if(!cloudRouteId||!cloudScriptUrl||!cloudApiKey){showToast('未連線雲端');return}
-  if(btn){btn.disabled=true;btn.textContent='⏳ 補傳中...'}
-  if(rbtn){rbtn.disabled=true;rbtn.textContent='⏳ 補傳中...'}
-  if(obtn){obtn.disabled=true;obtn.textContent='⏳ 補傳中...'}
-  if(st){st.style.display='block';st.textContent=''}
-  if(rst){rst.textContent=''}
-  if(ost){ost.textContent=''}
-  try{
-    // In history view, allTrips is replaced with synthetic data (no gpsTrack).
-    // _liveTripsForPatch holds the real allTrips from before viewHistoryReport swapped it.
-    const sourceTrips = _liveTripsForPatch || allTrips
-    const trips=Object.fromEntries(
-      Object.entries(sourceTrips)
-        .filter(([,t])=>t&&(t.gpsTrack?.length>0||t.delayLog?.length>0))
-        .map(([k,t])=>[k,{
-          gpsTrack:(t.gpsTrack||[]).filter((_,i)=>i%5===0).map(p=>({lat:p.lat,lng:p.lng})),
-          delayLog:(t.delayLog||[]).filter(d=>d.pos?.lat&&d.pos?.lng).map(d=>({
-            cause:d.cause,label:d.label,icon:d.icon,
-            durationS:d.durationS,pos:{lat:d.pos.lat,lng:d.pos.lng}
-          }))
-        }])
-    )
-    if(!Object.keys(trips).length){showToast('沒有地圖資料可補傳');return}
-    const body={action:'patchTripGps',routeId:cloudRouteId,date:config.date,surveyor:config.surveyor,trips}
-    await cloudPostSurvey(cloudScriptUrl,cloudApiKey,body)
-    if(btn){btn.textContent='✅ 地圖資料已補傳'}
-    if(st){st.textContent='✅ GPS軌跡與延滯點已補傳至雲端'}
-    if(rbtn){rbtn.textContent='✅ 已補傳'}
-    if(rst){rst.textContent='✅ GPS軌跡與延滯點已補傳至雲端'}
-    if(obtn){obtn.textContent='✅ 已補傳'}
-    if(ost){ost.textContent='✅ GPS軌跡與延滯點已補傳至雲端'}
-    const box=document.getElementById('patch-gps-ready-box')
-    if(box) setTimeout(()=>box.style.display='none',3000)
-    const obox=document.getElementById('patch-gps-official-box')
-    if(obox) setTimeout(()=>obox.style.display='none',3000)
-    showToast('🗺 地圖資料已補傳')
-  }catch(e){
-    if(btn){btn.disabled=false;btn.textContent='🗺 補傳地圖資料（重試）'}
-    if(rbtn){rbtn.disabled=false;rbtn.textContent='🗺 補傳地圖資料（重試）'}
-    if(obtn){obtn.disabled=false;obtn.textContent='🗺 補傳地圖資料（重試）'}
-    if(st){st.textContent='❌ 失敗：'+e.message}
-    if(rst){rst.textContent='❌ 失敗：'+e.message}
-    if(ost){ost.textContent='❌ 失敗：'+e.message}
-    showToast('❌ 補傳失敗')
-  }
-}
 
 function buildTripEntry(t){
   return {
@@ -2462,11 +2385,6 @@ function segLabel(i){
 function buildReport(){
   $('report-subtitle').textContent=`${config.routeName}  ${config.date}`
   buildResultMap();buildOfficialForms();buildTable1();buildTable2();buildTable3()
-  // Show patch button in 調查紀錄 tab if GPS data exists (don't require cloudSubmitted — history view may not have it set)
-  const srcTrips=_liveTripsForPatch||allTrips
-  const hasGpsOfficial=cloudRouteId&&cloudScriptUrl&&Object.values(srcTrips).some(t=>t?.gpsTrack?.length>0||t?.delayLog?.length>0)
-  const obox=document.getElementById('patch-gps-official-box')
-  if(obox) obox.style.display=hasGpsOfficial?'block':'none'
 }
 
 // ════════════════════════════════════
