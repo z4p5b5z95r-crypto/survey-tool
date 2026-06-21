@@ -1315,7 +1315,7 @@ async function doInsertWaypoint(segIdx,lat,lng) {
   refreshMidHandles()
 }
 function refreshMidHandles() {
-  clearMidHandles(); if(mode!=='node'||nodes.length<2) return
+  clearMidHandles(); if((!routeEditMode&&mode!=='node')||nodes.length<2) return
   for(let segIdx=0;segIdx<nodes.length-1;segIdx++){
     const poly=segPolylines[segIdx]; if(!poly) continue
     const midPt=getPolylineMidpoint(poly)
@@ -1393,7 +1393,7 @@ async function refreshSegment(segIdx) {
   if(!segData[segIdx])segData[segIdx]={name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]}
   segData[segIdx]._latlngs=result.latlngs  // primary: used by buildConfig
   segData[segIdx]._latlngsStr=JSON.stringify(result.latlngs)  // backup string copy
-  if(segData[segIdx]._auto!==false){segData[segIdx].length=result.distance;segData[segIdx]._source=result.source;updateTotalLength();renderSegTable()}
+  segData[segIdx].length=result.distance;segData[segIdx]._source=result.source;updateTotalLength();renderSegTable()
   if(result.source==='straight')toast('⚠️ 使用直線距離（OSRM 無回應）')
 }
 function waypointInsertIdx(segIdx,newPt) {
