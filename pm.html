@@ -778,8 +778,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 //  ⚙️  雲端設定（管理員填入；使用者無需設定）
 //  若要直接寫死，填入以下兩個常數；否則沿用 localStorage。
 // ════════════════════════════════════════════════════════
-const HARDCODED_GS_URL = ''   // 例：'https://script.google.com/macros/s/xxx/exec'
-const HARDCODED_GS_KEY = ''   // 例：'my-secret-key'
+const HARDCODED_GS_URL = 'https://script.google.com/macros/s/AKfycbx0NO47Q0fbMv6dCtgBd-w_qcJxbfLDtZKFMI1hnjvn-dgTl5f3k3HBc0oeOr62su2dSg/exec'
+const HARDCODED_GS_KEY = '05751'
 
 let gsUrl = HARDCODED_GS_URL || localStorage.getItem('gs_url') || ''
 let gsKey = HARDCODED_GS_KEY || localStorage.getItem('gs_key') || ''
@@ -1391,7 +1391,8 @@ async function refreshSegment(segIdx) {
   const result=await fetchRoute(n1.lat,n1.lng,n2.lat,n2.lng,wps,mode)
   segPolylines[segIdx]=L.polyline(result.latlngs,{color:'#3b82f6',weight:4,opacity:.85}).addTo(map)
   if(!segData[segIdx])segData[segIdx]={name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]}
-  segData[segIdx]._latlngs=result.latlngs
+  segData[segIdx]._latlngs=result.latlngs  // primary: used by buildConfig
+  segData[segIdx]._latlngsStr=JSON.stringify(result.latlngs)  // backup string copy
   if(segData[segIdx]._auto!==false){segData[segIdx].length=result.distance;segData[segIdx]._source=result.source;updateTotalLength();renderSegTable()}
   if(result.source==='straight')toast('⚠️ 使用直線距離（OSRM 無回應）')
 }
@@ -1937,7 +1938,7 @@ function buildConfig() {
     op:document.getElementById('op').value.trim()||'14:00~16:00',
     pk:document.getElementById('pk').value.trim()||'17:00~19:00',
     nd:nodes.map(n=>({n:n.name,n2:n.exitName||'',a:parseFloat(n.lat.toFixed(6)),o:parseFloat(n.lng.toFixed(6)),r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10})),
-    sg:segData.map((s,i)=>{const obj={n:s.name,l:s.lanes||2,w:s.width||8,d:s.length||0};if(s.waypoints?.length)obj.wp=s.waypoints.map(w=>({a:+w.lat.toFixed(6),o:+w.lng.toFixed(6)}));if(s.mode&&s.mode!=='foot')obj.m=s.mode;const poly=segPolylines[i];const ll=poly?poly.getLatLngs().map(p=>[+p.lat.toFixed(6),+p.lng.toFixed(6)]):s._latlngs;if(ll?.length>=2)obj.ll=ll;return obj})
+    sg:segData.map((s,i)=>{const obj={n:s.name,l:s.lanes||2,w:s.width||8,d:s.length||0};if(s.waypoints?.length)obj.wp=s.waypoints.map(w=>({a:+w.lat.toFixed(6),o:+w.lng.toFixed(6)}));if(s.mode&&s.mode!=='foot')obj.m=s.mode;let ll=s._latlngs;if(!ll&&s._latlngsStr){try{ll=JSON.parse(s._latlngsStr)}catch{}}if(!ll){const poly=segPolylines[i];if(poly){const pts=poly.getLatLngs();ll=Array.isArray(pts[0])?pts.map(p=>[+p[0].toFixed(6),+p[1].toFixed(6)]):pts.map(p=>[+p.lat.toFixed(6),+p.lng.toFixed(6)])}}if(ll?.length>=2)obj.ll=ll;return obj})
   }
 }
 function encodeConfig(cfg) { return btoa(unescape(encodeURIComponent(JSON.stringify(cfg)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'') }
@@ -1987,6 +1988,8 @@ async function saveTask() {
   const taskObj={id,cloudId:existingTask?.cloudId||null,cfg,savedAt:new Date().toLocaleDateString('zh-TW'),creator:getCurrentUser()||'未知'}
   if(existingTask){const idx=savedTasks.findIndex(t=>t.id===id);savedTasks[idx]=taskObj}
   else{savedTasks.unshift(taskObj);if(savedTasks.length>30)savedTasks.pop()}
+  const llCount=cfg.sg.filter(s=>s.ll?.length>=2).length
+  console.log('[save] segments with latlngs:',llCount,'/',cfg.sg.length,cfg.sg.map(s=>s.ll?.length||0))
   localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
   _dirty=false
   document.getElementById('ev-title').textContent=cfg.rn
@@ -2082,6 +2085,7 @@ async function loadTask(id) {
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   nodes=[]
   segData=cfg.sg?cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:false,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o})),mode:s.m||'foot',_latlngs:s.ll||null})):[]
+  console.log('[load] segments with latlngs:',segData.filter(s=>s._latlngs?.length>=2).length,'/',segData.length,segData.map(s=>s._latlngs?.length||0))
   if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||20)}
   if(nodes.length>=2)map.fitBounds(L.polyline(nodes.map(n=>[n.lat,n.lng])).getBounds(),{padding:[40,40]})
   _dirty=false
