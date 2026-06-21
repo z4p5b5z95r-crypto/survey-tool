@@ -769,6 +769,7 @@ async function prefetchRoutes(){
     const n1=config.nodes[i],n2=config.nodes[i+1]
     const wps=(config.segments[i]?.waypoints||[]).map(w=>`${w.lng},${w.lat}`).join(';')
     const coords=wps?`${n1.lng},${n1.lat};${wps};${n2.lng},${n2.lat}`:`${n1.lng},${n1.lat};${n2.lng},${n2.lat}`
+    if(config.segments[i]?.mode==='straight'){routePolylines.push([[n1.lat,n1.lng],[n2.lat,n2.lng]]);continue}
     try{
       const profile=(config.segments[i]?.mode==='driving')?'driving':'foot'
       const url=`https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson`
@@ -817,8 +818,8 @@ function applyConfig(cfg){
     return {name:n.n||n.r1||'節點',exitName:n.n2||n.exitName||'',lat:n.a,lng:n.o,radius:n.r||15,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20}
   })
   config.segments=(cfg.segments||cfg.sg||[]).map(s=>{
-    if(s.name!==undefined) return {name:s.name,lanes:s.lanes||2,width:s.width||8,length:s.length||0,waypoints:(s.waypoints||[]).map(w=>({lat:w.lat||w.a,lng:w.lng||w.o}))}
-    return {name:s.n,lanes:s.l,width:s.w,length:s.d,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o}))}
+    if(s.name!==undefined) return {name:s.name,lanes:s.lanes||2,width:s.width||8,length:s.length||0,mode:s.mode||'foot',waypoints:(s.waypoints||[]).map(w=>({lat:w.lat||w.a,lng:w.lng||w.o}))}
+    return {name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'foot',waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o}))}
   })
 }
 
