@@ -54,6 +54,16 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .seg-dot{width:8px;height:8px;border-radius:50%;background:#3b82f6;flex-shrink:0}
 .btn-signin{width:100%;padding:16px;background:#16a34a;color:white;border:none;border-radius:16px;font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(22,163,74,.3);margin-top:4px}
 .btn-signin:disabled{background:#94a3b8;box-shadow:none}
+/* ── Manual modal ── */
+.btn-manual{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#93c5fd;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px;transition:background .15s}
+.btn-manual:active{background:rgba(255,255,255,.2)}
+#manual-modal{display:none;position:fixed;inset:0;z-index:9999;flex-direction:column;background:#0f172a}
+#manual-modal.open{display:flex}
+.manual-modal-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#1e293b;border-bottom:1px solid #334155;flex-shrink:0}
+.manual-modal-bar span{color:white;font-size:16px;font-weight:700}
+.manual-close-btn{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.1);border:none;color:white;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-family:inherit}
+.manual-close-btn:active{background:rgba(255,255,255,.25)}
+#manual-frame{flex:1;border:none;width:100%;height:100%}
 
 /* ── Setup (manual) ── */
 #screen-setup{background:#f1f5f9}
@@ -233,7 +243,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .btn-ex.csv{background:#2563eb;color:white}
 .sec-title{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:6px}
 #map-result{height:340px;overflow:hidden}
-.result-map-wrap{border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:10px;background:#fff}
+.result-map-wrap{border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:10px;background:#fff;position:relative;isolation:isolate}
 .result-map-hdr{padding:10px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
 .result-map-hdr-title{font-size:12px;color:#475569;display:flex;align-items:center;gap:5px}
 .result-map-legrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:11px;color:#64748b}
@@ -306,6 +316,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
       <span class="signin-chip" id="si-peak"></span>
       <span class="signin-chip" id="si-segs"></span>
     </div>
+    <button class="btn-manual" onclick="openManual()">📖 操作說明</button>
   </div>
   <div class="signin-body">
 
@@ -628,8 +639,8 @@ input,select,textarea{font-size:max(16px,1em)!important}
         </div>
         <div id="map-result"></div>
         <div class="result-map-note">
-          <span>🖱 滑鼠滾輪縮放</span>
-          <span>✋ 拖曳移動</span>
+          <span>🔍 點擊 +/− 縮放</span>
+          <span>👆 點擊節點或延滯標記查看資訊</span>
         </div>
       </div>
       <div id="report-combo-tabs"></div>
@@ -1936,7 +1947,9 @@ function triggerStopDetection(){
   _stopEvent={startedAt:Date.now()-5000, pos:lastPos}  // retroact 5 s (detection window)
   svySheetExpand()
   svyShowPanel('stop')
-  // No auto-confirm; panel just waits for user action
+  // Auto-dismiss after 4 s with no action — no record
+  clearTimeout(_stopCdTimer)
+  _stopCdTimer=setTimeout(()=>{ if(_stopActive) svyDismissStop() },4000)
   // Alert tone
   try{
     if(audioCtx){
@@ -1952,6 +1965,7 @@ function triggerStopDetection(){
 
 // Called when user picks a delay button while stop panel is shown
 function svyStopPickDelay(d, group){
+  clearTimeout(_stopCdTimer)
   _stopActive=false
   // Start the delay via normal toggleDelay, but backdate startedAt using _stopEvent
   if(activeDelay&&activeDelay.cause===d.cause){
@@ -1976,6 +1990,7 @@ function svyStopPickDelay(d, group){
 
 // Called when user taps "忽略" — no record, just collapse
 function svyDismissStop(){
+  clearTimeout(_stopCdTimer)
   _stopActive=false
   _stopEvent=null
   svyShowPanel('idle')
@@ -2963,7 +2978,7 @@ const RESULT_TRACK_COLORS={
 let _resultGpsLayer=null
 function buildResultMap(){
   if(mapResult){mapResult.remove();mapResult=null;_resultGpsLayer=null}
-  mapResult=L.map('map-result',{zoomControl:true,attributionControl:false,scrollWheelZoom:true})
+  mapResult=L.map('map-result',{zoomControl:true,attributionControl:false,scrollWheelZoom:false,dragging:false,touchZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false})
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapResult)
   // Planned route (grey dashed)
   if(config.nodes&&config.nodes.length>=2){
@@ -3463,6 +3478,34 @@ document.addEventListener('touchmove', e=>{
     }
   }
 },{passive:false})
+</script>
+
+<!-- ══ 操作說明 Modal ══ -->
+<div id="manual-modal">
+  <div class="manual-modal-bar">
+    <span>📖 操作說明</span>
+    <button class="manual-close-btn" onclick="closeManual()">✕</button>
+  </div>
+  <iframe id="manual-frame" src="manual_v2.html" title="操作說明"></iframe>
+</div>
+<script>
+function openManual(){
+  document.getElementById('manual-modal').classList.add('open')
+  // lazy-load: set src only on first open
+  var fr=document.getElementById('manual-frame')
+  if(!fr.src||fr.src==='about:blank') fr.src='manual_v2.html'
+}
+function closeManual(){
+  document.getElementById('manual-modal').classList.remove('open')
+}
+// Allow closing with hardware back button on Android
+window.addEventListener('popstate',function(){
+  var m=document.getElementById('manual-modal')
+  if(m.classList.contains('open')) closeManual()
+})
+document.getElementById('manual-modal').addEventListener('keydown',function(e){
+  if(e.key==='Escape') closeManual()
+})
 </script>
 </body>
 </html>
