@@ -530,33 +530,21 @@ input,select,textarea{font-size:max(16px,1em)!important}
     <div id="svy-panel-stop" style="display:none;flex-direction:column;flex:1;overflow:hidden;min-height:0">
       <div class="svy-stop-hdr">
         <span style="font-size:16px;flex-shrink:0">⚠️</span>
-        <span style="color:#fed7aa;font-size:13px;font-weight:600;flex:1">偵測到停止 — 請選擇原因</span>
-        <span id="svy-cd-badge" class="svy-cd-badge">5秒</span>
+        <span style="color:#fed7aa;font-size:13px;font-weight:600;flex:1">偵測到停止 — 選擇延滯類型或忽略</span>
       </div>
-      <div class="svy-reason-grid">
-        <button class="svy-reason-btn svy-default" onclick="svyPickReason('紅燈停等')">
-          <div style="font-size:24px;margin-bottom:5px">🚦</div>
-          <div style="color:#fca5a5;font-size:13px;font-weight:600">紅燈停等</div>
-          <div style="color:#64748b;font-size:10px;margin-top:2px">預設</div>
-        </button>
-        <button class="svy-reason-btn" onclick="svyPickReason('禮讓行人')">
-          <div style="font-size:24px;margin-bottom:5px">🚶</div>
-          <div style="color:#d1d5db;font-size:13px;font-weight:600">禮讓行人</div>
-          <div style="color:#64748b;font-size:10px;margin-top:2px">障礙物</div>
-        </button>
-        <button class="svy-reason-btn" onclick="svyPickReason('大塞車回堵')">
-          <div style="font-size:24px;margin-bottom:5px">🚗</div>
-          <div style="color:#d1d5db;font-size:13px;font-weight:600">大塞車回堵</div>
-          <div style="color:#64748b;font-size:10px;margin-top:2px">&nbsp;</div>
-        </button>
-        <button class="svy-reason-btn" onclick="svyPickReason('路邊暫停')">
-          <div style="font-size:24px;margin-bottom:5px">🅿️</div>
-          <div style="color:#d1d5db;font-size:13px;font-weight:600">路邊暫停</div>
-          <div style="color:#64748b;font-size:10px;margin-top:2px">&nbsp;</div>
-        </button>
+      <!-- Same delay columns as idle panel -->
+      <div class="delay-columns" style="flex:1;overflow-y:auto;min-height:0">
+        <div class="delay-col">
+          <div class="dl-col-label">🛣 路段延滯</div>
+          <div id="stop-grid-road"></div>
+        </div>
+        <div class="delay-col">
+          <div class="dl-col-label">🚦 交叉口延滯</div>
+          <div id="stop-grid-inter"></div>
+        </div>
       </div>
       <div class="svy-cancel-row">
-        <button class="svy-cancel-btn" onclick="svyPickReason('cancel')">✕ 誤觸取消</button>
+        <button class="svy-cancel-btn" onclick="svyDismissStop()">✕ 忽略（不記錄）</button>
       </div>
     </div>
 
@@ -1841,12 +1829,12 @@ function onPos(p){
           sv.style.color=kmh<5?'#f87171':kmh<30?'#fbbf24':'#4ade80'
         }
       }
-      // ── 停止偵測（< 2 km/h 持續 2 秒）──
+      // ── 停止偵測（< 3 km/h 持續 5 秒）──
       if(!activeDelay){
-        const STOP_TH=2/3.6
+        const STOP_TH=3/3.6
         if(speed!=null&&speed<STOP_TH){
           if(_stopSince===null) _stopSince=Date.now()
-          else if(!_stopActive&&Date.now()-_stopSince>=2000) triggerStopDetection()
+          else if(!_stopActive&&Date.now()-_stopSince>=5000) triggerStopDetection()
         } else { _stopSince=null }
       } else { _stopSince=null }
     }
@@ -1933,6 +1921,8 @@ function svySheetCollapseWithTimer(){
   const h=$('svy-handle-hint');if(h) h.style.opacity='1'
 }
 function svyShowPanel(name){
+  // Hide end-survey prompt when switching away from done panel
+  if(name!=='done'){ const ep=$('end-survey-prompt');if(ep) ep.style.display='none' }
   ;['idle','stop','done'].forEach(p=>{
     const el=$(`svy-panel-${p}`)
     if(!el) return
@@ -1943,18 +1933,10 @@ function svyShowPanel(name){
 function triggerStopDetection(){
   if(_stopActive) return
   _stopActive=true; _stopSince=null
-  _stopEvent={startedAt:Date.now()-2000, pos:lastPos}  // retroact 2 s
+  _stopEvent={startedAt:Date.now()-5000, pos:lastPos}  // retroact 5 s (detection window)
   svySheetExpand()
   svyShowPanel('stop')
-  // Countdown
-  _stopCdVal=5
-  const badge=$('svy-cd-badge');if(badge) badge.textContent='5秒'
-  clearInterval(_stopCdTimer)
-  _stopCdTimer=setInterval(()=>{
-    _stopCdVal--
-    const b=$('svy-cd-badge');if(b) b.textContent=_stopCdVal+'秒'
-    if(_stopCdVal<=0){clearInterval(_stopCdTimer);svyPickReason('紅燈停等')}
-  },1000)
+  // No auto-confirm; panel just waits for user action
   // Alert tone
   try{
     if(audioCtx){
@@ -1968,32 +1950,43 @@ function triggerStopDetection(){
   }catch(e){}
 }
 
-function svyPickReason(reason){
-  clearInterval(_stopCdTimer)
+// Called when user picks a delay button while stop panel is shown
+function svyStopPickDelay(d, group){
   _stopActive=false
-  if(reason==='cancel'){
-    _stopEvent=null
-    svyShowPanel('idle')
-    svySheetCollapse()
-    showToast('⊘ 誤觸取消')
-    return
+  // Start the delay via normal toggleDelay, but backdate startedAt using _stopEvent
+  if(activeDelay&&activeDelay.cause===d.cause){
+    // Already active (shouldn't normally happen), just dismiss
+    svyDismissStop(); return
   }
-  // Record stop event into delayLog
-  if(_stopEvent&&cur){
-    const iconMap={'紅燈停等':'🚦','禮讓行人':'🚶','大塞車回堵':'🚗','路邊暫停':'🅿️'}
-    const now=Date.now()
-    const dur=Math.max(0,Math.round((now-_stopEvent.startedAt)/1000))
-    delayLog.push({cause:'stop',group:'stop',label:reason,icon:iconMap[reason]||'⏸',
-      startedAt:_stopEvent.startedAt,endedAt:now,durationS:dur,pos:_stopEvent.pos})
-    if(cur.intDelays) cur.intDelays['stop']=(cur.intDelays['stop']||0)+dur
-    _stopEvent=null
+  if(activeDelay){
+    const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause)
+    if(p) toggleDelay(p,activeDelay.group)
   }
-  // Show done briefly
-  const t=$('svy-done-txt');if(t) t.textContent='已記錄：'+reason
-  const ico=$('svy-done-ico');if(ico){ico.textContent='✓';ico.style.background='#14532d'}
-  svyShowPanel('done')
-  setTimeout(()=>{svyShowPanel('idle');svySheetCollapse()},1600)
-  showToast('✓ 已記錄：'+reason)
+  // Start delay normally
+  toggleDelay(d,group)
+  // Backdate startedAt to the retroactive stop start
+  if(activeDelay&&_stopEvent){
+    activeDelay.startedAt=new Date(_stopEvent.startedAt)
+  }
+  _stopEvent=null
+  svyShowPanel('idle')
+  svySheetCollapseWithTimer()
+  showToast(`⏱ ${d.icon} ${d.label} 計時中（含停等時間）`)
+}
+
+// Called when user taps "忽略" — no record, just collapse
+function svyDismissStop(){
+  _stopActive=false
+  _stopEvent=null
+  svyShowPanel('idle')
+  svySheetCollapse()
+  showToast('⊘ 已忽略，不記錄')
+}
+
+// Legacy shim (no longer auto-called but kept in case referenced elsewhere)
+function svyPickReason(reason){
+  if(reason==='cancel'){ svyDismissStop(); return }
+  svyDismissStop()
 }
 
 // ════════════════════════════════════
@@ -2168,6 +2161,8 @@ function recordNode(auto){
     stopAudioKeepAlive(); releaseWakeLock(); disableNoSleep()
     updateNextNodeCard()
     showToast(`🏁 已抵達終點！節點 ${justRecorded}／${names.length}`,true)
+    // Ask to end survey after a short delay so toast is visible first
+    setTimeout(()=>promptEndSurvey(),800)
   }else{
     const nextDot=$(`nd-${currentNodeIdx}`)
     if(nextDot) nextDot.className='nd cur'
@@ -2277,7 +2272,8 @@ function startSurvey(){
   ROAD_DELAYS.forEach(d=>{cur.roadDelays[d.cause]=0})
   INT_DELAYS.forEach(d=>{cur.intDelays[d.cause]=0})
   delayLog=[];activeDelay=null;_resumeAboveSpeedSince=null;elapsedSec=0
-  clearInterval(_stopCdTimer);_stopSince=null;_stopActive=false;_stopEvent=null
+  _stopSince=null;_stopActive=false;_stopEvent=null
+  const ep=$('end-survey-prompt');if(ep) ep.style.display='none'
   nodeTimestamps=[]   // will be filled when nodes are hit
   currentNodeIdx=0    // 0 = waiting for node 1
   nodeAutoLock=false
@@ -2431,6 +2427,19 @@ function buildNodeUI(){
 function buildDelayGrids(){
   buildGrid('grid-road',ROAD_DELAYS,'road')
   buildGrid('grid-inter',INT_DELAYS,'int')
+  // Stop panel mirrors — same buttons wired to svyStopPickDelay
+  buildStopGrid('stop-grid-road',ROAD_DELAYS,'road')
+  buildStopGrid('stop-grid-inter',INT_DELAYS,'int')
+}
+function buildStopGrid(gid,types,group){
+  const g=document.createElement('div');g.style.cssText='display:flex;flex-direction:column;gap:7px'
+  types.forEach(d=>{
+    const b=document.createElement('button');b.className='btn-dl'
+    b.innerHTML=`<span class="di">${d.icon}</span><span class="dn">${d.label}</span>`
+    b.onclick=()=>svyStopPickDelay(d,group)
+    g.appendChild(b)
+  })
+  const el=$(gid);if(el){el.innerHTML='';el.appendChild(g)}
 }
 function buildGrid(gid,types,group){
   const g=$(gid);g.innerHTML=''
@@ -2500,6 +2509,36 @@ function surveyBackConfirm(){
   cur=null
   goReady()
 }
+function promptEndSurvey(){
+  // Show end-survey confirmation dialog after last node reached
+  svySheetExpand()
+  // Reuse the done panel as prompt
+  const t=$('svy-done-txt');if(t) t.textContent='已記錄最後一個節點'
+  const ico=$('svy-done-ico');if(ico){ico.textContent='🏁';ico.style.background='#1e3a5f'}
+  svyShowPanel('done')
+  // Replace done panel content with end prompt
+  const doneBar=document.querySelector('.svy-done-bar')
+  if(doneBar){
+    // Insert end button below the done bar if not already there
+    let eprompt=$('end-survey-prompt')
+    if(!eprompt){
+      eprompt=document.createElement('div')
+      eprompt.id='end-survey-prompt'
+      eprompt.style.cssText='display:flex;gap:10px;padding:12px 14px 8px;flex-shrink:0'
+      eprompt.innerHTML=`
+        <button onclick="svyDismissEndPrompt()" style="flex:1;padding:13px;background:#334155;color:#e2e8f0;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">繼續行駛</button>
+        <button onclick="endSurvey()" style="flex:1;padding:13px;background:#dc2626;color:white;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">🔴 結束調查</button>`
+      const panel=$('svy-panel-done')
+      if(panel) panel.appendChild(eprompt)
+    }
+    eprompt.style.display='flex'
+  }
+}
+function svyDismissEndPrompt(){
+  const ep=$('end-survey-prompt');if(ep) ep.style.display='none'
+  svyShowPanel('idle');svySheetCollapse()
+}
+
 function endSurvey(){
   if(!confirm('確定結束調查？'))return
   stopAudioKeepAlive(); releaseWakeLock(); disableNoSleep()
