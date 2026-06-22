@@ -1840,12 +1840,12 @@ function onPos(p){
           sv.style.color=kmh<5?'#f87171':kmh<30?'#fbbf24':'#4ade80'
         }
       }
-      // ── 停止偵測（< 3 km/h 持續 5 秒）──
+      // ── 停止偵測（< 5 km/h 持續 3 秒）──
       if(!activeDelay){
-        const STOP_TH=3/3.6
+        const STOP_TH=5/3.6
         if(speed!=null&&speed<STOP_TH){
           if(_stopSince===null) _stopSince=Date.now()
-          else if(!_stopActive&&Date.now()-_stopSince>=5000) triggerStopDetection()
+          else if(!_stopActive&&Date.now()-_stopSince>=3000) triggerStopDetection()
         } else { _stopSince=null }
       } else { _stopSince=null }
     }
@@ -1944,7 +1944,7 @@ function svyShowPanel(name){
 function triggerStopDetection(){
   if(_stopActive) return
   _stopActive=true; _stopSince=null
-  _stopEvent={startedAt:Date.now()-5000, pos:lastPos}  // retroact 5 s (detection window)
+  _stopEvent={startedAt:Date.now()-3000, pos:lastPos}  // retroact 3 s (detection window)
   svySheetExpand()
   svyShowPanel('stop')
   // Auto-dismiss after 4 s with no action — no record
@@ -2965,7 +2965,8 @@ const RESULT_TRACK_COLORS={
 let _resultGpsLayer=null
 function buildResultMap(){
   if(mapResult){mapResult.remove();mapResult=null;_resultGpsLayer=null}
-  mapResult=L.map('map-result',{zoomControl:true,attributionControl:false,scrollWheelZoom:false,dragging:false,touchZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false})
+  // Enable full touch/drag/zoom interaction
+  mapResult=L.map('map-result',{zoomControl:true,attributionControl:false,scrollWheelZoom:true,dragging:true,touchZoom:true,doubleClickZoom:true,boxZoom:true,keyboard:false})
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapResult)
   // Planned route (grey dashed)
   if(config.nodes&&config.nodes.length>=2){
@@ -2984,39 +2985,48 @@ function buildResultMap(){
       }),zIndexOffset:500}).bindTooltip(n.name||`節點${num}`,{direction:'top'}).addTo(mapResult)
     })
   }
-  // Initial view
-  if(config.nodes&&config.nodes.length>=2){
+  // Draw ALL available trip tracks at once
+  let bounds=null
+  const delayGroup=L.layerGroup()  // separate layer so delays always render on top
+  COMBO_KEYS.forEach(key=>{
+    const t=allTrips[key]; if(!t) return
+    const color=RESULT_TRACK_COLORS[key]||'#3b82f6'
+    if(t.gpsTrack&&t.gpsTrack.length>=2){
+      const ll=t.gpsTrack.map(p=>[p.lat,p.lng])
+      const poly=L.polyline(ll,{color,weight:4,opacity:.85}).addTo(mapResult)
+      if(!bounds) bounds=poly.getBounds(); else bounds.extend(poly.getBounds())
+    }
+    if(t.delayLog){
+      t.delayLog.forEach(r=>{
+        if(!r.pos) return
+        L.marker([r.pos.lat,r.pos.lng],{
+          icon:L.divIcon({
+            html:`<div style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1">${r.icon}</div>`,
+            className:'',iconSize:[26,26],iconAnchor:[13,13]
+          }),
+          zIndexOffset:1000
+        }).bindPopup(`${r.icon} ${r.label}<br>${r.durationS}秒`).addTo(delayGroup)
+      })
+    }
+  })
+  delayGroup.addTo(mapResult)  // add delay layer last → renders on top
+  if(bounds) mapResult.fitBounds(bounds,{padding:[20,20]})
+  else if(config.nodes&&config.nodes.length>=2){
     mapResult.fitBounds(L.latLngBounds(config.nodes.map(n=>[n.lat,n.lng])),{padding:[30,30]})
   } else if(lastPos){mapResult.setView([lastPos.lat,lastPos.lng],14)}
-  const firstKey=COMBO_KEYS.find(k=>allTrips[k])
-  if(firstKey) updateResultMapTrack(firstKey)
+  // Update legend to show each track's color
+  const legRow=document.querySelector('.result-map-legrow')
+  if(legRow){
+    const CZH={off_peak_bound:'離峰去',off_peak_return:'離峰回',peak_bound:'尖峰去',peak_return:'尖峰回'}
+    const doneCombos=COMBO_KEYS.filter(k=>allTrips[k])
+    const swatches=doneCombos.map(k=>`<div class="rml-item"><span class="rml-solid" style="background:${RESULT_TRACK_COLORS[k]}"></span>${CZH[k]}</div>`).join('')
+    legRow.innerHTML=`<div class="rml-item"><span class="rml-dashed"></span>規劃路線</div>${swatches}<div class="rml-item"><span class="rml-node">1</span>節點</div><div class="rml-item" style="font-size:14px">🚦 延滯</div>`
+  }
 }
 
 function updateResultMapTrack(key){
+  // All tracks are always shown — tab switching only changes form below, not map
   if(!mapResult) return
-  if(_resultGpsLayer){try{mapResult.removeLayer(_resultGpsLayer)}catch(e){};_resultGpsLayer=null}
-  const t=allTrips[key]; if(!t) return
-  const color=RESULT_TRACK_COLORS[key]||'#3b82f6'
-  // Update legend swatch color
-  const swatch=document.getElementById('rml-track-swatch')
-  if(swatch) swatch.style.background=color
-  const group=L.layerGroup()
-  if(t.gpsTrack&&t.gpsTrack.length>=2){
-    const ll=t.gpsTrack.map(p=>[p.lat,p.lng])
-    const poly=L.polyline(ll,{color,weight:4,opacity:.85}).addTo(group)
-    mapResult.fitBounds(poly.getBounds(),{padding:[20,20]})
-  }
-  if(t.delayLog){
-    t.delayLog.forEach(r=>{
-      if(!r.pos)return
-      // In-app: show icon only, no popup
-      L.marker([r.pos.lat,r.pos.lng],{icon:L.divIcon({
-        html:`<div style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1">${r.icon}</div>`,
-        className:'',iconSize:[26,26],iconAnchor:[13,13]
-      })}).addTo(group)
-    })
-  }
-  _resultGpsLayer=group.addTo(mapResult)
 }
 function buildTable1(){
   const ob=getTrip('off_peak','bound'),or_=getTrip('off_peak','return')
