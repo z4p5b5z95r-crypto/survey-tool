@@ -112,8 +112,21 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .btn-start:disabled{background:#374151;box-shadow:none;cursor:default}
 
 /* ══ Survey ══ */
-#screen-survey{position:relative}
-.map-wrap{height:24%;position:relative;flex-shrink:0;overflow:hidden}
+#screen-survey{position:relative;overflow:hidden}
+.map-wrap{position:absolute;inset:0;height:100%;z-index:1;overflow:hidden}
+/* ── Survey bottom sheet ── */
+.svy-sheet{position:absolute;bottom:0;left:0;right:0;height:75dvh;background:#0d1117;border-radius:20px 20px 0 0;border-top:0.5px solid rgba(255,255,255,.12);z-index:50;display:flex;flex-direction:column;overflow:hidden;will-change:transform}
+.svy-handle{height:26px;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none}
+.svy-handle-bar{width:36px;height:4px;background:rgba(255,255,255,.18);border-radius:2px;pointer-events:none}
+.svy-stop-hdr{background:#7c1d1d;padding:8px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.svy-reason-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 14px;overflow-y:auto;flex:1;min-height:0}
+.svy-reason-btn{background:#131b27;border:0.5px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 6px;cursor:pointer;text-align:center;-webkit-tap-highlight-color:transparent;font-family:inherit;color:inherit;transition:transform .12s,background .12s}
+.svy-reason-btn:active{transform:scale(.95);background:#1e2a3a}
+.svy-reason-btn.svy-default{border-color:#dc2626;background:#1e1220}
+.svy-cancel-row{padding:0 14px 12px;flex-shrink:0}
+.svy-cancel-btn{width:100%;background:#0d1117;border:0.5px solid rgba(255,255,255,.08);border-radius:10px;padding:10px;cursor:pointer;color:#64748b;font-size:12px;font-family:inherit;-webkit-tap-highlight-color:transparent}
+.svy-done-bar{padding:12px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.svy-cd-badge{background:#92400e;color:#fde68a;font-size:11px;font-weight:500;padding:2px 8px;border-radius:6px;flex-shrink:0;min-width:32px;text-align:center}
 /* nav-mode: 110vw square centered in parent → diagonal ≈155vw, never clips at any angle */
 #map-survey-wrap{position:absolute;width:110vw;height:110vw;top:50%;left:50%;transform:translate(-50%,-50%);transition:transform 0.7s cubic-bezier(0.25,0.46,0.45,0.94);will-change:transform}
 #map-survey{width:100%;height:100%}
@@ -446,7 +459,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 
 <!-- ══ Screen B: Survey ══ -->
 <div id="screen-survey" class="screen">
-  <!-- Map — nav-mode wrapper rotates so heading is always up -->
+  <!-- Full-screen map (absolute, fills 100dvh) -->
   <div class="map-wrap">
     <div id="map-survey-wrap">
       <div id="map-survey"></div>
@@ -454,40 +467,102 @@ input,select,textarea{font-size:max(16px,1em)!important}
     <div class="gps-badge" id="gps-badge">📡</div>
     <button onclick="surveyBackConfirm()" style="position:absolute;top:8px;left:8px;z-index:900;background:rgba(15,23,42,.75);backdrop-filter:blur(6px);border:none;border-radius:20px;padding:5px 12px 5px 6px;color:white;display:flex;align-items:center;gap:4px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>返回</button>
     <button id="locate-survey-btn" class="locate-btn" style="bottom:8px;left:8px" onclick="surveyLocate()" title="回到定位"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg></button>
-  </div>
-  <!-- Status -->
-  <div class="status-bar" style="justify-content:center">
-    <span class="status-left" id="status-combo">● 調查中</span>
-    <span class="status-right" id="status-timer">00:00</span>
-  </div>
-  <!-- Node progress dots -->
-  <div class="node-progress" id="node-progress"></div>
-  <!-- Next node card: info left + manual button right -->
-  <div class="next-node-card" id="next-node-card">
-    <div class="nnc-info">
-      <span class="nnc-label" id="nnc-label">節點</span>
-      <span class="nnc-name" id="nnc-name">-</span>
-      <span id="nnc-auto-hint" style="font-size:11px;opacity:.7;margin-top:1px">• 15m 內自動記錄</span>
-    </div>
-    <div class="nnc-dist">
-      <span class="dist-num" id="nnc-dist-num">-</span>
-      <span id="nnc-dist-unit">m</span>
-    </div>
-    <button class="nnc-manual" id="nnc-manual-btn" onclick="manualRecordNode()">手動記錄</button>
-  </div>
-  <!-- Side-by-side delay columns -->
-  <div class="delay-columns">
-    <div class="delay-col">
-      <div class="dl-col-label">🛣 路段延滯</div>
-      <div id="grid-road"></div>
-    </div>
-    <div class="delay-col">
-      <div class="dl-col-label">🚦 交叉口延滯</div>
-      <div id="grid-inter"></div>
+    <!-- Speed badge (top-right corner on map) -->
+    <div id="svy-speed-badge" style="position:absolute;top:8px;right:8px;z-index:900;background:rgba(15,23,42,.8);backdrop-filter:blur(6px);border-radius:12px;padding:4px 10px;text-align:center;min-width:44px;display:none">
+      <div id="svy-speed-val" style="color:#4ade80;font-size:17px;font-weight:700;line-height:1">-</div>
+      <div style="color:#64748b;font-size:9px">km/h</div>
     </div>
   </div>
-  <div class="survey-bottom-row">
-    <button class="btn-end" onclick="endSurvey()">🔴 結束調查</button>
+
+  <!-- Bottom sheet -->
+  <div id="svy-sheet" class="svy-sheet">
+    <!-- Drag handle -->
+    <div id="svy-drag-handle" class="svy-handle">
+      <div class="svy-handle-bar"></div>
+    </div>
+
+    <!-- ── IDLE panel (normal survey UI, always mounted) ── -->
+    <div id="svy-panel-idle" style="display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0">
+      <!-- Status bar -->
+      <div class="status-bar" style="justify-content:center;flex-shrink:0">
+        <span class="status-left" id="status-combo">● 調查中</span>
+        <span class="status-right" id="status-timer">00:00</span>
+      </div>
+      <!-- Node progress dots -->
+      <div class="node-progress" id="node-progress" style="flex-shrink:0"></div>
+      <!-- Next node card -->
+      <div class="next-node-card" id="next-node-card" style="flex-shrink:0">
+        <div class="nnc-info">
+          <span class="nnc-label" id="nnc-label">節點</span>
+          <span class="nnc-name" id="nnc-name">-</span>
+          <span id="nnc-auto-hint" style="font-size:11px;opacity:.7;margin-top:1px">• 15m 內自動記錄</span>
+        </div>
+        <div class="nnc-dist">
+          <span class="dist-num" id="nnc-dist-num">-</span>
+          <span id="nnc-dist-unit">m</span>
+        </div>
+        <button class="nnc-manual" id="nnc-manual-btn" onclick="manualRecordNode()">手動記錄</button>
+      </div>
+      <!-- Delay columns (visible when expanded) -->
+      <div class="delay-columns" style="flex:1;overflow-y:auto;min-height:0">
+        <div class="delay-col">
+          <div class="dl-col-label">🛣 路段延滯</div>
+          <div id="grid-road"></div>
+        </div>
+        <div class="delay-col">
+          <div class="dl-col-label">🚦 交叉口延滯</div>
+          <div id="grid-inter"></div>
+        </div>
+      </div>
+      <div class="survey-bottom-row" style="flex-shrink:0">
+        <button class="btn-end" onclick="endSurvey()">🔴 結束調查</button>
+      </div>
+    </div>
+
+    <!-- ── STOP panel (stop detection, shown on trigger) ── -->
+    <div id="svy-panel-stop" style="display:none;flex-direction:column;flex:1;overflow:hidden;min-height:0">
+      <div class="svy-stop-hdr">
+        <span style="font-size:16px;flex-shrink:0">⚠️</span>
+        <span style="color:#fed7aa;font-size:13px;font-weight:600;flex:1">偵測到停止 — 請選擇原因</span>
+        <span id="svy-cd-badge" class="svy-cd-badge">5秒</span>
+      </div>
+      <div class="svy-reason-grid">
+        <button class="svy-reason-btn svy-default" onclick="svyPickReason('紅燈停等')">
+          <div style="font-size:24px;margin-bottom:5px">🚦</div>
+          <div style="color:#fca5a5;font-size:13px;font-weight:600">紅燈停等</div>
+          <div style="color:#64748b;font-size:10px;margin-top:2px">預設</div>
+        </button>
+        <button class="svy-reason-btn" onclick="svyPickReason('禮讓行人')">
+          <div style="font-size:24px;margin-bottom:5px">🚶</div>
+          <div style="color:#d1d5db;font-size:13px;font-weight:600">禮讓行人</div>
+          <div style="color:#64748b;font-size:10px;margin-top:2px">障礙物</div>
+        </button>
+        <button class="svy-reason-btn" onclick="svyPickReason('大塞車回堵')">
+          <div style="font-size:24px;margin-bottom:5px">🚗</div>
+          <div style="color:#d1d5db;font-size:13px;font-weight:600">大塞車回堵</div>
+          <div style="color:#64748b;font-size:10px;margin-top:2px">&nbsp;</div>
+        </button>
+        <button class="svy-reason-btn" onclick="svyPickReason('路邊暫停')">
+          <div style="font-size:24px;margin-bottom:5px">🅿️</div>
+          <div style="color:#d1d5db;font-size:13px;font-weight:600">路邊暫停</div>
+          <div style="color:#64748b;font-size:10px;margin-top:2px">&nbsp;</div>
+        </button>
+      </div>
+      <div class="svy-cancel-row">
+        <button class="svy-cancel-btn" onclick="svyPickReason('cancel')">✕ 誤觸取消</button>
+      </div>
+    </div>
+
+    <!-- ── DONE panel (brief confirmation) ── -->
+    <div id="svy-panel-done" style="display:none;flex-direction:column;flex:1">
+      <div class="svy-done-bar">
+        <div id="svy-done-ico" style="width:38px;height:38px;border-radius:50%;background:#14532d;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">✓</div>
+        <div>
+          <div id="svy-done-txt" style="color:#e2e8f0;font-size:13px;font-weight:600">已記錄</div>
+          <div style="color:#64748b;font-size:11px;margin-top:2px">計時繼續中</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -627,6 +702,8 @@ let lastPos=null, clockTimer=null, elapsedSec=0
 
 // Delay
 let activeDelay=null, delayLog=[], _resumeAboveSpeedSince=null
+// Stop detection
+let _stopSince=null, _stopActive=false, _stopCdTimer=null, _stopCdVal=5, _stopEvent=null
 
 // Nodes
 let nodeTimestamps=[], currentNodeIdx=0
@@ -1747,10 +1824,152 @@ function onPos(p){
       } else {
         _resumeAboveSpeedSince=null
       }
+      // ── 速度顯示 ──
+      {
+        const kmh=speed!=null&&speed>=0?Math.round(speed*3.6):null
+        const sb=$('svy-speed-badge'),sv=$('svy-speed-val')
+        if(sb){sb.style.display='block'}
+        if(sv&&kmh!=null){
+          sv.textContent=kmh
+          sv.style.color=kmh<5?'#f87171':kmh<30?'#fbbf24':'#4ade80'
+        }
+      }
+      // ── 停止偵測（< 5 km/h 持續 2 秒）──
+      if(!activeDelay){
+        const STOP_TH=5/3.6
+        if(speed!=null&&speed<STOP_TH){
+          if(_stopSince===null) _stopSince=Date.now()
+          else if(!_stopActive&&Date.now()-_stopSince>=2000) triggerStopDetection()
+        } else { _stopSince=null }
+      } else { _stopSince=null }
     }
   }
 }
 function onGPSErr(e){const t=$('gps-text');if(t)t.textContent=`GPS錯誤:${e.message}`}
+
+// ════════════════════════════════════
+//  SURVEY BOTTOM SHEET
+// ════════════════════════════════════
+let _svySheetCollapsedPx=0  // computed on init
+
+function initSvySheet(){
+  const sheet=$('svy-sheet')
+  if(!sheet) return
+  // Compute pixel offsets
+  _svySheetCollapsedPx=window.innerHeight*0.75-window.innerHeight*0.25  // 50% of viewport
+  // Set initial collapsed state without animation
+  sheet.style.transition='none'
+  sheet.style.transform=`translateY(${_svySheetCollapsedPx}px)`
+  // Trigger reflow so next transition works
+  void sheet.offsetHeight
+
+  // ── Drag ──
+  const handle=$('svy-drag-handle')
+  if(!handle) return
+  let dragging=false, startY=0, startTY=_svySheetCollapsedPx
+
+  function getCurTY(){
+    const m=sheet.style.transform.match(/translateY\((-?[\d.]+)px\)/)
+    return m?parseFloat(m[1]):_svySheetCollapsedPx
+  }
+  function onDragStart(y){
+    dragging=true; startY=y; startTY=getCurTY()
+    sheet.style.transition='none'
+  }
+  function onDragMove(y){
+    if(!dragging) return
+    let newTY=Math.max(0,Math.min(_svySheetCollapsedPx, startTY+(y-startY)))
+    sheet.style.transform=`translateY(${newTY}px)`
+  }
+  function onDragEnd(){
+    if(!dragging) return
+    dragging=false
+    const cur=getCurTY()
+    const snap=cur<_svySheetCollapsedPx/2?0:_svySheetCollapsedPx
+    sheet.style.transition='transform .38s cubic-bezier(.32,.72,0,1)'
+    sheet.style.transform=`translateY(${snap}px)`
+  }
+  handle.addEventListener('mousedown',e=>{onDragStart(e.clientY);e.preventDefault()})
+  document.addEventListener('mousemove',e=>{if(dragging)onDragMove(e.clientY)})
+  document.addEventListener('mouseup',()=>{if(dragging)onDragEnd()})
+  handle.addEventListener('touchstart',e=>{onDragStart(e.touches[0].clientY);e.preventDefault()},{passive:false})
+  document.addEventListener('touchmove',e=>{if(dragging)onDragMove(e.touches[0].clientY)},{passive:true})
+  document.addEventListener('touchend',()=>{if(dragging)onDragEnd()})
+}
+
+function svySheetExpand(){
+  const s=$('svy-sheet');if(!s) return
+  s.style.transition='transform .38s cubic-bezier(.32,.72,0,1)'
+  s.style.transform='translateY(0)'
+}
+function svySheetCollapse(){
+  const s=$('svy-sheet');if(!s) return
+  s.style.transition='transform .38s cubic-bezier(.32,.72,0,1)'
+  s.style.transform=`translateY(${_svySheetCollapsedPx}px)`
+}
+function svyShowPanel(name){
+  ;['idle','stop','done'].forEach(p=>{
+    const el=$(`svy-panel-${p}`)
+    if(!el) return
+    el.style.display=p===name?'flex':'none'
+  })
+}
+
+function triggerStopDetection(){
+  if(_stopActive) return
+  _stopActive=true; _stopSince=null
+  _stopEvent={startedAt:Date.now()-2000, pos:lastPos}  // retroact 2 s
+  svySheetExpand()
+  svyShowPanel('stop')
+  // Countdown
+  _stopCdVal=5
+  const badge=$('svy-cd-badge');if(badge) badge.textContent='5秒'
+  clearInterval(_stopCdTimer)
+  _stopCdTimer=setInterval(()=>{
+    _stopCdVal--
+    const b=$('svy-cd-badge');if(b) b.textContent=_stopCdVal+'秒'
+    if(_stopCdVal<=0){clearInterval(_stopCdTimer);svyPickReason('紅燈停等')}
+  },1000)
+  // Alert tone
+  try{
+    if(audioCtx){
+      const o=audioCtx.createOscillator(),g=audioCtx.createGain()
+      o.connect(g);g.connect(audioCtx.destination)
+      o.type='sine';o.frequency.value=880
+      g.gain.setValueAtTime(0.3,audioCtx.currentTime)
+      g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.5)
+      o.start();o.stop(audioCtx.currentTime+0.5)
+    }
+  }catch(e){}
+}
+
+function svyPickReason(reason){
+  clearInterval(_stopCdTimer)
+  _stopActive=false
+  if(reason==='cancel'){
+    _stopEvent=null
+    svyShowPanel('idle')
+    svySheetCollapse()
+    showToast('⊘ 誤觸取消')
+    return
+  }
+  // Record stop event into delayLog
+  if(_stopEvent&&cur){
+    const iconMap={'紅燈停等':'🚦','禮讓行人':'🚶','大塞車回堵':'🚗','路邊暫停':'🅿️'}
+    const now=Date.now()
+    const dur=Math.max(0,Math.round((now-_stopEvent.startedAt)/1000))
+    delayLog.push({cause:'stop',group:'stop',label:reason,icon:iconMap[reason]||'⏸',
+      startedAt:_stopEvent.startedAt,endedAt:now,durationS:dur,pos:_stopEvent.pos})
+    if(cur.intDelays) cur.intDelays['stop']=(cur.intDelays['stop']||0)+dur
+    _stopEvent=null
+  }
+  // Show done briefly
+  const t=$('svy-done-txt');if(t) t.textContent='已記錄：'+reason
+  const ico=$('svy-done-ico');if(ico){ico.textContent='✓';ico.style.background='#14532d'}
+  svyShowPanel('done')
+  setTimeout(()=>{svyShowPanel('idle');svySheetCollapse()},1600)
+  showToast('✓ 已記錄：'+reason)
+}
 
 // ════════════════════════════════════
 //  AUTO NODE DETECTION
@@ -2033,6 +2252,7 @@ function startSurvey(){
   ROAD_DELAYS.forEach(d=>{cur.roadDelays[d.cause]=0})
   INT_DELAYS.forEach(d=>{cur.intDelays[d.cause]=0})
   delayLog=[];activeDelay=null;_resumeAboveSpeedSince=null;elapsedSec=0
+  clearInterval(_stopCdTimer);_stopSince=null;_stopActive=false;_stopEvent=null
   nodeTimestamps=[]   // will be filled when nodes are hit
   currentNodeIdx=0    // 0 = waiting for node 1
   nodeAutoLock=false
@@ -2044,7 +2264,9 @@ function startSurvey(){
   enableNoSleep()        // video-loop trick to prevent iOS screen auto-sleep
 
   $('status-combo').textContent=`● ${PEAK_LABEL[selPeakType]} ${DIR_LABEL[selDirection]}`
+  svyShowPanel('idle')   // ensure idle panel visible
   showScreen('screen-survey')
+  requestAnimationFrame(()=>initSvySheet())   // init after layout settled
 
   initCompass()   // request compass permission on user gesture
 
