@@ -115,7 +115,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 #screen-survey{position:relative;overflow:hidden}
 .map-wrap{position:absolute;inset:0;height:100%;z-index:1;overflow:hidden}
 /* ── Survey bottom sheet ── */
-.svy-sheet{position:absolute;bottom:0;left:0;right:0;height:88dvh;background:#0d1117;border-radius:20px 20px 0 0;border-top:0.5px solid rgba(255,255,255,.12);z-index:50;display:flex;flex-direction:column;overflow:hidden;will-change:transform}
+.svy-sheet{position:absolute;bottom:0;left:0;right:0;height:88dvh;background:#0d1117;border-radius:20px 20px 0 0;border-top:0.5px solid rgba(255,255,255,.12);z-index:50;display:flex;flex-direction:column;overflow:hidden;will-change:transform;padding-bottom:env(safe-area-inset-bottom,0px)}
 /* Handle area is tall (44px) so it's easy to grab on mobile */
 .svy-handle{height:44px;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;gap:8px}
 .svy-handle-bar{width:40px;height:5px;background:rgba(255,255,255,.25);border-radius:3px;pointer-events:none}
@@ -1862,10 +1862,10 @@ let _svySheetCollapsedPx=0  // computed on init
 function initSvySheet(){
   const sheet=$('svy-sheet')
   if(!sheet) return
-  // Sheet height = 88dvh; collapsed shows enough to expose the blue node card (~22dvh)
-  // collapsed translateY = 88dvh - 22dvh = 66dvh
+  // Sheet height = 88dvh; collapsed shows 28dvh → blue card fully visible with breathing room
+  // collapsed translateY = 88dvh - 28dvh = 60dvh
   const H=window.innerHeight
-  _svySheetCollapsedPx=H*0.88-H*0.22  // 66% of viewport height
+  _svySheetCollapsedPx=H*0.88-H*0.28  // 60% of viewport height
   // Set initial collapsed state without animation
   sheet.style.transition='none'
   sheet.style.transform=`translateY(${_svySheetCollapsedPx}px)`
