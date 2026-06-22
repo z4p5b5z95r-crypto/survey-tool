@@ -115,7 +115,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 #screen-survey{position:relative;overflow:hidden}
 .map-wrap{position:absolute;inset:0;height:100%;z-index:1;overflow:hidden}
 /* ── Survey bottom sheet ── */
-.svy-sheet{position:absolute;bottom:0;left:0;right:0;height:80dvh;background:#0d1117;border-radius:20px 20px 0 0;border-top:0.5px solid rgba(255,255,255,.12);z-index:50;display:flex;flex-direction:column;overflow:hidden;will-change:transform}
+.svy-sheet{position:absolute;bottom:0;left:0;right:0;height:88dvh;background:#0d1117;border-radius:20px 20px 0 0;border-top:0.5px solid rgba(255,255,255,.12);z-index:50;display:flex;flex-direction:column;overflow:hidden;will-change:transform}
 /* Handle area is tall (44px) so it's easy to grab on mobile */
 .svy-handle{height:44px;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;gap:8px}
 .svy-handle-bar{width:40px;height:5px;background:rgba(255,255,255,.25);border-radius:3px;pointer-events:none}
@@ -501,6 +501,8 @@ input,select,textarea{font-size:max(16px,1em)!important}
           <span class="nnc-label" id="nnc-label">節點</span>
           <span class="nnc-name" id="nnc-name">-</span>
           <span id="nnc-auto-hint" style="font-size:11px;opacity:.7;margin-top:1px">• 15m 內自動記錄</span>
+          <!-- Delay active indicator — shown when a delay button is pressed -->
+          <span id="nnc-delay-ind" style="display:none;font-size:11px;font-weight:700;margin-top:4px;font-family:monospace;letter-spacing:.3px"></span>
         </div>
         <div class="nnc-dist">
           <span class="dist-num" id="nnc-dist-num">-</span>
@@ -1860,10 +1862,10 @@ let _svySheetCollapsedPx=0  // computed on init
 function initSvySheet(){
   const sheet=$('svy-sheet')
   if(!sheet) return
-  // Sheet height = 80dvh; collapsed shows 20dvh (bottom 20%)
-  // collapsed translateY = 80dvh - 20dvh = 60dvh
+  // Sheet height = 88dvh; collapsed shows enough to expose the blue node card (~22dvh)
+  // collapsed translateY = 88dvh - 22dvh = 66dvh
   const H=window.innerHeight
-  _svySheetCollapsedPx=H*0.80-H*0.20  // 60% of viewport height
+  _svySheetCollapsedPx=H*0.88-H*0.22  // 66% of viewport height
   // Set initial collapsed state without animation
   sheet.style.transition='none'
   sheet.style.transform=`translateY(${_svySheetCollapsedPx}px)`
@@ -2431,13 +2433,21 @@ function buildGrid(gid,types,group){
     b.onclick=()=>toggleDelay(d,group);g.appendChild(b)
   })
 }
+function _setDelayInd(icon,label,timeStr,color){
+  const el=$('nnc-delay-ind');if(!el) return
+  if(!icon&&!label){el.style.display='none';return}
+  el.style.display='inline'
+  el.style.color=color||'#fca5a5'
+  el.textContent=`${icon} ${label}${timeStr?' '+timeStr:''}`
+}
+let _delayIndTimer=null
 function toggleDelay(d,group,opts){
   if(activeDelay&&activeDelay.cause===d.cause){
     // ── Stop recording this delay ──
     clearInterval(activeDelay.timerId)
     const end=new Date()
     const rawDur=Math.round((end-activeDelay.startedAt)/1000)
-    const dur=Math.max(0,rawDur-(opts?.deductSeconds||0))  // 扣除緩衝判定時間
+    const dur=Math.max(0,rawDur-(opts?.deductSeconds||0))
     if(group==='road')cur.roadDelays[d.cause]=(cur.roadDelays[d.cause]||0)+dur
     else cur.intDelays[d.cause]=(cur.intDelays[d.cause]||0)+dur
     delayLog.push({cause:d.cause,group,label:d.label,icon:d.icon,startedAt:activeDelay.startedAt,endedAt:end,durationS:dur,pos:activeDelay.startPos})
@@ -2445,16 +2455,28 @@ function toggleDelay(d,group,opts){
     $(`dtime-${d.cause}`).textContent='';activeDelay=null
     playDelayBeep(false)
     if(navigator.vibrate) navigator.vibrate(60)
+    // ── 結束提醒：藍框閃示已結束秒數，2 秒後消失 ──
+    clearTimeout(_delayIndTimer)
+    _setDelayInd('✓',d.label+' 已結束','('+fmtSec(dur)+')','#4ade80')
+    _delayIndTimer=setTimeout(()=>_setDelayInd(null,null,null,null),2000)
+    svySheetCollapse()
   }else{
     // ── If another delay is active, stop it first ──
     if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(p)toggleDelay(p,activeDelay.group)}
     // ── Start recording this delay ──
     const s=new Date(),sp=lastPos?{...lastPos}:null;let el=0
-    const tid=setInterval(()=>{el++;const e=$(`dtime-${d.cause}`);if(e)e.textContent=fmtSec(el)},1000)
+    const tid=setInterval(()=>{
+      el++
+      const e=$(`dtime-${d.cause}`);if(e)e.textContent=fmtSec(el)
+      _setDelayInd(d.icon,d.label,fmtSec(el),'#fca5a5')  // 藍框實時更新
+    },1000)
     activeDelay={cause:d.cause,group,startedAt:s,timerId:tid,startPos:sp}
     $(`dbtn-${d.cause}`).classList.add('active')
+    clearTimeout(_delayIndTimer)
+    _setDelayInd(d.icon,d.label,'0:00','#fca5a5')
     playDelayBeep(true)
     if(navigator.vibrate) navigator.vibrate(120)
+    svySheetCollapse()  // 按下立即縮回
   }
 }
 
