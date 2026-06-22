@@ -1924,6 +1924,14 @@ function svySheetCollapse(){
   s.style.transform=`translateY(${_svySheetCollapsedPx}px)`
   const h=$('svy-handle-hint');if(h) h.style.opacity='1'
 }
+// 延滯計時中：比一般縮合多露出 ~4dvh，讓 timer 行可見
+function svySheetCollapseWithTimer(){
+  const s=$('svy-sheet');if(!s) return
+  const extra=window.innerHeight*0.05   // 多露出 5dvh ≈ 42px
+  s.style.transition='transform .38s cubic-bezier(.32,.72,0,1)'
+  s.style.transform=`translateY(${_svySheetCollapsedPx-extra}px)`
+  const h=$('svy-handle-hint');if(h) h.style.opacity='1'
+}
 function svyShowPanel(name){
   ;['idle','stop','done'].forEach(p=>{
     const el=$(`svy-panel-${p}`)
@@ -2476,7 +2484,7 @@ function toggleDelay(d,group,opts){
     _setDelayInd(d.icon,d.label,'0:00','#fca5a5')
     playDelayBeep(true)
     if(navigator.vibrate) navigator.vibrate(120)
-    svySheetCollapse()  // 按下立即縮回
+    svySheetCollapseWithTimer()  // 縮回但多露出 timer 行
   }
 }
 
