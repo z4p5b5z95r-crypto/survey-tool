@@ -371,6 +371,14 @@ input,select,textarea{font-size:max(16px,1em)!important}
     <button class="btn-signin" id="btn-signin" disabled onclick="startFromQR()">
       ✓ 確認開始調查
     </button>
+    <!-- ── History section (moved here from screen-ready) ── -->
+    <div id="history-section" style="display:none;margin-top:12px;margin-bottom:16px">
+      <button id="hist-toggle-btn" onclick="toggleHistory()"
+        style="width:100%;padding:10px 14px;background:white;border:1px solid #e2e8f0;border-radius:10px;color:#475569;font-size:13px;font-weight:600;cursor:pointer;text-align:left">
+        📋 過去調查記錄 <span id="hist-count-badge" style="color:#2563eb"></span>
+      </button>
+      <div id="history-list" data-open="0" style="display:none;margin-top:6px;max-height:360px;overflow-y:auto"></div>
+    </div>
   </div>
 </div>
 
@@ -461,14 +469,6 @@ input,select,textarea{font-size:max(16px,1em)!important}
     <div style="font-size:11px;font-weight:700;color:#64748b;letter-spacing:.4px;margin-top:10px;margin-bottom:4px">本次監測記錄</div>
     <div class="progress-chips" id="progress-chips"></div>
     <button class="btn-start" id="btn-start" disabled onclick="startSurvey()">▶ 開始調查</button>
-    <!-- ── Device history ── -->
-    <div id="history-section" style="display:none;margin-top:8px">
-      <button id="hist-toggle-btn" onclick="toggleHistory()"
-        style="width:100%;padding:10px 14px;background:transparent;border:1px solid #334155;border-radius:10px;color:#94a3b8;font-size:13px;font-weight:600;cursor:pointer;text-align:left">
-        📋 過去調查記錄 <span id="hist-count-badge" style="color:#60a5fa"></span>
-      </button>
-      <div id="history-list" data-open="0" style="display:none;margin-top:6px;max-height:260px;overflow-y:auto"></div>
-    </div>
   </div>
 </div>
 
@@ -1059,6 +1059,20 @@ function getLocalHistory(){
 // Returns cached cloud history, or local if cloud not loaded
 function getHistory(){ return _histCache !== null ? _histCache : getLocalHistory() }
 
+// Group raw history entries by date — merge all surveyors' trips into one entry per day
+function groupHistoryByDate(hist){
+  const byDate={}
+  hist.forEach(h=>{
+    const date=(h.date||'').slice(0,10)
+    if(!byDate[date]) byDate[date]={date,surveyors:[],weather:h.weather,trips:{}}
+    const g=byDate[date]
+    if(h.surveyor&&!g.surveyors.includes(h.surveyor)) g.surveyors.push(h.surveyor)
+    // Merge trips — first record wins per combo key
+    Object.entries(h.trips||{}).forEach(([k,t])=>{ if(!g.trips[k]) g.trips[k]=t })
+  })
+  return Object.values(byDate).sort((a,b)=>b.date.localeCompare(a.date))
+}
+
 // Fetch history from cloud and refresh display
 async function loadCloudHistory(){
   if(!cloudRouteId||!cloudScriptUrl||!cloudApiKey) return
@@ -1074,25 +1088,26 @@ async function loadCloudHistory(){
 function renderHistory(){
   const el=document.getElementById('history-section')
   if(!el) return
-  const hist=getHistory()
+  const grouped=groupHistoryByDate(getHistory())
   const countEl=document.getElementById('hist-count-badge')
-  if(countEl) countEl.textContent=hist.length?`(${hist.length})`:''
-  if(!hist.length){ el.style.display='none'; return }
+  if(countEl) countEl.textContent=grouped.length?`(${grouped.length})`:''
+  if(!grouped.length){ el.style.display='none'; return }
   el.style.display='block'
   const listEl=document.getElementById('history-list')
   if(!listEl||listEl.dataset.open!=='1') return
   const CZH={off_peak_bound:'離峰去',off_peak_return:'離峰回',peak_bound:'尖峰去',peak_return:'尖峰回'}
   const WZH={sunny:'☀️',cloudy:'☁️',rainy:'🌧️'}
-  listEl.innerHTML = hist.map((h,i)=>{
-    const chips = Object.entries(h.trips||{}).map(([k,t])=>
-      `<span style="background:#1e293b;color:#93c5fd;padding:2px 7px;border-radius:6px;font-size:11px;white-space:nowrap">${CZH[k]||k} ${fmtTime(t.travelS)}</span>`
+  listEl.innerHTML = grouped.map((g,i)=>{
+    const chips = Object.entries(g.trips||{}).map(([k,t])=>
+      `<span style="background:#eff6ff;color:#1d4ed8;padding:2px 7px;border-radius:6px;font-size:11px;white-space:nowrap">${CZH[k]||k} ${fmtTime(t.travelS)}</span>`
     ).join('')
     const src = _histCache!==null ? '☁️' : '📱'
-    return `<div style="background:#0f172a;border-radius:10px;padding:10px 12px;margin-bottom:6px">
+    const surveyorStr=g.surveyors.join('、')
+    return `<div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:6px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div style="font-size:12px;font-weight:700;color:#f1f5f9">${src} ${WZH[h.weather]||''} ${h.date} · ${h.surveyor}</div>
+        <div style="font-size:12px;font-weight:700;color:#1e293b">${src} ${WZH[g.weather]||''} ${g.date} · ${surveyorStr}</div>
         <button onclick="viewHistoryReport(${i})"
-          style="background:#1e3a5f;border:1px solid #2563eb;color:#93c5fd;border-radius:7px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
+          style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:7px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
           📊 查看
         </button>
       </div>
@@ -1139,15 +1154,15 @@ function syncChipsFromCloudHistory(){
 }
 
 function viewHistoryReport(idx){
-  const hist=getHistory()
-  const h=hist[idx]; if(!h) return
+  const grouped=groupHistoryByDate(getHistory())
+  const g=grouped[idx]; if(!g) return
   // Save current live allTrips + date
-  const savedTrips=JSON.parse(JSON.stringify(allTrips))
+  const origAllTrips=allTrips
   const savedDate=config.date
-  // Build synthetic allTrips from history — preserve ALL fields the cloud returns
+  // Build synthetic allTrips from grouped entry (all trips merged from that day)
   const synth={}
   COMBO_KEYS.forEach(k=>{
-    const t=h.trips?.[k]; if(!t) return
+    const t=g.trips?.[k]; if(!t) return
     synth[k]={
       peakType:       k.startsWith('peak')?'peak':'off_peak',
       direction:      k.endsWith('bound')?'bound':'return',
@@ -1168,19 +1183,18 @@ function viewHistoryReport(idx){
     }
   })
   // Swap allTrips temporarily and show report screen
-  const origAllTrips=allTrips
   allTrips=synth
-  config.date=(h.date||'').slice(0,10)
+  config.date=(g.date||'').slice(0,10)
   buildReport()
   showScreen('screen-report')
-  // Re-wire the header back button to restore live data
+  // Back button → restore live data and return to signin (where history list lives)
   const backBtn=document.getElementById('report-back-btn')
   if(backBtn){
     backBtn.onclick=()=>{
       allTrips=origAllTrips
       config.date=savedDate
       backBtn.onclick=()=>goReady()  // reset to normal
-      showScreen('screen-ready')
+      showScreen('screen-signin')
     }
   }
 }
@@ -1192,7 +1206,9 @@ function toggleHistory(){
   const open = listEl.dataset.open==='1'
   listEl.dataset.open = open?'0':'1'
   listEl.style.display = open?'none':'block'
-  btn.textContent = open?'📋 過去調查記錄':'📋 過去調查記錄 ▲'
+  const cnt=document.getElementById('hist-count-badge')
+  const cntTxt=cnt?cnt.textContent:''
+  btn.innerHTML=open?`📋 過去調查記錄 <span id="hist-count-badge" style="color:#2563eb">${cntTxt}</span>`:`📋 過去調查記錄 ▲ <span id="hist-count-badge" style="color:#2563eb">${cntTxt}</span>`
   if(!open){ renderHistory(); loadCloudHistory() }
 }
 
@@ -1578,6 +1594,7 @@ function showSigninScreen(){
   loadSavedSurveyor()   // auto-fill today's last-used name & weather
   buildDateSelect()     // build date dropdown
   setTimeout(initSigninMap, 120)
+  loadCloudHistory()    // load history in background for the history list below
 }
 
 function selSigninWeather(w){
@@ -1605,8 +1622,7 @@ function startFromQR(){
   requestAnimationFrame(()=>initMaps())  // init map AFTER browser paints the screen
   $('ready-route-info').textContent=config.routeFromTo
   updateRestoredBanner(Object.keys(allTrips).length)
-  renderHistory()
-  loadCloudHistory()   // fetch history from cloud in background
+  syncChipsFromCloudHistory()   // restore today's cloud trips into allTrips if already loaded
   autoSelectPeak()   // auto-detect by current time on first entry
   if(restored>0) showToast(`📂 已恢復 ${restored} 筆旅次記錄`)
 }
@@ -1860,14 +1876,14 @@ function onPos(p){
           sv.style.color=kmh<5?'#f87171':kmh<30?'#fbbf24':'#4ade80'
         }
       }
-      // ── 停止偵測（< 5 km/h 持續 3 秒）──
-      if(!activeDelay){
+      // ── 停止偵測（< 5 km/h 持續 3 秒，通過第一個節點後才啟用）──
+      if(!activeDelay&&currentNodeIdx>0){
         const STOP_TH=5/3.6
         if(speed!=null&&speed<STOP_TH){
           if(_stopSince===null) _stopSince=Date.now()
           else if(!_stopActive&&Date.now()-_stopSince>=3000) triggerStopDetection()
         } else { _stopSince=null }
-      } else { _stopSince=null }
+      } else { _stopSince=null; }  // reset counter when not yet past node 1
     }
   }
 }
@@ -3005,8 +3021,13 @@ function buildResultMap(){
       }),zIndexOffset:500}).bindTooltip(n.name||`節點${num}`,{direction:'top'}).addTo(mapResult)
     })
   }
-  // Draw ALL available trip tracks at once
+  // Start bounds from the full planned route so the whole route is always in view
   let bounds=null
+  if(config.nodes&&config.nodes.length>=2){
+    const routeLls=routePolylines.length>0?routePolylines.flat():config.nodes.map(n=>[n.lat,n.lng])
+    bounds=L.latLngBounds(routeLls)
+  }
+  // Draw ALL available trip tracks at once
   const delayGroup=L.layerGroup()  // separate layer so delays always render on top
   COMBO_KEYS.forEach(key=>{
     const t=allTrips[key]; if(!t) return
@@ -3030,10 +3051,8 @@ function buildResultMap(){
     }
   })
   delayGroup.addTo(mapResult)  // add delay layer last → renders on top
-  if(bounds) mapResult.fitBounds(bounds,{padding:[20,20]})
-  else if(config.nodes&&config.nodes.length>=2){
-    mapResult.fitBounds(L.latLngBounds(config.nodes.map(n=>[n.lat,n.lng])),{padding:[30,30]})
-  } else if(lastPos){mapResult.setView([lastPos.lat,lastPos.lng],14)}
+  if(bounds) mapResult.fitBounds(bounds,{padding:[24,24]})
+  else if(lastPos){mapResult.setView([lastPos.lat,lastPos.lng],14)}
   // Update legend to show each track's color
   const legRow=document.querySelector('.result-map-legrow')
   if(legRow){
