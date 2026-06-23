@@ -1113,15 +1113,25 @@ function syncChipsFromCloudHistory(){
   let changed=false
   Object.entries(entry.trips||{}).forEach(([k,t])=>{
     if(allTrips[k]) return   // don't overwrite data recorded in this session
+    // Preserve ALL fields the cloud returns — segTimes/nodeTimestamps/gpsTrack
+    // are needed for the official form and result map. Fall back to [] only if absent.
     allTrips[k]={
-      peakType:   k.startsWith('peak')?'peak':'off_peak',
-      direction:  k.endsWith('bound')?'bound':'return',
-      travelS:    t.travelS   ||0,
-      runS:       t.runS      ||0,
-      totalDelayS:t.totalDelayS||0,
-      intTotalS:  t.intTotalS ||0,
-      roadTotalS: t.roadTotalS||0,
-      gpsTrack:[],segTimes:[],nodeTimestamps:[],roadDelays:{},intDelays:{},delayLog:[]
+      peakType:        k.startsWith('peak')?'peak':'off_peak',
+      direction:       k.endsWith('bound')?'bound':'return',
+      startTime:       t.startTime       || null,
+      endTime:         t.endTime         || null,
+      travelS:         t.travelS         ||0,
+      runS:            t.runS            ||0,
+      totalDelayS:     t.totalDelayS     ||0,
+      intTotalS:       t.intTotalS       ||0,
+      roadTotalS:      t.roadTotalS      ||0,
+      gpsTrack:        t.gpsTrack        ||[],
+      segTimes:        t.segTimes        ||[],
+      nodeTimestamps:  t.nodeTimestamps  ||[],
+      roadDelays:      t.roadDelays      ||{},
+      intDelays:       t.intDelays       ||{},
+      delayLog:        t.delayLog        ||[],
+      _fromCloud: true   // flag: loaded from cloud (not recorded this session)
     }
     changed=true
   })
