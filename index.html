@@ -1144,17 +1144,27 @@ function viewHistoryReport(idx){
   // Save current live allTrips + date
   const savedTrips=JSON.parse(JSON.stringify(allTrips))
   const savedDate=config.date
-  // Build synthetic allTrips from history totals
+  // Build synthetic allTrips from history — preserve ALL fields the cloud returns
   const synth={}
   COMBO_KEYS.forEach(k=>{
     const t=h.trips?.[k]; if(!t) return
     synth[k]={
-      peakType:k.startsWith('peak')?'peak':'off_peak',
-      direction:k.endsWith('bound')?'bound':'return',
-      startTime:null, endTime:null,
-      travelS:t.travelS||0, runS:t.runS||0, totalDelayS:t.totalDelayS||0,
-      intTotalS:t.intTotalS||0, roadTotalS:t.roadTotalS||0,
-      gpsTrack:[], segTimes:[], nodeTimestamps:[], roadDelays:{}, intDelays:{}, delayLog:[]
+      peakType:       k.startsWith('peak')?'peak':'off_peak',
+      direction:      k.endsWith('bound')?'bound':'return',
+      startTime:      t.startTime      || null,
+      endTime:        t.endTime        || null,
+      travelS:        t.travelS        ||0,
+      runS:           t.runS           ||0,
+      totalDelayS:    t.totalDelayS    ||0,
+      intTotalS:      t.intTotalS      ||0,
+      roadTotalS:     t.roadTotalS     ||0,
+      gpsTrack:       t.gpsTrack       ||[],
+      segTimes:       t.segTimes       ||[],
+      nodeTimestamps: t.nodeTimestamps ||[],
+      roadDelays:     t.roadDelays     ||{},
+      intDelays:      t.intDelays      ||{},
+      delayLog:       t.delayLog       ||[],
+      _fromCloud: true
     }
   })
   // Swap allTrips temporarily and show report screen
