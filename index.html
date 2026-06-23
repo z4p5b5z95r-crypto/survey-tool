@@ -3021,11 +3021,16 @@ function buildResultMap(){
       }),zIndexOffset:500}).bindTooltip(n.name||`節點${num}`,{direction:'top'}).addTo(mapResult)
     })
   }
-  // Start bounds from the full planned route so the whole route is always in view
+  // Initialize bounds from ALL route nodes so the full planned route is always in view.
+  // We intentionally use config.nodes (not routePolylines) because nodes are always
+  // present and routePolylines may be empty or partial when viewing history.
   let bounds=null
   if(config.nodes&&config.nodes.length>=2){
-    const routeLls=routePolylines.length>0?routePolylines.flat():config.nodes.map(n=>[n.lat,n.lng])
-    bounds=L.latLngBounds(routeLls)
+    bounds=L.latLngBounds(config.nodes.map(n=>[n.lat,n.lng]))
+    // Also extend with routePolylines waypoints if available
+    if(routePolylines.length>0){
+      routePolylines.flat().forEach(ll=>bounds.extend(L.latLng(ll[0],ll[1])))
+    }
   }
   // Draw ALL available trip tracks at once
   const delayGroup=L.layerGroup()  // separate layer so delays always render on top
