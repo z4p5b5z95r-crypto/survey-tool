@@ -1195,11 +1195,10 @@ function downloadSGSPdf(){
   if(!route||!surveys.length){ alert('尚無資料'); return }
 
   const ROAD_C = ['congestion','bus_stop','taxi_stop','parking','ped_cross','road_other']
-  const ROAD_L = ['阻塞','公車停靠','計程車停靠','路邊停靠','行人穿越','其他']
+  const ROAD_L = ['阻　塞','公車停靠','計程車停靠','路邊停靠','行人穿越','其　他']
   const INT_C  = ['red_light','left_same','left_opp','right_turn','cross_veh','ped_int','int_other']
-  const INT_L  = ['紅燈','左轉同向','左轉對向','右轉','橫越車輛','行人','其他']
+  const INT_L  = ['紅　燈','左轉同向','左轉對向','右　轉','橫越車輛','行　人','其　他']
 
-  // Helpers
   function _hms(ts){
     if(!ts) return ['','','']
     const d = new Date(ts)
@@ -1209,128 +1208,176 @@ function downloadSGSPdf(){
     return s.split(':').map(Number)
   }
   function _spd(lenM,tS){ return (!lenM||!tS||tS<=0)?'':((lenM/1000)/(tS/3600)).toFixed(1) }
-  function _pct(v,t,d=0){ if(!t||t<=0) return '0'; const r=(v||0)/t*100; return d?r.toFixed(d):Math.round(r).toString() }
+  function _pct(v,t,d=0){
+    if(!t||t<=0) return '0'
+    const r=(v||0)/t*100
+    return d ? r.toFixed(d) : Math.round(r).toString()
+  }
   function _n(v){ return (v!==undefined&&v!==null&&v!=='')? v : '' }
-  function td(v,cls){ return `<td${cls?' class="'+cls+'"':''}>${_n(v)}</td>` }
 
   const off = route.offPeakLabel||'離峰', pk = route.peakLabel||'尖峰'
   const segs = route.segments||[], TL = route.totalLength||0
+  const nodes = route.nodes||[]
+  const startN = nodes[0]?.name||'起點', endN = nodes[nodes.length-1]?.name||'終點'
+  const boundDir = startN+'至'+endN, retDir = endN+'至'+startN
 
   const OB = avgTrips?.off_peak_bound, OR_ = avgTrips?.off_peak_return
   const PB = avgTrips?.peak_bound,     PR  = avgTrips?.peak_return
-  const trips4 = [OB, OR_, PB, PR]
+  const T4 = [OB, OR_, PB, PR]
 
-  // Meta from surveys
-  const dates = [...new Set(surveys.map(s=>s.date||'').filter(Boolean))].join('、')
-  const weathers = [...new Set(surveys.map(s=>s.weather||'').filter(Boolean))].join('、')
+  const dates     = [...new Set(surveys.map(s=>s.date||'').filter(Boolean))].join('、')
+  const weathers  = [...new Set(surveys.map(s=>s.weather||'').filter(Boolean))].join('、')
   const surveyors = [...new Set(surveys.map(s=>s.surveyor||'').filter(Boolean))].join('、')
 
   // ── CSS ──────────────────────────────────────────────────────────────────
-  const CSS = `@page{size:A4 landscape;margin:8mm}
+  const CSS = `
+@page{size:A4 landscape;margin:8mm}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,"PingFang TC","Microsoft JhengHei",Arial,sans-serif;background:white;color:#1e293b}
 .pg{padding:2px;page-break-after:always}
 .pg:last-child{page-break-after:auto}
-/* ── Per-trip form ── */
+
+/* ── Per-trip table ── */
 .f{width:100%;border-collapse:collapse;font-size:7.5pt}
 .f td,.f th{border:1px solid #475569;padding:1px 2px;vertical-align:middle;text-align:center;white-space:nowrap}
 .f-title{font-size:11pt;font-weight:800;letter-spacing:1px}
 .f-ml{text-align:left!important;font-weight:600}
 .f-mv{text-align:left!important}
-.f-th{background:#e2e8f0;font-weight:700;font-size:7.5pt;color:#1e293b}
+.f-th{background:#e2e8f0;font-weight:700;font-size:7.5pt}
 .f-seg{text-align:left!important;font-weight:600}
 .f-time{color:#2563eb;font-weight:700}
+.f-green{background:#dcfce7;font-weight:700}
 .f-fl{background:#f1f5f9;font-weight:700;text-align:left!important}
 .f-fv{background:#f1f5f9}
-.f-green{background:#dcfce7;font-weight:700}
 .f-spd{font-size:10pt;font-weight:800}
+
 /* ── Summary tables ── */
-.s{width:100%;border-collapse:collapse;font-size:8pt}
-.s td,.s th{border:1px solid #475569;padding:2px 4px;vertical-align:middle;text-align:center}
-.s-title{font-size:11pt;font-weight:800;letter-spacing:1px;background:white}
-.s-sub{font-size:9pt;font-weight:700;background:#1e3a5f;color:white;text-align:left!important;padding:3px 6px}
-.s-h{background:#e2e8f0;font-weight:700;font-size:7.5pt}
-.s-l{text-align:left!important;font-weight:600;background:#f8fafc}
-.s-lv{text-align:left!important;font-size:7pt;color:#475569;background:#f8fafc}
-.s-tot{background:#dbeafe;font-weight:700}
-.s-hl{background:#dcfce7;font-weight:700}
+.pg-title{font-size:14pt;font-weight:700;text-align:center;margin:0 0 6px;letter-spacing:2px}
+.pg-info{font-size:9pt;line-height:1.9;margin-bottom:5px}
+.pi-row{display:flex;justify-content:space-between}
+.s{width:100%;border-collapse:collapse;font-size:9pt}
+.s td,.s th{border:1px solid #000;padding:2px 4px;vertical-align:middle;text-align:center}
+.s-vert{writing-mode:vertical-rl;text-orientation:upright;text-align:center;
+  font-size:9pt;white-space:nowrap;width:20px}
+.s-sub{font-size:9pt}
+.s-unit{width:20px;font-size:8pt}
+.s-lbl{text-align:left!important;font-size:9pt}
+.s-bold{font-weight:700}
+.s-l{text-align:left!important}
+
+.seg-s{width:100%;border-collapse:collapse;font-size:9pt}
+.seg-s td,.seg-s th{border:1px solid #000;padding:2px 4px;vertical-align:middle;text-align:center}
+.seg-s .s-h{background:#1e3a5f;color:white;font-weight:700}
+.seg-s .s-l{text-align:left!important;font-weight:600}
+.seg-s .s-hl{font-weight:700}
+
 .pdf-btn{position:fixed;top:10px;right:10px;padding:9px 18px;background:#1e293b;color:white;
   border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;z-index:999}
-@media print{.pdf-btn{display:none}}`
+@media print{.pdf-btn{display:none}}
+`
 
-  // ════════════════════════════════════════════════════════════════════════
-  // PAGE 1: 延滯統計表 (秒)
-  // ════════════════════════════════════════════════════════════════════════
-  function buildDelayPage(mode){ // 'sec' or 'pct'
+  // ── 延滯統計表 (matches reference PDF exactly) ──────────────────────────
+  function buildDelayPage(mode){
     const isSec = mode==='sec'
-    const unit = isSec ? '秒' : '%'
-    const title = isSec ? '延滯統計表' : '延滯統計表（續）'
-    const fmt = (v,t) => isSec ? _n(v||0) : _pct(v,t,1)
+    const unit  = isSec ? '秒' : '%'
+    const title = isSec ? '延滯統計表' : '延滯統計表(續)'
 
-    const hdr4 = [
-      `${off}<br>去程`,`${off}<br>回程`,
-      `${pk}<br>去程`,`${pk}<br>回程`
-    ]
-    function row(label, vals, cls){
-      return `<tr><td colspan="2" class="s-l">${label}</td>${vals.map(v=>`<td${cls?' class="'+cls+'"':''}>${v}</td>`).join('')}</tr>`
+    const D4 = (fn) => T4.map(t=>`<td>${_n(fn(t))}</td>`).join('')
+    const dv = (t, grp, c) => {
+      const v = grp==='int' ? (t?.intDelays?.[c]||0) : (t?.roadDelays?.[c]||0)
+      return isSec ? v : _pct(v, t?.travelS, 1)
     }
-    function rowSub(major, minor, vals){
-      return `<tr>
-        <td class="s-l" style="font-size:7pt;color:#64748b">${major}</td>
-        <td class="s-l" style="font-size:7.5pt">${minor}</td>
-        ${vals.map(v=>`<td>${v}</td>`).join('')}
-      </tr>`
-    }
+    const subRoad = t => isSec ? _n(t?.roadTotalS) : _pct(t?.roadTotalS, t?.travelS, 1)
+    const subInt  = t => isSec ? _n(t?.intTotalS)  : _pct(t?.intTotalS,  t?.travelS, 1)
+    const tot     = t => { const v=(t?.roadTotalS||0)+(t?.intTotalS||0); return isSec?v:_pct(v,t?.travelS,1) }
 
-    return `<div class="pg"><table class="s">
-<tr><td colspan="6" class="s-title">${title}</td></tr>
+    return `<div class="pg">
+<h2 class="pg-title">${title}</h2>
+<div class="pg-info">
+  <div class="pi-row">
+    <span>路　　　名${route.routeName||''}</span>
+    <span>日　　期：${dates}</span>
+  </div>
+  <div class="pi-row">
+    <span>起迄點位置${route.routeFromTo||route.routeName||''}</span>
+    <span>天　　氣：${weathers}</span>
+  </div>
+  <div class="pi-row">
+    <span>全　　　長 ${TL}　公尺</span>
+    <span>調　查　員：${surveyors}</span>
+  </div>
+</div>
+<table class="s">
+<colgroup>
+  <col style="width:20px"><col style="width:20px"><col style="width:88px">
+  <col><col><col><col>
+</colgroup>
 <tr>
-  <td colspan="3" class="s-l" style="font-size:8pt">路　　名：${route.routeName||''}</td>
-  <td class="s-l">日　期：${dates}</td>
-  <td class="s-l">天　氣：${weathers}</td>
-  <td class="s-l">調查員：${surveyors}</td>
+  <td colspan="3" rowspan="2" style="letter-spacing:3px">調　查　時　間</td>
+  <td colspan="2">離峰時間</td>
+  <td colspan="2">下午尖峰時間</td>
 </tr>
 <tr>
-  <td colspan="3" class="s-l" style="font-size:8pt">起迄點：${route.routeFromTo||route.routeName||''}</td>
-  <td colspan="2" class="s-l">全　長：${TL} 公尺</td>
-  <td></td>
-</tr>
-<tr class="s-h">
-  <td colspan="2" rowspan="2">調查時間・方向</td>
   <td colspan="2">${off}</td>
   <td colspan="2">${pk}</td>
 </tr>
-<tr class="s-h"><td>去程</td><td>回程</td><td>去程</td><td>回程</td></tr>
-${row('平均總旅行速率（公里/時）',trips4.map(t=>_spd(TL,t?.travelS)),'s-hl')}
-${row('平均總行駛速率（公里/時）',trips4.map(t=>_spd(TL,t?.runS)))}
-<tr><td colspan="6" class="s-sub">總旅行時間</td></tr>
-${rowSub('行駛時間','秒',trips4.map(t=>_n(t?.runS)))}
-${rowSub('行駛時間','%',trips4.map(t=>_pct(t?.runS,t?.travelS,1)))}
-${rowSub('路段延滯','秒',trips4.map(t=>_n(t?.roadTotalS)))}
-${rowSub('路段延滯','%',trips4.map(t=>_pct(t?.roadTotalS,t?.travelS,1)))}
-${rowSub('交叉口延滯','秒',trips4.map(t=>_n(t?.intTotalS)))}
-${rowSub('交叉口延滯','%',trips4.map(t=>_pct(t?.intTotalS,t?.travelS,1)))}
-${row('合計（秒）',trips4.map(t=>_n(t?.travelS)),'s-tot')}
-<tr><td colspan="6" class="s-sub">路段延滯明細（${unit}）</td></tr>
-${ROAD_C.map((c,i)=>row(`${ROAD_L[i]}（${unit}）`,trips4.map(t=>fmt(t?.roadDelays?.[c],t?.travelS)))).join('')}
-${row(`小計（${unit}）`,trips4.map(t=>isSec?_n(t?.roadTotalS):_pct(t?.roadTotalS,t?.travelS,1)),'s-tot')}
-<tr><td colspan="6" class="s-sub">交叉口延滯明細（${unit}）</td></tr>
-${INT_C.map((c,i)=>row(`${INT_L[i]}（${unit}）`,trips4.map(t=>fmt(t?.intDelays?.[c],t?.travelS)))).join('')}
-${row(`小計（${unit}）`,trips4.map(t=>isSec?_n(t?.intTotalS):_pct(t?.intTotalS,t?.travelS,1)),'s-tot')}
-${row(`合計（${unit}）`,trips4.map(t=>isSec?_n((t?.roadTotalS||0)+(t?.intTotalS||0)):_pct((t?.roadTotalS||0)+(t?.intTotalS||0),t?.travelS,1)),'s-hl')}
+<tr>
+  <td colspan="3" style="letter-spacing:5px">方　　　向</td>
+  <td>${boundDir.replace('至','<br>至<br>')}</td>
+  <td>${retDir.replace('至','<br>至<br>')}</td>
+  <td>${boundDir.replace('至','<br>至<br>')}</td>
+  <td>${retDir.replace('至','<br>至<br>')}</td>
+</tr>
+<tr>
+  <td colspan="3">平均總旅行速率(公里/時)</td>
+  ${D4(t=>_spd(TL,t?.travelS))}
+</tr>
+<tr>
+  <td colspan="3">平均總行駛速率(公里/時)</td>
+  ${D4(t=>_spd(TL,t?.runS))}
+</tr>
+<tr>
+  <td rowspan="7" class="s-vert">總旅行時間</td>
+  <td rowspan="2" class="s-sub">行駛時間</td>
+  <td class="s-unit">秒</td>${D4(t=>_n(t?.runS))}
+</tr>
+<tr><td class="s-unit">%</td>${D4(t=>_pct(t?.runS,t?.travelS,1))}</tr>
+<tr>
+  <td rowspan="2" class="s-sub">路段延滯</td>
+  <td class="s-unit">秒</td>${D4(t=>_n(t?.roadTotalS))}
+</tr>
+<tr><td class="s-unit">%</td>${D4(t=>_pct(t?.roadTotalS,t?.travelS,1))}</tr>
+<tr>
+  <td rowspan="2" class="s-sub">交叉口延滯</td>
+  <td class="s-unit">秒</td>${D4(t=>_n(t?.intTotalS))}
+</tr>
+<tr><td class="s-unit">%</td>${D4(t=>_pct(t?.intTotalS,t?.travelS,1))}</tr>
+<tr>
+  <td colspan="2">合計(秒)</td>${D4(t=>_n(t?.travelS))}
+</tr>
+<tr>
+  <td rowspan="16" class="s-vert">總延滯時間</td>
+  <td rowspan="7" class="s-vert">路段延滯</td>
+  <td class="s-lbl">${ROAD_L[0]}(${unit})</td>${D4(t=>dv(t,'road',ROAD_C[0]))}
+</tr>
+${ROAD_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${ROAD_L[i+1]}(${unit})</td>${D4(t=>dv(t,'road',c))}</tr>`).join('')}
+<tr><td class="s-lbl s-bold">小　　計(${unit})</td>${D4(subRoad)}</tr>
+<tr>
+  <td rowspan="8" class="s-vert">交叉口延滯</td>
+  <td class="s-lbl">${INT_L[0]}(${unit})</td>${D4(t=>dv(t,'int',INT_C[0]))}
+</tr>
+${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${D4(t=>dv(t,'int',c))}</tr>`).join('')}
+<tr><td class="s-lbl s-bold">小　　計(${unit})</td>${D4(subInt)}</tr>
+<tr><td colspan="2" class="s-bold">合計(${unit})</td>${D4(tot)}</tr>
 </table></div>`
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // PAGE 3: 各路段平均旅行時間及行駛時間統計表
-  // ════════════════════════════════════════════════════════════════════════
+  // ── 各路段平均旅行時間及行駛時間統計表 ───────────────────────────────────
   function buildSegTimePage(){
-    const hdr4 = [`${off}去程`,`${off}回程`,`${pk}去程`,`${pk}回程`]
-    let rows = ''
-    let totTv=[0,0,0,0], totRv=[0,0,0,0], totLen=0
+    let rows = '', totTv=[0,0,0,0], totRv=[0,0,0,0], totLen=0
     segs.forEach((seg,i)=>{
-      const tv = trips4.map(t=>t?.segTimes?.[i]?.travelS)
-      const rv = trips4.map(t=>t?.segTimes?.[i]?.runS)
+      const tv = T4.map(t=>t?.segTimes?.[i]?.travelS)
+      const rv = T4.map(t=>t?.segTimes?.[i]?.runS)
       tv.forEach((v,j)=>{ if(v) totTv[j]+=v })
       rv.forEach((v,j)=>{ if(v) totRv[j]+=v })
       totLen += seg.length||0
@@ -1342,16 +1389,16 @@ ${row(`合計（${unit}）`,trips4.map(t=>isSec?_n((t?.roadTotalS||0)+(t?.intTot
       </tr>`
     })
     rows += `<tr class="s-tot">
-      <td class="s-l">總計</td><td></td><td></td><td>${totLen}</td>
-      ${trips4.map(t=>`<td class="s-hl">${_n(t?.travelS)}</td>`).join('')}
-      ${trips4.map(t=>`<td class="s-hl">${_n(t?.runS)}</td>`).join('')}
+      <td class="s-l">總　計</td><td></td><td></td><td>${totLen}</td>
+      ${T4.map(t=>`<td class="s-hl">${_n(t?.travelS)}</td>`).join('')}
+      ${T4.map(t=>`<td class="s-hl">${_n(t?.runS)}</td>`).join('')}
     </tr>`
-    return `<div class="pg"><table class="s">
-<tr><td colspan="12" class="s-title">各路段平均旅行時間及平均行駛時間統計表（秒）</td></tr>
+    return `<div class="pg"><table class="seg-s">
+<tr><td colspan="12" class="s-title">各路段平均旅行時間及平均行駛時間統計表</td></tr>
 <tr>
-  <td colspan="4" class="s-l">日期：${dates}　天氣：${weathers}</td>
-  <td colspan="4" class="s-l">路線：${route.routeName||''}</td>
-  <td colspan="4" class="s-l">調查員：${surveyors}</td>
+  <td colspan="4" class="s-l" style="border:none;padding:2px 4px">日期：${dates}　天氣：${weathers}</td>
+  <td colspan="4" class="s-l" style="border:none;padding:2px 4px">路線：${route.routeName||''}</td>
+  <td colspan="4" class="s-l" style="border:none;padding:2px 4px">調查員：${surveyors}</td>
 </tr>
 <tr class="s-h">
   <td rowspan="2" class="s-l">路段位置</td>
@@ -1360,39 +1407,34 @@ ${row(`合計（${unit}）`,trips4.map(t=>isSec?_n((t?.roadTotalS||0)+(t?.intTot
   <td colspan="4">平均行駛時間（秒）</td>
 </tr>
 <tr class="s-h">
-  ${hdr4.map(h=>`<td>${h}</td>`).join('')}
-  ${hdr4.map(h=>`<td>${h}</td>`).join('')}
+  <td>${off}去程</td><td>${off}回程</td><td>${pk}去程</td><td>${pk}回程</td>
+  <td>${off}去程</td><td>${off}回程</td><td>${pk}去程</td><td>${pk}回程</td>
 </tr>
 ${rows}</table></div>`
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // PAGE 4: 各路段平均旅行速率及行駛速率統計表
-  // ════════════════════════════════════════════════════════════════════════
+  // ── 各路段平均旅行速率及行駛速率統計表 ─────────────────────────────────
   function buildSegSpdPage(){
-    const hdr4 = [`${off}去程`,`${off}回程`,`${pk}去程`,`${pk}回程`]
     let rows = ''
     segs.forEach((seg,i)=>{
       const L = seg.length||0
-      const tv = trips4.map(t=>_spd(L,t?.segTimes?.[i]?.travelS))
-      const rv = trips4.map(t=>_spd(L,t?.segTimes?.[i]?.runS))
       rows += `<tr>
         <td class="s-l">${seg.name||''}</td><td>${L}</td>
-        ${tv.map(v=>`<td>${v}</td>`).join('')}
-        ${rv.map(v=>`<td>${v}</td>`).join('')}
+        ${T4.map(t=>`<td>${_spd(L,t?.segTimes?.[i]?.travelS)}</td>`).join('')}
+        ${T4.map(t=>`<td>${_spd(L,t?.segTimes?.[i]?.runS)}</td>`).join('')}
       </tr>`
     })
     rows += `<tr class="s-tot">
-      <td class="s-l">總計</td><td>${TL}</td>
-      ${trips4.map(t=>`<td class="s-hl">${_spd(TL,t?.travelS)}</td>`).join('')}
-      ${trips4.map(t=>`<td class="s-hl">${_spd(TL,t?.runS)}</td>`).join('')}
+      <td class="s-l">總　計</td><td>${TL}</td>
+      ${T4.map(t=>`<td class="s-hl">${_spd(TL,t?.travelS)}</td>`).join('')}
+      ${T4.map(t=>`<td class="s-hl">${_spd(TL,t?.runS)}</td>`).join('')}
     </tr>`
-    return `<div class="pg"><table class="s">
+    return `<div class="pg"><table class="seg-s">
 <tr><td colspan="10" class="s-title">各路段平均旅行速率及平均行駛速率統計表（公里/時）</td></tr>
 <tr>
-  <td colspan="2" class="s-l">日期：${dates}　天氣：${weathers}</td>
-  <td colspan="4" class="s-l">路線：${route.routeName||''}</td>
-  <td colspan="4" class="s-l">調查員：${surveyors}</td>
+  <td colspan="2" class="s-l" style="border:none;padding:2px 4px">日期：${dates}　天氣：${weathers}</td>
+  <td colspan="4" class="s-l" style="border:none;padding:2px 4px">路線：${route.routeName||''}</td>
+  <td colspan="4" class="s-l" style="border:none;padding:2px 4px">調查員：${surveyors}</td>
 </tr>
 <tr class="s-h">
   <td rowspan="2" class="s-l">路段位置</td><td rowspan="2">路段長(m)</td>
@@ -1400,31 +1442,30 @@ ${rows}</table></div>`
   <td colspan="4">平均行駛速率（公里/時）</td>
 </tr>
 <tr class="s-h">
-  ${hdr4.map(h=>`<td>${h}</td>`).join('')}
-  ${hdr4.map(h=>`<td>${h}</td>`).join('')}
+  <td>${off}去程</td><td>${off}回程</td><td>${pk}去程</td><td>${pk}回程</td>
+  <td>${off}去程</td><td>${off}回程</td><td>${pk}去程</td><td>${pk}回程</td>
 </tr>
 ${rows}</table></div>`
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // PAGE 5+: Per-trip SGS form (matches official template exactly)
-  // ════════════════════════════════════════════════════════════════════════
+  // ── Per-trip SGS form (official template layout) ──────────────────────────
   function buildTripPage(sv, si, trip){
     const isReturn = trip.direction==='return'
     const isPeak   = trip.peakType==='peak'
     const segOrd   = isReturn ? [...segs].reverse() : segs
-    const nodeOrd  = isReturn ? [...(route.nodes||[])].reverse() : (route.nodes||[])
-    const times    = trip.segTimes||[]
     const nodeTs   = trip.nodeTimestamps||[]
+    const times    = trip.segTimes||[]
+    const rd = trip.roadDelays||{}, id = trip.intDelays||{}
+    const roadT = trip.roadTotalS||0, intT = trip.intTotalS||0
 
     const [sH,sM,sS] = _hms(trip.startTime)
     const [eH,eM,eS] = _hms(trip.endTime)
-    const startN = nodeOrd[0]?.name||'起點'
-    const endN   = nodeOrd[nodeOrd.length-1]?.name||'終點'
-    const tSpd   = _spd(TL, trip.travelS)
-    const rSpd   = _spd(TL, trip.runS)
-    const rd = trip.roadDelays||{}, id = trip.intDelays||{}
-    const roadT = trip.roadTotalS||0, intT = trip.intTotalS||0
+
+    const nodeOrd = isReturn ? [...nodes].reverse() : nodes
+    const startN2 = nodeOrd[0]?.name||'起點'
+    const endN2   = nodeOrd[nodeOrd.length-1]?.name||'終點'
+    const tSpd = _spd(TL, trip.travelS)
+    const rSpd = _spd(TL, trip.runS)
 
     const segRows = segOrd.map((seg,i)=>{
       const tsIdx = isReturn ? (segs.length - 1 - i) : (i + 1)
@@ -1440,8 +1481,9 @@ ${rows}</table></div>`
       </tr>`
     }).join('')
 
-    const emptyRows = Array(Math.max(0,7-segOrd.length))
-      .fill(`<tr>${'<td></td>'.repeat(23)}</tr>`).join('')
+    const emptyRows = Array(Math.max(0,7-segOrd.length)).fill(
+      '<tr>' + '<td></td>'.repeat(23) + '</tr>'
+    ).join('')
 
     return `<div class="pg"><table class="f">
 <tr>
@@ -1487,8 +1529,8 @@ ${rows}</table></div>`
 </tr>
 <tr class="f-th"><td>時</td><td>分</td><td>秒</td><td>時</td><td>分</td><td>秒</td></tr>
 <tr>
-  <td colspan="2" rowspan="2" class="f-seg">${startN}</td>
-  <td colspan="2" rowspan="2" class="f-seg">${endN}</td>
+  <td colspan="2" rowspan="2" class="f-seg">${startN2}</td>
+  <td colspan="2" rowspan="2" class="f-seg">${endN2}</td>
   <td rowspan="2">${TL}</td>
   <td>${sH}</td><td>${sM}</td><td>${sS}</td>
   <td>${eH}</td><td>${eM}</td><td class="f-green">${eS}</td>
@@ -1553,7 +1595,7 @@ ${segRows}${emptyRows}
 </table></div>`
   }
 
-  // ── Assemble all pages ────────────────────────────────────────────────────
+  // ── Assemble ──────────────────────────────────────────────────────────────
   let pages = []
   pages.push(buildDelayPage('sec'))
   pages.push(buildDelayPage('pct'))
