@@ -59,6 +59,13 @@ input,select,textarea{font-size:max(16px,1em)!important}
 /* ── Manual modal ── */
 .btn-manual{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#94a3b8;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;flex-shrink:0;white-space:nowrap}
 .btn-manual:active{background:rgba(255,255,255,.2)}
+/* ── Hero three-dot menu ── */
+.hero-menu-wrap{position:relative;flex-shrink:0}
+.btn-dots{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#94a3b8;border-radius:50%;width:32px;height:32px;font-size:18px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;line-height:1;letter-spacing:-.5px;padding:0 0 2px;transition:background .15s}
+.btn-dots:active{background:rgba(255,255,255,.2)}
+.hero-dropdown{position:absolute;right:0;top:38px;background:#1e293b;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:5px;min-width:110px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.hero-dropdown button{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;background:transparent;border:none;color:#e2e8f0;font-size:12px;font-weight:600;cursor:pointer;border-radius:6px;font-family:inherit;white-space:nowrap;text-align:left}
+.hero-dropdown button:active{background:rgba(255,255,255,.08)}
 #manual-modal{display:none;position:fixed;inset:0;z-index:9999;flex-direction:column;background:#0f172a}
 #manual-modal.open{display:flex}
 .manual-modal-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#1e293b;border-bottom:1px solid #334155;flex-shrink:0}
@@ -218,7 +225,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .rpt-panel{display:none}
 .rpt-panel.active{display:block}
 /* Report combo tabs (inside 官方調查表 panel) */
-#report-combo-tabs{display:flex;gap:8px;padding:0 0 10px;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap}
+#report-combo-tabs{display:flex;gap:8px;padding:8px 0 8px;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap}
 .rtab{padding:8px 16px;border:2px solid #e2e8f0;border-radius:20px;background:white;
   color:#64748b;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;
   flex-shrink:0;transition:all .15s;font-family:inherit}
@@ -316,7 +323,13 @@ input,select,textarea{font-size:max(16px,1em)!important}
         <h2 id="si-route-name">載入任務中...</h2>
         <p id="si-fromto"></p>
       </div>
-      <button class="btn-manual" onclick="openManual()">📖 說明</button>
+      <div class="hero-menu-wrap" id="hero-menu-wrap">
+        <button class="btn-dots" onclick="toggleHeroMenu(event)" aria-label="更多選項">⋯</button>
+        <div class="hero-dropdown" id="hero-dropdown" style="display:none">
+          <button onclick="heroMenuHist()">📋 過去記錄</button>
+          <button onclick="heroMenuManual()">📖 操作說明</button>
+        </div>
+      </div>
     </div>
     <div class="signin-info">
       <div class="signin-card-mini">
@@ -647,18 +660,18 @@ input,select,textarea{font-size:max(16px,1em)!important}
           <div class="result-map-hdr-title">🗺 監測軌跡圖</div>
           <div class="result-map-legrow">
             <div class="rml-item"><span class="rml-dashed"></span>規劃路線</div>
-            <div class="rml-item"><span class="rml-solid" id="rml-track-swatch"></span>GPS軌跡</div>
+            <div class="rml-item"><span class="rml-solid" id="rml-track-swatch"></span><span id="rml-track-label">GPS軌跡</span></div>
             <div class="rml-item"><span class="rml-node">1</span>節點</div>
             <div class="rml-item" style="font-size:14px">🚦 延滯</div>
           </div>
         </div>
+        <div id="report-combo-tabs"></div>
         <div id="map-result"></div>
         <div class="result-map-note">
           <span>🔍 點擊 +/− 縮放</span>
           <span>👆 點擊節點或延滯標記查看資訊</span>
         </div>
       </div>
-      <div id="report-combo-tabs"></div>
       <div id="official-forms"></div>
     </div>
   </div>
@@ -1213,6 +1226,32 @@ function viewHistoryReport(idx){
     }
   }
 }
+
+// ── Hero three-dot menu ──
+function toggleHeroMenu(e){
+  if(e) e.stopPropagation()
+  const d=document.getElementById('hero-dropdown')
+  if(!d) return
+  d.style.display=d.style.display==='none'?'block':'none'
+}
+function heroMenuHist(){
+  const d=document.getElementById('hero-dropdown'); if(d) d.style.display='none'
+  // Open history list if not already open
+  const listEl=document.getElementById('history-list')
+  if(listEl&&listEl.dataset.open!=='1') toggleHistory()
+  // Scroll to history section
+  const section=document.getElementById('history-section')
+  if(section) setTimeout(()=>section.scrollIntoView({behavior:'smooth',block:'start'}),80)
+}
+function heroMenuManual(){
+  const d=document.getElementById('hero-dropdown'); if(d) d.style.display='none'
+  openManual()
+}
+document.addEventListener('click',function(e){
+  const wrap=document.getElementById('hero-menu-wrap')
+  if(!wrap||wrap.contains(e.target)) return
+  const d=document.getElementById('hero-dropdown'); if(d) d.style.display='none'
+})
 
 function toggleHistory(){
   const listEl=document.getElementById('history-list')
@@ -3014,16 +3053,18 @@ const RESULT_TRACK_COLORS={
   peak_bound:'#dc2626',     peak_return:'#f87171'
 }
 let _resultGpsLayer=null
+let _resultTrackGroup=null   // layer for current combo GPS track
+let _resultDelayGroup=null   // layer for current combo delay markers
+let _resultPlanBounds=null   // bounds of planned route (never changes)
+
 function buildResultMap(){
-  if(mapResult){mapResult.remove();mapResult=null;_resultGpsLayer=null}
-  // Enable full touch/drag/zoom interaction
+  if(mapResult){mapResult.remove();mapResult=null;_resultGpsLayer=null;_resultTrackGroup=null;_resultDelayGroup=null;_resultPlanBounds=null}
   mapResult=L.map('map-result',{zoomControl:true,attributionControl:false,scrollWheelZoom:true,dragging:true,touchZoom:true,doubleClickZoom:true,boxZoom:true,keyboard:false})
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapResult)
-  // Planned route (grey dashed)
+  // Planned route (grey dashed) — always visible regardless of active tab
   if(config.nodes&&config.nodes.length>=2){
     const lls=routePolylines.length>0?routePolylines.flat():config.nodes.map(n=>[n.lat,n.lng])
     L.polyline(lls,{color:'#94a3b8',weight:3,opacity:.75,dashArray:'8,5'}).addTo(mapResult)
-    // Numbered node markers — start=green, end=red, mid=blue
     const ns=config.nodes
     ns.forEach((n,i)=>{
       const isFirst=i===0,isLast=i===ns.length-1
@@ -3035,57 +3076,55 @@ function buildResultMap(){
         className:'',iconSize:[28,28],iconAnchor:[14,14]
       }),zIndexOffset:500}).bindTooltip(n.name||`節點${num}`,{direction:'top'}).addTo(mapResult)
     })
+    // Compute and store plan bounds — used as baseline for every tab's fitBounds
+    const pb=L.latLngBounds(ns.map(n=>[n.lat,n.lng]))
+    if(routePolylines.length>0) routePolylines.flat().forEach(ll=>pb.extend(L.latLng(ll[0],ll[1])))
+    _resultPlanBounds=pb
   }
-  // Initialize bounds from ALL route nodes so the full planned route is always in view.
-  // We intentionally use config.nodes (not routePolylines) because nodes are always
-  // present and routePolylines may be empty or partial when viewing history.
-  let bounds=null
-  if(config.nodes&&config.nodes.length>=2){
-    bounds=L.latLngBounds(config.nodes.map(n=>[n.lat,n.lng]))
-    // Also extend with routePolylines waypoints if available
-    if(routePolylines.length>0){
-      routePolylines.flat().forEach(ll=>bounds.extend(L.latLng(ll[0],ll[1])))
-    }
-  }
-  // Draw ALL available trip tracks at once
-  const delayGroup=L.layerGroup()  // separate layer so delays always render on top
-  COMBO_KEYS.forEach(key=>{
-    const t=allTrips[key]; if(!t) return
-    const color=RESULT_TRACK_COLORS[key]||'#3b82f6'
-    if(t.gpsTrack&&t.gpsTrack.length>=2){
-      const ll=t.gpsTrack.map(p=>[p.lat,p.lng])
-      const poly=L.polyline(ll,{color,weight:4,opacity:.85}).addTo(mapResult)
-      if(!bounds) bounds=poly.getBounds(); else bounds.extend(poly.getBounds())
-    }
-    if(t.delayLog){
-      t.delayLog.forEach(r=>{
-        if(!r.pos) return
-        L.marker([r.pos.lat,r.pos.lng],{
-          icon:L.divIcon({
-            html:`<div style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1">${r.icon}</div>`,
-            className:'',iconSize:[26,26],iconAnchor:[13,13]
-          }),
-          zIndexOffset:1000
-        }).bindPopup(`${r.icon} ${r.label}<br>${r.durationS}秒`).addTo(delayGroup)
-      })
-    }
-  })
-  delayGroup.addTo(mapResult)  // add delay layer last → renders on top
-  if(bounds) mapResult.fitBounds(bounds,{padding:[24,24]})
-  else if(lastPos){mapResult.setView([lastPos.lat,lastPos.lng],14)}
-  // Update legend to show each track's color
-  const legRow=document.querySelector('.result-map-legrow')
-  if(legRow){
-    const CZH={off_peak_bound:'離峰去',off_peak_return:'離峰回',peak_bound:'尖峰去',peak_return:'尖峰回'}
-    const doneCombos=COMBO_KEYS.filter(k=>allTrips[k])
-    const swatches=doneCombos.map(k=>`<div class="rml-item"><span class="rml-solid" style="background:${RESULT_TRACK_COLORS[k]}"></span>${CZH[k]}</div>`).join('')
-    legRow.innerHTML=`<div class="rml-item"><span class="rml-dashed"></span>規劃路線</div>${swatches}<div class="rml-item"><span class="rml-node">1</span>節點</div><div class="rml-item" style="font-size:14px">🚦 延滯</div>`
-  }
+  // Dynamic layers — cleared and redrawn on each tab switch
+  _resultTrackGroup=L.layerGroup().addTo(mapResult)
+  _resultDelayGroup=L.layerGroup().addTo(mapResult)
+  // Show plan bounds initially (before any GPS track is drawn)
+  if(_resultPlanBounds) mapResult.fitBounds(_resultPlanBounds,{padding:[24,24]})
+  else if(lastPos) mapResult.setView([lastPos.lat,lastPos.lng],14)
 }
 
 function updateResultMapTrack(key){
-  // All tracks are always shown — tab switching only changes form below, not map
-  if(!mapResult) return
+  if(!mapResult||!_resultTrackGroup||!_resultDelayGroup) return
+  _resultTrackGroup.clearLayers()
+  _resultDelayGroup.clearLayers()
+  const t=allTrips[key]
+  const color=RESULT_TRACK_COLORS[key]||'#3b82f6'
+  // Update legend swatch + label
+  const sw=document.getElementById('rml-track-swatch')
+  const lb=document.getElementById('rml-track-label')
+  if(sw) sw.style.background=color
+  if(lb){const CZH2={off_peak_bound:'離峰去',off_peak_return:'離峰回',peak_bound:'尖峰去',peak_return:'尖峰回'};lb.textContent=CZH2[key]||'GPS軌跡'}
+  // Start bounds from full planned route so it's always in view
+  let bounds=_resultPlanBounds
+    ? L.latLngBounds(_resultPlanBounds.getSouthWest(),_resultPlanBounds.getNorthEast())
+    : null
+  if(!t){
+    if(bounds) mapResult.fitBounds(bounds,{padding:[24,24]})
+    return
+  }
+  if(t.gpsTrack&&t.gpsTrack.length>=2){
+    const ll=t.gpsTrack.map(p=>[p.lat,p.lng])
+    const poly=L.polyline(ll,{color,weight:4,opacity:.85}).addTo(_resultTrackGroup)
+    if(!bounds) bounds=poly.getBounds(); else bounds.extend(poly.getBounds())
+  }
+  if(t.delayLog){
+    t.delayLog.forEach(r=>{
+      if(!r.pos) return
+      L.marker([r.pos.lat,r.pos.lng],{
+        icon:L.divIcon({
+          html:`<div style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1">${r.icon}</div>`,
+          className:'',iconSize:[26,26],iconAnchor:[13,13]
+        }),zIndexOffset:1000
+      }).bindPopup(`${r.icon} ${r.label}<br>${r.durationS}秒`).addTo(_resultDelayGroup)
+    })
+  }
+  if(bounds) mapResult.fitBounds(bounds,{padding:[24,24]})
 }
 function buildTable1(){
   const ob=getTrip('off_peak','bound'),or_=getTrip('off_peak','return')
