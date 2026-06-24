@@ -3775,11 +3775,9 @@ async function runDeviceChecks(){
         function(p){
           clearTimeout(tmr);if(done)return;done=true
           var acc=Math.round(p.coords.accuracy)
-          resolve(acc<=30
-            ?{status:'pass',desc:'GPS 精度 ±'+acc+'m ✓ 符合監測需求'}
-            :acc<=80
-              ?{status:'warn',desc:'GPS 精度 ±'+acc+'m，稍低，建議移至開闊處再測'}
-              :{status:'fail',desc:'GPS 精度 ±'+acc+'m，過低（>80m），無法可靠偵測節點'})
+          resolve(acc<=10
+            ?{status:'pass',desc:'GPS 精度 ±'+acc+'m ✓ 優良'}
+            :{status:'warn',desc:'GPS 精度 ±'+acc+'m，超過 10m 建議移至開闊處待訊號穩定（不影響監測執行）'})
         },
         function(err){
           clearTimeout(tmr);if(done)return;done=true
