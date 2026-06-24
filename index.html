@@ -666,6 +666,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
   <div class="rpt-tab-bar">
     <button class="rpt-tab active" onclick="switchRptTab('overview',this)">總覽</button>
     <button class="rpt-tab" onclick="switchRptTab('official',this)">調查紀錄</button>
+    <button class="rpt-tab" onclick="switchRptTab('download',this)">下載報告</button>
   </div>
   <div class="scroll-body" style="margin-top:8px">
     <!-- 總覽 panel -->
@@ -701,6 +702,21 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
         </div>
       </div>
       <div id="official-forms"></div>
+    </div>
+    <!-- 下載報告 panel -->
+    <div id="rpt-panel-download" class="rpt-panel">
+      <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:13px;color:#64748b;font-weight:600">選擇格式下載報告</div>
+        <button onclick="downloadSGSPdf()" style="width:100%;padding:16px;background:#1e3a5f;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;color:white;text-align:left">
+          🖨 列印 SGS PDF 表格<br><span style="font-size:11px;font-weight:400;opacity:.8">依官方格式列印，可存成 PDF</span>
+        </button>
+        <button onclick="exportReport()" style="width:100%;padding:16px;background:#1d6f42;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;color:white;text-align:left">
+          📥 下載 SGS HTML+Excel 報告<br><span style="font-size:11px;font-weight:400;opacity:.8">下載 HTML 檔，內含 Excel 下載按鈕</span>
+        </button>
+        <button onclick="downloadCsv()" style="width:100%;padding:16px;background:#374151;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;color:white;text-align:left">
+          📋 下載原始數據 CSV<br><span style="font-size:11px;font-weight:400;opacity:.8">所有旅次原始紀錄</span>
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -3544,6 +3560,107 @@ function exportReport(){
   a.download=`旅行時間調查報告_${config.date||'report'}.html`
   a.click()
   showToast('✅ 報告已下載，可透過 LINE 傳送給 PM')
+}
+
+// ════════════════════════════════════
+//  SGS PDF PRINT
+// ════════════════════════════════════
+function downloadSGSPdf(){
+  buildTable1(); buildTable2(); buildTable3()
+
+  // Collect official form HTML for each completed trip
+  var formsHtml=''
+  COMBO_KEYS.forEach(function(k){
+    var trip=allTrips[k]; if(!trip) return
+    var combo=parseComboKey(k)
+    formsHtml+='<div class="pg">'+buildOneOfficialForm(trip,combo[0],combo[1]).outerHTML+'</div>'
+              +'<div style="page-break-after:always"></div>'
+  })
+  if(!formsHtml){ showToast('⚠ 尚無調查資料可列印'); return }
+
+  var t1=$('table1').outerHTML, t2=$('table2').outerHTML, t3=$('table3').outerHTML
+
+  var css=
+    '@page{size:A4 landscape;margin:8mm}\n'
+   +'*{box-sizing:border-box;margin:0;padding:0}\n'
+   +'body{font-family:-apple-system,"PingFang TC",Arial,sans-serif;background:white;color:#1e293b}\n'
+   +'.pg{padding:4px;width:100%}\n'
+   +'.pg2{padding:8px}\n'
+   +'.pg2-hd{font-size:11pt;font-weight:800;padding:5px 8px;background:#1e293b;color:white;margin-bottom:8px}\n'
+   +'.sgs-form{background:white;overflow-x:hidden;margin-bottom:6px;border:1px solid #1e293b}\n'
+   +'.sgs-t{width:100%;border-collapse:collapse;font-size:8pt}\n'
+   +'.sgs-t td,.sgs-t th{border:1px solid #475569;padding:1px 2px;vertical-align:middle;text-align:center;white-space:nowrap}\n'
+   +'.sgs-logo{font-size:13px;font-weight:900;color:#dc2626;font-style:italic;border:2px solid #dc2626!important}\n'
+   +'.sgs-title{font-size:11pt;font-weight:800;color:#0f172a;letter-spacing:1px}\n'
+   +'.sgs-meta-l{text-align:left!important;color:#374151;font-weight:600}\n'
+   +'.sgs-meta-v{text-align:left!important}\n'
+   +'.sgs-th{background:#e2e8f0;font-weight:700;font-size:8pt;color:#1e293b}\n'
+   +'.sgs-seg{text-align:left!important;font-weight:600;font-size:8pt}\n'
+   +'.sgs-t-time{color:#2563eb;font-weight:700}\n'
+   +'.sgs-footer-l{background:#f1f5f9;font-weight:700;text-align:left!important}\n'
+   +'.sgs-footer-v{background:#f1f5f9}\n'
+   +'table.rt{width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:10px}\n'
+   +'table.rt th{background:#1e293b;color:white;padding:4px 6px;text-align:center;font-size:8pt;font-weight:600;white-space:nowrap}\n'
+   +'table.rt td{padding:3px 6px;border:1px solid #e2e8f0;text-align:center;white-space:nowrap}\n'
+   +'.rtl{text-align:left!important;background:#f8fafc;font-weight:600;color:#374151}\n'
+   +'.rts{background:#334155;color:white;font-weight:700}\n'
+   +'.rth{background:#e2e8f0;color:#1e293b;font-weight:700}\n'
+   +'.pdf-btn{position:fixed;top:10px;right:10px;padding:9px 18px;background:#1e293b;color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.3)}\n'
+   +'@media print{.pdf-btn{display:none}}\n'
+
+  var html='<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"/>'
+    +'<title>SGS 旅行時間調查表 '+(config.date||'')+'</title>'
+    +'<style>'+css+'</style></head><body>'
+    +'<button class="pdf-btn" onclick="window.print()">🖨 列印 / 儲存 PDF</button>'
+    +formsHtml
+    +'<div class="pg2" style="page-break-before:avoid">'
+    +'<div class="pg2-hd">📊 統計彙總</div>'
+    +t1+t2+t3
+    +'</div>'
+    +'</body></html>'
+
+  var w=window.open('','_blank')
+  if(!w){ showToast('⚠ 請先允許彈出視窗，再試一次'); return }
+  w.document.write(html)
+  w.document.close()
+  setTimeout(function(){ w.print() },600)
+}
+
+// ════════════════════════════════════
+//  CSV EXPORT
+// ════════════════════════════════════
+function downloadCsv(){
+  const PL={off_peak:'離峰',peak:'尖峰'}, DL={bound:'去程',return:'回程'}
+  const rows=[['旅次','總旅行時間(秒)','行駛時間(秒)','路段延滯(秒)','交叉口延滯(秒)','總旅行速率(km/h)','總行駛速率(km/h)','出發時刻','到達時刻']]
+  COMBO_KEYS.forEach(k=>{
+    const t=allTrips[k]; if(!t) return
+    const [pt,dir]=parseComboKey(k)
+    const spd=(d,s)=>(d>0&&s>0)?(d/s*3.6).toFixed(1):''
+    rows.push([
+      (PL[pt]||pt)+(DL[dir]||dir),
+      t.travelS||0, t.runS||0, t.roadTotalS||0, t.intTotalS||0,
+      spd(config.totalLength,t.travelS), spd(config.totalLength,t.runS),
+      t.startTime?new Date(t.startTime).toLocaleTimeString('zh-TW',{hour12:false}):'',
+      t.endTime?new Date(t.endTime).toLocaleTimeString('zh-TW',{hour12:false}):''
+    ])
+  })
+  // Delay detail rows
+  rows.push([])
+  rows.push(['延滯明細','旅次','原因','時間(秒)','位置lat','位置lng'])
+  COMBO_KEYS.forEach(k=>{
+    const t=allTrips[k]; if(!t||!t.delayLog) return
+    const [pt,dir]=parseComboKey(k)
+    const tripLabel=(PL[pt]||pt)+(DL[dir]||dir)
+    t.delayLog.forEach(d=>{
+      rows.push(['',tripLabel,d.label||d.cause,d.durationS,d.pos?d.pos.lat:'',d.pos?d.pos.lng:''])
+    })
+  })
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n')
+  const a=document.createElement('a')
+  a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}))
+  a.download='旅行時間調查_'+(config.date||'data')+'.csv'
+  a.click()
+  showToast('✅ CSV 已下載')
 }
 
 // ════════════════════════════════════
