@@ -60,10 +60,10 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .btn-manual{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#94a3b8;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;flex-shrink:0;white-space:nowrap}
 .btn-manual:active{background:rgba(255,255,255,.2)}
 /* ── Hero action buttons ── */
-.btn-hist-rec{background:white;border:none;color:#1e293b;border-radius:8px;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;transition:opacity .15s}
-.btn-hist-rec:active{opacity:.75}
-.btn-q-sq{background:white;border:none;color:#1e293b;border-radius:8px;width:30px;height:30px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:opacity .15s}
-.btn-q-sq:active{opacity:.75}
+.btn-hist-rec{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:white;border-radius:20px;height:30px;padding:0 12px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;transition:background .15s}
+.btn-hist-rec:active{background:rgba(255,255,255,.22)}
+.btn-q-sq{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:white;border-radius:50%;width:30px;height:30px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.btn-q-sq:active{background:rgba(255,255,255,.22)}
 /* ── History modal ── */
 .hist-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:3000;align-items:center;justify-content:center;padding:20px}
 .hist-modal{background:white;border-radius:16px;width:100%;max-width:400px;max-height:72vh;display:flex;flex-direction:column;overflow:hidden}
@@ -701,8 +701,8 @@ const INT_DELAYS = [
   {cause:'ped_int',    label:'行人',    icon:'🚶'},
   {cause:'cross_veh',  label:'橫越車輛', icon:'↔️'},
   {cause:'left_same',  label:'左轉同向', icon:'↰'},
-  {cause:'left_opp',   label:'左轉對向', icon:'↱'},
-  {cause:'right_turn', label:'右轉',    icon:'↳'},
+  {cause:'left_opp',   label:'左轉對向', icon:'↲'},
+  {cause:'right_turn', label:'右轉',    icon:'↱'},
   {cause:'int_other',  label:'其他',    icon:'❓'},
 ]
 const PEAK_LABEL  = {peak:'尖峰', off_peak:'離峰'}
