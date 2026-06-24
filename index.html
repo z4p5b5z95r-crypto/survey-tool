@@ -3708,6 +3708,13 @@ var _devResults=[]   // [{id,name,status,desc,required}]
 
 async function runDeviceChecks(){
   _devResults=[]
+
+  // ── iOS DeviceMotion 授權必須在任何 await 之前同步呼叫，否則使用者手勢失效 ──
+  var _motionPermPromise=null
+  if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
+    try{ _motionPermPromise=DeviceMotionEvent.requestPermission() }catch(e){ _motionPermPromise=Promise.reject(e) }
+  }
+
   renderDevResults()  // show spinner
 
   // ── 1. HTTPS ──
@@ -3812,16 +3819,16 @@ async function runDeviceChecks(){
     _devResults.push({id:'motion',name:'動作感應（方向感測器）',required:false,
       status:'warn',desc:'不支援動作感應，地圖方向將以 GPS 方位角代替'})
     renderDevResults()
-  } else if(typeof DeviceMotionEvent.requestPermission==='function'){
-    // iOS 13+：需明確請求
+  } else if(_motionPermPromise){
+    // iOS 13+：已在函數開頭同步取得 Promise，此處只需 await 結果
     try{
-      var perm=await DeviceMotionEvent.requestPermission()
+      var perm=await _motionPermPromise
       _devResults.push({id:'motion',name:'動作感應（方向感測器）',required:false,
         status:perm==='granted'?'pass':'warn',
         desc:perm==='granted'?'動作感應授權成功，指南針功能正常':'動作感應授權遭拒，地圖方向將以 GPS 代替'})
     }catch(e){
       _devResults.push({id:'motion',name:'動作感應（方向感測器）',required:false,
-        status:'warn',desc:'無法請求動作感應授權：'+e.message})
+        status:'warn',desc:'動作感應授權失敗：'+e.message})
     }
     renderDevResults()
   } else {
