@@ -1214,6 +1214,16 @@ function downloadSGSPdf(){
     return d ? r.toFixed(d) : Math.round(r).toString()
   }
   function _n(v){ return (v!==undefined&&v!==null&&v!=='')? v : '' }
+  function _weather(w){
+    if(!w) return ''
+    const m={
+      'sunny':'晴','clear':'晴','fine':'晴','sunny partly cloudy':'晴時多雲',
+      'cloudy':'陰','overcast':'陰','partly cloudy':'多雲','mostly cloudy':'多雲',
+      'rain':'雨','rainy':'雨','shower':'雨','light rain':'小雨','heavy rain':'大雨',
+      '晴':'晴','陰':'陰','雨':'雨','多雲':'多雲'
+    }
+    return m[(w||'').toLowerCase()] || w
+  }
 
   const off = route.offPeakLabel||'離峰', pk = route.peakLabel||'尖峰'
   const segs = route.segments||[], TL = route.totalLength||0
@@ -1226,32 +1236,26 @@ function downloadSGSPdf(){
   const T4 = [OB, OR_, PB, PR]
 
   const dates     = [...new Set(surveys.map(s=>s.date||'').filter(Boolean))].join('、')
-  const weathers  = [...new Set(surveys.map(s=>s.weather||'').filter(Boolean))].join('、')
+  const weathers  = [...new Set(surveys.map(s=>_weather(s.weather||'')).filter(Boolean))].join('、')
   const surveyors = [...new Set(surveys.map(s=>s.surveyor||'').filter(Boolean))].join('、')
+
+  // ── SGS Logo SVG (gray bold + orange cross lines) ────────────────────────
+  const SGS_SVG = `<svg width="76" height="48" viewBox="0 0 76 48" xmlns="http://www.w3.org/2000/svg">
+    <text x="1" y="41" fill="#797979" font-size="42" font-weight="900"
+      font-family="Arial Black,Arial,sans-serif" letter-spacing="0">SGS</text>
+    <line x1="0" y1="44" x2="67" y2="44" stroke="#F28C28" stroke-width="3"/>
+    <line x1="67" y1="0" x2="67" y2="48" stroke="#F28C28" stroke-width="3"/>
+  </svg>`
 
   // ── CSS ──────────────────────────────────────────────────────────────────
   const CSS = `
 @page{size:A4 landscape;margin:8mm}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,"PingFang TC","Microsoft JhengHei",Arial,sans-serif;background:white;color:#1e293b}
+body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#000;font-size:8.5pt}
 .pg{padding:2px;page-break-after:always}
 .pg:last-child{page-break-after:auto}
 
-/* ── Per-trip table ── */
-.f{width:100%;border-collapse:collapse;font-size:7.5pt}
-.f td,.f th{border:1px solid #475569;padding:1px 2px;vertical-align:middle;text-align:center;white-space:nowrap}
-.f-title{font-size:11pt;font-weight:800;letter-spacing:1px}
-.f-ml{text-align:left!important;font-weight:600}
-.f-mv{text-align:left!important}
-.f-th{background:#e2e8f0;font-weight:700;font-size:7.5pt}
-.f-seg{text-align:left!important;font-weight:600}
-.f-time{color:#2563eb;font-weight:700}
-.f-green{background:#dcfce7;font-weight:700}
-.f-fl{background:#f1f5f9;font-weight:700;text-align:left!important}
-.f-fv{background:#f1f5f9}
-.f-spd{font-size:10pt;font-weight:800}
-
-/* ── Summary tables ── */
+/* ── Summary tables (延滯統計表 etc.) ── */
 .pg-title{font-size:14pt;font-weight:700;text-align:center;margin:0 0 6px;letter-spacing:2px}
 .pg-info{font-size:9pt;line-height:1.9;margin-bottom:5px}
 .pi-row{display:flex;justify-content:space-between}
@@ -1270,13 +1274,29 @@ body{font-family:-apple-system,"PingFang TC","Microsoft JhengHei",Arial,sans-ser
 .seg-s .s-h{background:#1e3a5f;color:white;font-weight:700}
 .seg-s .s-l{text-align:left!important;font-weight:600}
 .seg-s .s-hl{font-weight:700}
+.s-title{font-size:11pt;font-weight:700;text-align:center;border:none!important;padding:4px 0!important}
+.s-tot td{font-weight:700}
+
+/* ── Per-trip SGS form ── */
+.trip-hdr{display:flex;align-items:flex-start;gap:10px;margin-bottom:4px}
+.trip-title{flex:1;text-align:center;font-size:12pt;font-weight:700;letter-spacing:3px;padding-top:3px}
+.trip-info{width:100%;border-collapse:collapse;font-size:8.5pt;margin-bottom:3px}
+.trip-info td{padding:1px 4px;border:none;white-space:nowrap}
+.trip-info .ti-r{color:#cc0000;font-weight:700}
+.ft{width:100%;border-collapse:collapse;font-size:7.5pt;margin-bottom:2px}
+.ft td{border:1px solid #000;padding:1px 2px;vertical-align:middle;text-align:center;white-space:nowrap}
+.ft-h{font-size:7.5pt}
+.ft-la{text-align:left!important}
+.ft-bl{color:#1144cc;font-weight:700}
+.ft-bk{font-size:10pt;font-weight:700}
+.ft-sum{background:#f4f4f4;font-weight:700}
 
 .pdf-btn{position:fixed;top:10px;right:10px;padding:9px 18px;background:#1e293b;color:white;
   border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;z-index:999}
 @media print{.pdf-btn{display:none}}
 `
 
-  // ── 延滯統計表 (matches reference PDF exactly) ──────────────────────────
+  // ── 延滯統計表 ─────────────────────────────────────────────────────────
   function buildDelayPage(mode){
     const isSec = mode==='sec'
     const unit  = isSec ? '秒' : '%'
@@ -1390,8 +1410,8 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
     })
     rows += `<tr class="s-tot">
       <td class="s-l">總　計</td><td></td><td></td><td>${totLen}</td>
-      ${T4.map(t=>`<td class="s-hl">${_n(t?.travelS)}</td>`).join('')}
-      ${T4.map(t=>`<td class="s-hl">${_n(t?.runS)}</td>`).join('')}
+      ${T4.map(t=>`<td>${_n(t?.travelS)}</td>`).join('')}
+      ${T4.map(t=>`<td>${_n(t?.runS)}</td>`).join('')}
     </tr>`
     return `<div class="pg"><table class="seg-s">
 <tr><td colspan="12" class="s-title">各路段平均旅行時間及平均行駛時間統計表</td></tr>
@@ -1426,8 +1446,8 @@ ${rows}</table></div>`
     })
     rows += `<tr class="s-tot">
       <td class="s-l">總　計</td><td>${TL}</td>
-      ${T4.map(t=>`<td class="s-hl">${_spd(TL,t?.travelS)}</td>`).join('')}
-      ${T4.map(t=>`<td class="s-hl">${_spd(TL,t?.runS)}</td>`).join('')}
+      ${T4.map(t=>`<td>${_spd(TL,t?.travelS)}</td>`).join('')}
+      ${T4.map(t=>`<td>${_spd(TL,t?.runS)}</td>`).join('')}
     </tr>`
     return `<div class="pg"><table class="seg-s">
 <tr><td colspan="10" class="s-title">各路段平均旅行速率及平均行駛速率統計表（公里/時）</td></tr>
@@ -1448,7 +1468,17 @@ ${rows}</table></div>`
 ${rows}</table></div>`
   }
 
-  // ── Per-trip SGS form (official template layout) ──────────────────────────
+  // ── Per-trip SGS form ─────────────────────────────────────────────────────
+  // Upper summary table: 15 cols
+  //   col1=路起點(rs3) col2=線終點(rs3) col3=距離(rs3)
+  //   col4-6=起點時/分/秒  col7-9=終點時/分/秒
+  //   col10=合計(rs2) col11=交叉口延滯(rs2) col12=路段中延滯(rs2) col13=行駛時間(rs2)
+  //   col14=旅行速率(rs2) col15=行駛速率(rs2)
+  //
+  // Lower detail table: 22 cols
+  //   col1=經過路口  col2-4=時/分/秒
+  //   col5-10=路段中×6  col11-17=交叉口×7
+  //   col18=旅行時間 col19=距離 col20=行駛時間 col21=旅行速率 col22=行駛速率
   function buildTripPage(sv, si, trip){
     const isReturn = trip.direction==='return'
     const isPeak   = trip.peakType==='peak'
@@ -1461,19 +1491,20 @@ ${rows}</table></div>`
     const [sH,sM,sS] = _hms(trip.startTime)
     const [eH,eM,eS] = _hms(trip.endTime)
 
-    const nodeOrd = isReturn ? [...nodes].reverse() : nodes
-    const startN2 = nodeOrd[0]?.name||'起點'
-    const endN2   = nodeOrd[nodeOrd.length-1]?.name||'終點'
+    const nodeOrd  = isReturn ? [...nodes].reverse() : nodes
+    const startN2  = nodeOrd[0]?.name||'起點'
+    const endN2    = nodeOrd[nodeOrd.length-1]?.name||'終點'
     const tSpd = _spd(TL, trip.travelS)
     const rSpd = _spd(TL, trip.runS)
 
+    // Segment rows (22 cols each)
     const segRows = segOrd.map((seg,i)=>{
       const tsIdx = isReturn ? (segs.length - 1 - i) : (i + 1)
       const [nH,nM,nS] = _hms(nodeTs[tsIdx])
       const t = times[i]||{}
       return `<tr>
-        <td colspan="2" class="f-seg">${seg.name||''}</td>
-        <td class="f-time">${_n(nH)}</td><td class="f-time">${_n(nM)}</td><td class="f-time">${_n(nS)}</td>
+        <td class="ft-la">${seg.name||''}</td>
+        <td class="ft-bl">${_n(nH)}</td><td class="ft-bl">${_n(nM)}</td><td class="ft-bl">${_n(nS)}</td>
         <td></td><td></td><td></td><td></td><td></td><td></td>
         <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
         <td>${_n(t.travelS)}</td><td>${_n(seg.length)}</td><td>${_n(t.runS)}</td>
@@ -1481,115 +1512,147 @@ ${rows}</table></div>`
       </tr>`
     }).join('')
 
-    const emptyRows = Array(Math.max(0,7-segOrd.length)).fill(
-      '<tr>' + '<td></td>'.repeat(23) + '</tr>'
-    ).join('')
+    // Fill empty rows up to 8 total segment rows
+    const blankRow = '<tr>' + '<td style="height:14px"></td>'.repeat(22) + '</tr>'
+    const emptyRows = Array(Math.max(0, 8 - segOrd.length)).fill(blankRow).join('')
 
-    return `<div class="pg"><table class="f">
+    return `<div class="pg">
+<div class="trip-hdr">
+  <div>${SGS_SVG}</div>
+  <div class="trip-title">主次要幹道行駛時間及延滯調查表</div>
+</div>
+<table class="trip-info">
 <tr>
-  <td colspan="20" class="f-title">主次要幹道行駛時間及延滯調查表</td>
-  <td colspan="2" class="f-ml">日　期：</td>
-  <td class="f-mv" style="color:#dc2626;font-weight:700">${sv.date||''}</td>
-</tr>
-<tr>
-  <td colspan="4" class="f-ml">站　名：</td>
-  <td colspan="10" class="f-mv" style="text-decoration:underline">${route.routeName||''}</td>
-  <td colspan="5"></td>
-  <td colspan="2" class="f-ml" rowspan="2">天　氣：</td>
-  <td class="f-mv" rowspan="2">${sv.weather||''}</td>
-</tr>
-<tr>
-  <td colspan="4" class="f-ml">旅次編號：</td>
-  <td colspan="16" class="f-mv">${si+1}</td>
+  <td style="width:65px">站　名：</td>
+  <td style="width:180px">${route.routeName||''}</td>
+  <td style="width:60px"></td>
+  <td style="width:55px;text-align:right">日　　期：</td>
+  <td class="ti-r">${sv.date||''}</td>
 </tr>
 <tr>
-  <td colspan="4" class="f-ml">方向往：</td>
-  <td colspan="8" class="f-mv">${isReturn?'□':'■'} 去　　　${isReturn?'■':'□'} 回</td>
-  <td colspan="7"></td>
-  <td colspan="2" class="f-ml">調查員：</td>
-  <td class="f-mv" style="text-decoration:underline">${sv.surveyor||''}</td>
+  <td>旅次編號：</td><td colspan="4">${si+1}</td>
 </tr>
 <tr>
-  <td colspan="4" class="f-ml">時　間：</td>
-  <td colspan="19" class="f-mv">${isPeak?'□':'■'} 離峰（${off}）　　${isPeak?'■':'□'} 尖峰（${pk}）</td>
+  <td>方向往：</td>
+  <td colspan="2">${isReturn?'□':'■'} 去　　　${isReturn?'■':'□'} 回</td>
+  <td style="text-align:right">天　　氣：</td>
+  <td>${_weather(sv.weather)}</td>
 </tr>
-<tr class="f-th">
-  <td colspan="2" rowspan="3">路<br><small>起點位置</small></td>
-  <td colspan="2" rowspan="3">線<br><small>終點位置</small></td>
-  <td rowspan="3">距離<br>(公尺)</td>
-  <td colspan="6">時　　　　　　刻</td>
-  <td colspan="4">總旅行時間(秒)及百分比</td>
-  <td colspan="4" rowspan="3">總旅行速率<br>(公里/時)</td>
-  <td colspan="4" rowspan="3">總行駛速率<br>(公里/時)</td>
-</tr>
-<tr class="f-th">
-  <td colspan="3">起　點</td><td colspan="3">終　點</td>
-  <td rowspan="2">合計</td><td rowspan="2">交叉口<br>延　滯</td>
-  <td rowspan="2">路段中<br>延　滯</td><td rowspan="2">行　駛<br>時　間</td>
-</tr>
-<tr class="f-th"><td>時</td><td>分</td><td>秒</td><td>時</td><td>分</td><td>秒</td></tr>
 <tr>
-  <td colspan="2" rowspan="2" class="f-seg">${startN2}</td>
-  <td colspan="2" rowspan="2" class="f-seg">${endN2}</td>
-  <td rowspan="2">${TL}</td>
-  <td>${sH}</td><td>${sM}</td><td>${sS}</td>
-  <td>${eH}</td><td>${eM}</td><td class="f-green">${eS}</td>
+  <td>時　　間：</td>
+  <td colspan="2">${isPeak?'□':'■'} 離峰（${off}）　　　${isPeak?'■':'□'} 尖峰（${pk}）</td>
+  <td style="text-align:right">調查員：</td>
+  <td style="text-decoration:underline">${sv.surveyor||''}</td>
+</tr>
+</table>
+
+<!-- Upper summary table: 15 cols -->
+<table class="ft">
+<colgroup>
+  <col style="width:14%"><col style="width:12%"><col style="width:7%">
+  <col style="width:5%"><col style="width:5%"><col style="width:5%">
+  <col style="width:5%"><col style="width:5%"><col style="width:5%">
+  <col style="width:8%"><col style="width:8%"><col style="width:6%"><col style="width:6%">
+  <col style="width:7.5%"><col style="width:7.5%">
+</colgroup>
+<tr class="ft-h">
+  <td rowspan="3" style="font-size:8pt">路<br><small>起點位置</small></td>
+  <td rowspan="3" style="font-size:8pt">線<br><small>終點位置</small></td>
+  <td rowspan="3" style="font-size:7pt">距離<br>(公尺)</td>
+  <td colspan="3" style="letter-spacing:2px">起　點</td>
+  <td colspan="3" style="letter-spacing:2px">終　點</td>
+  <td rowspan="2" style="font-size:7pt">合計</td>
+  <td rowspan="2" style="font-size:7pt">交叉口<br>延　滯</td>
+  <td rowspan="2" style="font-size:7pt">路段中<br>延　滯</td>
+  <td rowspan="2" style="font-size:7pt">行　駛<br>時　間</td>
+  <td rowspan="3" style="font-size:7pt">總旅行速率<br>(公里/時)</td>
+  <td rowspan="3" style="font-size:7pt">總行駛速率<br>(公里/時)</td>
+</tr>
+<tr class="ft-h">
+  <td colspan="3" style="letter-spacing:4px">時　　　刻</td>
+  <td colspan="3" style="letter-spacing:4px">時　　　刻</td>
+</tr>
+<tr class="ft-h">
+  <td>時</td><td>分</td><td>秒</td>
+  <td>時</td><td>分</td><td>秒</td>
+  <td style="font-size:7pt">合計</td>
+  <td style="font-size:7pt">交叉口<br>延滯</td>
+  <td style="font-size:7pt">路段中<br>延滯</td>
+  <td style="font-size:7pt">行駛<br>時間</td>
+</tr>
+<tr>
+  <td class="ft-la">${startN2}</td>
+  <td class="ft-la">${endN2}</td>
+  <td>${TL}</td>
+  <td class="ft-bl">${sH}</td><td class="ft-bl">${sM}</td><td class="ft-bl">${sS}</td>
+  <td class="ft-bl">${eH}</td><td class="ft-bl">${eM}</td><td class="ft-bl">${eS}</td>
   <td>${trip.travelS||0}</td><td>${intT}</td><td>${roadT}</td><td>${trip.runS||0}</td>
-  <td colspan="4" rowspan="2" class="f-spd">${tSpd}</td>
-  <td colspan="4" rowspan="2" class="f-spd">${rSpd}</td>
+  <td class="ft-bk">${tSpd}</td><td class="ft-bk">${rSpd}</td>
 </tr>
 <tr>
-  <td colspan="3" class="f-ml" style="font-size:7px">百分比</td>
-  <td colspan="3"></td>
-  <td style="font-size:7px">100%</td>
-  <td style="font-size:7px">${_pct(intT,trip.travelS)}%</td>
-  <td style="font-size:7px">${_pct(roadT,trip.travelS)}%</td>
-  <td style="font-size:7px">${_pct(trip.runS||0,trip.travelS)}%</td>
+  <td colspan="9" style="text-align:right;padding-right:4px;font-size:7pt">百分比</td>
+  <td style="font-size:7pt">100%</td>
+  <td style="font-size:7pt">${_pct(intT,trip.travelS)}%</td>
+  <td style="font-size:7pt">${_pct(roadT,trip.travelS)}%</td>
+  <td style="font-size:7pt">${_pct(trip.runS||0,trip.travelS)}%</td>
+  <td colspan="2"></td>
 </tr>
-<tr class="f-th">
-  <td colspan="2" rowspan="2">經過路口</td>
-  <td colspan="3" rowspan="2">經過時刻</td>
-  <td colspan="6">路　段　中</td>
-  <td colspan="7">交　叉　口</td>
-  <td rowspan="2">旅行<br>時間(秒)</td>
-  <td rowspan="2">距離<br>(公尺)</td>
-  <td rowspan="2">行駛<br>時間(秒)</td>
-  <td rowspan="2">旅行<br>速率</td>
-  <td rowspan="2">行駛<br>速率</td>
+</table>
+
+<!-- Lower detail table: 22 cols -->
+<table class="ft">
+<colgroup>
+  <col style="width:14%">
+  <col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%">
+  <col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%">
+  <col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%">
+  <col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%">
+</colgroup>
+<tr class="ft-h">
+  <td rowspan="2" style="font-size:8pt">經過路口</td>
+  <td colspan="3" rowspan="2" style="font-size:7.5pt">經過時刻</td>
+  <td colspan="6" style="font-size:7.5pt">路　段　中</td>
+  <td colspan="7" style="font-size:7.5pt">交　叉　口</td>
+  <td rowspan="2" style="font-size:6.5pt">旅行<br>時間<br>(秒)</td>
+  <td rowspan="2" style="font-size:6.5pt">距離<br>(公尺)</td>
+  <td rowspan="2" style="font-size:6.5pt">行駛<br>時間<br>(秒)</td>
+  <td rowspan="2" style="font-size:6.5pt">旅行<br>速率</td>
+  <td rowspan="2" style="font-size:6.5pt">行駛<br>速率</td>
 </tr>
-<tr class="f-th">
-  <td>阻塞</td><td>公車<br>停靠</td><td>計程<br>車靠</td>
-  <td>路邊<br>停車</td><td>行人<br>穿越</td><td>其他</td>
-  <td>紅燈</td><td>左轉<br>同向</td><td>左轉<br>對向</td>
-  <td>右轉</td><td>橫越<br>車輛</td><td>行人</td><td>其他</td>
+<tr class="ft-h">
+  <td style="font-size:6pt">阻塞</td><td style="font-size:6pt">公車<br>停靠</td>
+  <td style="font-size:6pt">計程<br>車靠</td><td style="font-size:6pt">路邊<br>停車</td>
+  <td style="font-size:6pt">行人<br>穿越</td><td style="font-size:6pt">其他</td>
+  <td style="font-size:6pt">紅燈</td><td style="font-size:6pt">左轉<br>同向</td>
+  <td style="font-size:6pt">左轉<br>對向</td><td style="font-size:6pt">右轉</td>
+  <td style="font-size:6pt">橫越<br>車輛</td><td style="font-size:6pt">行人</td>
+  <td style="font-size:6pt">其他</td>
 </tr>
 ${segRows}${emptyRows}
 <tr>
-  <td rowspan="2" class="f-fl">延滯時間<br>(秒)</td>
-  <td class="f-fl">小計</td>
-  <td colspan="3" class="f-fv"></td>
-  ${ROAD_C.map(c=>`<td class="f-fv">${rd[c]||0}</td>`).join('')}
-  ${INT_C.map(c=>`<td class="f-fv">${id[c]||0}</td>`).join('')}
+  <td rowspan="2" class="ft-la ft-sum" style="font-size:7pt">延滯時間<br>(秒)</td>
+  <td colspan="3" class="ft-sum" style="font-size:7pt">小計</td>
+  ${ROAD_C.map(c=>`<td class="ft-sum">${rd[c]||0}</td>`).join('')}
+  ${INT_C.map(c=>`<td class="ft-sum">${id[c]||0}</td>`).join('')}
   <td colspan="5"></td>
 </tr>
 <tr>
-  <td class="f-fl">合計</td><td colspan="3"></td>
-  <td colspan="6" class="f-fv">${roadT}</td>
-  <td colspan="7" class="f-fv">${intT}</td>
+  <td colspan="3" class="ft-sum" style="font-size:7pt">合計</td>
+  <td colspan="6" class="ft-sum">${roadT}</td>
+  <td colspan="7" class="ft-sum">${intT}</td>
   <td colspan="5"></td>
 </tr>
 <tr>
-  <td rowspan="2" class="f-fl">延滯時間<br>百分比</td>
-  <td class="f-fl">小計</td>
-  <td colspan="3" class="f-fv"></td>
-  ${ROAD_C.map(c=>`<td class="f-fv" style="font-size:7px">${_pct(rd[c],trip.travelS)}%</td>`).join('')}
-  ${INT_C.map(c=>`<td class="f-fv" style="font-size:7px">${_pct(id[c],trip.travelS)}%</td>`).join('')}
+  <td rowspan="2" class="ft-la ft-sum" style="font-size:7pt">延滯時間<br>百分比</td>
+  <td colspan="3" class="ft-sum" style="font-size:7pt">小計</td>
+  ${ROAD_C.map(c=>`<td class="ft-sum" style="font-size:6.5pt">${_pct(rd[c],trip.travelS)}%</td>`).join('')}
+  ${INT_C.map(c=>`<td class="ft-sum" style="font-size:6.5pt">${_pct(id[c],trip.travelS)}%</td>`).join('')}
   <td colspan="5"></td>
 </tr>
 <tr>
-  <td class="f-fl">合計</td><td colspan="3"></td>
-  <td colspan="6" class="f-fv" style="font-size:7px">${_pct(roadT,trip.travelS)}%</td>
-  <td colspan="7" class="f-fv" style="font-size:7px">${_pct(intT,trip.travelS)}%</td>
+  <td colspan="3" class="ft-sum" style="font-size:7pt">合計</td>
+  <td colspan="6" class="ft-sum" style="font-size:7pt">${_pct(roadT,trip.travelS)}%</td>
+  <td colspan="7" class="ft-sum" style="font-size:7pt">${_pct(intT,trip.travelS)}%</td>
   <td colspan="5"></td>
 </tr>
 </table></div>`
