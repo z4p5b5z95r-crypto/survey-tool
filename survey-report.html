@@ -102,20 +102,37 @@ td:first-child{text-align:left;font-weight:500}
 .sv-rec-header .sv-meta{font-size:11px;color:#94a3b8;text-align:right;line-height:1.6}
 .sv-rec-body{padding:0}
 
-/* ── SGS-style table inside record ── */
-.sgs-table{width:100%;border-collapse:collapse;font-size:12px}
-.sgs-table th{background:#2c3e50;color:white;padding:7px 10px;text-align:center;font-weight:600;white-space:nowrap;border:1px solid #1e293b}
-.sgs-table td{padding:7px 10px;border:1px solid #e2e8f0;text-align:center;vertical-align:middle}
-.sgs-table .info-row td{background:#f8fafc;font-size:11px;color:#475569;text-align:left}
-.sgs-table .total-row td{background:#eff6ff!important;font-weight:700;color:#1e40af}
-.sgs-table td.left{text-align:left}
-.sgs-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid #e2e8f0}
-.sgs-kv{padding:12px 16px;border-right:1px solid #e2e8f0;text-align:center}
-.sgs-kv:last-child{border-right:none}
-.sgs-kv .k{font-size:10px;color:#64748b;margin-bottom:4px}
-.sgs-kv .v{font-size:18px;font-weight:800;color:#1e293b}
-.sgs-kv .v.green{color:#16a34a}
-.sgs-kv .v.red{color:#dc2626}
+/* ── SGS Paper Form — 版本2 深藍典雅 ── */
+.sgs-pf{background:#fff;border:1.5px solid #1e3a5f;border-radius:10px;overflow:hidden;margin:0}
+.sgs-pf-hdr{display:flex;align-items:stretch;background:#1e3a5f;border-bottom:1.5px solid #2c4a6e}
+.sgs-pf-title-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:8px 12px}
+.sgs-pf-title-wrap h2{font-size:15px;font-weight:700;color:#fff;letter-spacing:2px;white-space:nowrap}
+.sgs-pf-date-box{display:flex;align-items:center;padding:8px 14px;font-size:11px;color:#a8c4e0;white-space:nowrap}
+.sgs-pf-date-box .dv{color:#f87171;font-weight:700;margin-left:4px}
+.sgs-pf-meta{display:flex;background:#eef3fa;border-bottom:1.5px solid #1e3a5f}
+.sgs-pf-ml{flex:1;padding:7px 14px;border-right:1px solid #94a3b8;font-size:11px;line-height:1.9;color:#1e3a5f}
+.sgs-pf-ml u{text-decoration-color:#3d6490}
+.sgs-pf-mr{width:200px;padding:7px 14px;font-size:11px;line-height:2.2;color:#1e3a5f;text-align:left}
+.sgs-pf-mr u{text-decoration-color:#3d6490}
+.sgs-pf-divider{border:none;border-top:1.5px solid #1e3a5f;margin:0}
+/* shared table styles */
+.sgs-pf-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.sgs-pf-tbl td,.sgs-pf-tbl th{border:1px solid #b0bec5;padding:4px 6px;vertical-align:middle;text-align:center;white-space:nowrap;background:#fff;color:#1a1a2e}
+/* 三層表頭 */
+.pfth1{background:#4a6fa5!important;color:#fff!important;font-weight:700;font-size:11px}
+.pfth2{background:#4a6fa5!important;color:#fff!important;font-weight:600;font-size:10.5px}
+.pfth3{background:#4a6fa5!important;color:#fff!important;font-weight:500;font-size:10px}
+.pfth-road{background:#4a6fa5!important;color:#fff!important;font-weight:600;font-size:11px;letter-spacing:.5px}
+.pfth-int{background:#4a6fa5!important;color:#fff!important;font-weight:600;font-size:11px;letter-spacing:.5px}
+/* 資料格 */
+.pf-seg{text-align:left!important;font-weight:600;color:#1e3a5f;background:#f0f4fa!important}
+.pf-time{color:#1565c0;font-weight:800;font-size:12px}
+.pf-arrive{background:#c8f7d0!important;color:#1b5e20;font-weight:800}
+.pf-spd{font-size:15px;font-weight:800;color:#1e3a5f}
+.pf-pct{font-size:9.5px;background:#f0f4fa!important;color:#374151}
+.pf-totrow td{background:#dbeafe!important;font-weight:700;color:#1e3a5f;border-color:#93c5fd}
+.pf-fl{background:#dde3ed!important;font-weight:700;text-align:left!important;color:#1e3a5f;font-size:10.5px}
+.pf-fv{background:#f5f7fa!important;color:#1a1a2e;font-size:11px;font-weight:600}
 
 /* ── Download ── */
 .dl-section{background:white;border-radius:14px;padding:28px;text-align:center;max-width:600px;margin:0 auto}
@@ -222,6 +239,7 @@ td:first-child{text-align:left;font-weight:500}
       <h3>下載 SGS 公版報告</h3>
       <p style="font-size:13px;color:#64748b;margin:8px 0 20px">依據「主次要幹道行駛時間及延滯調查表」格式產出報告</p>
       <button class="dl-btn green" onclick="downloadSGS()">📥 下載 SGS Excel (.xlsx)</button>
+      <button class="dl-btn" style="background:#1e3a5f" onclick="downloadSGSPdf()">🖨 列印 SGS PDF 表格</button>
       <button class="dl-btn blue" onclick="downloadCSV()">📄 下載原始數據 (.csv)</button>
       <div class="dl-note" style="margin-top:20px">
         <b>SGS Excel 包含：</b><br>
@@ -638,26 +656,49 @@ function renderComboRecords(combo){
     const TL=route.totalLength||0
     const mapId=`trip-map-${si}-${combo}`
 
+    // Per-segment delay breakdown
+    const dl = v => v>0?v:''
+    const spdFn = (d,s) => (d>0&&s>0)?(d/s*3.6).toFixed(1):''
+    const pct = (v,t) => t>0?Math.round(v/t*100)+'%':'0%'
+    const RC=ROAD_DELAYS.map(d=>d.cause), IC=INT_DELAYS.map(d=>d.cause)
+    // nodeTimestamps 永遠按行程順序排列（去/回皆同），直接用 [i, i+1]
+    const segD=segOrder.map((_,i)=>{
+      const t0=nodeTs[i]||(i===0?st:null)
+      const t1=nodeTs[i+1]||(i===segOrder.length-1?et:null)
+      const r={}; ;[...ROAD_DELAYS,...INT_DELAYS].forEach(d=>r[d.cause]=0)
+      if(trip.delayLog&&t0&&t1) trip.delayLog.forEach(dl2=>{
+        const ds=new Date(dl2.startedAt)
+        if(ds>=t0&&ds<t1&&r[dl2.cause]!==undefined) r[dl2.cause]+=dl2.durationS||0
+      })
+      return r
+    })
+    const colT={}; ;[...RC,...IC].forEach(c=>colT[c]=segD.reduce((s,d)=>s+(d[c]||0),0))
+    const roadT=RC.reduce((s,c)=>s+colT[c],0), intT=IC.reduce((s,c)=>s+colT[c],0)
+    const travelSpd=spdFn(TL,trip.travelS), runSpd=spdFn(TL,trip.runS)
+
     const segRows=segOrder.map((seg,i)=>{
-      const fromNodeIdx = isReturn ? segs.length-i   : i
-      const toNodeIdx   = isReturn ? segs.length-1-i : i+1
-      const fromTime = nodeTs[fromNodeIdx] || (i===0 ? st : null)
-      const toTime   = nodeTs[toNodeIdx]   || (i===segOrder.length-1 ? et : null)
-      const [fH,fM,fS]=hms(fromTime)
-      const [tH,tM,tS]=hms(toTime)
+      // 「經過時刻」= 到達該路段終點的時間 = nodeTs[i+1]
+      const arrTime = nodeTs[i+1] || (i===segOrder.length-1 ? et : null)
+      const [fH,fM,fS]=hms(arrTime)
       const segIdx = isReturn ? segs.length-1-i : i
       const st2=trip.segTimes?.[segIdx]
-      const toName = i<segOrder.length-1 ? (segOrder[i+1]?.name||'—') : (isReturn?startNode?.name:endNode?.name)||'終點'
+      const sd=segD[i]
+      const dv = (v) => v>0 ? `<b style="color:#1d4ed8">${v}</b>` : ''
       return `<tr>
-        <td class="left">${seg.name}</td>
-        <td class="left">${toName}</td>
-        <td>${seg.length||'—'}</td>
-        <td>${fH}</td><td>${fM}</td><td>${fS}</td>
-        <td>${tH}</td><td>${tM}</td><td>${tS}</td>
-        <td>${st2?.travelS??'—'}</td>
-        <td>${st2?.runS??'—'}</td>
+        <td colspan="2" class="pf-seg">${seg.name||'—'}</td>
+        <td class="pf-time">${fH}</td><td class="pf-time">${fM}</td><td class="pf-time">${fS}</td>
+        <td>${dv(sd.congestion)}</td><td>${dv(sd.bus_stop)}</td><td>${dv(sd.taxi_stop)}</td>
+        <td>${dv(sd.parking)}</td><td>${dv(sd.ped_cross)}</td><td>${dv(sd.road_other)}</td>
+        <td>${dv(sd.red_light)}</td><td>${dv(sd.left_same)}</td><td>${dv(sd.left_opp)}</td>
+        <td>${dv(sd.right_turn)}</td><td>${dv(sd.cross_veh)}</td><td>${dv(sd.ped_int)}</td><td>${dv(sd.int_other)}</td>
+        <td style="font-weight:600">${st2?.travelS||''}</td>
+        <td>${seg.length||''}</td>
+        <td style="font-weight:600">${st2?.runS||''}</td>
+        <td>${spdFn(seg.length,st2?.travelS)}</td>
+        <td>${spdFn(seg.length,st2?.runS)}</td>
       </tr>`
     }).join('')
+    const emptyRows=Array(Math.max(0,7-segOrder.length)).fill(`<tr>${'<td></td>'.repeat(23)}</tr>`).join('')
 
     const delayCount=(trip.delayLog||[]).filter(d=>d.pos).length
 
@@ -671,13 +712,6 @@ function renderComboRecords(combo){
           📅 ${sv.date||'—'}<br>
           🌤 ${sv.weather||'—'}
         </div>
-      </div>
-      <!-- Summary KV row -->
-      <div class="sgs-summary">
-        <div class="sgs-kv"><div class="k">旅行時間</div><div class="v">${fmtSec(trip.travelS)}</div></div>
-        <div class="sgs-kv"><div class="k">行駛時間</div><div class="v">${fmtSec(trip.runS)}</div></div>
-        <div class="sgs-kv"><div class="k">延滯時間</div><div class="v red">${fmtSec(trip.totalDelayS)}</div></div>
-        <div class="sgs-kv"><div class="k">旅行速率</div><div class="v green">${spd(TL,trip.travelS)} km/h</div></div>
       </div>
       <!-- GPS Track Map -->
       <div class="trip-map-section">
@@ -694,57 +728,134 @@ function renderComboRecords(combo){
           <div id="${mapId}" class="trip-map"></div>
         </div>
         <div class="trip-map-note">
-          <span>🖱 滑鼠滾輪縮放</span>
-          <span>✋ 拖曳移動</span>
-          <span>👆 點擊節點或延滯標記查看資訊</span>
+          <span>🖱 滑鼠滾輪縮放</span><span>✋ 拖曳移動</span><span>👆 點擊節點或延滯查看資訊</span>
         </div>
       </div>
-      <!-- SGS table -->
-      <div style="overflow-x:auto;padding:0">
-        <table class="sgs-table">
-          <tr style="background:#0f172a">
-            <td colspan="11" style="color:#60a5fa;font-size:11px;font-weight:700;text-align:center;padding:8px;border:none">
-              主次要幹道行駛時間及延滯調查表
-            </td>
-          </tr>
-          <tr class="info-row">
-            <td colspan="3">站名：${route.routeName}</td>
-            <td colspan="4">方向往：${isReturn?'■ 回 □ 去':'□ 回 ■ 去'}</td>
-            <td colspan="4">時間：${isPeak?'□ 離峰  ■ 尖峰':'■ 離峰  □ 尖峰'} (${isPeak?pk:off})</td>
-          </tr>
-          <tr class="info-row">
-            <td colspan="3">起點：${fromNode?.name||'—'}</td>
-            <td colspan="4">終點：${toNode?.name||'—'}</td>
-            <td colspan="2">出發：${sH}:${sM}:${sS}</td>
-            <td colspan="2">到達：${eH}:${eM}:${eS}</td>
+      <!-- SGS Paper Form v2 深藍典雅 -->
+      <div class="sgs-pf">
+        <!-- ① Header -->
+        <div class="sgs-pf-hdr">
+          <div class="sgs-pf-title-wrap"><h2>主次要幹道行駛時間及延滯調查表</h2></div>
+        </div>
+        <!-- ② Meta -->
+        <div class="sgs-pf-meta">
+          <div class="sgs-pf-ml">
+            <div>站　名：&nbsp;<u>${route.routeName||''}</u></div>
+            <div>旅次編號：</div>
+            <div>方向往：&nbsp;${!isReturn?'■':'□'} 去　　${isReturn?'■':'□'} 回</div>
+            <div>時　間：&nbsp;${!isPeak?'■':'□'} 離峰（${off}）　&nbsp;${isPeak?'■':'□'} 尖峰（${pk}）</div>
+          </div>
+          <div class="sgs-pf-mr">
+            <div>日　期：&nbsp;<span style="color:#dc2626;font-weight:700">${sv.date||''}</span></div>
+            <div>天　氣：&nbsp;${sv.weather||'—'}</div>
+            <div>調查員：&nbsp;<u>${sv.surveyor||'—'}</u></div>
+          </div>
+        </div>
+        <!-- ③ Summary table (路/線/時刻/速率) — 獨立欄位不跨表 -->
+        <div style="overflow-x:auto">
+        <table class="sgs-pf-tbl">
+          <tr>
+            <td class="pfth1" rowspan="2">路<br><small>起點位置</small></td>
+            <td class="pfth1" rowspan="2">線<br><small>終點位置</small></td>
+            <td class="pfth1" rowspan="2">距離<br>(公尺)</td>
+            <td class="pfth1" colspan="3">起　點</td>
+            <td class="pfth1" colspan="3">終　點</td>
+            <td class="pfth1" colspan="4">總旅行時間(秒)及百分比</td>
+            <td class="pfth1" rowspan="2">總旅行速率<br>(公里/時)</td>
+            <td class="pfth1" rowspan="2">總行駛速率<br>(公里/時)</td>
           </tr>
           <tr>
-            <th rowspan="2">路起點</th>
-            <th rowspan="2">路終點</th>
-            <th rowspan="2">距離(m)</th>
-            <th colspan="3">起點時刻</th>
-            <th colspan="3">終點時刻</th>
-            <th rowspan="2">旅行時間(秒)</th>
-            <th rowspan="2">行駛時間(秒)</th>
+            <td class="pfth2">時</td><td class="pfth2">分</td><td class="pfth2">秒</td>
+            <td class="pfth2">時</td><td class="pfth2">分</td><td class="pfth2">秒</td>
+            <td class="pfth2">合計</td>
+            <td class="pfth2">交叉口<br>延滯</td>
+            <td class="pfth2">路段中<br>延滯</td>
+            <td class="pfth2">行駛<br>時間</td>
           </tr>
           <tr>
-            <th>時</th><th>分</th><th>秒</th>
-            <th>時</th><th>分</th><th>秒</th>
+            <td rowspan="2" class="pf-seg">${fromNode?.name||'起點'}</td>
+            <td rowspan="2" class="pf-seg">${toNode?.name||'終點'}</td>
+            <td rowspan="2">${TL}</td>
+            <td class="pf-time">${sH}</td><td class="pf-time">${sM}</td><td class="pf-time">${sS}</td>
+            <td class="pf-time">${eH}</td><td class="pf-time">${eM}</td>
+            <td class="pf-arrive">${eS}</td>
+            <td style="font-weight:700">${trip.travelS||0}</td>
+            <td>${trip.intTotalS||0}</td>
+            <td>${trip.roadTotalS||0}</td>
+            <td>${trip.runS||0}</td>
+            <td rowspan="2" class="pf-spd">${travelSpd}</td>
+            <td rowspan="2" class="pf-spd">${runSpd}</td>
           </tr>
-          ${segRows}
-          <tr class="total-row">
-            <td class="left" colspan="2">${fromNode?.name||'起點'} → ${toNode?.name||'終點'}</td>
-            <td>${TL}</td>
-            <td>${sH}</td><td>${sM}</td><td>${sS}</td>
-            <td>${eH}</td><td>${eM}</td><td>${eS}</td>
-            <td><b>${trip.travelS||'—'}</b></td>
-            <td><b>${trip.runS||'—'}</b></td>
-          </tr>
-          <tr class="info-row">
-            <td colspan="9">交叉口延滯：${trip.intTotalS||0} 秒</td>
-            <td colspan="2">路段延滯：${trip.roadTotalS||0} 秒</td>
+          <tr>
+            <td colspan="3" class="pf-pct" style="text-align:left;padding-left:6px">百分比</td>
+            <td colspan="3" class="pf-pct"></td>
+            <td class="pf-pct" style="color:#1d6fbd;font-weight:600">100%</td>
+            <td class="pf-pct">${pct(trip.intTotalS||0,trip.travelS)}</td>
+            <td class="pf-pct">${pct(trip.roadTotalS||0,trip.travelS)}</td>
+            <td class="pf-pct">${pct(trip.runS||0,trip.travelS)}</td>
           </tr>
         </table>
+        </div>
+        <!-- ④ Detail table (路口/延滯/速率) — 23 欄，與摘要表各自獨立 -->
+        <div style="overflow-x:auto">
+        <table class="sgs-pf-tbl">
+          <tr>
+            <td class="pfth1" colspan="2" rowspan="3">經過路口</td>
+            <td class="pfth1" colspan="3" rowspan="2">經過時刻</td>
+            <td class="pfth-road" colspan="6">路　段　中　延　滯　時　間（秒）</td>
+            <td class="pfth-int" colspan="7">交　叉　口　延　滯　時　間（秒）</td>
+            <td class="pfth1" rowspan="3">旅行<br>時間<br>(秒)</td>
+            <td class="pfth1" rowspan="3">距離<br>(公尺)</td>
+            <td class="pfth1" rowspan="3">行駛<br>時間<br>(秒)</td>
+            <td class="pfth1" rowspan="3">旅行<br>速率</td>
+            <td class="pfth1" rowspan="3">行駛<br>速率</td>
+          </tr>
+          <tr>
+            <td class="pfth2">阻塞</td><td class="pfth2">公車<br>停靠</td>
+            <td class="pfth2">計程<br>車靠</td><td class="pfth2">路邊<br>停車</td>
+            <td class="pfth2">行人<br>穿越</td><td class="pfth2">其他</td>
+            <td class="pfth3">紅燈</td><td class="pfth3">左轉<br>同向</td>
+            <td class="pfth3">左轉<br>對向</td><td class="pfth3">右轉</td>
+            <td class="pfth3">橫越<br>車輛</td><td class="pfth3">行人</td><td class="pfth3">其他</td>
+          </tr>
+          <tr>
+            <td class="pfth3">時</td><td class="pfth3">分</td><td class="pfth3">秒</td>
+            <td class="pfth2" colspan="6"></td>
+            <td class="pfth3" colspan="7"></td>
+          </tr>
+          ${segRows}${emptyRows}
+          <tr>
+            <td rowspan="2" class="pf-fl">延滯時間<br>(秒)</td>
+            <td class="pf-fl">小計</td>
+            <td colspan="3" class="pf-fv"></td>
+            ${RC.map(c=>`<td class="pf-fv">${colT[c]||0}</td>`).join('')}
+            ${IC.map(c=>`<td class="pf-fv">${colT[c]||0}</td>`).join('')}
+            <td colspan="5"></td>
+          </tr>
+          <tr>
+            <td class="pf-fl">合計</td>
+            <td colspan="3"></td>
+            <td colspan="6" class="pf-fv">${roadT}</td>
+            <td colspan="7" class="pf-fv">${intT}</td>
+            <td colspan="5"></td>
+          </tr>
+          <tr>
+            <td rowspan="2" class="pf-fl">延滯時間<br>百分比</td>
+            <td class="pf-fl">小計</td>
+            <td colspan="3" class="pf-fv"></td>
+            ${RC.map(c=>`<td class="pf-fv">${pct(colT[c],trip.travelS)}</td>`).join('')}
+            ${IC.map(c=>`<td class="pf-fv">${pct(colT[c],trip.travelS)}</td>`).join('')}
+            <td colspan="5"></td>
+          </tr>
+          <tr>
+            <td class="pf-fl">合計</td>
+            <td colspan="3"></td>
+            <td colspan="6" class="pf-fv">${pct(roadT,trip.travelS)}</td>
+            <td colspan="7" class="pf-fv">${pct(intT,trip.travelS)}</td>
+            <td colspan="5"></td>
+          </tr>
+        </table>
+        </div>
       </div>
     </div>`
   }).join('')
@@ -1076,6 +1187,178 @@ function downloadCSV(){
     a.click()
   })
 }
+
+
+// ════════════════ SGS PDF PRINT ════════════════
+function downloadSGSPdf(){
+  if(!route||!surveys.length){ alert('尚無資料'); return }
+
+  const ROAD_CAUSES = ['congestion','bus_stop','taxi_stop','parking','ped_cross','road_other']
+  const INT_CAUSES  = ['red_light','left_same','left_opp','right_turn','cross_veh','ped_int','int_other']
+
+  function hms(ts){
+    if(!ts) return ['','','']
+    const d = new Date(ts)
+    const s = d.toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,
+      hour:'2-digit',minute:'2-digit',second:'2-digit'})
+    return s.split(':').map(Number)
+  }
+  function spd2(lenM, travelS){
+    if(!lenM||!travelS||travelS<=0) return ''
+    return ((lenM/1000)/(travelS/3600)).toFixed(1)
+  }
+  function td(v,cls){ return `<td${cls?' class="'+cls+'"':''}>${v??''}</td>` }
+
+  const off = route.offPeakLabel||'離峰', pk = route.peakLabel||'尖峰'
+  const segs = route.segments||[], nodes = route.nodes||[]
+
+  let pages = []
+  surveys.forEach((sv, si)=>{
+    ;(sv.trips||[]).forEach(trip=>{
+      const isReturn = trip.direction==='return'
+      const isPeak   = trip.peakType==='peak'
+      const segOrder = isReturn ? [...segs].reverse() : segs
+      const nodeOrder= isReturn ? [...nodes].reverse() : nodes
+      const times    = trip.segTimes||[]
+      const nodeTs   = (trip.nodeTimestamps||[])
+      const [sH,sM,sS] = hms(trip.startTime)
+      const [eH,eM,eS] = hms(trip.endTime)
+      const ptLbl = isPeak
+        ? `□ 離峰（${off}）　■ 尖峰（${pk}）`
+        : `■ 離峰（${off}）　□ 尖峰（${pk}）`
+      const dirLbl = isReturn ? '□ 去　■ 回' : '■ 去　□ 回'
+      const startN = nodeOrder[0]?.name||''
+      const endN   = nodeOrder[nodeOrder.length-1]?.name||''
+
+      const segRows = segOrder.map((seg,i)=>{
+        const realNodeIdx = isReturn ? segs.length - i : i
+        const [nH,nM,nS] = hms(nodeTs[realNodeIdx])
+        const t = times[i]
+        const rd = trip.roadDelays||{}, id = trip.intDelays||{}
+        return `<tr>
+          ${td(seg.name,'seg')}${td('','seg2')}
+          ${td(nH)}${td(nM)}${td(nS)}
+          ${td('')}${td('')}${td('')}${td('')}${td('')}${td('')}
+          ${td('')}${td('')}${td('')}${td('')}${td('')}${td('')}${td('')}
+          ${td(t?.travelS??'')}${td(seg.length||'')}${td(t?.runS??'')}${td('')}${td('')}
+        </tr>`
+      }).join('')
+
+      // delay footer rows
+      const rd = trip.roadDelays||{}, id = trip.intDelays||{}
+      const delayRow1 = `<tr>
+        <td rowspan="2" class="fl">延滯時間(秒)</td><td class="fl">小計</td>
+        <td colspan="3" class="fv"></td>
+        ${ROAD_CAUSES.map(c=>`<td class="fv">${rd[c]||0}</td>`).join('')}
+        ${INT_CAUSES.map(c=>`<td class="fv">${id[c]||0}</td>`).join('')}
+        <td colspan="5"></td>
+      </tr>`
+      const delayRow2 = `<tr>
+        <td class="fl">合計</td><td colspan="3"></td>
+        <td colspan="6" class="fv">${td(trip.roadTotalS||0,'')}</td>
+        <td colspan="7" class="fv">${td(trip.intTotalS||0,'')}</td>
+        <td colspan="5"></td>
+      </tr>`
+      const pctRow1 = `<tr>
+        <td rowspan="2" class="fl">延滯百分比</td><td class="fl">小計</td>
+        <td colspan="3" class="fv"></td>
+        ${ROAD_CAUSES.map(c=>{
+          const v=trip.travelS>0?((rd[c]||0)/trip.travelS*100).toFixed(0)+'%':'0%'
+          return `<td class="fv">${v}</td>`
+        }).join('')}
+        ${INT_CAUSES.map(c=>{
+          const v=trip.travelS>0?((id[c]||0)/trip.travelS*100).toFixed(0)+'%':'0%'
+          return `<td class="fv">${v}</td>`
+        }).join('')}
+        <td colspan="5"></td>
+      </tr>`
+      const pctRow2 = `<tr>
+        <td class="fl">合計</td><td colspan="3"></td>
+        <td colspan="6" class="fv">${trip.travelS>0?((trip.roadTotalS||0)/trip.travelS*100).toFixed(0)+'%':'0%'}</td>
+        <td colspan="7" class="fv">${trip.travelS>0?((trip.intTotalS||0)/trip.travelS*100).toFixed(0)+'%':'0%'}</td>
+        <td colspan="5"></td>
+      </tr>`
+
+      pages.push(`<div class="pg"><table class="f">
+<tr><td colspan="20" class="title">主次要幹道行駛時間及延滯調查表</td>
+    <td colspan="2" class="ml">日　期：</td><td class="mv">${sv.date||''}</td></tr>
+<tr><td colspan="4" class="ml">站　名：</td><td colspan="10" class="mv us">${route.routeName||''}</td>
+    <td colspan="5"></td><td colspan="2" class="ml" rowspan="2">天　氣：</td><td class="mv" rowspan="2">${sv.weather||''}</td></tr>
+<tr><td colspan="4" class="ml">旅次編號：</td><td colspan="16" class="mv">${si+1}</td></tr>
+<tr><td colspan="4" class="ml">方向往：</td><td colspan="8" class="mv">${dirLbl}</td>
+    <td colspan="7"></td><td colspan="2" class="ml">調查員：</td><td class="mv">${sv.surveyor||''}</td></tr>
+<tr><td colspan="4" class="ml">時　間：</td><td colspan="19" class="mv">${ptLbl}</td></tr>
+<tr class="th">
+  <td colspan="2" rowspan="3">路口名稱<br><small>起點位置</small></td>
+  <td colspan="3" rowspan="3">經過時刻</td>
+  <td colspan="6">路　段　中　延　滯　（秒）</td>
+  <td colspan="7">交　叉　口　延　滯　（秒）</td>
+  <td rowspan="3">旅行時間(秒)</td><td rowspan="3">距離(公尺)</td>
+  <td rowspan="3">行駛時間(秒)</td><td rowspan="3">旅行速率</td><td rowspan="3">行駛速率</td>
+</tr>
+<tr class="th">
+  <td rowspan="2">阻塞</td><td rowspan="2">公車停靠</td><td rowspan="2">計程車靠</td>
+  <td rowspan="2">路邊停車</td><td rowspan="2">行人穿越</td><td rowspan="2">其他</td>
+  <td rowspan="2">紅燈</td><td rowspan="2">左轉同向</td><td rowspan="2">左轉對向</td>
+  <td rowspan="2">右轉</td><td rowspan="2">橫越車輛</td><td rowspan="2">行人</td><td rowspan="2">其他</td>
+</tr>
+<tr class="th"></tr>
+<tr>
+  <td colspan="2" rowspan="2" class="seg">${startN}</td>
+  <td colspan="2" rowspan="2" class="seg">${endN}</td>
+  <td rowspan="2">${route.totalLength||''}</td>
+  <td>${sH}</td><td>${sM}</td><td>${sS}</td>
+  <td>${eH}</td><td>${eM}</td><td>${eS}</td>
+  <td>${trip.travelS||''}</td><td>${trip.intTotalS||''}</td>
+  <td>${trip.roadTotalS||''}</td><td>${trip.runS||''}</td>
+  <td colspan="4" rowspan="2">${spd2(route.totalLength,trip.travelS)}</td>
+  <td colspan="4" rowspan="2">${spd2(route.totalLength,trip.runS)}</td>
+</tr>
+<tr>
+  <td colspan="3" class="ml" style="font-size:7px">百分比</td>
+  <td colspan="3"></td><td></td><td></td><td></td><td></td>
+</tr>
+${segRows}
+${delayRow1}${delayRow2}${pctRow1}${pctRow2}
+</table></div>`)
+    })
+  })
+
+  if(!pages.length){ alert('尚無旅次資料'); return }
+
+  const css = `@page{size:A4 landscape;margin:8mm}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"PingFang TC",Arial,sans-serif;background:white;color:#1e293b}
+.pg{padding:2px}
+.f{width:100%;border-collapse:collapse;font-size:7.5pt}
+.f td,.f th{border:1px solid #475569;padding:1px 2px;vertical-align:middle;text-align:center;white-space:nowrap}
+.title{font-size:11pt;font-weight:800;letter-spacing:1px}
+.ml{text-align:left!important;font-weight:600}
+.mv{text-align:left!important}
+.us{text-decoration:underline}
+.th{background:#e2e8f0;font-weight:700;font-size:7.5pt;color:#1e293b}
+.seg{text-align:left!important;font-weight:600;font-size:8pt}
+.seg2{text-align:left!important}
+.fl{background:#f1f5f9;font-weight:700;text-align:left!important;font-size:7.5pt}
+.fv{background:#f1f5f9}
+.pdf-btn{position:fixed;top:10px;right:10px;padding:9px 18px;background:#1e293b;color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;z-index:999}
+@media print{.pdf-btn{display:none}}`
+
+  const joined = pages.map((p,i)=>(i>0?'<div style="page-break-before:always"></div>':'')+p).join('\n')
+  const doc = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"/>
+<title>SGS 調查表 ${route.routeName||''}</title>
+<style>${css}</style></head><body>
+<button class="pdf-btn" onclick="window.print()">🖨 列印 / 儲存 PDF</button>
+${joined}
+</body></html>`
+
+  const w = window.open('','_blank')
+  if(!w){ alert('⚠ 請先允許彈出視窗，再試一次'); return }
+  w.document.write(doc)
+  w.document.close()
+  setTimeout(()=>w.print(), 600)
+}
+
 </script>
 </body>
 </html>
