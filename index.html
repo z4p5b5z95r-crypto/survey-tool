@@ -99,6 +99,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .devtest-summary.warn{background:#fffbeb;color:#92400e}
 .devtest-summary.fail{background:#fef2f2;color:#991b1b}
 .devtest-spinner{text-align:center;padding:24px;color:#64748b;font-size:13px}
+@keyframes spin{to{transform:rotate(360deg)}}
 #manual-modal{display:none;position:fixed;inset:0;z-index:9999;flex-direction:column;background:#0f172a}
 #manual-modal.open{display:flex}
 .manual-modal-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#1e293b;border-bottom:1px solid #334155;flex-shrink:0}
@@ -3689,128 +3690,224 @@ function closeDevTest(){
   document.getElementById('devtest-modal').classList.remove('open')
 }
 
+// ── 設備測試核心 ──
+var _devResults=[]   // [{id,name,status,desc,required}]
+
 async function runDeviceChecks(){
-  var results=[]
+  _devResults=[]
+  renderDevResults()  // show spinner
 
-  // 1. HTTPS / secure context
-  var isSecure=location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'
-  results.push({
-    name:'安全連線（HTTPS）',
-    desc: isSecure?'目前使用安全連線，GPS 功能可正常使用':'請使用 https:// 連結，否則 GPS 無法授權',
-    status: isSecure?'pass':'fail',
-    required:true
-  })
+  // ── 1. HTTPS ──
+  var isSecure=location.protocol==='https:'||location.hostname==='localhost'||location.hostname.startsWith('127.')
+  _devResults.push({id:'https',name:'安全連線（HTTPS）',required:true,
+    status:isSecure?'pass':'fail',
+    desc:isSecure?'使用安全連線，GPS 授權可正常運作':'非 https 連線，GPS 與動作感應授權將被瀏覽器封鎖'})
+  renderDevResults()
 
-  // 2. Network online
-  results.push({
-    name:'網路連線',
-    desc: navigator.onLine?'網路連線正常':'目前離線，任務下載及資料上傳將失敗',
-    status: navigator.onLine?'pass':'fail',
-    required:true
-  })
+  // ── 2. 網路連線 ──
+  var online=navigator.onLine
+  _devResults.push({id:'net',name:'網路連線',required:true,
+    status:online?'pass':'fail',
+    desc:online?'網路連線正常':'目前離線，任務下載與資料上傳將失敗'})
+  renderDevResults()
 
-  // 3. Geolocation API
-  var hasGeo=!!navigator.geolocation
-  results.push({
-    name:'定位 API（Geolocation）',
-    desc: hasGeo?'瀏覽器支援定位功能':'此瀏覽器不支援定位，無法進行 GPS 監測',
-    status: hasGeo?'pass':'fail',
-    required:true
-  })
+  // ── 3. 音效（實際播放 + 讓使用者確認）──
+  var audioOk=false, audioCtxTest=null
+  try{
+    audioCtxTest=new(window.AudioContext||window.webkitAudioContext)()
+    if(audioCtxTest.state==='suspended') await audioCtxTest.resume()
+    if(audioCtxTest.state==='running'){
+      // 播放雙音嗶聲
+      var t=audioCtxTest.currentTime
+      ;[[880,t,0.25,0.5],[1100,t+0.28,0.25,0.5]].forEach(function(p){
+        var o=audioCtxTest.createOscillator(),g=audioCtxTest.createGain()
+        o.connect(g);g.connect(audioCtxTest.destination)
+        o.type='sine';o.frequency.value=p[0]
+        g.gain.setValueAtTime(p[3],p[1])
+        g.gain.exponentialRampToValueAtTime(0.001,p[1]+p[2])
+        o.start(p[1]);o.stop(p[1]+p[2])
+      })
+      audioOk=true
+    }
+  }catch(e){}
+  // 需要使用者確認是否聽到 → 先插入「待確認」狀態
+  _devResults.push({id:'audio',name:'音效（嗶聲提示）',required:false,
+    status:'pending',
+    desc:'已播放測試音，請確認是否聽到',
+    audioOk:audioOk})
+  renderDevResults()
 
-  // 4. GPS permission & accuracy (async)
-  if(hasGeo){
-    var gpsResult=await new Promise(function(resolve){
+  // ── 4. 定位授權 + GPS 精度（實際取得位置）──
+  if(!navigator.geolocation){
+    _devResults.push({id:'gps',name:'GPS 定位',required:true,status:'fail',
+      desc:'此瀏覽器不支援定位 API，無法進行監測'})
+    renderDevResults()
+  } else {
+    _devResults.push({id:'gps',name:'GPS 定位',required:true,status:'checking',
+      desc:'取得位置中（最長等待 10 秒）…'})
+    renderDevResults()
+    var gpsR=await new Promise(function(resolve){
       var done=false
-      var timer=setTimeout(function(){
-        if(!done){done=true;resolve({status:'warn',desc:'定位逾時（可能尚未授權），請確認已允許位置存取'})}
-      },6000)
+      var tmr=setTimeout(function(){
+        if(!done){done=true;resolve({status:'warn',desc:'定位逾時，請確認已允許位置存取且 GPS 已啟用'})}
+      },10000)
       navigator.geolocation.getCurrentPosition(
         function(p){
-          clearTimeout(timer);if(done)return;done=true
-          var acc=p.coords.accuracy
-          resolve({
-            status: acc<=30?'pass':'warn',
-            desc: acc<=30?'GPS 精度 ±'+Math.round(acc)+'m，符合監測需求':'GPS 精度 ±'+Math.round(acc)+'m，偏低（建議移至開闊處）'
-          })
+          clearTimeout(tmr);if(done)return;done=true
+          var acc=Math.round(p.coords.accuracy)
+          resolve(acc<=30
+            ?{status:'pass',desc:'GPS 精度 ±'+acc+'m ✓ 符合監測需求'}
+            :acc<=80
+              ?{status:'warn',desc:'GPS 精度 ±'+acc+'m，稍低，建議移至開闊處再測'}
+              :{status:'fail',desc:'GPS 精度 ±'+acc+'m，過低（>80m），無法可靠偵測節點'})
         },
         function(err){
-          clearTimeout(timer);if(done)return;done=true
-          var msg=err.code===1?'位置存取遭拒，請至手機設定 → 瀏覽器 → 位置 → 允許':
-                  err.code===2?'無法取得位置，請移至開闊處':
-                  '定位逾時，請確認 GPS 已啟用'
-          resolve({status:'fail',desc:msg})
+          clearTimeout(tmr);if(done)return;done=true
+          resolve({status:'fail',
+            desc:err.code===1?'位置授權遭拒 — 請至設定 → Safari（或 Chrome）→ 位置 → 允許':
+                 err.code===2?'無法取得位置，請移至戶外開闊處':
+                 '定位逾時，請確認 GPS 已開啟'})
         },
-        {timeout:5500,maximumAge:0,enableHighAccuracy:true}
+        {timeout:9000,maximumAge:0,enableHighAccuracy:true}
       )
     })
-    results.push({name:'GPS 定位精度',desc:gpsResult.desc,status:gpsResult.status,required:true})
+    var idx=_devResults.findIndex(function(r){return r.id==='gps'})
+    _devResults[idx]=Object.assign(_devResults[idx],gpsR)
+    renderDevResults()
   }
 
-  // 5. AudioContext (beep sounds)
-  var hasAudio=!!(window.AudioContext||window.webkitAudioContext)
-  results.push({
-    name:'音效（嗶聲提示）',
-    desc: hasAudio?'支援音效，節點通過與延滯偵測時有嗶聲提示':'不支援 AudioContext，將無嗶聲提示（功能仍可使用）',
-    status: hasAudio?'pass':'warn',
-    required:false
-  })
+  // ── 5. 螢幕喚醒鎖（實際 request + release）──
+  if(!navigator.wakeLock){
+    _devResults.push({id:'wake',name:'螢幕喚醒鎖（防止熄屏）',required:false,
+      status:'warn',desc:'不支援 WakeLock，請至設定手動開啟「螢幕常亮」'})
+  } else {
+    var wlSentinel=null
+    try{
+      wlSentinel=await navigator.wakeLock.request('screen')
+      await wlSentinel.release()
+      _devResults.push({id:'wake',name:'螢幕喚醒鎖（防止熄屏）',required:false,
+        status:'pass',desc:'喚醒鎖測試成功，調查期間螢幕不會自動關閉'})
+    }catch(e){
+      _devResults.push({id:'wake',name:'螢幕喚醒鎖（防止熄屏）',required:false,
+        status:'warn',desc:'喚醒鎖請求失敗（'+e.message+'），請手動設定螢幕常亮'})
+    }
+  }
+  renderDevResults()
 
-  // 6. WakeLock (prevent screen sleep)
-  var hasWakeLock=!!navigator.wakeLock
-  results.push({
-    name:'螢幕喚醒鎖（WakeLock）',
-    desc: hasWakeLock?'支援喚醒鎖，調查期間螢幕不會自動關閉':'不支援喚醒鎖，建議手動設定螢幕常亮（設定 → 螢幕顯示）',
-    status: hasWakeLock?'pass':'warn',
-    required:false
-  })
+  // ── 6. 動作感應授權（iOS 需要明確允許）──
+  if(typeof DeviceMotionEvent==='undefined'){
+    _devResults.push({id:'motion',name:'動作感應（方向感測器）',required:false,
+      status:'warn',desc:'不支援動作感應，地圖方向將以 GPS 方位角代替'})
+    renderDevResults()
+  } else if(typeof DeviceMotionEvent.requestPermission==='function'){
+    // iOS 13+：需明確請求
+    try{
+      var perm=await DeviceMotionEvent.requestPermission()
+      _devResults.push({id:'motion',name:'動作感應（方向感測器）',required:false,
+        status:perm==='granted'?'pass':'warn',
+        desc:perm==='granted'?'動作感應授權成功，指南針功能正常':'動作感應授權遭拒，地圖方向將以 GPS 代替'})
+    }catch(e){
+      _devResults.push({id:'motion',name:'動作感應（方向感測器）',required:false,
+        status:'warn',desc:'無法請求動作感應授權：'+e.message})
+    }
+    renderDevResults()
+  } else {
+    // Android / desktop — check if events actually fire
+    var motionOk=await new Promise(function(resolve){
+      var fired=false
+      function onMotion(){ fired=true; window.removeEventListener('devicemotion',onMotion); resolve(true) }
+      window.addEventListener('devicemotion',onMotion)
+      setTimeout(function(){ window.removeEventListener('devicemotion',onMotion); resolve(fired) },1500)
+    })
+    _devResults.push({id:'motion',name:'動作感應（方向感測器）',required:false,
+      status:motionOk?'pass':'warn',
+      desc:motionOk?'動作感應正常運作':'未偵測到動作感應事件，指南針功能可能無效'})
+    renderDevResults()
+  }
 
-  // 7. DeviceMotion / DeviceOrientation (compass)
-  var hasMotion=!!(window.DeviceMotionEvent||window.DeviceOrientationEvent)
-  results.push({
-    name:'動作感應（指南針）',
-    desc: hasMotion?'支援動作感應，地圖可顯示行進方向':'不支援動作感應，地圖將使用 GPS 方位角代替（影響輕微）',
-    status: hasMotion?'pass':'warn',
-    required:false
-  })
+  // ── 7. 震動（實際觸發）──
+  var vibOk=false
+  try{ if(navigator.vibrate){ navigator.vibrate([100,50,100]); vibOk=true } }catch(e){}
+  _devResults.push({id:'vib',name:'震動回饋',required:false,
+    status:vibOk?'pass':'warn',
+    desc:vibOk?'震動測試成功，節點記錄時有震動回饋':'不支援震動（iOS Safari 限制），其餘功能不受影響'})
+  renderDevResults()
 
-  // 8. Vibration
-  var hasVib=!!navigator.vibrate
-  results.push({
-    name:'震動回饋',
-    desc: hasVib?'支援震動，節點記錄時有震動回饋':'不支援震動（iOS Safari 限制），功能正常可用',
-    status: hasVib?'pass':'warn',
-    required:false
-  })
+  // 更新 summary
+  updateDevSummary()
+}
 
-  // Render
-  var iconMap={pass:'✅',warn:'⚠️',fail:'❌'}
-  var failCount=results.filter(function(r){return r.status==='fail'}).length
-  var warnCount=results.filter(function(r){return r.status==='warn'}).length
-
-  var html=results.map(function(r){
-    return '<div class="devtest-row">'
-      +'<span class="devtest-icon">'+iconMap[r.status]+'</span>'
+function renderDevResults(){
+  var body=document.getElementById('devtest-body')
+  if(!body) return
+  var iconMap={pass:'✅',fail:'❌',warn:'⚠️',checking:'🔄',pending:'🔊'}
+  if(!_devResults.length){body.innerHTML='<div class="devtest-spinner">檢查中…</div>';return}
+  var html=_devResults.map(function(r){
+    var isAudioPending=(r.id==='audio'&&r.status==='pending')
+    var isChecking=(r.status==='checking')
+    return '<div class="devtest-row" id="devrow-'+r.id+'">'
+      +'<span class="devtest-icon">'+(isChecking?'<span style="display:inline-block;animation:spin 1s linear infinite">🔄</span>':iconMap[r.status]||'🔄')+'</span>'
       +'<div class="devtest-info">'
-      +'<div class="devtest-name">'+r.name+(r.required?' <span style="font-size:10px;color:#94a3b8">必要</span>':'')+'</div>'
+      +'<div class="devtest-name">'+r.name+(r.required?' <span style="font-size:10px;color:#ef4444;font-weight:700">必要</span>':'')+'</div>'
       +'<div class="devtest-desc">'+r.desc+'</div>'
+      +(isAudioPending?
+        '<div style="display:flex;gap:8px;margin-top:8px">'
+        +'<button onclick="devAudioConfirm(true)" style="flex:1;padding:7px;border-radius:8px;border:none;background:#dcfce7;color:#15803d;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">✓ 聽到了</button>'
+        +'<button onclick="devAudioConfirm(false)" style="flex:1;padding:7px;border-radius:8px;border:none;background:#fee2e2;color:#b91c1c;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">✗ 沒聽到</button>'
+        +'<button onclick="devAudioReplay()" style="padding:7px 10px;border-radius:8px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:12px;cursor:pointer;font-family:inherit">🔁 重播</button>'
+        +'</div>'
+        :'')
       +'</div></div>'
   }).join('')
+  body.innerHTML=html
+}
 
-  document.getElementById('devtest-body').innerHTML=html
+function devAudioConfirm(heard){
+  var idx=_devResults.findIndex(function(r){return r.id==='audio'})
+  if(idx<0) return
+  _devResults[idx].status=heard?'pass':'fail'
+  _devResults[idx].desc=heard?'音效正常，使用者確認聽到嗶聲':'未聽到聲音 — 請確認手機音量已調高且非靜音模式'
+  renderDevResults()
+  updateDevSummary()
+}
 
-  var summaryEl=document.getElementById('devtest-summary')
-  var footerEl=document.getElementById('devtest-footer')
-  footerEl.style.display='block'
-  if(failCount>0){
-    summaryEl.className='devtest-summary fail'
-    summaryEl.textContent='❌ 發現 '+failCount+' 項必要功能不符合，無法正常監測'
+function devAudioReplay(){
+  try{
+    var ctx=new(window.AudioContext||window.webkitAudioContext)()
+    if(ctx.state==='suspended') ctx.resume().then(function(){ playTestBeep(ctx) })
+    else playTestBeep(ctx)
+  }catch(e){}
+}
+function playTestBeep(ctx){
+  var t=ctx.currentTime
+  ;[[880,t,0.25,0.5],[1100,t+0.28,0.25,0.5]].forEach(function(p){
+    var o=ctx.createOscillator(),g=ctx.createGain()
+    o.connect(g);g.connect(ctx.destination)
+    o.type='sine';o.frequency.value=p[0]
+    g.gain.setValueAtTime(p[3],p[1])
+    g.gain.exponentialRampToValueAtTime(0.001,p[1]+p[2])
+    o.start(p[1]);o.stop(p[1]+p[2])
+  })
+}
+
+function updateDevSummary(){
+  var pending=_devResults.some(function(r){return r.status==='pending'||r.status==='checking'})
+  if(pending){document.getElementById('devtest-footer').style.display='none';return}
+  var failCount=_devResults.filter(function(r){return r.status==='fail'&&r.required}).length
+  var anyFail=_devResults.filter(function(r){return r.status==='fail'}).length
+  var warnCount=_devResults.filter(function(r){return r.status==='warn'}).length
+  var s=document.getElementById('devtest-summary')
+  var f=document.getElementById('devtest-footer')
+  f.style.display='block'
+  if(failCount>0||anyFail>0){
+    s.className='devtest-summary fail'
+    s.textContent='❌ 發現 '+anyFail+' 項問題，請依提示修正後重新測試'
   } else if(warnCount>0){
-    summaryEl.className='devtest-summary warn'
-    summaryEl.textContent='⚠️ 裝置基本符合需求，'+warnCount+' 項選配功能受限'
+    s.className='devtest-summary warn'
+    s.textContent='⚠️ 基本符合需求，'+warnCount+' 項選配功能受限，不影響主要監測'
   } else {
-    summaryEl.className='devtest-summary pass'
-    summaryEl.textContent='✅ 裝置完全符合監測需求，可出發'
+    s.className='devtest-summary pass'
+    s.textContent='✅ 所有項目通過，裝置完全符合監測需求，可出發！'
   }
 }
 
