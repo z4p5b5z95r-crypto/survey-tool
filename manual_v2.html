@@ -113,66 +113,128 @@ p.body{font-size:14px;color:#334155;margin-bottom:8px}
   <div class="sec-bd">
     <div class="mock-layout">
       <div class="mock-wrap">
-        <!-- Phone mockup: Login screen — improved spacing -->
-        <svg viewBox="0 0 160 330" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,PingFang TC,sans-serif">
-          <rect width="160" height="330" rx="18" fill="#0f172a"/>
+        <!-- Phone mockup: Sign-in screen — matches real screenshot (dark header + white form) -->
+        <svg viewBox="0 0 160 390" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,PingFang TC,sans-serif">
+          <rect width="160" height="390" rx="18" fill="#f1f5f9"/>
+          <!-- ── Dark header ── -->
+          <defs>
+            <linearGradient id="hdrGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#1e293b"/>
+              <stop offset="100%" stop-color="#0f172a"/>
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" width="160" height="90" rx="18" fill="url(#hdrGrad)"/>
+          <rect x="0" y="72" width="160" height="18" fill="#0f172a"/>
           <!-- Status bar -->
-          <rect x="0" y="0" width="160" height="20" rx="18" fill="#0f172a"/>
-          <text x="12" y="14" font-size="8" fill="#475569">9:41</text>
-          <text x="130" y="14" font-size="8" fill="#475569">●●●</text>
-          <!-- App header -->
-          <rect x="0" y="20" width="160" height="48" fill="#1e293b"/>
-          <text x="80" y="38" font-size="10" font-weight="800" fill="white" text-anchor="middle">旅行時間調查系統</text>
-          <text x="80" y="54" font-size="8" fill="#94a3b8" text-anchor="middle">五工五路旅行時間調查</text>
-          <!-- GPS badge (top-right, clearly separated) -->
-          <rect x="118" y="22" width="36" height="16" rx="8" fill="#14532d"/>
-          <circle cx="127" cy="30" r="4" fill="#4ade80"/>
-          <text x="140" y="33" font-size="7" fill="#4ade80" text-anchor="middle">GPS</text>
-          <!-- Route info card -->
-          <rect x="10" y="76" width="140" height="34" rx="9" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-          <text x="18" y="89" font-size="7" fill="#64748b">起點 → 終點</text>
-          <text x="18" y="103" font-size="9" font-weight="700" fill="white">赤城 → 炒泡麵</text>
-          <!-- 時段 section -->
-          <text x="10" y="124" font-size="7.5" font-weight="700" fill="#64748b">調查時段</text>
-          <rect x="10" y="130" width="66" height="28" rx="8" fill="#1d4ed8"/>
-          <text x="43" y="148" font-size="9" font-weight="700" fill="white" text-anchor="middle">尖峰</text>
-          <rect x="84" y="130" width="66" height="28" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
-          <text x="117" y="148" font-size="9" fill="#475569" text-anchor="middle">離峰</text>
-          <!-- 方向 section -->
-          <text x="10" y="174" font-size="7.5" font-weight="700" fill="#64748b">行駛方向</text>
-          <rect x="10" y="180" width="66" height="28" rx="8" fill="#1d4ed8"/>
-          <text x="43" y="198" font-size="9" font-weight="700" fill="white" text-anchor="middle">去程</text>
-          <rect x="84" y="180" width="66" height="28" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
-          <text x="117" y="198" font-size="9" fill="#475569" text-anchor="middle">返程</text>
-          <!-- 姓名 field -->
-          <text x="10" y="224" font-size="7.5" font-weight="700" fill="#64748b">調查員姓名</text>
-          <rect x="10" y="230" width="140" height="28" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
-          <text x="20" y="248" font-size="8" fill="#475569">王小明</text>
+          <text x="10" y="13" font-size="7" fill="#64748b">9:07</text>
+          <text x="138" y="13" font-size="7" fill="#64748b">⬤⬤⬤</text>
+          <!-- badge pill -->
+          <rect x="10" y="19" width="54" height="13" rx="6.5" fill="rgba(255,255,255,.1)"/>
+          <text x="37" y="29" font-size="7" fill="#64748b" text-anchor="middle">旅行時間調查</text>
+          <!-- 📋記錄 capsule button -->
+          <rect x="96" y="18" width="34" height="14" rx="7" fill="rgba(255,255,255,.12)" stroke="rgba(255,255,255,.3)" stroke-width="0.8"/>
+          <text x="113" y="28" font-size="7" font-weight="700" fill="white" text-anchor="middle">📋 記錄</text>
+          <!-- ? circle button -->
+          <circle cx="145" cy="25" r="7" fill="rgba(255,255,255,.12)" stroke="rgba(255,255,255,.3)" stroke-width="0.8"/>
+          <text x="145" y="28.5" font-size="8" font-weight="800" fill="white" text-anchor="middle">?</text>
+          <!-- Route title -->
+          <text x="10" y="47" font-size="14" font-weight="800" fill="white">去紅樓</text>
+          <text x="10" y="60" font-size="8" fill="#94a3b8">赤城-紅樓</text>
+          <!-- 3 mini info cards -->
+          <rect x="10" y="70" width="42" height="22" rx="5" fill="rgba(255,255,255,.06)"/>
+          <text x="31" y="80" font-size="6" fill="#64748b" text-anchor="middle">離峰</text>
+          <text x="31" y="89" font-size="6.5" font-weight="700" fill="white" text-anchor="middle">13:00~15:00</text>
+          <rect x="57" y="70" width="45" height="22" rx="5" fill="rgba(255,255,255,.06)"/>
+          <text x="79" y="80" font-size="6" fill="#64748b" text-anchor="middle">尖峰</text>
+          <text x="79" y="89" font-size="6.5" font-weight="700" fill="white" text-anchor="middle">9:00~11:00</text>
+          <rect x="107" y="70" width="43" height="22" rx="5" fill="rgba(255,255,255,.06)"/>
+          <text x="128" y="80" font-size="6" fill="#64748b" text-anchor="middle">路段</text>
+          <text x="128" y="89" font-size="7" font-weight="700" fill="white" text-anchor="middle">4 段</text>
+          <!-- ── White content area ── -->
+          <!-- Route map card -->
+          <rect x="8" y="98" width="144" height="70" rx="10" fill="white" stroke="#e2e8f0" stroke-width="0.8"/>
+          <text x="16" y="110" font-size="7.5" font-weight="700" fill="#334155">🗺 路線地圖</text>
+          <!-- Mini map preview (OSM-like) -->
+          <rect x="14" y="115" width="132" height="44" rx="6" fill="#f0e6d8"/>
+          <!-- route line -->
+          <line x1="30" y1="150" x2="130" y2="122" stroke="#3b82f6" stroke-width="3" stroke-linecap="round"/>
+          <!-- node dots -->
+          <circle cx="30" cy="150" r="6" fill="#16a34a" stroke="white" stroke-width="1.2"/>
+          <text x="30" y="153" font-size="5" fill="white" text-anchor="middle" font-weight="800">1</text>
+          <circle cx="70" cy="138" r="5" fill="#3b82f6" stroke="white" stroke-width="1.2"/>
+          <text x="70" y="141" font-size="5" fill="white" text-anchor="middle" font-weight="800">3</text>
+          <circle cx="110" cy="126" r="5" fill="#3b82f6" stroke="white" stroke-width="1.2"/>
+          <text x="110" y="129" font-size="5" fill="white" text-anchor="middle" font-weight="800">4</text>
+          <circle cx="130" cy="122" r="6" fill="#ef4444" stroke="white" stroke-width="1.2"/>
+          <text x="130" y="125" font-size="5" fill="white" text-anchor="middle" font-weight="800">5</text>
+          <!-- Route text below -->
+          <text x="80" y="174" font-size="6.5" fill="#64748b" text-anchor="middle">去程：1→2→3→4→5　　回程：5→4→3→2→1</text>
+          <!-- Segment list card -->
+          <rect x="8" y="173" width="144" height="64" rx="10" fill="white" stroke="#e2e8f0" stroke-width="0.8"/>
+          <text x="16" y="185" font-size="7.5" font-weight="700" fill="#334155">🚦 路段清單</text>
+          <circle cx="17" cy="196" r="3" fill="#3b82f6"/>
+          <text x="25" y="199" font-size="7" fill="#334155">赤城→五權七路</text>
+          <text x="148" y="199" font-size="6.5" fill="#94a3b8" text-anchor="end">81m</text>
+          <circle cx="17" cy="208" r="3" fill="#3b82f6"/>
+          <text x="25" y="211" font-size="7" fill="#334155">五工六路→五工五路</text>
+          <text x="148" y="211" font-size="6.5" fill="#94a3b8" text-anchor="end">334m</text>
+          <circle cx="17" cy="220" r="3" fill="#3b82f6"/>
+          <text x="25" y="223" font-size="7" fill="#334155">五工五路→五工路</text>
+          <text x="148" y="223" font-size="6.5" fill="#94a3b8" text-anchor="end">295m</text>
+          <!-- Survey info card -->
+          <rect x="8" y="243" width="144" height="75" rx="10" fill="white" stroke="#e2e8f0" stroke-width="0.8"/>
+          <text x="16" y="255" font-size="7.5" font-weight="700" fill="#334155">📋 調查資訊</text>
+          <!-- Date -->
+          <text x="16" y="268" font-size="6.5" font-weight="700" fill="#64748b">調查日期</text>
+          <rect x="16" y="271" width="128" height="14" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.8"/>
+          <text x="26" y="281" font-size="6.5" fill="#334155">📅 今天（2026-06-24）</text>
+          <!-- Name -->
+          <text x="16" y="294" font-size="6.5" font-weight="700" fill="#64748b">調查員姓名</text>
+          <rect x="16" y="297" width="128" height="13" rx="6" fill="white" stroke="#e2e8f0" stroke-width="0.8"/>
+          <text x="24" y="307" font-size="6.5" fill="#334155">許書齊</text>
+          <!-- Weather -->
+          <text x="16" y="323" font-size="6.5" font-weight="700" fill="#64748b">當日天氣</text>
+          <rect x="16" y="326" width="36" height="20" rx="6" fill="white" stroke="#3b82f6" stroke-width="1.2"/>
+          <text x="34" y="340" font-size="9" text-anchor="middle">☀️</text>
+          <rect x="56" y="326" width="36" height="20" rx="6" fill="white" stroke="#e2e8f0" stroke-width="0.8"/>
+          <text x="74" y="340" font-size="9" text-anchor="middle">☁️</text>
+          <rect x="96" y="326" width="36" height="20" rx="6" fill="white" stroke="#e2e8f0" stroke-width="0.8"/>
+          <text x="114" y="340" font-size="9" text-anchor="middle">🌧</text>
           <!-- Start button -->
-          <rect x="10" y="270" width="140" height="38" rx="12" fill="#16a34a"/>
-          <text x="80" y="294" font-size="12" font-weight="800" fill="white" text-anchor="middle">▶ 確認開始調查</text>
+          <rect x="8" y="352" width="144" height="28" rx="10" fill="#16a34a"/>
+          <text x="80" y="370" font-size="9" font-weight="800" fill="white" text-anchor="middle">✓ 確認開始調查</text>
         </svg>
-        <div class="mock-caption">① 登入畫面</div>
+        <div class="mock-caption">① 簽到畫面（含路線資訊）</div>
       </div>
       <div class="mock-content">
         <p class="body">向 PM 取得本次調查的 QR Code，用手機掃描後頁面自動載入路線資訊。</p>
         <ul class="steps">
-          <li><span class="n">1</span><span class="t">開啟手機相機，掃描 PM 提供的 QR Code，點選彈出網址</span></li>
-          <li><span class="n">2</span><span class="t">確認畫面顯示<b>路線名稱</b>與起終點</span></li>
-          <li><span class="n">3</span><span class="t">輸入<b>調查員姓名</b>、選擇<b>天氣狀況</b></span></li>
-          <li><span class="n">4</span><span class="t">選擇<b>時段</b>（藍色 = 已選）</span></li>
-          <li><span class="n">5</span><span class="t">選擇<b>方向</b>（去程 / 返程）</span></li>
-          <li><span class="n">6</span><span class="t">右上角 GPS 燈為<b style="color:#16a34a">●綠色</b>後按<b>「▶ 開始調查」</b></span></li>
+          <li><span class="n">1</span><span class="t">掃描 PM 提供的 QR Code，點選網址進入</span></li>
+          <li><span class="n">2</span><span class="t">確認上方深色區顯示<b>路線名稱</b>（如「去紅樓」）與起終點</span></li>
+          <li><span class="n">3</span><span class="t">填寫<b>調查員姓名</b>、選擇<b>當日天氣</b>（晴/陰/雨）</span></li>
+          <li><span class="n">4</span><span class="t">確認日期（預設今天），無誤後按下方綠色<b>「✓ 確認開始調查」</b></span></li>
         </ul>
+        <div class="sub-hd">右上角功能按鈕</div>
+        <div class="grid2">
+          <div class="card blue">
+            <h3>📋 記錄</h3>
+            <p>查看本路線<b>過去調查記錄</b>，點「查看」可回顧歷史報告</p>
+          </div>
+          <div class="card">
+            <h3>? 說明</h3>
+            <p>開啟本份操作說明（即您現在閱讀的頁面）</p>
+          </div>
+        </div>
+        <div class="info">ℹ 底部 3 個小卡顯示離峰 / 尖峰時段與路段數，確認與 PM 交辦一致</div>
       </div>
     </div>
     <div class="speed-bar">
-      <div style="background:#16a34a">● 綠色<br>可出發</div>
+      <div style="background:#16a34a">● 綠色<br>GPS 良好</div>
       <div style="background:#ca8a04">● 黃色<br>稍候</div>
       <div style="background:#dc2626">● 紅色<br>移至開闊處</div>
     </div>
-    <div class="warn">⚠ 定位被封鎖時，請至手機設定 → 瀏覽器 → 位置 → 允許</div>
-    <div class="tip">✓ 建議在出發地停好車後再開始，確保 GPS 穩定鎖定</div>
+    <div class="warn">⚠ 定位被封鎖時：手機設定 → 瀏覽器 → 位置 → 允許</div>
+    <div class="tip">✓ 建議停好車等 GPS 穩定後再按開始調查</div>
   </div>
 </div>
 
@@ -182,21 +244,46 @@ p.body{font-size:14px;color:#334155;margin-bottom:8px}
   <div class="sec-bd">
     <div class="mock-layout">
       <div class="mock-wrap">
-        <!-- Phone mockup: Survey main (collapsed panel) -->
-        <svg viewBox="0 0 160 290" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,PingFang TC,sans-serif">
-          <rect width="160" height="290" rx="18" fill="#0d1117"/>
-          <!-- Map bg (pinkish-beige like real OSM tiles) -->
-          <rect x="0" y="0" width="160" height="152" rx="18" fill="#f0e6d8"/>
-          <rect x="0" y="132" width="160" height="20" fill="#f0e6d8"/>
-          <!-- Background roads (lighter) -->
-          <line x1="0" y1="90" x2="160" y2="65" stroke="#ddd0bf" stroke-width="14"/>
-          <line x1="105" y1="0" x2="92" y2="152" stroke="#ddd0bf" stroke-width="12"/>
-          <!-- Building blocks -->
-          <rect x="8" y="8" width="28" height="22" rx="3" fill="#e4d6c5"/>
-          <rect x="115" y="12" width="32" height="28" rx="3" fill="#e4d6c5"/>
-          <rect x="8" y="108" width="38" height="20" rx="3" fill="#e4d6c5"/>
-          <rect x="55" y="100" width="25" height="18" rx="3" fill="#e4d6c5"/>
-          <!-- Orange route line (single bright line, diagonal) -->
+        <!-- Phone mockup: Survey main (clean diagram) -->
+        <svg viewBox="0 0 160 310" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,PingFang TC,sans-serif">
+          <rect width="160" height="310" rx="18" fill="#0d1117"/>
+          <!-- Map bg -->
+          <rect x="0" y="0" width="160" height="148" rx="18" fill="#f3ece4"/>
+          <rect x="0" y="130" width="160" height="18" fill="#f3ece4"/>
+          <!-- Simple road grid -->
+          <rect x="0" y="44" width="160" height="10" fill="white" opacity=".7"/>
+          <rect x="56" y="0" width="10" height="148" fill="white" opacity=".7"/>
+          <rect x="0" y="100" width="160" height="7" fill="white" opacity=".5"/>
+          <!-- Building blocks (simplified) -->
+          <rect x="6" y="6" width="46" height="34" rx="3" fill="#e5d5c5"/>
+          <rect x="6" y="58" width="44" height="38" rx="3" fill="#e5d5c5"/>
+          <rect x="70" y="6" width="84" height="34" rx="3" fill="#e5d5c5"/>
+          <rect x="70" y="58" width="40" height="36" rx="3" fill="#e5d5c5"/>
+          <rect x="6" y="110" width="44" height="30" rx="3" fill="#e5d5c5"/>
+          <rect x="70" y="110" width="84" height="30" rx="3" fill="#e5d5c5"/>
+          <!-- Route: dashed planned line only (NO GPS track line) -->
+          <line x1="26" y1="138" x2="148" y2="18" stroke="#94a3b8" stroke-width="2.5" stroke-dasharray="6,4" stroke-linecap="round"/>
+          <!-- Node 1 green (start) -->
+          <circle cx="26" cy="138" r="10" fill="#16a34a" stroke="white" stroke-width="2"/>
+          <text x="26" y="142" font-size="8" font-weight="800" fill="white" text-anchor="middle">1</text>
+          <!-- Node 3 (mid, blue) -->
+          <circle cx="80" cy="88" r="9" fill="#3b82f6" stroke="white" stroke-width="1.5"/>
+          <text x="80" y="91.5" font-size="7" font-weight="700" fill="white" text-anchor="middle">3</text>
+          <!-- GPS current pos (blue dot + halo only, no direction arrow) -->
+          <circle cx="52" cy="113" r="14" fill="#2563eb" opacity=".15"/>
+          <circle cx="52" cy="113" r="8" fill="#2563eb"/>
+          <circle cx="52" cy="113" r="4" fill="white"/>
+          <!-- Node 5 red (end) -->
+          <circle cx="148" cy="18" r="10" fill="#ef4444" stroke="white" stroke-width="2"/>
+          <text x="148" y="22" font-size="8" font-weight="800" fill="white" text-anchor="middle">5</text>
+          <!-- Back button -->
+          <rect x="6" y="6" width="46" height="20" rx="10" fill="rgba(0,0,0,.52)"/>
+          <text x="29" y="19" font-size="8" fill="white" text-anchor="middle">‹ 返回</text>
+          <!-- Speed badge -->
+          <rect x="120" y="5" width="34" height="22" rx="8" fill="rgba(0,0,0,.65)"/>
+          <text x="137" y="16" font-size="10" font-weight="700" fill="white" text-anchor="middle">32</text>
+          <text x="137" y="24" font-size="5.5" fill="#94a3b8" text-anchor="middle">km/h</text>
+          <!-- ── Bottom dark panel ── -->
           <line x1="148" y1="12" x2="28" y2="148" stroke="#f97316" stroke-width="7" stroke-linecap="round"/>
           <!-- Node 1 (green, at bottom of route) -->
           <circle cx="38" cy="138" r="11" fill="#16a34a" stroke="white" stroke-width="2"/>
@@ -219,63 +306,67 @@ p.body{font-size:14px;color:#334155;margin-bottom:8px}
           <rect x="122" y="6" width="32" height="22" rx="8" fill="rgba(0,0,0,.65)"/>
           <text x="138" y="17" font-size="10" font-weight="700" fill="white" text-anchor="middle">32</text>
           <text x="138" y="25" font-size="5.5" fill="#94a3b8" text-anchor="middle">km/h</text>
-          <!-- Bottom panel (collapsed) -->
-          <rect x="0" y="145" width="160" height="145" rx="16" fill="#0d1117"/>
+          <!-- Bottom dark panel (collapsed) -->
+          <rect x="0" y="148" width="160" height="162" rx="16" fill="#0d1117"/>
           <!-- Handle bar -->
-          <rect x="58" y="151" width="44" height="4" rx="2" fill="#334155"/>
+          <rect x="58" y="154" width="44" height="4" rx="2" fill="#334155"/>
           <!-- Hint text -->
-          <text x="80" y="164" font-size="6.5" fill="#475569" text-anchor="middle">↑ 滑動展開延滯按鈕</text>
-          <!-- Status row -->
-          <circle cx="14" cy="176" r="4" fill="#4ade80"/>
-          <text x="22" y="179" font-size="8" font-weight="700" fill="white">離峰 去程</text>
-          <text x="148" y="179" font-size="7.5" fill="#64748b" text-anchor="end">--:--</text>
+          <text x="80" y="168" font-size="6.5" fill="#475569" text-anchor="middle">↑ 滑動展開延滯按鈕</text>
+          <!-- Status row: green dot + trip label + timer -->
+          <circle cx="14" cy="180" r="4" fill="#4ade80"/>
+          <text x="22" y="183" font-size="8.5" font-weight="700" fill="white">尖峰 去程</text>
+          <text x="148" y="183" font-size="8" fill="#64748b" text-anchor="end">--:--</text>
           <!-- Node progress track -->
-          <line x1="15" y1="194" x2="145" y2="194" stroke="#1e293b" stroke-width="2"/>
-          <!-- Dots: node 1 active/current, 2-5 pending -->
-          <circle cx="15" cy="194" r="8" fill="#2563eb" stroke="#60a5fa" stroke-width="1.5"/>
-          <text x="15" y="197.5" font-size="7" fill="white" text-anchor="middle">1</text>
-          <circle cx="47" cy="194" r="8" fill="#111827" stroke="#334155" stroke-width="1.5"/>
-          <text x="47" y="197.5" font-size="7" fill="#64748b" text-anchor="middle">2</text>
-          <circle cx="79" cy="194" r="8" fill="#111827" stroke="#334155" stroke-width="1.5"/>
-          <text x="79" y="197.5" font-size="7" fill="#64748b" text-anchor="middle">3</text>
-          <circle cx="111" cy="194" r="8" fill="#111827" stroke="#334155" stroke-width="1.5"/>
-          <text x="111" y="197.5" font-size="7" fill="#64748b" text-anchor="middle">4</text>
-          <circle cx="143" cy="194" r="8" fill="#111827" stroke="#334155" stroke-width="1.5"/>
-          <text x="143" y="197.5" font-size="7" fill="#64748b" text-anchor="middle">5</text>
-          <!-- Blue node card -->
-          <rect x="8" y="208" width="144" height="68" rx="12" fill="#1d4ed8"/>
-          <text x="16" y="220" font-size="6.5" fill="#93c5fd">⏳ 等待第一個節點計時開始</text>
-          <text x="16" y="237" font-size="15" font-weight="800" fill="white">赤城</text>
-          <text x="16" y="266" font-size="7" fill="#93c5fd">· 通過感應線自動記錄</text>
-          <text x="88" y="237" font-size="12" font-weight="700" fill="white">45 m</text>
-          <!-- 手動記錄 button (white translucent) -->
-          <rect x="110" y="222" width="36" height="26" rx="8" fill="rgba(255,255,255,.18)" stroke="rgba(255,255,255,.3)" stroke-width="1"/>
-          <text x="128" y="231" font-size="6.5" font-weight="700" fill="white" text-anchor="middle">手動</text>
-          <text x="128" y="242" font-size="6.5" font-weight="700" fill="white" text-anchor="middle">記錄</text>
+          <line x1="15" y1="198" x2="145" y2="198" stroke="#1e293b" stroke-width="2"/>
+          <circle cx="15" cy="198" r="8" fill="#2563eb" stroke="#60a5fa" stroke-width="1.5"/>
+          <text x="15" y="201.5" font-size="7" fill="white" text-anchor="middle">1</text>
+          <circle cx="47" cy="198" r="8" fill="#111827" stroke="#334155" stroke-width="1.5"/>
+          <text x="47" y="201.5" font-size="7" fill="#64748b" text-anchor="middle">2</text>
+          <circle cx="79" cy="198" r="8" fill="#111827" stroke="#334155" stroke-width="1.5"/>
+          <text x="79" y="201.5" font-size="7" fill="#64748b" text-anchor="middle">3</text>
+          <circle cx="111" cy="198" r="8" fill="#111827" stroke="#334155" stroke-width="1.5"/>
+          <text x="111" y="201.5" font-size="7" fill="#64748b" text-anchor="middle">4</text>
+          <circle cx="143" cy="198" r="8" fill="#111827" stroke="#334155" stroke-width="1.5"/>
+          <text x="143" y="201.5" font-size="7" fill="#64748b" text-anchor="middle">5</text>
+          <!-- Blue node card (current segment) -->
+          <rect x="8" y="212" width="144" height="58" rx="12" fill="#1d4ed8"/>
+          <text x="16" y="224" font-size="6" fill="#93c5fd">⏳ 等待第一個節點計時開始</text>
+          <text x="16" y="241" font-size="14" font-weight="800" fill="white">赤城</text>
+          <text x="108" y="237" font-size="11" font-weight="700" fill="white" text-anchor="end">3150 m</text>
+          <text x="16" y="261" font-size="6.5" fill="#93c5fd">· 通過感應線自動記錄</text>
+          <!-- 手動記錄 button -->
+          <rect x="112" y="218" width="34" height="26" rx="7" fill="rgba(255,255,255,.18)" stroke="rgba(255,255,255,.3)" stroke-width="1"/>
+          <text x="129" y="227" font-size="6" font-weight="700" fill="white" text-anchor="middle">手動</text>
+          <text x="129" y="238" font-size="6" font-weight="700" fill="white" text-anchor="middle">記錄</text>
+          <!-- End survey button -->
+          <rect x="8" y="278" width="144" height="26" rx="9" fill="#dc2626"/>
+          <text x="80" y="295" font-size="9" font-weight="800" fill="white" text-anchor="middle">🔴 結束調查</text>
         </svg>
-        <div class="mock-caption">② 主畫面（縮合）</div>
+        <div class="mock-caption">② 主畫面（縮合狀態）</div>
       </div>
       <div class="mock-content">
         <div class="grid2">
           <div class="card">
             <h3>🗺 地圖區（上方）</h3>
             <ul>
-              <li>藍色圓點 = 目前位置</li>
-              <li>橘色路線 = 規劃路徑</li>
-              <li>編號圓點 = 節點</li>
-              <li>地圖自動旋轉方向</li>
+              <li>藍色圓點 = 目前 GPS 位置</li>
+              <li>灰色虛線 = 規劃路線</li>
+              <li>編號圓點 = 節點（綠=起、紅=終）</li>
+              <li>GPS 軌跡行駛後顯示為藍線</li>
             </ul>
           </div>
           <div class="card">
             <h3>📋 底部面板</h3>
             <ul>
-              <li>把手 → 向上滑展開</li>
-              <li>時段 / 方向 / 計時</li>
-              <li>節點進度點</li>
-              <li>藍色節點卡片</li>
+              <li>把手 → <b>向上滑</b>展開延滯按鈕</li>
+              <li>時段 / 方向 / 計時器</li>
+              <li>節點進度點（1→5）</li>
+              <li>藍色節點卡片 + 手動記錄</li>
+              <li style="color:#dc2626;font-weight:700">🔴 結束調查（底部紅色）</li>
             </ul>
           </div>
         </div>
+        <div class="tip">✓ 底部把手向上滑即可展開延滯按鈕（🛣 路段延滯 / 🚦 交叉口延滯）</div>
         <div class="sub-hd">速度顯示（右上角）</div>
         <div class="speed-bar">
           <div style="background:#16a34a;flex:2">≥20 km/h<br>正常行駛</div>
@@ -453,12 +544,12 @@ p.body{font-size:14px;color:#334155;margin-bottom:8px}
           <rect x="6" y="252" width="71" height="30" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
           <text x="41" y="271" font-size="9" fill="white" text-anchor="middle">🅿️ 路邊停靠</text>
           <rect x="83" y="252" width="71" height="30" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-          <text x="118" y="271" font-size="9" fill="white" text-anchor="middle">↱ 左轉對向</text>
+          <text x="118" y="271" font-size="9" fill="white" text-anchor="middle">↲ 左轉對向</text>
           <!-- Row 6: 其他 / 右轉 -->
           <rect x="6" y="287" width="71" height="30" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
           <text x="41" y="306" font-size="9" fill="white" text-anchor="middle">❓ 其他</text>
           <rect x="83" y="287" width="71" height="30" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-          <text x="118" y="306" font-size="9" fill="white" text-anchor="middle">↳ 右轉</text>
+          <text x="118" y="306" font-size="9" fill="white" text-anchor="middle">↱ 右轉</text>
           <!-- Ignore button -->
           <rect x="8" y="323" width="144" height="30" rx="9" fill="#1c2536" stroke="#475569" stroke-width="1"/>
           <text x="80" y="342" font-size="9" fill="#94a3b8" text-anchor="middle">✕ 忽略（不記錄）</text>
@@ -466,25 +557,25 @@ p.body{font-size:14px;color:#334155;margin-bottom:8px}
         <div class="mock-caption">④ 自動延滯偵測</div>
       </div>
       <div class="mock-content">
-        <p class="body">車速低於 <b>3 km/h 持續 5 秒</b>，系統自動展開面板並嗶聲提示。</p>
+        <p class="body">車速低於 <b>5 km/h 持續 3 秒</b>，系統自動展開面板並嗶聲提示。</p>
         <div class="flow" style="margin-top:8px">
-          <div class="flow-item"><span class="icon">🚗</span>車速 &lt; 3 km/h 持續 5 秒</div>
+          <div class="flow-item"><span class="icon">🚗</span>車速 &lt; 5 km/h 持續 3 秒</div>
           <div class="flow-arrow">↓</div>
           <div class="flow-item highlight"><span class="icon">📳</span>面板自動展開 + 嗶聲</div>
           <div class="flow-arrow">↓ 4 秒內操作</div>
           <div class="grid2" style="margin:0">
             <div class="flow-item end" style="flex-direction:column;align-items:flex-start;gap:3px;margin-bottom:0;padding:8px 10px">
               <span style="font-weight:700;font-size:12px">👆 選擇類型</span>
-              <span style="font-size:11px">開始計時（含停等前5秒）<br>面板自動縮回</span>
+              <span style="font-size:11px">開始計時（含停等前3秒）<br>面板自動縮回</span>
             </div>
             <div class="flow-item warn-item" style="flex-direction:column;align-items:flex-start;gap:3px;margin-bottom:0;padding:8px 10px">
-              <span style="font-weight:700;font-size:12px">✕ 忽略 / 逾時</span>
-              <span style="font-size:11px">靜默縮回<br>不記錄本次停止</span>
+              <span style="font-weight:700;font-size:12px">✕ 忽略 / 逾時 / 行車</span>
+              <span style="font-size:11px">靜默縮回，不記錄<br><span style="color:#92400e">車速&gt;5 km/h 持續3秒亦自動縮回</span></span>
             </div>
           </div>
         </div>
-        <div class="warn">⚠ 4 秒內未操作 → 面板自動縮回不記錄</div>
-        <div class="tip">✓ 車速恢復 &gt; 5 km/h 持續 3 秒 → 延滯計時自動結束</div>
+        <div class="warn">⚠ 4 秒內未操作 → 面板自動縮回，不記錄本次停止</div>
+        <div class="tip">✓ 車速恢復 &gt; 5 km/h 持續 3 秒 → 延滯計時自動結束（倒扣 3 秒緩衝）</div>
       </div>
     </div>
     <div class="sub-hd">常見情況對照</div>
@@ -558,12 +649,12 @@ p.body{font-size:14px;color:#334155;margin-bottom:8px}
           <rect x="6" y="230" width="71" height="30" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
           <text x="41" y="249" font-size="9" fill="white" text-anchor="middle">🅿️ 路邊停靠</text>
           <rect x="83" y="230" width="71" height="30" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-          <text x="118" y="249" font-size="9" fill="white" text-anchor="middle">↱ 左轉對向</text>
+          <text x="118" y="249" font-size="9" fill="white" text-anchor="middle">↲ 左轉對向</text>
           <!-- Row 6: 其他 / 右轉 -->
           <rect x="6" y="265" width="71" height="30" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
           <text x="41" y="284" font-size="9" fill="white" text-anchor="middle">❓ 其他</text>
           <rect x="83" y="265" width="71" height="30" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-          <text x="118" y="284" font-size="9" fill="white" text-anchor="middle">↳ 右轉</text>
+          <text x="118" y="284" font-size="9" fill="white" text-anchor="middle">↱ 右轉</text>
           <!-- 結束調查 big button -->
           <rect x="8" y="302" width="144" height="34" rx="10" fill="#dc2626"/>
           <text x="80" y="323" font-size="10" font-weight="800" fill="white" text-anchor="middle">🔴 結束調查</text>
@@ -579,7 +670,7 @@ p.body{font-size:14px;color:#334155;margin-bottom:8px}
           <li><span class="n">4</span><span class="t">延滯結束後<b>再次向上滑出，點同一按鈕</b>停止計時</span></li>
         </ul>
         <div class="tip">✓ 計時中該按鈕變紅框 + 顯示秒數；點其他按鈕自動切換</div>
-        <div class="info">ℹ 車速恢復 &gt; 5 km/h 持續 3 秒 → 延滯計時<b>自動結束</b></div>
+        <div class="info">ℹ 車速恢復 &gt; 5 km/h 持續 3 秒 → 延滯計時<b>自動結束</b>（系統倒扣 3 秒緩衝）</div>
       </div>
     </div>
   </div>
@@ -672,18 +763,100 @@ p.body{font-size:14px;color:#334155;margin-bottom:8px}
     <p class="body">每條路線需完成 <b>4 個組合</b>（時段 × 方向）：</p>
     <div class="combo-grid">
       <div class="combo"><div class="label">離峰</div><div class="name">去程</div></div>
-      <div class="combo"><div class="label">離峰</div><div class="name">返程</div></div>
+      <div class="combo"><div class="label">離峰</div><div class="name">回程</div></div>
       <div class="combo"><div class="label">尖峰</div><div class="name">去程</div></div>
-      <div class="combo"><div class="label">尖峰</div><div class="name">返程</div></div>
+      <div class="combo"><div class="label">尖峰</div><div class="name">回程</div></div>
     </div>
     <div class="info">ℹ 每趟完成後可在結果頁確認剩餘未完成的組合</div>
     <hr class="light">
-    <div class="sub-hd">全部完成後</div>
-    <ul class="steps">
-      <li><span class="n">1</span><span class="t">按<b>「📊 調查報告」</b>查看總覽統計表</span></li>
-      <li><span class="n">2</span><span class="t">切換「調查紀錄」分頁查看地圖軌跡與官方表格</span></li>
-    </ul>
-    <div class="tip">✓ 資料已自動上傳，完成後直接通知 PM 即可</div>
+    <div class="sub-hd">全部完成後 — 調查報告</div>
+    <div class="mock-layout" style="margin-top:10px">
+      <div class="mock-wrap">
+        <!-- Report screen SVG matching real screenshot -->
+        <svg viewBox="0 0 160 360" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,PingFang TC,sans-serif">
+          <rect width="160" height="360" rx="18" fill="white"/>
+          <!-- Status bar -->
+          <rect x="0" y="0" width="160" height="16" rx="18" fill="white"/>
+          <text x="10" y="12" font-size="6.5" fill="#64748b">9:09</text>
+          <!-- Back btn row -->
+          <text x="10" y="30" font-size="9" fill="#2563eb">‹ 返回</text>
+          <!-- Title -->
+          <text x="10" y="46" font-size="12" font-weight="800" fill="#1e293b">📊 調查報告</text>
+          <text x="10" y="57" font-size="7.5" fill="#64748b">去紅樓　2026-06-22</text>
+          <!-- Tab bar -->
+          <rect x="8" y="62" width="144" height="22" rx="11" fill="#f1f5f9"/>
+          <rect x="10" y="64" width="68" height="18" rx="9" fill="white"/>
+          <text x="44" y="76" font-size="8" font-weight="700" fill="#1e293b" text-anchor="middle">總覽</text>
+          <text x="116" y="76" font-size="8" fill="#94a3b8" text-anchor="middle">調查紀錄</text>
+          <!-- Summary stats card (matches real screenshot 總覽 tab) -->
+          <rect x="8" y="90" width="144" height="108" rx="10" fill="#0f172a"/>
+          <text x="16" y="104" font-size="6.5" fill="#94a3b8">路名：去紅樓　　日期：2026-06-22</text>
+          <text x="16" y="115" font-size="6.5" fill="#94a3b8">起訖點：赤城-紅樓</text>
+          <text x="148" y="115" font-size="6.5" fill="#94a3b8" text-anchor="end">天氣：晴</text>
+          <text x="16" y="126" font-size="6.5" fill="#94a3b8">全長：773m　調查員：許書齊</text>
+          <!-- Table header row -->
+          <rect x="10" y="130" width="140" height="14" fill="#1e293b" rx="2"/>
+          <text x="60" y="140" font-size="6" fill="#94a3b8" text-anchor="middle">調查時間</text>
+          <text x="100" y="140" font-size="6" fill="#94a3b8" text-anchor="middle">離峰 13~15</text>
+          <text x="140" y="140" font-size="6" fill="#94a3b8" text-anchor="middle">尖峰 9~11</text>
+          <!-- Data rows -->
+          <text x="16" y="154" font-size="6" fill="#94a3b8">平均旅行速率(km/h)</text>
+          <text x="92" y="154" font-size="7" font-weight="700" fill="white" text-anchor="middle">23　/　19</text>
+          <text x="140" y="154" font-size="7" fill="#475569" text-anchor="middle">—　/　—</text>
+          <text x="16" y="166" font-size="6" fill="#94a3b8">行駛時間</text>
+          <text x="92" y="166" font-size="7" font-weight="700" fill="white" text-anchor="middle">108 / 132 秒</text>
+          <text x="140" y="166" font-size="7" fill="#475569" text-anchor="middle">—　/　—</text>
+          <text x="16" y="178" font-size="6" fill="#94a3b8">交叉口延滯</text>
+          <text x="92" y="178" font-size="7" font-weight="700" fill="white" text-anchor="middle">14 / 11 秒</text>
+          <text x="140" y="178" font-size="7" fill="#475569" text-anchor="middle">—　/　—</text>
+          <text x="16" y="190" font-size="6" fill="#94a3b8">合計(秒)</text>
+          <text x="92" y="190" font-size="7.5" font-weight="800" fill="#fbbf24" text-anchor="middle">122 / 143</text>
+          <text x="140" y="190" font-size="7" fill="#475569" text-anchor="middle">—　/　—</text>
+          <!-- Divider -->
+          <line x1="8" y1="205" x2="152" y2="205" stroke="#e2e8f0" stroke-width="0.8"/>
+          <!-- 調查紀錄 tab preview (GPS track map) -->
+          <text x="10" y="218" font-size="7.5" font-weight="700" fill="#334155">📋 調查紀錄分頁 — 地圖軌跡</text>
+          <!-- Combo tabs -->
+          <rect x="8" y="223" width="66" height="16" rx="8" fill="#1e293b" stroke="#3b82f6" stroke-width="1.2"/>
+          <text x="41" y="234" font-size="7" font-weight="700" fill="white" text-anchor="middle">離峰去程</text>
+          <rect x="78" y="223" width="66" height="16" rx="8" fill="#f1f5f9"/>
+          <text x="111" y="234" font-size="7" fill="#64748b" text-anchor="middle">離峰回程</text>
+          <!-- Mini map preview -->
+          <rect x="8" y="243" width="144" height="72" rx="8" fill="#f0e0d0"/>
+          <!-- GPS track (blue line) -->
+          <line x1="28" y1="305" x2="130" y2="253" stroke="#3b82f6" stroke-width="3.5" stroke-linecap="round"/>
+          <!-- Red dot on route (delay marker) -->
+          <circle cx="68" cy="282" r="6" fill="#ef4444"/>
+          <!-- Nodes -->
+          <circle cx="28" cy="305" r="7" fill="#16a34a" stroke="white" stroke-width="1.2"/>
+          <text x="28" y="308" font-size="5.5" fill="white" text-anchor="middle" font-weight="800">1</text>
+          <circle cx="70" cy="280" r="6" fill="#3b82f6" stroke="white" stroke-width="1.2"/>
+          <text x="70" y="283" font-size="5" fill="white" text-anchor="middle" font-weight="700">3</text>
+          <circle cx="110" cy="260" r="6" fill="#3b82f6" stroke="white" stroke-width="1.2"/>
+          <text x="110" y="263" font-size="5" fill="white" text-anchor="middle" font-weight="700">4</text>
+          <circle cx="130" cy="253" r="7" fill="#ef4444" stroke="white" stroke-width="1.2"/>
+          <text x="130" y="256" font-size="5.5" fill="white" text-anchor="middle" font-weight="800">5</text>
+          <!-- Legend row -->
+          <line x1="12" y1="322" x2="26" y2="322" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3,2"/>
+          <text x="30" y="325" font-size="6" fill="#64748b">規劃路線</text>
+          <line x1="68" y1="322" x2="82" y2="322" stroke="#3b82f6" stroke-width="2"/>
+          <text x="86" y="325" font-size="6" fill="#64748b">GPS軌跡</text>
+          <!-- Official form preview -->
+          <text x="10" y="340" font-size="7" font-weight="700" fill="#334155">↓ 下方為官方表格（主次要幹道行駛時間）</text>
+        </svg>
+        <div class="mock-caption">⑦ 調查報告</div>
+      </div>
+      <div class="mock-content">
+        <ul class="steps">
+          <li><span class="n">1</span><span class="t">結束最後一趟後，首頁自動出現<b>「📊 調查報告」</b>按鈕</span></li>
+          <li><span class="n">2</span><span class="t"><b>總覽</b>分頁：確認各趟平均速率、延滯秒數是否合理</span></li>
+          <li><span class="n">3</span><span class="t"><b>調查紀錄</b>分頁：查看 GPS 軌跡地圖，切換「離峰去程 / 回程 / 尖峰…」各趟軌跡</span></li>
+          <li><span class="n">4</span><span class="t">下滑查看<b>官方表格</b>，核對節點時刻記錄</span></li>
+        </ul>
+        <div class="tip">✓ 資料已自動上傳，完成後直接通知 PM 即可</div>
+        <div class="info">ℹ 主畫面右上角 <b>📋 記錄</b> 按鈕可隨時查看過去各日記錄</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -706,7 +879,8 @@ p.body{font-size:14px;color:#334155;margin-bottom:8px}
 </div>
 
 <div style="text-align:center;padding:24px 20px 10px;font-size:12px;color:#94a3b8">
-  旅行時間調查系統 2026 版　｜　操作問題請聯絡 PM
+  旅行時間調查系統 2026 版　｜　操作問題請聯絡 PM<br>
+  <span style="font-size:10px;color:#cbd5e1">說明書版本：2026-06</span>
 </div>
 
 </body>
