@@ -168,7 +168,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 #screen-survey{position:relative;overflow:hidden}
 .map-wrap{position:absolute;inset:0;height:100%;z-index:1;overflow:hidden}
 /* ── Survey bottom sheet ── */
-.svy-sheet{position:absolute;bottom:0;left:0;right:0;height:88dvh;background:#0d1117;border-radius:20px 20px 0 0;border-top:0.5px solid rgba(255,255,255,.12);z-index:50;display:flex;flex-direction:column;overflow:hidden;will-change:transform;padding-bottom:env(safe-area-inset-bottom,0px)}
+.svy-sheet{position:absolute;bottom:0;left:0;right:0;height:88dvh;background:#0d1117;border-radius:20px 20px 0 0;border-top:0.5px solid rgba(255,255,255,.12);z-index:50;display:flex;flex-direction:column;overflow:hidden;will-change:transform;padding-bottom:env(safe-area-inset-bottom,0px);overscroll-behavior:none}
 /* Handle area is tall (44px) so it's easy to grab on mobile */
 .svy-handle{height:44px;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;gap:8px}
 .svy-handle-bar{width:40px;height:5px;background:rgba(255,255,255,.25);border-radius:3px;pointer-events:none}
@@ -2028,6 +2028,9 @@ function initSvySheet(){
   function onDragStart(y){
     dragging=true; startY=y; startTY=getCurTY()
     sheet.style.transition='none'
+    // 鎖定 body scroll，避免 iOS Safari 把上滑手勢吃掉
+    document.body.style.overflow='hidden'
+    document.body.style.touchAction='none'
   }
   function onDragMove(y){
     if(!dragging) return
@@ -2038,6 +2041,8 @@ function initSvySheet(){
   function onDragEnd(){
     if(!dragging) return
     dragging=false
+    document.body.style.overflow=''
+    document.body.style.touchAction=''
     const cur=getCurTY()
     // Snap: if dragged more than 30% of travel distance → expand
     const snap=cur<_svySheetCollapsedPx*0.7?0:_svySheetCollapsedPx
@@ -2049,7 +2054,8 @@ function initSvySheet(){
   document.addEventListener('mousemove',e=>{if(dragging)onDragMove(e.clientY)})
   document.addEventListener('mouseup',()=>{if(dragging)onDragEnd()})
   handle.addEventListener('touchstart',e=>{onDragStart(e.touches[0].clientY);e.preventDefault()},{passive:false})
-  document.addEventListener('touchmove',e=>{if(dragging)onDragMove(e.touches[0].clientY)},{passive:true})
+  // passive:false 才能呼叫 preventDefault()，阻止 iOS Safari 將拖曳視為頁面捲動
+  document.addEventListener('touchmove',e=>{if(dragging){e.preventDefault();onDragMove(e.touches[0].clientY)}},{passive:false})
   document.addEventListener('touchend',()=>{if(dragging)onDragEnd()})
 }
 
