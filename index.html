@@ -22,12 +22,14 @@ input,select,textarea{font-size:max(16px,1em)!important}
 
 /* ── Sign-in ── */
 #screen-signin{background:#f1f5f9}
-.signin-hero{background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);padding:20px 20px 16px;color:white;flex-shrink:0;text-align:center}
-.signin-hero .route-badge{display:inline-block;background:rgba(255,255,255,.1);border-radius:20px;padding:5px 14px;font-size:12px;color:#94a3b8;margin-bottom:8px}
-.signin-hero h2{font-size:18px;font-weight:800;margin-bottom:3px}
-.signin-hero p{font-size:12px;color:#94a3b8}
-.signin-info{display:flex;justify-content:center;gap:12px;margin-top:10px;flex-wrap:wrap}
-.signin-chip{font-size:12px;color:#60a5fa;background:rgba(96,165,250,.12);padding:4px 10px;border-radius:10px}
+.signin-hero{background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);padding:16px 16px 14px;color:white;flex-shrink:0}
+.signin-hero .route-badge{display:inline-block;background:rgba(255,255,255,.08);border-radius:20px;padding:3px 10px;font-size:10px;color:#64748b;margin-bottom:5px}
+.signin-hero h2{font-size:20px;font-weight:800;margin-bottom:2px}
+.signin-hero p{font-size:12px;color:#94a3b8;margin:0}
+.signin-info{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px}
+.signin-card-mini{background:rgba(255,255,255,.06);border-radius:8px;padding:7px 8px;text-align:center}
+.signin-card-mini-label{font-size:10px;color:#64748b;margin-bottom:2px}
+.signin-card-mini-val{font-size:11px;color:white;font-weight:700;line-height:1.3}
 .signin-body{flex:1;overflow-y:auto;padding:14px 16px}
 .signin-card{background:white;border-radius:14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:12px}
 .signin-card h3{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
@@ -55,7 +57,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .btn-signin{width:100%;padding:16px;background:#16a34a;color:white;border:none;border-radius:16px;font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(22,163,74,.3);margin-top:4px}
 .btn-signin:disabled{background:#94a3b8;box-shadow:none}
 /* ── Manual modal ── */
-.btn-manual{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#93c5fd;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px;transition:background .15s}
+.btn-manual{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#94a3b8;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;flex-shrink:0;white-space:nowrap}
 .btn-manual:active{background:rgba(255,255,255,.2)}
 #manual-modal{display:none;position:fixed;inset:0;z-index:9999;flex-direction:column;background:#0f172a}
 #manual-modal.open{display:flex}
@@ -308,15 +310,28 @@ input,select,textarea{font-size:max(16px,1em)!important}
 <!-- ══ Screen -1: Sign-in ══ -->
 <div id="screen-signin" class="screen">
   <div class="signin-hero">
-    <div class="route-badge">旅行時間調查</div>
-    <h2 id="si-route-name">載入任務中...</h2>
-    <p id="si-fromto"></p>
-    <div class="signin-info">
-      <span class="signin-chip" id="si-offpeak"></span>
-      <span class="signin-chip" id="si-peak"></span>
-      <span class="signin-chip" id="si-segs"></span>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div>
+        <div class="route-badge">旅行時間調查</div>
+        <h2 id="si-route-name">載入任務中...</h2>
+        <p id="si-fromto"></p>
+      </div>
+      <button class="btn-manual" onclick="openManual()">📖 說明</button>
     </div>
-    <button class="btn-manual" onclick="openManual()">📖 操作說明</button>
+    <div class="signin-info">
+      <div class="signin-card-mini">
+        <div class="signin-card-mini-label">離峰</div>
+        <div class="signin-card-mini-val" id="si-offpeak"></div>
+      </div>
+      <div class="signin-card-mini">
+        <div class="signin-card-mini-label">尖峰</div>
+        <div class="signin-card-mini-val" id="si-peak"></div>
+      </div>
+      <div class="signin-card-mini">
+        <div class="signin-card-mini-label">路段</div>
+        <div class="signin-card-mini-val" id="si-segs"></div>
+      </div>
+    </div>
   </div>
   <div class="signin-body">
 
@@ -1583,9 +1598,9 @@ function onCustomDateInput(val){
 function showSigninScreen(){
   $('si-route-name').textContent=config.routeName||'旅行時間調查'
   $('si-fromto').textContent=config.routeFromTo
-  $('si-offpeak').textContent='離峰 '+config.offPeakLabel
-  $('si-peak').textContent='尖峰 '+config.peakLabel
-  $('si-segs').textContent=config.segments.length+' 個路段'
+  $('si-offpeak').textContent=config.offPeakLabel
+  $('si-peak').textContent=config.peakLabel
+  $('si-segs').textContent=config.segments.length+' 段'
   $('si-seg-preview').innerHTML=config.segments.map((s,i)=>`
     <div class="seg-row"><div class="seg-dot"></div>
     <span style="flex:1;color:#1e293b;font-weight:600">${s.name}</span>
