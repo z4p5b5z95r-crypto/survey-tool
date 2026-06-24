@@ -71,6 +71,34 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .hist-modal-title{font-size:14px;font-weight:700;color:#1e293b}
 .hist-modal-close{background:#f1f5f9;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer;color:#64748b;display:flex;align-items:center;justify-content:center;font-family:inherit}
 .hist-modal-body{overflow-y:auto;-webkit-overflow-scrolling:touch}
+/* ── Help menu popup ── */
+#help-menu{display:none;position:fixed;z-index:4000;top:0;left:0;right:0;bottom:0}
+#help-menu.open{display:block}
+.help-menu-backdrop{position:absolute;inset:0}
+.help-menu-box{position:absolute;background:white;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.22);overflow:hidden;min-width:160px}
+.help-menu-item{display:flex;align-items:center;gap:10px;padding:14px 18px;font-size:14px;font-weight:600;color:#1e293b;cursor:pointer;border:none;background:none;width:100%;font-family:inherit;text-align:left}
+.help-menu-item:active{background:#f1f5f9}
+.help-menu-item+.help-menu-item{border-top:1px solid #f1f5f9}
+/* ── Device test modal ── */
+#devtest-modal{display:none;position:fixed;inset:0;z-index:4500;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.55)}
+#devtest-modal.open{display:flex}
+.devtest-box{background:white;border-radius:18px;width:100%;max-width:380px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.devtest-hdr{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;border-bottom:1px solid #f1f5f9}
+.devtest-hdr-title{font-size:15px;font-weight:800;color:#1e293b}
+.devtest-close{background:#f1f5f9;border:none;border-radius:50%;width:30px;height:30px;font-size:15px;cursor:pointer;color:#64748b;display:flex;align-items:center;justify-content:center;font-family:inherit}
+.devtest-body{padding:14px 16px;max-height:65vh;overflow-y:auto}
+.devtest-row{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #f8fafc}
+.devtest-row:last-child{border-bottom:none}
+.devtest-icon{font-size:18px;width:24px;text-align:center;flex-shrink:0;margin-top:1px}
+.devtest-info{flex:1;min-width:0}
+.devtest-name{font-size:13px;font-weight:700;color:#1e293b}
+.devtest-desc{font-size:12px;color:#64748b;margin-top:2px}
+.devtest-footer{padding:12px 16px;border-top:1px solid #f1f5f9}
+.devtest-summary{border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;text-align:center}
+.devtest-summary.pass{background:#f0fdf4;color:#15803d}
+.devtest-summary.warn{background:#fffbeb;color:#92400e}
+.devtest-summary.fail{background:#fef2f2;color:#991b1b}
+.devtest-spinner{text-align:center;padding:24px;color:#64748b;font-size:13px}
 #manual-modal{display:none;position:fixed;inset:0;z-index:9999;flex-direction:column;background:#0f172a}
 #manual-modal.open{display:flex}
 .manual-modal-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#1e293b;border-bottom:1px solid #334155;flex-shrink:0}
@@ -330,7 +358,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;padding-top:2px">
         <button class="btn-hist-rec" onclick="openHistModal()">📋 記錄</button>
-        <button class="btn-q-sq" onclick="openManual()">?</button>
+        <button class="btn-q-sq" id="btn-help-q" onclick="openHelpMenu(event)">?</button>
       </div>
     </div>
     <div class="signin-info">
@@ -742,7 +770,7 @@ let lastPos=null, clockTimer=null, elapsedSec=0
 // Delay
 let activeDelay=null, delayLog=[], _resumeAboveSpeedSince=null
 // Stop detection
-let _stopSince=null, _stopActive=false, _stopCdTimer=null, _stopCdVal=5, _stopEvent=null
+let _stopSince=null, _stopActive=false, _stopCdTimer=null, _stopCdVal=5, _stopEvent=null, _stopResumeSince=null
 
 // Nodes
 let nodeTimestamps=[], currentNodeIdx=0
@@ -1949,10 +1977,18 @@ function onPos(p){
       if(!activeDelay&&currentNodeIdx>0){
         const STOP_TH=5/3.6
         if(speed!=null&&speed<STOP_TH){
+          _stopResumeSince=null  // 低速時重置行車計時
           if(_stopSince===null) _stopSince=Date.now()
           else if(!_stopActive&&Date.now()-_stopSince>=3000) triggerStopDetection()
-        } else { _stopSince=null }
-      } else { _stopSince=null; }  // reset counter when not yet past node 1
+        } else {
+          _stopSince=null
+          // 面板顯示中車子重新行駛 > 5 km/h 持續 3 秒 → 自動縮回（同延滯自動解除邏輯）
+          if(_stopActive){
+            if(_stopResumeSince===null) _stopResumeSince=Date.now()
+            else if(Date.now()-_stopResumeSince>=3000) svyDismissStop()
+          } else { _stopResumeSince=null }
+        }
+      } else { _stopSince=null; _stopResumeSince=null; }  // reset when not yet past node 1
     }
   }
 }
@@ -2093,11 +2129,12 @@ function svyStopPickDelay(d, group){
   showToast(`⏱ ${d.icon} ${d.label} 計時中（含停等時間）`)
 }
 
-// Called when user taps "忽略" — no record, just collapse
+// Called when user taps "忽略", 4s timeout, or car resumes — no record, just collapse
 function svyDismissStop(){
   clearTimeout(_stopCdTimer)
   _stopActive=false
   _stopEvent=null
+  _stopResumeSince=null
   svyShowPanel('idle')
   svySheetCollapse()
   showToast('⊘ 已忽略，不記錄')
@@ -2392,7 +2429,7 @@ function startSurvey(){
   ROAD_DELAYS.forEach(d=>{cur.roadDelays[d.cause]=0})
   INT_DELAYS.forEach(d=>{cur.intDelays[d.cause]=0})
   delayLog=[];activeDelay=null;_resumeAboveSpeedSince=null;elapsedSec=0
-  _stopSince=null;_stopActive=false;_stopEvent=null
+  _stopSince=null;_stopActive=false;_stopEvent=null;_stopResumeSince=null
   const ep=$('end-survey-prompt');if(ep) ep.style.display='none'
   nodeTimestamps=[]   // will be filled when nodes are hit
   currentNodeIdx=0    // 0 = waiting for node 1
@@ -3590,6 +3627,31 @@ document.addEventListener('touchmove', e=>{
 },{passive:false})
 </script>
 
+<!-- ══ Help Menu Popup ══ -->
+<div id="help-menu">
+  <div class="help-menu-backdrop" onclick="closeHelpMenu()"></div>
+  <div class="help-menu-box" id="help-menu-box">
+    <button class="help-menu-item" onclick="closeHelpMenu();openManual()">📖 操作說明</button>
+    <button class="help-menu-item" onclick="closeHelpMenu();openDevTest()">🔬 測試設備</button>
+  </div>
+</div>
+
+<!-- ══ Device Test Modal ══ -->
+<div id="devtest-modal" onclick="if(event.target===this)closeDevTest()">
+  <div class="devtest-box">
+    <div class="devtest-hdr">
+      <span class="devtest-hdr-title">🔬 裝置相容性檢查</span>
+      <button class="devtest-close" onclick="closeDevTest()">✕</button>
+    </div>
+    <div class="devtest-body" id="devtest-body">
+      <div class="devtest-spinner">檢查中…</div>
+    </div>
+    <div class="devtest-footer" id="devtest-footer" style="display:none">
+      <div class="devtest-summary" id="devtest-summary"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ══ 操作說明 Modal ══ -->
 <div id="manual-modal">
   <div class="manual-modal-bar">
@@ -3599,6 +3661,159 @@ document.addEventListener('touchmove', e=>{
   <iframe id="manual-frame" src="manual_v2.html" title="操作說明"></iframe>
 </div>
 <script>
+// ── Help menu (? button) ──
+function openHelpMenu(e){
+  e.stopPropagation()
+  var menu=document.getElementById('help-menu')
+  var box=document.getElementById('help-menu-box')
+  var btn=document.getElementById('btn-help-q')
+  var r=btn.getBoundingClientRect()
+  // Position below-left of button
+  box.style.top=(r.bottom+6)+'px'
+  box.style.right=(window.innerWidth-r.right)+'px'
+  menu.classList.add('open')
+}
+function closeHelpMenu(){
+  document.getElementById('help-menu').classList.remove('open')
+}
+
+// ── Device test ──
+function openDevTest(){
+  var modal=document.getElementById('devtest-modal')
+  document.getElementById('devtest-body').innerHTML='<div class="devtest-spinner">檢查中…</div>'
+  document.getElementById('devtest-footer').style.display='none'
+  modal.classList.add('open')
+  runDeviceChecks()
+}
+function closeDevTest(){
+  document.getElementById('devtest-modal').classList.remove('open')
+}
+
+async function runDeviceChecks(){
+  var results=[]
+
+  // 1. HTTPS / secure context
+  var isSecure=location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'
+  results.push({
+    name:'安全連線（HTTPS）',
+    desc: isSecure?'目前使用安全連線，GPS 功能可正常使用':'請使用 https:// 連結，否則 GPS 無法授權',
+    status: isSecure?'pass':'fail',
+    required:true
+  })
+
+  // 2. Network online
+  results.push({
+    name:'網路連線',
+    desc: navigator.onLine?'網路連線正常':'目前離線，任務下載及資料上傳將失敗',
+    status: navigator.onLine?'pass':'fail',
+    required:true
+  })
+
+  // 3. Geolocation API
+  var hasGeo=!!navigator.geolocation
+  results.push({
+    name:'定位 API（Geolocation）',
+    desc: hasGeo?'瀏覽器支援定位功能':'此瀏覽器不支援定位，無法進行 GPS 監測',
+    status: hasGeo?'pass':'fail',
+    required:true
+  })
+
+  // 4. GPS permission & accuracy (async)
+  if(hasGeo){
+    var gpsResult=await new Promise(function(resolve){
+      var done=false
+      var timer=setTimeout(function(){
+        if(!done){done=true;resolve({status:'warn',desc:'定位逾時（可能尚未授權），請確認已允許位置存取'})}
+      },6000)
+      navigator.geolocation.getCurrentPosition(
+        function(p){
+          clearTimeout(timer);if(done)return;done=true
+          var acc=p.coords.accuracy
+          resolve({
+            status: acc<=30?'pass':'warn',
+            desc: acc<=30?'GPS 精度 ±'+Math.round(acc)+'m，符合監測需求':'GPS 精度 ±'+Math.round(acc)+'m，偏低（建議移至開闊處）'
+          })
+        },
+        function(err){
+          clearTimeout(timer);if(done)return;done=true
+          var msg=err.code===1?'位置存取遭拒，請至手機設定 → 瀏覽器 → 位置 → 允許':
+                  err.code===2?'無法取得位置，請移至開闊處':
+                  '定位逾時，請確認 GPS 已啟用'
+          resolve({status:'fail',desc:msg})
+        },
+        {timeout:5500,maximumAge:0,enableHighAccuracy:true}
+      )
+    })
+    results.push({name:'GPS 定位精度',desc:gpsResult.desc,status:gpsResult.status,required:true})
+  }
+
+  // 5. AudioContext (beep sounds)
+  var hasAudio=!!(window.AudioContext||window.webkitAudioContext)
+  results.push({
+    name:'音效（嗶聲提示）',
+    desc: hasAudio?'支援音效，節點通過與延滯偵測時有嗶聲提示':'不支援 AudioContext，將無嗶聲提示（功能仍可使用）',
+    status: hasAudio?'pass':'warn',
+    required:false
+  })
+
+  // 6. WakeLock (prevent screen sleep)
+  var hasWakeLock=!!navigator.wakeLock
+  results.push({
+    name:'螢幕喚醒鎖（WakeLock）',
+    desc: hasWakeLock?'支援喚醒鎖，調查期間螢幕不會自動關閉':'不支援喚醒鎖，建議手動設定螢幕常亮（設定 → 螢幕顯示）',
+    status: hasWakeLock?'pass':'warn',
+    required:false
+  })
+
+  // 7. DeviceMotion / DeviceOrientation (compass)
+  var hasMotion=!!(window.DeviceMotionEvent||window.DeviceOrientationEvent)
+  results.push({
+    name:'動作感應（指南針）',
+    desc: hasMotion?'支援動作感應，地圖可顯示行進方向':'不支援動作感應，地圖將使用 GPS 方位角代替（影響輕微）',
+    status: hasMotion?'pass':'warn',
+    required:false
+  })
+
+  // 8. Vibration
+  var hasVib=!!navigator.vibrate
+  results.push({
+    name:'震動回饋',
+    desc: hasVib?'支援震動，節點記錄時有震動回饋':'不支援震動（iOS Safari 限制），功能正常可用',
+    status: hasVib?'pass':'warn',
+    required:false
+  })
+
+  // Render
+  var iconMap={pass:'✅',warn:'⚠️',fail:'❌'}
+  var failCount=results.filter(function(r){return r.status==='fail'}).length
+  var warnCount=results.filter(function(r){return r.status==='warn'}).length
+
+  var html=results.map(function(r){
+    return '<div class="devtest-row">'
+      +'<span class="devtest-icon">'+iconMap[r.status]+'</span>'
+      +'<div class="devtest-info">'
+      +'<div class="devtest-name">'+r.name+(r.required?' <span style="font-size:10px;color:#94a3b8">必要</span>':'')+'</div>'
+      +'<div class="devtest-desc">'+r.desc+'</div>'
+      +'</div></div>'
+  }).join('')
+
+  document.getElementById('devtest-body').innerHTML=html
+
+  var summaryEl=document.getElementById('devtest-summary')
+  var footerEl=document.getElementById('devtest-footer')
+  footerEl.style.display='block'
+  if(failCount>0){
+    summaryEl.className='devtest-summary fail'
+    summaryEl.textContent='❌ 發現 '+failCount+' 項必要功能不符合，無法正常監測'
+  } else if(warnCount>0){
+    summaryEl.className='devtest-summary warn'
+    summaryEl.textContent='⚠️ 裝置基本符合需求，'+warnCount+' 項選配功能受限'
+  } else {
+    summaryEl.className='devtest-summary pass'
+    summaryEl.textContent='✅ 裝置完全符合監測需求，可出發'
+  }
+}
+
 function openManual(){
   document.getElementById('manual-modal').classList.add('open')
   // lazy-load: set src only on first open
