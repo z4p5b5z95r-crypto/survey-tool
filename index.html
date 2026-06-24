@@ -3753,7 +3753,7 @@ async function runDeviceChecks(){
   // 需要使用者確認是否聽到 → 先插入「待確認」狀態
   _devResults.push({id:'audio',name:'音效（嗶聲提示）',required:false,
     status:'pending',
-    desc:'已播放測試音，請確認是否聽到',
+    desc:'已播放測試音，請確認是否聽到（未聽到請先確認靜音模式已關閉）',
     audioOk:audioOk})
   renderDevResults()
 
@@ -3869,7 +3869,7 @@ function renderDevResults(){
       +'<span class="devtest-icon">'+(isChecking?'<span style="display:inline-block;animation:spin 1s linear infinite">🔄</span>':iconMap[r.status]||'🔄')+'</span>'
       +'<div class="devtest-info">'
       +'<div class="devtest-name">'+r.name+(r.required?' <span style="font-size:10px;color:#ef4444;font-weight:700">必要</span>':'')+'</div>'
-      +'<div class="devtest-desc">'+r.desc+'</div>'
+      +'<div class="devtest-desc">'+r.desc.replace(/\n/g,'<br>')+'</div>'
       +(isAudioPending?
         '<div style="display:flex;gap:8px;margin-top:8px">'
         +'<button onclick="devAudioConfirm(true)" style="flex:1;padding:7px;border-radius:8px;border:none;background:#dcfce7;color:#15803d;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">✓ 聽到了</button>'
@@ -3885,8 +3885,19 @@ function renderDevResults(){
 function devAudioConfirm(heard){
   var idx=_devResults.findIndex(function(r){return r.id==='audio'})
   if(idx<0) return
-  _devResults[idx].status=heard?'pass':'fail'
-  _devResults[idx].desc=heard?'音效正常，使用者確認聽到嗶聲':'未聽到聲音 — 請確認手機音量已調高且非靜音模式'
+  var r=_devResults[idx]
+  if(heard){
+    r.status='pass'
+    r.desc='音效正常，確認聽到嗶聲'
+  } else if(r.audioOk){
+    // AudioContext 成功播放但沒聽到 → 幾乎確定是靜音模式或音量為零
+    r.status='fail'
+    r.desc='🔇 未聽到聲音。AudioContext 已正常播放，最可能原因是：\n① 靜音模式已開啟（查看手機左側橘色小開關，向上撥即可關閉）\n② 媒體音量為零（按音量鍵調高）\n請關閉靜音並調高音量後，點「🔁 重播」再確認。'
+  } else {
+    // AudioContext 根本沒播出來
+    r.status='fail'
+    r.desc='音效播放失敗，AudioContext 無法啟動 — 請確認瀏覽器未封鎖音訊，重新整理頁面後再試'
+  }
   renderDevResults()
   updateDevSummary()
 }
