@@ -3864,6 +3864,7 @@ function renderDevResults(){
   if(!_devResults.length){body.innerHTML='<div class="devtest-spinner">檢查中…</div>';return}
   var html=_devResults.map(function(r){
     var isAudioPending=(r.id==='audio'&&r.status==='pending')
+    var isAudioFail=(r.id==='audio'&&r.status==='fail')
     var isChecking=(r.status==='checking')
     return '<div class="devtest-row" id="devrow-'+r.id+'">'
       +'<span class="devtest-icon">'+(isChecking?'<span style="display:inline-block;animation:spin 1s linear infinite">🔄</span>':iconMap[r.status]||'🔄')+'</span>'
@@ -3875,6 +3876,10 @@ function renderDevResults(){
         +'<button onclick="devAudioConfirm(true)" style="flex:1;padding:7px;border-radius:8px;border:none;background:#dcfce7;color:#15803d;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">✓ 聽到了</button>'
         +'<button onclick="devAudioConfirm(false)" style="flex:1;padding:7px;border-radius:8px;border:none;background:#fee2e2;color:#b91c1c;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">✗ 沒聽到</button>'
         +'<button onclick="devAudioReplay()" style="padding:7px 10px;border-radius:8px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:12px;cursor:pointer;font-family:inherit">🔁 重播</button>'
+        +'</div>'
+        : isAudioFail?
+        '<div style="display:flex;gap:8px;margin-top:8px">'
+        +'<button onclick="devAudioReplayAndReset()" style="padding:7px 14px;border-radius:8px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:12px;cursor:pointer;font-family:inherit">🔁 重播並重新確認</button>'
         +'</div>'
         :'')
       +'</div></div>'
@@ -3892,7 +3897,7 @@ function devAudioConfirm(heard){
   } else if(r.audioOk){
     // AudioContext 成功播放但沒聽到 → 幾乎確定是靜音模式或音量為零
     r.status='fail'
-    r.desc='🔇 未聽到聲音。AudioContext 已正常播放，最可能原因是：\n① 靜音模式已開啟（查看手機左側橘色小開關，向上撥即可關閉）\n② 媒體音量為零（按音量鍵調高）\n請關閉靜音並調高音量後，點「🔁 重播」再確認。'
+    r.desc='🔇 未聽到聲音。AudioContext 已正常播放，最可能原因是：\n① 裝置靜音模式已開啟，請關閉靜音\n② 媒體音量過低，請調高音量\n修正後點「🔁 重播並重新確認」再試。'
   } else {
     // AudioContext 根本沒播出來
     r.status='fail'
@@ -3908,6 +3913,16 @@ function devAudioReplay(){
     if(ctx.state==='suspended') ctx.resume().then(function(){ playTestBeep(ctx) })
     else playTestBeep(ctx)
   }catch(e){}
+}
+function devAudioReplayAndReset(){
+  // 重播並把狀態回到 pending，讓使用者重新確認
+  var idx=_devResults.findIndex(function(r){return r.id==='audio'})
+  if(idx<0) return
+  _devResults[idx].status='pending'
+  _devResults[idx].desc='已播放測試音，請確認是否聽到（未聽到請先確認靜音模式已關閉）'
+  devAudioReplay()
+  renderDevResults()
+  updateDevSummary()
 }
 function playTestBeep(ctx){
   var t=ctx.currentTime
