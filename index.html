@@ -59,13 +59,18 @@ input,select,textarea{font-size:max(16px,1em)!important}
 /* ── Manual modal ── */
 .btn-manual{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#94a3b8;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;flex-shrink:0;white-space:nowrap}
 .btn-manual:active{background:rgba(255,255,255,.2)}
-/* ── Hero three-dot menu ── */
-.hero-menu-wrap{position:relative;flex-shrink:0}
-.btn-dots{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#94a3b8;border-radius:50%;width:32px;height:32px;font-size:18px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;line-height:1;letter-spacing:-.5px;padding:0 0 2px;transition:background .15s}
-.btn-dots:active{background:rgba(255,255,255,.2)}
-.hero-dropdown{position:absolute;right:0;top:38px;background:#1e293b;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:5px;min-width:110px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,.4)}
-.hero-dropdown button{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;background:transparent;border:none;color:#e2e8f0;font-size:12px;font-weight:600;cursor:pointer;border-radius:6px;font-family:inherit;white-space:nowrap;text-align:left}
-.hero-dropdown button:active{background:rgba(255,255,255,.08)}
+/* ── Hero action buttons ── */
+.btn-hist-rec{background:white;border:none;color:#1e293b;border-radius:8px;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;transition:opacity .15s}
+.btn-hist-rec:active{opacity:.75}
+.btn-q-sq{background:white;border:none;color:#1e293b;border-radius:8px;width:30px;height:30px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:opacity .15s}
+.btn-q-sq:active{opacity:.75}
+/* ── History modal ── */
+.hist-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:3000;align-items:center;justify-content:center;padding:20px}
+.hist-modal{background:white;border-radius:16px;width:100%;max-width:400px;max-height:72vh;display:flex;flex-direction:column;overflow:hidden}
+.hist-modal-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 12px;border-bottom:1px solid #f1f5f9;flex-shrink:0}
+.hist-modal-title{font-size:14px;font-weight:700;color:#1e293b}
+.hist-modal-close{background:#f1f5f9;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer;color:#64748b;display:flex;align-items:center;justify-content:center;font-family:inherit}
+.hist-modal-body{overflow-y:auto;-webkit-overflow-scrolling:touch}
 #manual-modal{display:none;position:fixed;inset:0;z-index:9999;flex-direction:column;background:#0f172a}
 #manual-modal.open{display:flex}
 .manual-modal-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#1e293b;border-bottom:1px solid #334155;flex-shrink:0}
@@ -323,12 +328,9 @@ input,select,textarea{font-size:max(16px,1em)!important}
         <h2 id="si-route-name">載入任務中...</h2>
         <p id="si-fromto"></p>
       </div>
-      <div class="hero-menu-wrap" id="hero-menu-wrap">
-        <button class="btn-dots" onclick="toggleHeroMenu(event)" aria-label="更多選項">⋯</button>
-        <div class="hero-dropdown" id="hero-dropdown" style="display:none">
-          <button onclick="heroMenuHist()">📋 過去記錄</button>
-          <button onclick="heroMenuManual()">📖 操作說明</button>
-        </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;padding-top:2px">
+        <button class="btn-hist-rec" onclick="openHistModal()">📋 記錄</button>
+        <button class="btn-q-sq" onclick="openManual()">?</button>
       </div>
     </div>
     <div class="signin-info">
@@ -399,14 +401,6 @@ input,select,textarea{font-size:max(16px,1em)!important}
     <button class="btn-signin" id="btn-signin" disabled onclick="startFromQR()">
       ✓ 確認開始調查
     </button>
-    <!-- ── History section (moved here from screen-ready) ── -->
-    <div id="history-section" style="display:none;margin-top:12px;margin-bottom:16px">
-      <button id="hist-toggle-btn" onclick="toggleHistory()"
-        style="width:100%;padding:10px 14px;background:white;border:1px solid #e2e8f0;border-radius:10px;color:#475569;font-size:13px;font-weight:600;cursor:pointer;text-align:left">
-        📋 過去調查記錄 <span id="hist-count-badge" style="color:#2563eb"></span>
-      </button>
-      <div id="history-list" data-open="0" style="display:none;margin-top:6px;max-height:360px;overflow-y:auto"></div>
-    </div>
   </div>
 </div>
 
@@ -674,6 +668,17 @@ input,select,textarea{font-size:max(16px,1em)!important}
       </div>
       <div id="official-forms"></div>
     </div>
+  </div>
+</div>
+
+<!-- ── History modal ── -->
+<div id="hist-modal" class="hist-modal-overlay" style="display:none" onclick="if(event.target===this)closeHistModal()">
+  <div class="hist-modal">
+    <div class="hist-modal-hdr">
+      <span class="hist-modal-title">📋 過去調查記錄</span>
+      <button class="hist-modal-close" onclick="closeHistModal()">✕</button>
+    </div>
+    <div class="hist-modal-body" id="hist-modal-list"></div>
   </div>
 </div>
 
@@ -1108,7 +1113,7 @@ async function loadCloudHistory(){
     const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey})
     const res=await fetch(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(10000)})
     const json=await res.json()
-    if(json.ok){ _histCache=json.data; renderHistory(); syncChipsFromCloudHistory() }
+    if(json.ok){ _histCache=json.data; renderHistory(); renderHistModal(); syncChipsFromCloudHistory() }
     else{ console.error('[history] GAS error:', json.error) }
   }catch(e){ console.error('[history] fetch error:', e.message) }
 }
@@ -1227,31 +1232,41 @@ function viewHistoryReport(idx){
   }
 }
 
-// ── Hero three-dot menu ──
-function toggleHeroMenu(e){
-  if(e) e.stopPropagation()
-  const d=document.getElementById('hero-dropdown')
-  if(!d) return
-  d.style.display=d.style.display==='none'?'block':'none'
+// ── History modal ──
+function openHistModal(){
+  const m=document.getElementById('hist-modal'); if(!m) return
+  m.style.display='flex'
+  renderHistModal()
+  loadCloudHistory()
 }
-function heroMenuHist(){
-  const d=document.getElementById('hero-dropdown'); if(d) d.style.display='none'
-  // Open history list if not already open
-  const listEl=document.getElementById('history-list')
-  if(listEl&&listEl.dataset.open!=='1') toggleHistory()
-  // Scroll to history section
-  const section=document.getElementById('history-section')
-  if(section) setTimeout(()=>section.scrollIntoView({behavior:'smooth',block:'start'}),80)
+function closeHistModal(){
+  const m=document.getElementById('hist-modal'); if(m) m.style.display='none'
 }
-function heroMenuManual(){
-  const d=document.getElementById('hero-dropdown'); if(d) d.style.display='none'
-  openManual()
+function renderHistModal(){
+  const box=document.getElementById('hist-modal-list'); if(!box) return
+  const grouped=groupHistoryByDate(getHistory())
+  if(!grouped.length){
+    box.innerHTML='<p style="text-align:center;color:#94a3b8;padding:28px 0;font-size:13px">尚無歷史記錄</p>'
+    return
+  }
+  const CZH={off_peak_bound:'離峰去',off_peak_return:'離峰回',peak_bound:'尖峰去',peak_return:'尖峰回'}
+  const WZH={sunny:'☀️',cloudy:'☁️',rainy:'🌧️'}
+  box.innerHTML=grouped.map((g,i)=>{
+    const chips=Object.entries(g.trips||{}).map(([k,t])=>
+      `<span style="background:#eff6ff;color:#1d4ed8;padding:2px 7px;border-radius:5px;font-size:10px;white-space:nowrap">${CZH[k]||k} ${fmtTime(t.travelS)}</span>`
+    ).join('')
+    return `<div style="padding:10px 14px;border-bottom:1px solid #f8fafc;display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div style="min-width:0">
+        <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:5px">${WZH[g.weather]||''} ${g.date} · ${g.surveyors.join('、')}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div>
+      </div>
+      <button onclick="closeHistModal();viewHistoryReport(${i})"
+        style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
+        📊 查看
+      </button>
+    </div>`
+  }).join('')
 }
-document.addEventListener('click',function(e){
-  const wrap=document.getElementById('hero-menu-wrap')
-  if(!wrap||wrap.contains(e.target)) return
-  const d=document.getElementById('hero-dropdown'); if(d) d.style.display='none'
-})
 
 function toggleHistory(){
   const listEl=document.getElementById('history-list')
