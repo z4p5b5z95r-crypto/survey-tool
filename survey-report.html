@@ -1226,8 +1226,25 @@ function downloadSGSPdf(){
   }
 
   const off = route.offPeakLabel||'離峰', pk = route.peakLabel||'尖峰'
-  const segs = route.segments||[], TL = route.totalLength||0
+  const rawSegs = route.segments||[], TL = route.totalLength||0
   const nodes = route.nodes||[]
+  // Merge segments that pass through ghost nodes (gh:true) for display in summary tables
+  const segs=(function(){
+    if(!nodes.some(n=>n.gh)) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
+    const out=[]; let i=0
+    while(i<rawSegs.length){
+      let eIdx=i+1; const idxs=[i]
+      while(eIdx<nodes.length-1&&nodes[eIdx]?.gh){idxs.push(eIdx);eIdx++}
+      const totalLen=idxs.reduce((a,j)=>a+(rawSegs[j]?.length||0),0)
+      const merged=Object.assign({},rawSegs[i],{_origIdx:idxs})
+      if(idxs.length>1){
+        merged.name=(nodes[i]?.exitName||nodes[i]?.name||'')+'→'+(nodes[eIdx]?.name||'')
+        merged.length=totalLen
+      }
+      out.push(merged); i=eIdx
+    }
+    return out
+  })()
   const startN = nodes[0]?.name||'起點', endN = nodes[nodes.length-1]?.name||'終點'
   const boundDir = startN+'至'+endN, retDir = endN+'至'+startN
 
@@ -1480,8 +1497,9 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
     let totTv=[0,0,0,0], totRv=[0,0,0,0], totLen=0
     let rows = ''
     segs.forEach((seg,i)=>{
-      const tv = T4.map(t=>t?.segTimes?.[i]?.travelS||0)
-      const rv = T4.map(t=>t?.segTimes?.[i]?.runS||0)
+      const origIdxs=seg._origIdx||[i]
+      const tv=T4.map(t=>origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0))
+      const rv=T4.map(t=>origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0))
       tv.forEach((v,j)=>{ totTv[j]+=v })
       rv.forEach((v,j)=>{ totRv[j]+=v })
       totLen += seg.length||0
@@ -1516,8 +1534,9 @@ ${rows}</table>`
     segs.forEach((seg,i)=>{
       const L = seg.length||0
       totLen += L
-      const tv = T4.map(t=>_spd(L,t?.segTimes?.[i]?.travelS))
-      const rv = T4.map(t=>_spd(L,t?.segTimes?.[i]?.runS))
+      const origIdxs=seg._origIdx||[i]
+      const tv=T4.map(t=>_spd(L,origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)))
+      const rv=T4.map(t=>_spd(L,origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)))
       const firstCol = i===0
         ? `<td rowspan="${ns+1}" class="sr-vert">${(route.routeName||startN+'到'+endN).replace(/延滯調查$/,'')}</td>`
         : ''
@@ -1544,7 +1563,7 @@ ${rows}</table>`
   function buildTripPage(sv, si, trip){
     const isReturn = trip.direction==='return'
     const isPeak   = trip.peakType==='peak'
-    const segOrd   = isReturn ? [...segs].reverse() : segs
+    const segOrd   = isReturn ? [...rawSegs].reverse() : rawSegs
     const nodeTs   = trip.nodeTimestamps||[]
     const times    = trip.segTimes||[]
     const rd = trip.roadDelays||{}, id = trip.intDelays||{}
@@ -1580,7 +1599,7 @@ ${rows}</table>`
     const segRows = segOrd.map((seg,i)=>{
       const arrTs = nodeTs[i+1] || (i===segOrd.length-1 ? trip.endTime : null)
       const [nH,nM,nS] = _hms(arrTs)
-      const segIdx = isReturn ? (segs.length - 1 - i) : i
+      const segIdx = isReturn ? (rawSegs.length - 1 - i) : i
       const t = times[segIdx]||{}
       const sd = segD[i]
       const _d = v => (v&&v!==0)?v:''
