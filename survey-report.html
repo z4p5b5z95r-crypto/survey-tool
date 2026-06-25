@@ -1624,26 +1624,24 @@ ${rows}</table>`
 </table>
 
 <!-- Upper summary table: 15 cols -->
-<table class="ft">
+<table class="ft" style="margin-bottom:0">
 <colgroup>
-  <col style="width:14%"><col style="width:12%"><col style="width:7%">
-  <col style="width:5%"><col style="width:5%"><col style="width:5%">
-  <col style="width:5%"><col style="width:5%"><col style="width:5%">
-  <col style="width:8%"><col style="width:8%"><col style="width:6%"><col style="width:6%">
-  <col style="width:7.5%"><col style="width:7.5%">
+  <col style="width:10%"><col style="width:10%">
+  <col style="width:9%"><col style="width:6%">
+  <col style="width:4.5%"><col style="width:4.5%"><col style="width:4.5%">
+  <col style="width:4.5%"><col style="width:4.5%"><col style="width:4.5%">
+  <col style="width:7%"><col style="width:7%"><col style="width:5.5%"><col style="width:5.5%">
+  <col style="width:7%"><col style="width:7%">
 </colgroup>
 <tr class="ft-h">
-  <td>路</td>
-  <td>線</td>
-  <td></td>
-  <td colspan="3" style="letter-spacing:4px">時</td>
-  <td colspan="3" style="letter-spacing:4px">刻</td>
+  <td colspan="4" style="letter-spacing:4px">路　　　線</td>
+  <td colspan="6" style="letter-spacing:4px">時　　　刻</td>
   <td colspan="4">總旅行時間(秒)及百分比</td>
   <td rowspan="2" style="font-size:7pt">總旅行速率<br>(公里/時)</td>
   <td rowspan="2" style="font-size:7pt">總行駛速率<br>(公里/時)</td>
 </tr>
 <tr class="ft-h">
-  <td style="font-size:7pt">起點位置</td>
+  <td colspan="2" style="font-size:7pt">起點位置</td>
   <td style="font-size:7pt">終點位置</td>
   <td style="font-size:7pt">距離(公尺)</td>
   <td colspan="3" style="letter-spacing:2px">起　點</td>
@@ -1654,7 +1652,7 @@ ${rows}</table>`
   <td style="font-size:7pt">行　駛<br>時　間</td>
 </tr>
 <tr>
-  <td class="ft-la" rowspan="2">${startN2}</td>
+  <td class="ft-la" colspan="2" rowspan="2">${startN2}</td>
   <td class="ft-la" rowspan="2">${endN2}</td>
   <td rowspan="2">${TL}</td>
   <td>時</td><td>分</td><td>秒</td>
@@ -1673,7 +1671,7 @@ ${rows}</table>`
 </table>
 
 <!-- Lower detail table: 22 cols -->
-<table class="ft">
+<table class="ft" style="margin-top:-1px">
 <colgroup>
   <col style="width:14%">
   <col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%">
@@ -1682,17 +1680,21 @@ ${rows}</table>`
   <col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%">
 </colgroup>
 <tr class="ft-h">
-  <td rowspan="2" style="font-size:8pt">經過路口</td>
+  <td rowspan="3" style="font-size:8pt">經過路口</td>
   <td colspan="3" rowspan="2" style="font-size:7.5pt">經過時刻</td>
-  <td colspan="6" style="font-size:7.5pt">路　段　中</td>
-  <td colspan="7" style="font-size:7.5pt">交　叉　口</td>
-  <td rowspan="2" style="font-size:6.5pt">旅行<br>時間<br>(秒)</td>
-  <td rowspan="2" style="font-size:6.5pt">距離<br>(公尺)</td>
-  <td rowspan="2" style="font-size:6.5pt">行駛<br>時間<br>(秒)</td>
-  <td rowspan="2" style="font-size:6.5pt">旅行<br>速率</td>
-  <td rowspan="2" style="font-size:6.5pt">行駛<br>速率</td>
+  <td colspan="13" style="font-size:7.5pt;letter-spacing:6px">延　滯　時　間（秒）</td>
+  <td rowspan="3" style="font-size:6.5pt">旅行<br>時間<br>(秒)</td>
+  <td rowspan="3" style="font-size:6.5pt">距離<br>(公尺)</td>
+  <td rowspan="3" style="font-size:6.5pt">行駛<br>時間<br>(秒)</td>
+  <td rowspan="3" style="font-size:6.5pt">旅行<br>速率</td>
+  <td rowspan="3" style="font-size:6.5pt">行駛<br>速率</td>
 </tr>
 <tr class="ft-h">
+  <td colspan="6" style="font-size:7.5pt">路　段　中</td>
+  <td colspan="7" style="font-size:7.5pt">交　叉　口</td>
+</tr>
+<tr class="ft-h">
+  <td style="font-size:6pt">時</td><td style="font-size:6pt">分</td><td style="font-size:6pt">秒</td>
   <td style="font-size:6pt">阻塞</td><td style="font-size:6pt">公車<br>停靠</td>
   <td style="font-size:6pt">計程<br>車靠</td><td style="font-size:6pt">路邊<br>停車</td>
   <td style="font-size:6pt">行人<br>穿越</td><td style="font-size:6pt">其他</td>
@@ -1707,26 +1709,26 @@ ${segRows}${emptyRows}
   <td colspan="3" class="ft-sum" style="font-size:7pt">小計</td>
   ${ROAD_C.map(c=>`<td class="ft-sum">${rd[c]||0}</td>`).join('')}
   ${INT_C.map(c=>`<td class="ft-sum">${id[c]||0}</td>`).join('')}
-  <td colspan="5"></td>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
 </tr>
 <tr>
   <td colspan="3" class="ft-sum" style="font-size:7pt">合計</td>
   <td colspan="6" class="ft-sum">${roadT}</td>
   <td colspan="7" class="ft-sum">${intT}</td>
-  <td colspan="5"></td>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
 </tr>
 <tr>
   <td rowspan="2" class="ft-la ft-sum" style="font-size:7pt">延滯時間<br>百分比</td>
   <td colspan="3" class="ft-sum" style="font-size:7pt">小計</td>
   ${ROAD_C.map(c=>`<td class="ft-sum" style="font-size:6.5pt">${_pct(rd[c],trip.travelS)}%</td>`).join('')}
   ${INT_C.map(c=>`<td class="ft-sum" style="font-size:6.5pt">${_pct(id[c],trip.travelS)}%</td>`).join('')}
-  <td colspan="5"></td>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
 </tr>
 <tr>
   <td colspan="3" class="ft-sum" style="font-size:7pt">合計</td>
   <td colspan="6" class="ft-sum" style="font-size:7pt">${_pct(roadT,trip.travelS)}%</td>
   <td colspan="7" class="ft-sum" style="font-size:7pt">${_pct(intT,trip.travelS)}%</td>
-  <td colspan="5"></td>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
 </tr>
 </table></div>`
   }
