@@ -1442,7 +1442,7 @@ async function refreshSegment(segIdx) {
   if(segIdx<0||segIdx>=nodes.length-1) return
   if(segPolylines[segIdx]){map.removeLayer(segPolylines[segIdx]);segPolylines[segIdx]=null}
   const n1=nodes[segIdx],n2=nodes[segIdx+1],wps=segData[segIdx]?.waypoints||[]
-  const mode=segData[segIdx]?.mode||'foot'
+  const mode=segData[segIdx]?.mode||'driving'
   const result=await fetchRoute(n1.lat,n1.lng,n2.lat,n2.lng,wps,mode)
   segPolylines[segIdx]=L.polyline(result.latlngs,{color:'#3b82f6',weight:4,opacity:.85}).addTo(map)
   if(!segData[segIdx])segData[segIdx]={name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]}
@@ -1596,7 +1596,7 @@ async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle
         <div style="display:flex;gap:4px">
           ${['foot','driving','straight'].map(m=>{
             const lbl={foot:'🚶 步行',driving:'🚗 開車',straight:'➖ 直線'}[m]
-            const on=(segData[i]?.mode||'foot')===m
+            const on=(segData[i]?.mode||'driving')===m
             return `<button onclick="setSegMode(${i},'${m}')" style="flex:1;font-size:10px;padding:4px 0;border:1.5px solid ${on?'#3b82f6':'#e2e8f0'};background:${on?'#eff6ff':'white'};color:${on?'#1d4ed8':'#374151'};border-radius:6px;cursor:pointer;font-family:inherit;font-weight:${on?700:400}">${lbl}</button>`
           }).join('')}
         </div>
@@ -1609,8 +1609,9 @@ async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle
     // Real node popup
     // Compute real node number (skip ghosts)
     let realNum=0; for(let j=0;j<=i;j++){if(!nodes[j]?._ghost)realNum++}
-    const actionRow=`<div style="display:flex;gap:6px"><button class="node-popup-save" onclick="focusSidebarNode(${i});map.closePopup()" style="flex:1">✏️ 改名</button><button class="node-popup-del" onclick="popupDelete(${i})">🗑</button></div>`
-    this.bindPopup(`<div style="min-width:160px"><div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px">節點 ${realNum}：${n.name}</div><div style="font-size:11px;color:#64748b;margin-bottom:8px">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}<br>📡 觸發範圍 ${n.radius||15}m</div>${modeRow}${actionRow}</div>`,{maxWidth:220}).openPopup()
+    const escapedName=n.name.replace(/"/g,'&quot;')
+    const actionRow=`<div style="display:flex;gap:6px;margin-top:8px"><button class="node-popup-save" onclick="popupSaveNode(${i})" style="flex:1">💾 儲存</button><button class="node-popup-del" onclick="popupDelete(${i})">🗑</button></div>`
+    this.bindPopup(`<div style="min-width:180px"><div style="font-size:11px;font-weight:600;color:#94a3b8;margin-bottom:6px">節點 ${realNum}</div><input id="popup-name-${i}" class="node-popup-name" value="${escapedName}" placeholder="節點名稱" onkeydown="if(event.key==='Enter')popupSaveNode(${i})"/><div style="font-size:11px;color:#64748b;margin-bottom:8px">${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}<br>📡 觸發範圍 ${n.radius||15}m</div>${modeRow}${actionRow}</div>`,{maxWidth:240}).openPopup()
   })
   marker.on('drag',function(){
     const i=nodeMarkers.indexOf(this),latlng=this.getLatLng(); if(i<0) return
@@ -1632,7 +1633,7 @@ async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle
   if(idx>0){
     const prev=nodes[idx-1]; document.getElementById('route-loading').style.display='block'
     const preWps=segData[idx-1]?.waypoints||[]
-    const preMode=segData[idx-1]?.mode||'foot'
+    const preMode=segData[idx-1]?.mode||'driving'
     const savedLatlngs=segData[idx-1]?._latlngs
     let result
     if(savedLatlngs&&savedLatlngs.length>=2){
@@ -1671,6 +1672,17 @@ window.focusSidebarNode = function(i) {
   setTimeout(()=>{el.focus();el.select()},200)
 }
 window.popupDelete = async function(i) { map.closePopup(); await removeNode(i) }
+window.popupSaveNode = function(i) {
+  const inp=document.getElementById(`popup-name-${i}`)
+  if(!inp||!nodes[i]) return
+  const newName=inp.value.trim()
+  if(!newName) return
+  pushHistory()
+  nodes[i].name=newName
+  map.closePopup()
+  renderNodeList(); renderSegTable(); updateAllIcons()
+  toast('✅ 節點已更名')
+}
 
 // ════════════════════════════════════════════════════════
 //  REMOVE NODE
@@ -1840,7 +1852,7 @@ function renderNodeList() {
     const nameClass=displayName?'':'empty'
     const chevronD=expanded?'M18 15 L12 9 L6 15':'M6 9 L12 15 L18 9'
     const chevronColor=expanded?'#3b82f6':'#cbd5e1'
-    const segMode=(!isLast&&segData[i])?segData[i].mode||'foot':segData[i]?.mode||'foot'
+    const segMode=(!isLast&&segData[i])?segData[i].mode||'driving':segData[i]?.mode||'driving'
     const modeLabel=segMode==='driving'?'🚗 開車':segMode==='straight'?'📏 直線':'🚶 步行'
     const modeBg=segMode==='driving'?'#dbeafe':segMode==='straight'?'#fef9c3':'#f0fdf4'
     const modeColor=segMode==='driving'?'#1d4ed8':segMode==='straight'?'#92400e':'#15803d'
@@ -1852,7 +1864,7 @@ function renderNodeList() {
       <input class="node-name-inp" id="nexitname-${i}" value="${(n.exitName||'').replace(/"/g,'&quot;')}"
         onkeydown="if(event.key==='Enter'){saveNode(${i});this.blur()}" placeholder="轉彎時才填"/>
       <div class="node-field-label" style="margin-top:8px">此節點→下一節點 路由模式</div>
-      <button onclick="toggleSegMode(${i})" style="padding:5px 13px;background:${modeBg};color:${modeColor};border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">${modeLabel}（點擊切換）</button>`:``}
+      <div style="display:flex;gap:4px">${['foot','driving','straight'].map(m=>{const lbl={foot:'🚶 步行',driving:'🚗 開車',straight:'➖ 直線'}[m];const on=segMode===m;return`<button onclick="setSegMode(${i},'${m}')" style="flex:1;font-size:11px;padding:4px 0;border:1.5px solid ${on?'#3b82f6':'#e2e8f0'};background:${on?'#eff6ff':'white'};color:${on?'#1d4ed8':'#374151'};border-radius:6px;cursor:pointer;font-family:inherit;font-weight:${on?700:400}">${lbl}</button>`}).join('')}</div>`:``}
       <input type="hidden" id="nangle-${i}" value="${n.lineAngle!=null?Math.round(n.lineAngle):''}"/>
       <div class="node-card-actions">
         <button onclick="saveNode(${i})" style="display:flex;align-items:center;gap:4px;padding:5px 13px;background:#dbeafe;color:#1d4ed8;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">
@@ -1887,8 +1899,8 @@ window.saveNodeName=window.saveNode
 window.toggleSegMode=function(i){
   if(!segData[i]) return
   pushHistory()
-  const cur=segData[i].mode||'foot'
-  segData[i].mode = cur==='foot'?'driving':cur==='driving'?'straight':'foot'
+  const cur=segData[i].mode||'driving'
+  segData[i].mode = cur==='driving'?'foot':cur==='foot'?'straight':'driving'
   renderNodeList()
   refreshSegment(i)
 }
@@ -2085,7 +2097,7 @@ function buildConfig() {
     op:document.getElementById('op').value.trim()||'14:00~16:00',
     pk:document.getElementById('pk').value.trim()||'17:00~19:00',
     nd:nodes.map(n=>({n:n.name,n2:n.exitName||'',a:parseFloat(n.lat.toFixed(6)),o:parseFloat(n.lng.toFixed(6)),r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n._ghost||false})),
-    sg:segData.map((s,i)=>{const obj={n:s.name,l:s.lanes||2,w:s.width||8,d:s.length||0};if(s.waypoints?.length)obj.wp=s.waypoints.map(w=>({a:+w.lat.toFixed(6),o:+w.lng.toFixed(6)}));if(s.mode&&s.mode!=='foot')obj.m=s.mode;let ll=s._latlngs;if(!ll&&s._latlngsStr){try{ll=JSON.parse(s._latlngsStr)}catch{}}if(!ll){const poly=segPolylines[i];if(poly){const pts=poly.getLatLngs();ll=Array.isArray(pts[0])?pts.map(p=>[+p[0].toFixed(6),+p[1].toFixed(6)]):pts.map(p=>[+p.lat.toFixed(6),+p.lng.toFixed(6)])}}if(ll?.length>=2)obj.ll=ll;return obj})
+    sg:segData.map((s,i)=>{const obj={n:s.name,l:s.lanes||2,w:s.width||8,d:s.length||0};if(s.waypoints?.length)obj.wp=s.waypoints.map(w=>({a:+w.lat.toFixed(6),o:+w.lng.toFixed(6)}));if(s.mode&&s.mode!=='driving')obj.m=s.mode;let ll=s._latlngs;if(!ll&&s._latlngsStr){try{ll=JSON.parse(s._latlngsStr)}catch{}}if(!ll){const poly=segPolylines[i];if(poly){const pts=poly.getLatLngs();ll=Array.isArray(pts[0])?pts.map(p=>[+p[0].toFixed(6),+p[1].toFixed(6)]):pts.map(p=>[+p.lat.toFixed(6),+p.lng.toFixed(6)])}}if(ll?.length>=2)obj.ll=ll;return obj})
   }
 }
 function encodeConfig(cfg) { return btoa(unescape(encodeURIComponent(JSON.stringify(cfg)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'') }
@@ -2144,7 +2156,7 @@ async function saveTask() {
   if(gsUrl&&gsKey){
     toast('⏳ 同步至雲端...')
     try{
-      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'foot'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
+      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
       const result=await cloudPost(payload)
       const taskIdx=savedTasks.findIndex(t=>t.id===id)
       if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
@@ -2184,7 +2196,7 @@ async function uploadTask(id) {
       peakLabel:    cfg.pk,
       owner:        task.creator || getCurrentUser() || '',
       nodes:    cfg.nd.map(n => ({ name:n.n, exitName:n.n2||'', lat:n.a, lng:n.o, radius:n.r, polygon:n.pg||null, lineAngle:n.la??null, lineLength:n.ll||20, ghost:n.gh||false })),
-      segments: cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'foot'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})
+      segments: cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})
     }
     const result = await cloudPost(payload)
     const idx = savedTasks.findIndex(t => t.id === id)
@@ -2231,7 +2243,7 @@ async function loadTask(id) {
   radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   nodes=[]
-  segData=cfg.sg?cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:false,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o})),mode:s.m||'foot',_latlngs:s.ll||null})):[]
+  segData=cfg.sg?cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:false,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o})),mode:s.m||'driving',_latlngs:s.ll||null})):[]
   console.log('[load] segments with latlngs:',segData.filter(s=>s._latlngs?.length>=2).length,'/',segData.length,segData.map(s=>s._latlngs?.length||0),'lengths:',segData.map(s=>s.length||0),'total:',segData.reduce((a,s)=>a+(s.length||0),0))
   _loadingTask=true
   if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||20,n.gh||false)}
@@ -2329,13 +2341,13 @@ async function syncFromCloud() {
         // 路線已在本機：用雲端資料更新（名稱、路段等可能已在其他裝置修改）
         const loc=savedTasks[existIdx]
         if(loc.creator!==me){loc.creator=me;changed++}
-        const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='foot')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
+        const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
         if(JSON.stringify(loc.cfg)!==JSON.stringify(newCfg)){loc.cfg=newCfg;changed++}
         continue
       }
       // 不在本機：只匯入屬於自己的
       if(!isMine) continue
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='foot')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
       changed++
     }
     // 移除本機有 cloudId 但雲端已不存在的項目（刪除同步）
