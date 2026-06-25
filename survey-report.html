@@ -1228,46 +1228,37 @@ function downloadSGSPdf(){
   const off = route.offPeakLabel||'離峰', pk = route.peakLabel||'尖峰'
   const rawSegs = route.segments||[], TL = route.totalLength||0
   const nodes = route.nodes||[]
-  // Merge segments that pass through ghost nodes for display in summary tables.
-  // Two detection methods (both applied together):
-  //   A. node metadata: nodes[i].ghost || nodes[i].gh
-  //   B. segment name pattern: "X→節點N" followed by "節點N→Y" — the intermediate
-  //      node is a ghost placeholder inserted for route-direction change only.
+  // Build ghost node index set.
+  // Primary: route.ghostNodeIndices (explicit DB field saved by GAS since 2026-06).
+  // Fallback A: nodes[i].ghost / nodes[i].gh metadata.
+  // Fallback B: segment name pattern "X→節點N" + "節點N→Y".
   const segs=(function(){
-    const _isGhostNode=n=>!!(n?.ghost||n?.gh)
-    // Build a Set of intermediate node names that look like ghost nodes (from metadata or name pattern)
-    const ghostNames=new Set()
-    nodes.forEach(n=>{ if(_isGhostNode(n)&&n.name) ghostNames.add(n.name.trim()) })
-    // Also detect by name pattern across consecutive segments
+    const ghostIdxSet=new Set(route.ghostNodeIndices||[])
+    // Fallback A
+    nodes.forEach((n,i)=>{ if(n?.ghost||n?.gh) ghostIdxSet.add(i) })
+    // Fallback B — segment k goes nodes[k]→nodes[k+1]; if boundary node name matches /^節點\d/ treat as ghost
     for(let k=0;k<rawSegs.length-1;k++){
       const aEnd=(rawSegs[k].name||'').split('→').pop()?.trim()||''
       const bStart=(rawSegs[k+1].name||'').split('→')[0]?.trim()||''
-      // A node is ghost-like if it matches between two segments AND looks auto-named ("節點N")
-      if(aEnd&&bStart&&aEnd===bStart&&/^節點\d/.test(aEnd)) ghostNames.add(aEnd)
+      if(aEnd&&bStart&&aEnd===bStart&&/^節點\d/.test(aEnd)) ghostIdxSet.add(k+1)
     }
-    if(!ghostNames.size) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
-    // Merge consecutive segments whose internal boundary is a ghost node
+    if(!ghostIdxSet.size) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
+    // Merge: rawSegs[i] connects nodes[i]→nodes[i+1].
+    // If nodes[i+1] is ghost, rawSegs[i] and rawSegs[i+1] must be merged.
     const out=[]; let i=0
     while(i<rawSegs.length){
       const idxs=[i]
-      // Check if the end of this segment is a ghost node (shared with start of next)
-      while(i+idxs.length<rawSegs.length){
-        const cur=rawSegs[i+idxs.length-1]
-        const nxt=rawSegs[i+idxs.length]
-        const curEnd=(cur.name||'').split('→').pop()?.trim()||''
-        const nxtStart=(nxt.name||'').split('→')[0]?.trim()||''
-        if(curEnd&&nxtStart&&curEnd===nxtStart&&ghostNames.has(curEnd)){
-          idxs.push(i+idxs.length)
-        } else break
+      // nodes[i+1] is the boundary after rawSegs[i]; if ghost, keep absorbing
+      while(i+idxs.length<rawSegs.length && ghostIdxSet.has(i+idxs.length)){
+        idxs.push(i+idxs.length)
       }
-      const totalLen=idxs.reduce((a,j)=>a+(rawSegs[j]?.length||0),0)
       const merged=Object.assign({},rawSegs[i],{_origIdx:idxs})
       if(idxs.length>1){
         const startName=(rawSegs[i].name||'').split('→')[0]?.trim()||''
         const lastSeg=rawSegs[i+idxs.length-1]
         const endName=(lastSeg.name||'').split('→').pop()?.trim()||''
         merged.name=startName+'→'+endName
-        merged.length=totalLen
+        merged.length=idxs.reduce((a,j)=>a+(rawSegs[j]?.length||0),0)
       }
       out.push(merged); i+=idxs.length
     }
