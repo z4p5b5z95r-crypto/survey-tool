@@ -240,6 +240,7 @@ td:first-child{text-align:left;font-weight:500}
       <p style="font-size:13px;color:#64748b;margin:8px 0 20px">依據「主次要幹道行駛時間及延滯調查表」格式產出報告</p>
       <button class="dl-btn green" onclick="downloadSGS()">📥 下載 SGS Excel (.xlsx)</button>
       <button class="dl-btn blue" onclick="downloadCSV()">📄 下載原始數據 (.csv)</button>
+      <button class="dl-btn red" onclick="downloadSGSPdf()">🖨️ 下載 SGS PDF</button>
       <div class="dl-note" style="margin-top:20px">
         <b>SGS Excel 包含：</b><br>
         ・行駛速率統計表（各路段旅行時間 / 行駛時間 / 速率）<br>
@@ -1252,6 +1253,635 @@ function downloadCSV(){
     a.download = `${route.routeName}_原始數據.csv`
     a.click()
   })
+}
+
+
+// ════════════════ SGS PDF PRINT ════════════════
+function downloadSGSPdf(){
+  if(!route||!surveys.length){ alert('尚無資料'); return }
+
+  const ROAD_C = ['congestion','bus_stop','taxi_stop','parking','ped_cross','road_other']
+  const ROAD_L = ['阻　塞','公車停靠','計程車停靠','路邊停靠','行人穿越','其　他']
+  const INT_C  = ['red_light','left_same','left_opp','right_turn','cross_veh','ped_int','int_other']
+  const INT_L  = ['紅　燈','左轉同向','左轉對向','右　轉','橫越車輛','行　人','其　他']
+
+  function _hms(ts){
+    if(!ts) return ['','','']
+    const d = new Date(ts)
+    if(isNaN(d.getTime())) return ['','','']
+    const s = d.toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,
+      hour:'2-digit',minute:'2-digit',second:'2-digit'})
+    return s.split(':').map(Number)
+  }
+  function _spd(lenM,tS){ return (!lenM||!tS||tS<=0)?'':((lenM/1000)/(tS/3600)).toFixed(1) }
+  function _pct(v,t,d=0){
+    if(!t||t<=0) return '0'
+    const r=(v||0)/t*100
+    return d ? r.toFixed(d) : Math.round(r).toString()
+  }
+  function _n(v){ return (v!==undefined&&v!==null&&v!=='')? v : '' }
+  function _weather(w){
+    if(!w) return ''
+    const m={
+      'sunny':'晴','clear':'晴','fine':'晴','sunny partly cloudy':'晴時多雲',
+      'cloudy':'陰','overcast':'陰','partly cloudy':'多雲','mostly cloudy':'多雲',
+      'rain':'雨','rainy':'雨','shower':'雨','light rain':'小雨','heavy rain':'大雨',
+      '晴':'晴','陰':'陰','雨':'雨','多雲':'多雲'
+    }
+    return m[(w||'').toLowerCase()] || w
+  }
+
+  const off = route.offPeakLabel||'離峰', pk = route.peakLabel||'尖峰'
+  const rawSegs = route.segments||[], TL = route.totalLength||0
+  const nodes = route.nodes||[]
+  // DEBUG — remove after confirming merge works
+  console.log('[SGS DEBUG] rawSegs names:', rawSegs.map((s,i)=>`[${i}] ${s.name} len=${s.length}`))
+  console.log('[SGS DEBUG] nodes:', nodes.map((n,i)=>`[${i}] ${n.name} ghost=${n.ghost} gh=${n.gh}`))
+  console.log('[SGS DEBUG] ghostNodeIndices:', route.ghostNodeIndices)
+  // Build ghost node index set.
+  // Primary: route.ghostNodeIndices (explicit DB field saved by GAS since 2026-06).
+  // Fallback A: nodes[i].ghost / nodes[i].gh metadata.
+  // Fallback B: segment name pattern "X→節點N" + "節點N→Y".
+  const segs=(function(){
+    const ghostIdxSet=new Set(route.ghostNodeIndices||[])
+    // Fallback A
+    nodes.forEach((n,i)=>{ if(n?.ghost||n?.gh) ghostIdxSet.add(i) })
+    // Fallback B — if rawSegs[k].name starts with "節點N", nodes[k] is the ghost node.
+    // (pm.html renames seg[k-1] to the merged auto-name, so endpoint matching fails;
+    //  the ghost node's name survives only as the *start* of the outgoing segment.)
+    for(let k=1;k<rawSegs.length;k++){
+      const segStart=(rawSegs[k].name||'').split('→')[0]?.trim()||''
+      if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
+    }
+    console.log('[SGS DEBUG] ghostIdxSet:', [...ghostIdxSet])
+    if(!ghostIdxSet.size) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
+    // Merge: rawSegs[i] connects nodes[i]→nodes[i+1].
+    // If nodes[i+1] is ghost, rawSegs[i] and rawSegs[i+1] must be merged.
+    const out=[]; let i=0
+    while(i<rawSegs.length){
+      const idxs=[i]
+      // nodes[i+1] is the boundary after rawSegs[i]; if ghost, keep absorbing
+      while(i+idxs.length<rawSegs.length && ghostIdxSet.has(i+idxs.length)){
+        idxs.push(i+idxs.length)
+      }
+      const merged=Object.assign({},rawSegs[i],{_origIdx:idxs})
+      if(idxs.length>1){
+        const startName=(rawSegs[i].name||'').split('→')[0]?.trim()||''
+        const lastSeg=rawSegs[i+idxs.length-1]
+        const endName=(lastSeg.name||'').split('→').pop()?.trim()||''
+        merged.name=startName+'→'+endName
+        merged.length=idxs.reduce((a,j)=>a+(rawSegs[j]?.length||0),0)
+      }
+      out.push(merged); i+=idxs.length
+    }
+    return out
+  })()
+  const startN = nodes[0]?.name||'起點', endN = nodes[nodes.length-1]?.name||'終點'
+  const boundDir = startN+'至'+endN, retDir = endN+'至'+startN
+
+  const OB = avgTrips?.off_peak_bound, OR_ = avgTrips?.off_peak_return
+  const PB = avgTrips?.peak_bound,     PR  = avgTrips?.peak_return
+  const T4 = [OB, OR_, PB, PR]
+
+  const dates     = [...new Set(surveys.map(s=>s.date||'').filter(Boolean))].join('、')
+  const weathers  = [...new Set(surveys.map(s=>_weather(s.weather||'')).filter(Boolean))].join('、')
+  const surveyors = [...new Set(surveys.map(s=>s.surveyor||'').filter(Boolean))].join('、')
+
+  // ── SGS Logo (base64 embedded) ───────────────────────────────────────────
+  const SGS_SVG = `<img src="data:image/png;base64,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" style="height:56px;display:block;flex-shrink:0">`
+
+  // ── CSS ──────────────────────────────────────────────────────────────────
+  const CSS = `
+/* Named pages — margin:0 suppresses browser default headers/footers */
+@page portrait-p { size: A4 portrait;  margin: 0 }
+@page landscape-p{ size: A4 landscape; margin: 0 }
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#000;font-size:8.5pt}
+
+/* summary pages → portrait (padding compensates for margin:0) */
+.pg{page:portrait-p;page-break-after:always;padding:10mm}
+/* trip pages → landscape */
+.pg-land{page:landscape-p;page-break-after:always;padding:8mm}
+.pg:last-child,.pg-land:last-child{page-break-after:auto}
+
+/* ── Summary tables (延滯統計表 etc.) ── */
+.pg-title{font-size:14pt;font-weight:700;text-align:center;margin:0 0 6px;letter-spacing:2px}
+.pg-info{font-size:9pt;line-height:1.9;margin-bottom:5px}
+.pi-row{display:flex;justify-content:space-between}
+.s{width:100%;border-collapse:collapse;font-size:9pt}
+.s td,.s th{border:1px solid #000;padding:2px 4px;vertical-align:middle;text-align:center}
+.s-vert{text-align:center;font-size:9pt;width:20px;line-height:1.3;
+  letter-spacing:1px;vertical-align:middle}
+.s-sub{font-size:9pt}
+.s-unit{width:20px;font-size:8pt}
+.s-lbl{text-align:left!important;font-size:9pt}
+.s-bold{font-weight:700}
+.s-l{text-align:left!important}
+
+.seg-s{width:100%;border-collapse:collapse;font-size:9pt}
+.seg-s td,.seg-s th{border:1px solid #000;padding:2px 4px;vertical-align:middle;text-align:center}
+.seg-s .s-h{background:#1e3a5f;color:white;font-weight:700}
+.seg-s .s-l{text-align:left!important;font-weight:600}
+.seg-s .s-hl{font-weight:700}
+
+/* ── 各路段統計表（參考格式） ── */
+.seg-r{width:100%;border-collapse:collapse;font-size:8pt;table-layout:fixed}
+.seg-r td{border:1px solid #000;padding:1px 3px;vertical-align:middle;text-align:center;overflow:hidden}
+.sr-vhdr{writing-mode:vertical-rl;text-orientation:mixed;white-space:nowrap;font-size:7.5pt;padding:4px 0}
+.sr-vert{writing-mode:vertical-rl;text-orientation:mixed;font-size:7.5pt;padding:2px 0}
+.sr-val{color:#c00;font-weight:700}
+.sr-len{font-weight:700}
+.sr-sl{text-align:left!important;padding-left:5px!important;white-space:nowrap}
+.sr-tot{font-weight:700}
+.sr-mc{padding:0;height:1px;overflow:hidden}
+.sr-mc-in{display:flex;flex-direction:column;justify-content:space-between;height:100%;min-height:90px;padding:2px 3px;overflow:hidden}
+.s-title{font-size:11pt;font-weight:700;text-align:center;border:none!important;padding:4px 0!important}
+.s-tot td{font-weight:700}
+
+/* ── Per-trip SGS form ── */
+.trip-hdr{display:flex;align-items:flex-start;gap:10px;margin-bottom:4px}
+.trip-title{flex:1;text-align:center;font-size:12pt;font-weight:700;letter-spacing:3px;padding-top:3px}
+.trip-info{width:100%;border-collapse:collapse;font-size:8.5pt;margin-bottom:3px}
+.trip-info td{padding:1px 4px;border:none;white-space:nowrap}
+.trip-info .ti-r{color:#cc0000;font-weight:700}
+.ft{width:100%;border-collapse:collapse;font-size:7.5pt;margin-bottom:2px}
+.ft td{border:1px solid #000;padding:1px 2px;vertical-align:middle;text-align:center;white-space:nowrap}
+.ft-h{font-size:7.5pt}
+.ft-la{text-align:left!important}
+.ft-bl{color:#1144cc;font-weight:700}
+.ft-bk{font-size:10pt;font-weight:700}
+.ft-sum{background:#f4f4f4;font-weight:700}
+
+.pdf-btn{position:fixed;top:10px;right:10px;padding:9px 18px;background:#1e293b;color:white;
+  border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;z-index:999}
+@media print{.pdf-btn{display:none}}
+`
+
+  // ── 延滯統計表 ─────────────────────────────────────────────────────────
+  function buildDelayPage(mode){
+    const isSec = mode==='sec'
+    const unit  = isSec ? '秒' : '%'
+    const title = isSec ? '延滯統計表' : '延滯統計表(續)'
+
+    const D4 = (fn) => T4.map(t=>`<td>${_n(fn(t))}</td>`).join('')
+    const dv = (t, grp, c) => {
+      const v = grp==='int' ? (t?.intDelays?.[c]||0) : (t?.roadDelays?.[c]||0)
+      return isSec ? v : _pct(v, t?.travelS, 1)
+    }
+    const subRoad = t => isSec ? _n(t?.roadTotalS) : _pct(t?.roadTotalS, t?.travelS, 1)
+    const subInt  = t => isSec ? _n(t?.intTotalS)  : _pct(t?.intTotalS,  t?.travelS, 1)
+    const tot     = t => { const v=(t?.roadTotalS||0)+(t?.intTotalS||0); return isSec?v:_pct(v,t?.travelS,1) }
+
+    return `<div class="pg">
+<h2 class="pg-title">${title}</h2>
+<div class="pg-info">
+  <div class="pi-row">
+    <span>路　　　名${route.routeName||''}</span>
+    <span>日　　期：${dates}</span>
+  </div>
+  <div class="pi-row">
+    <span>起迄點位置${route.routeFromTo||route.routeName||''}</span>
+    <span>天　　氣：${weathers}</span>
+  </div>
+  <div class="pi-row">
+    <span>全　　　長 ${TL}　公尺</span>
+    <span>調　查　員：${surveyors}</span>
+  </div>
+</div>
+<table class="s">
+<colgroup>
+  <col style="width:20px"><col style="width:20px"><col style="width:88px">
+  <col><col><col><col>
+</colgroup>
+<tr>
+  <td colspan="3" rowspan="2" style="letter-spacing:3px">調　查　時　間</td>
+  <td colspan="2">離峰時間</td>
+  <td colspan="2">下午尖峰時間</td>
+</tr>
+<tr>
+  <td colspan="2">${off}</td>
+  <td colspan="2">${pk}</td>
+</tr>
+<tr>
+  <td colspan="3" style="letter-spacing:5px">方　　　向</td>
+  <td>${boundDir.replace('至','<br>至<br>')}</td>
+  <td>${retDir.replace('至','<br>至<br>')}</td>
+  <td>${boundDir.replace('至','<br>至<br>')}</td>
+  <td>${retDir.replace('至','<br>至<br>')}</td>
+</tr>
+<tr>
+  <td colspan="3">平均總旅行速率(公里/時)</td>
+  ${D4(t=>_spd(TL,t?.travelS))}
+</tr>
+<tr>
+  <td colspan="3">平均總行駛速率(公里/時)</td>
+  ${D4(t=>_spd(TL,t?.runS))}
+</tr>
+<tr>
+  <td rowspan="7" class="s-vert">總<br>旅<br>行<br>時<br>間</td>
+  <td rowspan="2" class="s-sub">行駛時間</td>
+  <td class="s-unit">秒</td>${D4(t=>_n(t?.runS))}
+</tr>
+<tr><td class="s-unit">%</td>${D4(t=>_pct(t?.runS,t?.travelS,1))}</tr>
+<tr>
+  <td rowspan="2" class="s-sub">路段延滯</td>
+  <td class="s-unit">秒</td>${D4(t=>_n(t?.roadTotalS))}
+</tr>
+<tr><td class="s-unit">%</td>${D4(t=>_pct(t?.roadTotalS,t?.travelS,1))}</tr>
+<tr>
+  <td rowspan="2" class="s-sub">交叉口延滯</td>
+  <td class="s-unit">秒</td>${D4(t=>_n(t?.intTotalS))}
+</tr>
+<tr><td class="s-unit">%</td>${D4(t=>_pct(t?.intTotalS,t?.travelS,1))}</tr>
+<tr>
+  <td colspan="2">合計(秒)</td>${D4(t=>_n(t?.travelS))}
+</tr>
+<tr>
+  <td rowspan="16" class="s-vert">總<br>延<br>滯<br>時<br>間</td>
+  <td rowspan="7" class="s-vert">路<br>段<br>延<br>滯</td>
+  <td class="s-lbl">${ROAD_L[0]}(${unit})</td>${D4(t=>dv(t,'road',ROAD_C[0]))}
+</tr>
+${ROAD_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${ROAD_L[i+1]}(${unit})</td>${D4(t=>dv(t,'road',c))}</tr>`).join('')}
+<tr><td class="s-lbl s-bold">小　　計(${unit})</td>${D4(subRoad)}</tr>
+<tr>
+  <td rowspan="8" class="s-vert">交<br>叉<br>口<br>延<br>滯</td>
+  <td class="s-lbl">${INT_L[0]}(${unit})</td>${D4(t=>dv(t,'int',INT_C[0]))}
+</tr>
+${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${D4(t=>dv(t,'int',c))}</tr>`).join('')}
+<tr><td class="s-lbl s-bold">小　　計(${unit})</td>${D4(subInt)}</tr>
+<tr><td colspan="2" class="s-bold">合計(${unit})</td>${D4(tot)}</tr>
+</table></div>`
+  }
+
+  // ── helpers for reference-format seg tables ─────────────────────────────
+  function _segTableHeader(titleMain, unitLabel){
+    const offl = route.offPeakTime || off
+    const pkl  = route.peakTime  || pk
+    const bd = `${startN}<br>至<br>${endN}`
+    const rd = `${endN}<br>至<br>${startN}`
+    return `
+<colgroup>
+  <col style="width:18px"><col style="width:22%">
+  <col style="width:26px"><col style="width:26px"><col style="width:34px">
+  <col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:7%">
+  <col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:7%">
+</colgroup>
+<tr>
+  <td rowspan="5" class="sr-mc">
+    <div class="sr-mc-in" style="align-items:center">
+      <span style="font-size:8.5pt">路</span>
+      <span style="font-size:8.5pt">名</span>
+    </div>
+  </td>
+  <td rowspan="5" class="sr-mc">
+    <div class="sr-mc-in">
+      <span style="flex:1;display:flex;align-items:center;justify-content:center;letter-spacing:4px;font-size:9pt">位　　置</span>
+      <span style="text-align:left;font-size:8pt;white-space:nowrap">${route.routeName||''}</span>
+    </div>
+  </td>
+  <td rowspan="5" class="sr-vhdr">車道數</td>
+  <td rowspan="5" class="sr-vhdr">路寬(m)</td>
+  <td rowspan="5" class="sr-vhdr">路段長度(m)</td>
+  <td colspan="4" style="font-weight:700">${titleMain}(秒)</td>
+  <td colspan="4" style="font-weight:700">${unitLabel}(秒)</td>
+</tr>
+<tr>
+  <td colspan="2">離峰時間</td><td colspan="2">下午尖峰時間</td>
+  <td colspan="2">離峰時間</td><td colspan="2">下午尖峰時間</td>
+</tr>
+<tr>
+  <td colspan="2" style="font-size:7.5pt">${offl}</td>
+  <td colspan="2" style="font-size:7.5pt">${pkl}</td>
+  <td colspan="2" style="font-size:7.5pt">${offl}</td>
+  <td colspan="2" style="font-size:7.5pt">${pkl}</td>
+</tr>
+<tr>
+  <td rowspan="2" style="font-size:7.5pt">${bd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${rd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${bd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${rd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${bd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${rd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${bd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${rd}</td>
+</tr>
+<tr></tr>`
+  }
+
+  function _segDateInfo(){
+    return `<div style="display:flex;align-items:flex-start;margin-bottom:5px;font-size:8.5pt">
+  <div style="display:flex;flex-direction:column;margin-right:2px">
+    <span style="color:#c00;font-weight:700;line-height:1.8">日</span>
+    <span style="color:#c00;font-weight:700;line-height:1.8">天</span>
+  </div>
+  <div style="display:flex;flex-direction:column">
+    <span style="line-height:1.8"><span style="color:#c00;font-weight:700">期：</span><span style="color:#c00">${dates}</span></span>
+    <span style="line-height:1.8"><span style="color:#c00;font-weight:700">氣：</span><span style="color:#c00">${weathers}</span></span>
+  </div>
+</div>`
+  }
+
+  // ── 各路段平均旅行時間及行駛時間統計表 ───────────────────────────────────
+  function buildSegTimePage(){
+    const ns = segs.length
+    const _v = v => v ? `<td class="sr-val">${v}</td>` : '<td></td>'
+    let totTv=[0,0,0,0], totRv=[0,0,0,0], totLen=0
+    let rows = ''
+    segs.forEach((seg,i)=>{
+      const origIdxs=seg._origIdx||[i]
+      const tv=T4.map(t=>origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0))
+      const rv=T4.map(t=>origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0))
+      tv.forEach((v,j)=>{ totTv[j]+=v })
+      rv.forEach((v,j)=>{ totRv[j]+=v })
+      totLen += seg.length||0
+      const firstCol = i===0
+        ? `<td rowspan="${ns+1}" class="sr-vert">${(route.routeName||startN+'到'+endN).replace(/延滯調查$/,'')}</td>`
+        : ''
+      rows += `<tr>
+        ${firstCol}
+        <td class="sr-sl">${seg.name||''}</td>
+        <td>${seg.lanes||''}</td><td>${seg.width||''}</td>
+        <td class="sr-len">${seg.length||''}</td>
+        ${tv.map(_v).join('')}${rv.map(_v).join('')}
+      </tr>`
+    })
+    rows += `<tr class="sr-tot">
+      <td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
+      ${totTv.map(v=>`<td>${v||''}</td>`).join('')}
+      ${totRv.map(v=>`<td>${v||''}</td>`).join('')}
+    </tr>`
+    return `<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px">各路段平均旅行時間及平均行駛時間統計表</div>
+${_segDateInfo()}
+<table class="seg-r">${_segTableHeader('平均旅行時間','平均行駛時間')}
+${rows}</table>`
+  }
+
+  // ── 各路段平均旅行速率及行駛速率統計表 ─────────────────────────────────
+  function buildSegSpdPage(){
+    const ns = segs.length
+    const _v = v => v ? `<td class="sr-val">${v}</td>` : '<td></td>'
+    let totLen=0
+    let rows = ''
+    segs.forEach((seg,i)=>{
+      const L = seg.length||0
+      totLen += L
+      const origIdxs=seg._origIdx||[i]
+      const tv=T4.map(t=>_spd(L,origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)))
+      const rv=T4.map(t=>_spd(L,origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)))
+      const firstCol = i===0
+        ? `<td rowspan="${ns+1}" class="sr-vert">${(route.routeName||startN+'到'+endN).replace(/延滯調查$/,'')}</td>`
+        : ''
+      rows += `<tr>
+        ${firstCol}
+        <td class="sr-sl">${seg.name||''}</td>
+        <td>${seg.lanes||''}</td><td>${seg.width||''}</td>
+        <td class="sr-len">${L||''}</td>
+        ${tv.map(_v).join('')}${rv.map(_v).join('')}
+      </tr>`
+    })
+    rows += `<tr class="sr-tot">
+      <td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
+      ${T4.map(t=>`<td>${_spd(totLen,t?.travelS)||''}</td>`).join('')}
+      ${T4.map(t=>`<td>${_spd(totLen,t?.runS)||''}</td>`).join('')}
+    </tr>`
+    return `<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px;margin-top:14px">各路段平均旅行速率及平均行駛速率統計表（公里/時）</div>
+${_segDateInfo()}
+<table class="seg-r">${_segTableHeader('平均旅行速率','平均行駛速率')}
+${rows}</table>`
+  }
+
+  // ── Per-trip SGS form (橫A4) ──────────────────────────────────────────────
+  function buildTripPage(sv, si, trip){
+    const isReturn = trip.direction==='return'
+    const isPeak   = trip.peakType==='peak'
+    const segOrd   = isReturn ? [...rawSegs].reverse() : rawSegs
+    const nodeTs   = trip.nodeTimestamps||[]
+    const times    = trip.segTimes||[]
+    const rd = trip.roadDelays||{}, id = trip.intDelays||{}
+    const roadT = trip.roadTotalS||0, intT = trip.intTotalS||0
+
+    const [sH,sM,sS] = _hms(trip.startTime)
+    const [eH,eM,eS] = _hms(trip.endTime)
+
+    const nodeOrd  = isReturn ? [...nodes].reverse() : nodes
+    const startN2  = nodeOrd[0]?.name||'起點'
+    const endN2    = nodeOrd[nodeOrd.length-1]?.name||'終點'
+    const tSpd = _spd(TL, trip.travelS)
+    const rSpd = _spd(TL, trip.runS)
+
+    // Per-segment delay breakdown from delayLog (same logic as survey-report.html)
+    // nodeTimestamps are always in chronological trip order; segOrd[i] ↔ [nodeTs[i], nodeTs[i+1]]
+    const segD = segOrd.map((_,i)=>{
+      const t0 = nodeTs[i]   ? new Date(nodeTs[i])   : (i===0                  ? new Date(trip.startTime||0) : null)
+      const t1 = nodeTs[i+1] ? new Date(nodeTs[i+1]) : (i===segOrd.length-1   ? new Date(trip.endTime||0)   : null)
+      const r = {}; ;[...ROAD_C,...INT_C].forEach(c=>r[c]=0)
+      if(trip.delayLog&&t0&&t1){
+        trip.delayLog.forEach(dl=>{
+          const ds=new Date(dl.startedAt)
+          if(ds>=t0&&ds<t1&&r[dl.cause]!==undefined) r[dl.cause]+=dl.durationS||0
+        })
+      }
+      return r
+    })
+
+    // Segment rows (22 cols each)
+    // nodeTs[i+1] = arrival time at end of segOrd[i] (chronological, works for both directions)
+    // segIdx: segTimes stored in route order, so reverse-index for return trips
+    const segRows = segOrd.map((seg,i)=>{
+      const arrTs = nodeTs[i+1] || (i===segOrd.length-1 ? trip.endTime : null)
+      const [nH,nM,nS] = _hms(arrTs)
+      const segIdx = isReturn ? (rawSegs.length - 1 - i) : i
+      const t = times[segIdx]||{}
+      const sd = segD[i]
+      const _d = v => (v&&v!==0)?v:''
+      return `<tr>
+        <td class="ft-la">${seg.name||''}</td>
+        <td class="ft-bl">${_n(nH)}</td><td class="ft-bl">${_n(nM)}</td><td class="ft-bl">${_n(nS)}</td>
+        ${ROAD_C.map(c=>`<td>${_d(sd[c])}</td>`).join('')}
+        ${INT_C.map(c=>`<td>${_d(sd[c])}</td>`).join('')}
+        <td>${_n(t.travelS)}</td><td>${_n(seg.length)}</td><td>${_n(t.runS)}</td>
+        <td>${_spd(seg.length,t.travelS)}</td><td>${_spd(seg.length,t.runS)}</td>
+      </tr>`
+    }).join('')
+
+    // Fill empty rows up to 8 total segment rows
+    const blankRow = '<tr>' + '<td style="height:14px"></td>'.repeat(22) + '</tr>'
+    const emptyRows = Array(Math.max(0, 8 - segOrd.length)).fill(blankRow).join('')
+
+    return `<div class="pg-land">
+<div class="trip-hdr">
+  <div>${SGS_SVG}</div>
+  <div class="trip-title">主次要幹道行駛時間及延滯調查表</div>
+</div>
+<table class="trip-info">
+<colgroup><col style="width:58%"><col style="width:42%"></colgroup>
+<tr>
+  <td>站　　名：　${route.routeName||''}</td>
+  <td style="text-align:right">日　　期：　<span class="ti-r">${sv.date||''}</span></td>
+</tr>
+<tr>
+  <td>旅次編號：　${si+1}</td>
+  <td></td>
+</tr>
+<tr>
+  <td>方向往：　　${isReturn?'□':'■'} 去　　　${isReturn?'■':'□'} 回</td>
+  <td style="text-align:right">天　　氣：　${_weather(sv.weather)}</td>
+</tr>
+<tr>
+  <td>時　　間：　${isPeak?'□':'■'} 離峰（${off}）　　　${isPeak?'■':'□'} 尖峰（${pk}）</td>
+  <td style="text-align:right">調查員：　<span style="text-decoration:underline">${sv.surveyor||''}</span></td>
+</tr>
+</table>
+
+<!-- Upper summary table: 15 cols -->
+<table class="ft" style="margin-bottom:0">
+<colgroup>
+  <col style="width:10%"><col style="width:10%">
+  <col style="width:9%"><col style="width:6%">
+  <col style="width:4.5%"><col style="width:4.5%"><col style="width:4.5%">
+  <col style="width:4.5%"><col style="width:4.5%"><col style="width:4.5%">
+  <col style="width:7%"><col style="width:7%"><col style="width:5.5%"><col style="width:5.5%">
+  <col style="width:7%"><col style="width:7%">
+</colgroup>
+<tr class="ft-h">
+  <td colspan="4" style="letter-spacing:4px">路　　　線</td>
+  <td colspan="6" style="letter-spacing:4px">時　　　刻</td>
+  <td colspan="4">總旅行時間(秒)及百分比</td>
+  <td rowspan="2" style="font-size:7pt">總旅行速率<br>(公里/時)</td>
+  <td rowspan="2" style="font-size:7pt">總行駛速率<br>(公里/時)</td>
+</tr>
+<tr class="ft-h">
+  <td colspan="2" style="font-size:7pt">起點位置</td>
+  <td style="font-size:7pt">終點位置</td>
+  <td style="font-size:7pt">距離(公尺)</td>
+  <td colspan="3" style="letter-spacing:2px">起　點</td>
+  <td colspan="3" style="letter-spacing:2px">終　點</td>
+  <td style="font-size:7pt">合計</td>
+  <td style="font-size:7pt">交叉口<br>延　滯</td>
+  <td style="font-size:7pt">路段中<br>延　滯</td>
+  <td style="font-size:7pt">行　駛<br>時　間</td>
+</tr>
+<tr>
+  <td colspan="2" rowspan="2">${startN2}</td>
+  <td rowspan="2">${endN2}</td>
+  <td rowspan="2">${TL}</td>
+  <td>時</td><td>分</td><td>秒</td>
+  <td>時</td><td>分</td><td>秒</td>
+  <td>${trip.travelS||0}</td><td>${intT}</td><td>${roadT}</td><td>${trip.runS||0}</td>
+  <td class="ft-bk" rowspan="2">${tSpd}</td><td class="ft-bk" rowspan="2">${rSpd}</td>
+</tr>
+<tr>
+  <td class="ft-bl">${sH}</td><td class="ft-bl">${sM}</td><td class="ft-bl">${sS}</td>
+  <td class="ft-bl">${eH}</td><td class="ft-bl">${eM}</td><td class="ft-bl">${eS}</td>
+  <td style="font-size:7pt">百分比</td>
+  <td style="font-size:7pt">${_pct(intT,trip.travelS)}%</td>
+  <td style="font-size:7pt">${_pct(roadT,trip.travelS)}%</td>
+  <td style="font-size:7pt">${_pct(trip.runS||0,trip.travelS)}%</td>
+</tr>
+</table>
+
+<!-- Lower detail table: 22 cols -->
+<table class="ft" style="margin-top:-1px">
+<colgroup>
+  <col style="width:14%">
+  <col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%">
+  <col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%">
+  <col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%">
+  <col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%">
+</colgroup>
+<tr class="ft-h">
+  <td rowspan="3" style="font-size:8pt">經過路口</td>
+  <td colspan="3" rowspan="2" style="font-size:7.5pt">經過時刻</td>
+  <td colspan="13" style="font-size:7.5pt;letter-spacing:6px">延　滯　時　間（秒）</td>
+  <td rowspan="3" style="font-size:6.5pt">旅行<br>時間<br>(秒)</td>
+  <td rowspan="3" style="font-size:6.5pt">距離<br>(公尺)</td>
+  <td rowspan="3" style="font-size:6.5pt">行駛<br>時間<br>(秒)</td>
+  <td rowspan="3" style="font-size:6.5pt">旅行<br>速率</td>
+  <td rowspan="3" style="font-size:6.5pt">行駛<br>速率</td>
+</tr>
+<tr class="ft-h">
+  <td colspan="6" style="font-size:7.5pt">路　段　中</td>
+  <td colspan="7" style="font-size:7.5pt">交　叉　口</td>
+</tr>
+<tr class="ft-h">
+  <td style="font-size:6pt">時</td><td style="font-size:6pt">分</td><td style="font-size:6pt">秒</td>
+  <td style="font-size:6pt">阻塞</td><td style="font-size:6pt">公車<br>停靠</td>
+  <td style="font-size:6pt">計程<br>車靠</td><td style="font-size:6pt">路邊<br>停車</td>
+  <td style="font-size:6pt">行人<br>穿越</td><td style="font-size:6pt">其他</td>
+  <td style="font-size:6pt">紅燈</td><td style="font-size:6pt">左轉<br>同向</td>
+  <td style="font-size:6pt">左轉<br>對向</td><td style="font-size:6pt">右轉</td>
+  <td style="font-size:6pt">橫越<br>車輛</td><td style="font-size:6pt">行人</td>
+  <td style="font-size:6pt">其他</td>
+</tr>
+${segRows}${emptyRows}
+<tr>
+  <td rowspan="2" class="ft-sum" style="padding:0;font-size:7pt;position:relative">
+    <div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex">
+      <div style="flex:0 0 55%;padding:2px 3px;border-right:1px solid #000;display:flex;align-items:center;justify-content:center;text-align:center">延滯時間<br>(秒)</div>
+      <div style="flex:1;display:flex;flex-direction:column">
+        <div style="flex:1;padding:2px 3px;text-align:center;border-bottom:1px solid #000;display:flex;align-items:center;justify-content:center">小計</div>
+        <div style="flex:1;padding:2px 3px;text-align:center;display:flex;align-items:center;justify-content:center">合計</div>
+      </div>
+    </div>
+  </td>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
+  ${ROAD_C.map(c=>`<td class="ft-sum">${rd[c]||0}</td>`).join('')}
+  ${INT_C.map(c=>`<td class="ft-sum">${id[c]||0}</td>`).join('')}
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
+</tr>
+<tr>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
+  <td colspan="6" class="ft-sum">${roadT}</td>
+  <td colspan="7" class="ft-sum">${intT}</td>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
+</tr>
+<tr>
+  <td rowspan="2" class="ft-sum" style="padding:0;font-size:7pt;position:relative">
+    <div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex">
+      <div style="flex:0 0 55%;padding:2px 3px;border-right:1px solid #000;display:flex;align-items:center;justify-content:center;text-align:center">延滯時間<br>百分比</div>
+      <div style="flex:1;display:flex;flex-direction:column">
+        <div style="flex:1;padding:2px 3px;text-align:center;border-bottom:1px solid #000;display:flex;align-items:center;justify-content:center">小計</div>
+        <div style="flex:1;padding:2px 3px;text-align:center;display:flex;align-items:center;justify-content:center">合計</div>
+      </div>
+    </div>
+  </td>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
+  ${ROAD_C.map(c=>`<td class="ft-sum" style="font-size:6.5pt">${_pct(rd[c],trip.travelS)}%</td>`).join('')}
+  ${INT_C.map(c=>`<td class="ft-sum" style="font-size:6.5pt">${_pct(id[c],trip.travelS)}%</td>`).join('')}
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
+</tr>
+<tr>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
+  <td colspan="6" class="ft-sum" style="font-size:7pt">${_pct(roadT,trip.travelS)}%</td>
+  <td colspan="7" class="ft-sum" style="font-size:7pt">${_pct(intT,trip.travelS)}%</td>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
+</tr>
+</table></div>`
+  }
+
+  // ── Assemble ──────────────────────────────────────────────────────────────
+  let pages = []
+  pages.push(buildDelayPage('sec'))
+  pages.push(buildDelayPage('pct'))
+  pages.push(`<div class="pg">${buildSegTimePage()}${buildSegSpdPage()}</div>`)
+  surveys.forEach((sv,si)=>{
+    ;(sv.trips||[]).forEach(trip=>{
+      pages.push(buildTripPage(sv,si,trip))
+    })
+  })
+
+  const doc = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"/>
+<title>SGS報告 ${route.routeName||''}</title>
+<style>${CSS}</style></head><body>
+<button class="pdf-btn" onclick="window.print()">🖨 列印 / 儲存 PDF</button>
+${pages.join('\n')}
+</body></html>`
+
+  const w = window.open('','_blank')
+  if(!w){ alert('⚠ 請先允許彈出視窗，再試一次'); return }
+  w.document.write(doc)
+  w.document.close()
+  setTimeout(()=>w.print(), 700)
 }
 
 </script>
