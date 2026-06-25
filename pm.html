@@ -2267,16 +2267,18 @@ async function syncFromCloud() {
       const isMine = !r.owner || r.owner === me
       const existIdx=savedTasks.findIndex(t=>t.cloudId===r.id)
       if(existIdx>=0){
-        // 路線已在本機：若 admin 剛剛把 owner 轉過來，修正 creator
-        if(isMine && savedTasks[existIdx].creator !== me){
-          savedTasks[existIdx].creator=me
-          changed++
-        }
         // 若不屬於自己，從本機移除（例如被 admin 轉給別人）
         if(!isMine && savedTasks[existIdx].creator===me){
           savedTasks.splice(existIdx,1)
           changed++
+          continue
         }
+        if(!isMine) continue
+        // 路線已在本機：用雲端資料更新（名稱、路段等可能已在其他裝置修改）
+        const loc=savedTasks[existIdx]
+        if(loc.creator!==me){loc.creator=me;changed++}
+        const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='foot')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
+        if(JSON.stringify(loc.cfg)!==JSON.stringify(newCfg)){loc.cfg=newCfg;changed++}
         continue
       }
       // 不在本機：只匯入屬於自己的
