@@ -1239,13 +1239,8 @@ function downloadSGSPdf(){
   const weathers  = [...new Set(surveys.map(s=>_weather(s.weather||'')).filter(Boolean))].join('、')
   const surveyors = [...new Set(surveys.map(s=>s.surveyor||'').filter(Boolean))].join('、')
 
-  // ── SGS Logo SVG (gray bold + orange cross lines) ────────────────────────
-  const SGS_SVG = `<svg width="76" height="48" viewBox="0 0 76 48" xmlns="http://www.w3.org/2000/svg">
-    <text x="1" y="41" fill="#797979" font-size="42" font-weight="900"
-      font-family="Arial Black,Arial,sans-serif" letter-spacing="0">SGS</text>
-    <line x1="0" y1="44" x2="67" y2="44" stroke="#F28C28" stroke-width="3"/>
-    <line x1="67" y1="0" x2="67" y2="48" stroke="#F28C28" stroke-width="3"/>
-  </svg>`
+  // ── SGS Logo (actual logo file) ──────────────────────────────────────────
+  const SGS_SVG = `<img src="sgs_logo.png" style="height:56px;display:block">`
 
   // ── CSS ──────────────────────────────────────────────────────────────────
   const CSS = `
@@ -1261,8 +1256,8 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
 .pi-row{display:flex;justify-content:space-between}
 .s{width:100%;border-collapse:collapse;font-size:9pt}
 .s td,.s th{border:1px solid #000;padding:2px 4px;vertical-align:middle;text-align:center}
-.s-vert{writing-mode:vertical-rl;text-orientation:upright;text-align:center;
-  font-size:9pt;white-space:nowrap;width:20px}
+.s-vert{text-align:center;font-size:9pt;width:20px;line-height:1.3;
+  letter-spacing:1px;vertical-align:middle}
 .s-sub{font-size:9pt}
 .s-unit{width:20px;font-size:8pt}
 .s-lbl{text-align:left!important;font-size:9pt}
@@ -1357,7 +1352,7 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
   ${D4(t=>_spd(TL,t?.runS))}
 </tr>
 <tr>
-  <td rowspan="7" class="s-vert">總旅行時間</td>
+  <td rowspan="7" class="s-vert">總<br>旅<br>行<br>時<br>間</td>
   <td rowspan="2" class="s-sub">行駛時間</td>
   <td class="s-unit">秒</td>${D4(t=>_n(t?.runS))}
 </tr>
@@ -1376,14 +1371,14 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
   <td colspan="2">合計(秒)</td>${D4(t=>_n(t?.travelS))}
 </tr>
 <tr>
-  <td rowspan="16" class="s-vert">總延滯時間</td>
-  <td rowspan="7" class="s-vert">路段延滯</td>
+  <td rowspan="16" class="s-vert">總<br>延<br>滯<br>時<br>間</td>
+  <td rowspan="7" class="s-vert">路<br>段<br>延<br>滯</td>
   <td class="s-lbl">${ROAD_L[0]}(${unit})</td>${D4(t=>dv(t,'road',ROAD_C[0]))}
 </tr>
 ${ROAD_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${ROAD_L[i+1]}(${unit})</td>${D4(t=>dv(t,'road',c))}</tr>`).join('')}
 <tr><td class="s-lbl s-bold">小　　計(${unit})</td>${D4(subRoad)}</tr>
 <tr>
-  <td rowspan="8" class="s-vert">交叉口延滯</td>
+  <td rowspan="8" class="s-vert">交<br>叉<br>口<br>延<br>滯</td>
   <td class="s-lbl">${INT_L[0]}(${unit})</td>${D4(t=>dv(t,'int',INT_C[0]))}
 </tr>
 ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${D4(t=>dv(t,'int',c))}</tr>`).join('')}
@@ -1502,11 +1497,13 @@ ${rows}</table></div>`
       const tsIdx = isReturn ? (segs.length - 1 - i) : (i + 1)
       const [nH,nM,nS] = _hms(nodeTs[tsIdx])
       const t = times[i]||{}
+      const sRD = t.roadDelays||{}, sID = t.intDelays||{}
+      const _d = (obj,c) => { const v=obj[c]; return (v&&v!==0)?v:'' }
       return `<tr>
         <td class="ft-la">${seg.name||''}</td>
         <td class="ft-bl">${_n(nH)}</td><td class="ft-bl">${_n(nM)}</td><td class="ft-bl">${_n(nS)}</td>
-        <td></td><td></td><td></td><td></td><td></td><td></td>
-        <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+        ${ROAD_C.map(c=>`<td>${_d(sRD,c)}</td>`).join('')}
+        ${INT_C.map(c=>`<td>${_d(sID,c)}</td>`).join('')}
         <td>${_n(t.travelS)}</td><td>${_n(seg.length)}</td><td>${_n(t.runS)}</td>
         <td>${_spd(seg.length,t.travelS)}</td><td>${_spd(seg.length,t.runS)}</td>
       </tr>`
@@ -1522,27 +1519,22 @@ ${rows}</table></div>`
   <div class="trip-title">主次要幹道行駛時間及延滯調查表</div>
 </div>
 <table class="trip-info">
+<colgroup><col style="width:58%"><col style="width:42%"></colgroup>
 <tr>
-  <td style="width:65px">站　名：</td>
-  <td style="width:180px">${route.routeName||''}</td>
-  <td style="width:60px"></td>
-  <td style="width:55px;text-align:right">日　　期：</td>
-  <td class="ti-r">${sv.date||''}</td>
+  <td>站　　名：　${route.routeName||''}</td>
+  <td style="text-align:right">日　　期：　<span class="ti-r">${sv.date||''}</span></td>
 </tr>
 <tr>
-  <td>旅次編號：</td><td colspan="4">${si+1}</td>
+  <td>旅次編號：　${si+1}</td>
+  <td></td>
 </tr>
 <tr>
-  <td>方向往：</td>
-  <td colspan="2">${isReturn?'□':'■'} 去　　　${isReturn?'■':'□'} 回</td>
-  <td style="text-align:right">天　　氣：</td>
-  <td>${_weather(sv.weather)}</td>
+  <td>方向往：　　${isReturn?'□':'■'} 去　　　${isReturn?'■':'□'} 回</td>
+  <td style="text-align:right">天　　氣：　${_weather(sv.weather)}</td>
 </tr>
 <tr>
-  <td>時　　間：</td>
-  <td colspan="2">${isPeak?'□':'■'} 離峰（${off}）　　　${isPeak?'■':'□'} 尖峰（${pk}）</td>
-  <td style="text-align:right">調查員：</td>
-  <td style="text-decoration:underline">${sv.surveyor||''}</td>
+  <td>時　　間：　${isPeak?'□':'■'} 離峰（${off}）　　　${isPeak?'■':'□'} 尖峰（${pk}）</td>
+  <td style="text-align:right">調查員：　<span style="text-decoration:underline">${sv.surveyor||''}</span></td>
 </tr>
 </table>
 
