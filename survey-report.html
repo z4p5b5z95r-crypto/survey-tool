@@ -1705,27 +1705,43 @@ ${rows}</table>`
 </tr>
 ${segRows}${emptyRows}
 <tr>
-  <td rowspan="2" class="ft-la ft-sum" style="font-size:7pt">延滯時間<br>(秒)</td>
-  <td colspan="3" class="ft-sum" style="font-size:7pt">小計</td>
+  <td rowspan="2" class="ft-sum" style="padding:0;font-size:7pt;position:relative">
+    <div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex">
+      <div style="flex:0 0 55%;padding:2px 3px;border-right:1px solid #000;display:flex;align-items:center;justify-content:center;text-align:center">延滯時間<br>(秒)</div>
+      <div style="flex:1;display:flex;flex-direction:column">
+        <div style="flex:1;padding:2px 3px;text-align:center;border-bottom:1px solid #000;display:flex;align-items:center;justify-content:center">小計</div>
+        <div style="flex:1;padding:2px 3px;text-align:center;display:flex;align-items:center;justify-content:center">合計</div>
+      </div>
+    </div>
+  </td>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
   ${ROAD_C.map(c=>`<td class="ft-sum">${rd[c]||0}</td>`).join('')}
   ${INT_C.map(c=>`<td class="ft-sum">${id[c]||0}</td>`).join('')}
   <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
 </tr>
 <tr>
-  <td colspan="3" class="ft-sum" style="font-size:7pt">合計</td>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
   <td colspan="6" class="ft-sum">${roadT}</td>
   <td colspan="7" class="ft-sum">${intT}</td>
   <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
 </tr>
 <tr>
-  <td rowspan="2" class="ft-la ft-sum" style="font-size:7pt">延滯時間<br>百分比</td>
-  <td colspan="3" class="ft-sum" style="font-size:7pt">小計</td>
+  <td rowspan="2" class="ft-sum" style="padding:0;font-size:7pt;position:relative">
+    <div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex">
+      <div style="flex:0 0 55%;padding:2px 3px;border-right:1px solid #000;display:flex;align-items:center;justify-content:center;text-align:center">延滯時間<br>百分比</div>
+      <div style="flex:1;display:flex;flex-direction:column">
+        <div style="flex:1;padding:2px 3px;text-align:center;border-bottom:1px solid #000;display:flex;align-items:center;justify-content:center">小計</div>
+        <div style="flex:1;padding:2px 3px;text-align:center;display:flex;align-items:center;justify-content:center">合計</div>
+      </div>
+    </div>
+  </td>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
   ${ROAD_C.map(c=>`<td class="ft-sum" style="font-size:6.5pt">${_pct(rd[c],trip.travelS)}%</td>`).join('')}
   ${INT_C.map(c=>`<td class="ft-sum" style="font-size:6.5pt">${_pct(id[c],trip.travelS)}%</td>`).join('')}
   <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
 </tr>
 <tr>
-  <td colspan="3" class="ft-sum" style="font-size:7pt">合計</td>
+  <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
   <td colspan="6" class="ft-sum" style="font-size:7pt">${_pct(roadT,trip.travelS)}%</td>
   <td colspan="7" class="ft-sum" style="font-size:7pt">${_pct(intT,trip.travelS)}%</td>
   <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
