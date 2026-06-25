@@ -1191,6 +1191,21 @@ function downloadCSV(){
 
 
 // ════════════════ SGS PDF PRINT ════════════════
+
+
+
+
+// ════════════════ SGS PDF PRINT ════════════════
+
+
+
+
+// ════════════════ SGS PDF PRINT ════════════════
+
+
+
+
+// ════════════════ SGS PDF PRINT ════════════════
 function downloadSGSPdf(){
   if(!route||!surveys.length){ alert('尚無資料'); return }
 
@@ -1275,6 +1290,18 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
 .seg-s .s-h{background:#1e3a5f;color:white;font-weight:700}
 .seg-s .s-l{text-align:left!important;font-weight:600}
 .seg-s .s-hl{font-weight:700}
+
+/* ── 各路段統計表（參考格式） ── */
+.seg-r{width:100%;border-collapse:collapse;font-size:8pt;table-layout:fixed}
+.seg-r td{border:1px solid #000;padding:1px 3px;vertical-align:middle;text-align:center;overflow:hidden}
+.sr-vhdr{writing-mode:vertical-rl;text-orientation:mixed;white-space:nowrap;font-size:7.5pt;padding:4px 0}
+.sr-vert{writing-mode:vertical-rl;text-orientation:mixed;font-size:7.5pt;padding:2px 0}
+.sr-val{color:#c00;font-weight:700}
+.sr-len{font-weight:700}
+.sr-sl{text-align:left!important;padding-left:5px!important;white-space:nowrap}
+.sr-tot{font-weight:700}
+.sr-mc{padding:0;height:1px;overflow:hidden}
+.sr-mc-in{display:flex;flex-direction:column;justify-content:space-between;height:100%;min-height:90px;padding:2px 3px;overflow:hidden}
 .s-title{font-size:11pt;font-weight:700;text-align:center;border:none!important;padding:4px 0!important}
 .s-tot td{font-weight:700}
 
@@ -1393,79 +1420,140 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
 </table></div>`
   }
 
+  // ── helpers for reference-format seg tables ─────────────────────────────
+  function _segTableHeader(titleMain, unitLabel){
+    const offl = route.offPeakTime || off
+    const pkl  = route.peakTime  || pk
+    const bd = `${startN}<br>至<br>${endN}`
+    const rd = `${endN}<br>至<br>${startN}`
+    return `
+<colgroup>
+  <col style="width:18px"><col style="width:22%">
+  <col style="width:26px"><col style="width:26px"><col style="width:34px">
+  <col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:7%">
+  <col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:7%">
+</colgroup>
+<tr>
+  <td rowspan="5" class="sr-mc">
+    <div class="sr-mc-in" style="align-items:center">
+      <span style="font-size:8.5pt">路</span>
+      <span style="font-size:8.5pt">名</span>
+    </div>
+  </td>
+  <td rowspan="5" class="sr-mc">
+    <div class="sr-mc-in">
+      <span style="flex:1;display:flex;align-items:center;justify-content:center;letter-spacing:4px;font-size:9pt">位　　置</span>
+      <span style="text-align:left;font-size:8pt;white-space:nowrap">${route.routeName||''}</span>
+    </div>
+  </td>
+  <td rowspan="5" class="sr-vhdr">車道數</td>
+  <td rowspan="5" class="sr-vhdr">路寬(m)</td>
+  <td rowspan="5" class="sr-vhdr">路段長度(m)</td>
+  <td colspan="4" style="font-weight:700">${titleMain}(秒)</td>
+  <td colspan="4" style="font-weight:700">${unitLabel}(秒)</td>
+</tr>
+<tr>
+  <td colspan="2">離峰時間</td><td colspan="2">下午尖峰時間</td>
+  <td colspan="2">離峰時間</td><td colspan="2">下午尖峰時間</td>
+</tr>
+<tr>
+  <td colspan="2" style="font-size:7.5pt">${offl}</td>
+  <td colspan="2" style="font-size:7.5pt">${pkl}</td>
+  <td colspan="2" style="font-size:7.5pt">${offl}</td>
+  <td colspan="2" style="font-size:7.5pt">${pkl}</td>
+</tr>
+<tr>
+  <td rowspan="2" style="font-size:7.5pt">${bd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${rd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${bd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${rd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${bd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${rd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${bd}</td>
+  <td rowspan="2" style="font-size:7.5pt">${rd}</td>
+</tr>
+<tr></tr>`
+  }
+
+  function _segDateInfo(){
+    return `<div style="display:flex;align-items:flex-start;margin-bottom:5px;font-size:8.5pt">
+  <div style="display:flex;flex-direction:column;margin-right:2px">
+    <span style="color:#c00;font-weight:700;line-height:1.8">日</span>
+    <span style="color:#c00;font-weight:700;line-height:1.8">天</span>
+  </div>
+  <div style="display:flex;flex-direction:column">
+    <span style="line-height:1.8"><span style="color:#c00;font-weight:700">期：</span><span style="color:#c00">${dates}</span></span>
+    <span style="line-height:1.8"><span style="color:#c00;font-weight:700">氣：</span><span style="color:#c00">${weathers}</span></span>
+  </div>
+</div>`
+  }
+
   // ── 各路段平均旅行時間及行駛時間統計表 ───────────────────────────────────
   function buildSegTimePage(){
-    let rows = '', totTv=[0,0,0,0], totRv=[0,0,0,0], totLen=0
+    const ns = segs.length
+    const _v = v => v ? `<td class="sr-val">${v}</td>` : '<td></td>'
+    let totTv=[0,0,0,0], totRv=[0,0,0,0], totLen=0
+    let rows = ''
     segs.forEach((seg,i)=>{
-      const tv = T4.map(t=>t?.segTimes?.[i]?.travelS)
-      const rv = T4.map(t=>t?.segTimes?.[i]?.runS)
-      tv.forEach((v,j)=>{ if(v) totTv[j]+=v })
-      rv.forEach((v,j)=>{ if(v) totRv[j]+=v })
+      const tv = T4.map(t=>t?.segTimes?.[i]?.travelS||0)
+      const rv = T4.map(t=>t?.segTimes?.[i]?.runS||0)
+      tv.forEach((v,j)=>{ totTv[j]+=v })
+      rv.forEach((v,j)=>{ totRv[j]+=v })
       totLen += seg.length||0
+      const firstCol = i===0
+        ? `<td rowspan="${ns}" class="sr-vert">${route.routeName||startN+'到'+endN}</td>`
+        : ''
       rows += `<tr>
-        <td class="s-l">${seg.name||''}</td>
-        <td>${seg.lanes||''}</td><td>${seg.width||''}</td><td>${seg.length||''}</td>
-        ${tv.map(v=>`<td>${_n(v)}</td>`).join('')}
-        ${rv.map(v=>`<td>${_n(v)}</td>`).join('')}
+        ${firstCol}
+        <td class="sr-sl">${seg.name||''}</td>
+        <td>${seg.lanes||''}</td><td>${seg.width||''}</td>
+        <td class="sr-len">${seg.length||''}</td>
+        ${tv.map(_v).join('')}${rv.map(_v).join('')}
       </tr>`
     })
-    rows += `<tr class="s-tot">
-      <td class="s-l">總　計</td><td></td><td></td><td>${totLen}</td>
-      ${T4.map(t=>`<td>${_n(t?.travelS)}</td>`).join('')}
-      ${T4.map(t=>`<td>${_n(t?.runS)}</td>`).join('')}
+    rows += `<tr class="sr-tot">
+      <td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
+      ${totTv.map(v=>`<td>${v||''}</td>`).join('')}
+      ${totRv.map(v=>`<td>${v||''}</td>`).join('')}
     </tr>`
-    return `<div class="pg"><table class="seg-s">
-<tr><td colspan="12" class="s-title">各路段平均旅行時間及平均行駛時間統計表</td></tr>
-<tr>
-  <td colspan="4" class="s-l" style="border:none;padding:2px 4px">日期：${dates}　天氣：${weathers}</td>
-  <td colspan="4" class="s-l" style="border:none;padding:2px 4px">路線：${route.routeName||''}</td>
-  <td colspan="4" class="s-l" style="border:none;padding:2px 4px">調查員：${surveyors}</td>
-</tr>
-<tr class="s-h">
-  <td rowspan="2" class="s-l">路段位置</td>
-  <td rowspan="2">車道數</td><td rowspan="2">路寬(m)</td><td rowspan="2">路段長(m)</td>
-  <td colspan="4">平均旅行時間（秒）</td>
-  <td colspan="4">平均行駛時間（秒）</td>
-</tr>
-<tr class="s-h">
-  <td>${off}去程</td><td>${off}回程</td><td>${pk}去程</td><td>${pk}回程</td>
-  <td>${off}去程</td><td>${off}回程</td><td>${pk}去程</td><td>${pk}回程</td>
-</tr>
+    return `<div class="pg">
+<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px">各路段平均旅行時間及平均行駛時間統計表</div>
+${_segDateInfo()}
+<table class="seg-r">${_segTableHeader('平均旅行時間','平均行駛時間')}
 ${rows}</table></div>`
   }
 
   // ── 各路段平均旅行速率及行駛速率統計表 ─────────────────────────────────
   function buildSegSpdPage(){
+    const ns = segs.length
+    const _v = v => v ? `<td class="sr-val">${v}</td>` : '<td></td>'
+    let totLen=0
     let rows = ''
     segs.forEach((seg,i)=>{
       const L = seg.length||0
+      totLen += L
+      const tv = T4.map(t=>_spd(L,t?.segTimes?.[i]?.travelS))
+      const rv = T4.map(t=>_spd(L,t?.segTimes?.[i]?.runS))
+      const firstCol = i===0
+        ? `<td rowspan="${ns}" class="sr-vert">${route.routeName||startN+'到'+endN}</td>`
+        : ''
       rows += `<tr>
-        <td class="s-l">${seg.name||''}</td><td>${L}</td>
-        ${T4.map(t=>`<td>${_spd(L,t?.segTimes?.[i]?.travelS)}</td>`).join('')}
-        ${T4.map(t=>`<td>${_spd(L,t?.segTimes?.[i]?.runS)}</td>`).join('')}
+        ${firstCol}
+        <td class="sr-sl">${seg.name||''}</td>
+        <td>${seg.lanes||''}</td><td>${seg.width||''}</td>
+        <td class="sr-len">${L||''}</td>
+        ${tv.map(_v).join('')}${rv.map(_v).join('')}
       </tr>`
     })
-    rows += `<tr class="s-tot">
-      <td class="s-l">總　計</td><td>${TL}</td>
-      ${T4.map(t=>`<td>${_spd(TL,t?.travelS)}</td>`).join('')}
-      ${T4.map(t=>`<td>${_spd(TL,t?.runS)}</td>`).join('')}
+    rows += `<tr class="sr-tot">
+      <td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
+      ${T4.map(t=>`<td>${_spd(totLen,t?.travelS)||''}</td>`).join('')}
+      ${T4.map(t=>`<td>${_spd(totLen,t?.runS)||''}</td>`).join('')}
     </tr>`
-    return `<div class="pg"><table class="seg-s">
-<tr><td colspan="10" class="s-title">各路段平均旅行速率及平均行駛速率統計表（公里/時）</td></tr>
-<tr>
-  <td colspan="2" class="s-l" style="border:none;padding:2px 4px">日期：${dates}　天氣：${weathers}</td>
-  <td colspan="4" class="s-l" style="border:none;padding:2px 4px">路線：${route.routeName||''}</td>
-  <td colspan="4" class="s-l" style="border:none;padding:2px 4px">調查員：${surveyors}</td>
-</tr>
-<tr class="s-h">
-  <td rowspan="2" class="s-l">路段位置</td><td rowspan="2">路段長(m)</td>
-  <td colspan="4">平均旅行速率（公里/時）</td>
-  <td colspan="4">平均行駛速率（公里/時）</td>
-</tr>
-<tr class="s-h">
-  <td>${off}去程</td><td>${off}回程</td><td>${pk}去程</td><td>${pk}回程</td>
-  <td>${off}去程</td><td>${off}回程</td><td>${pk}去程</td><td>${pk}回程</td>
-</tr>
+    return `<div class="pg">
+<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px">各路段平均旅行速率及平均行駛速率統計表（公里/時）</div>
+${_segDateInfo()}
+<table class="seg-r">${_segTableHeader('平均旅行速率','平均行駛速率')}
 ${rows}</table></div>`
   }
 
