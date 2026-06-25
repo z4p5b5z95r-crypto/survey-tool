@@ -2329,13 +2329,13 @@ async function syncFromCloud() {
         // 路線已在本機：用雲端資料更新（名稱、路段等可能已在其他裝置修改）
         const loc=savedTasks[existIdx]
         if(loc.creator!==me){loc.creator=me;changed++}
-        const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='foot')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
+        const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='foot')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
         if(JSON.stringify(loc.cfg)!==JSON.stringify(newCfg)){loc.cfg=newCfg;changed++}
         continue
       }
       // 不在本機：只匯入屬於自己的
       if(!isMine) continue
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='foot')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='foot')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
       changed++
     }
     // 移除本機有 cloudId 但雲端已不存在的項目（刪除同步）
