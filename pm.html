@@ -2263,6 +2263,12 @@ async function syncFromCloud() {
     updateCloudDot('ok')
     let changed=0
     for(const r of routes){
+      // 已刪除（軟刪除）的路線：從本機移除
+      if(r.deletedAt){
+        const delIdx=savedTasks.findIndex(t=>t.cloudId===r.id)
+        if(delIdx>=0){savedTasks.splice(delIdx,1);changed++}
+        continue
+      }
       // 只處理屬於自己的路線（owner === me 或尚未指定 owner）
       const isMine = !r.owner || r.owner === me
       const existIdx=savedTasks.findIndex(t=>t.cloudId===r.id)
