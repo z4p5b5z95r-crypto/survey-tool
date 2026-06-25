@@ -1028,7 +1028,9 @@ function downloadSGS(){
   withDlAnim('產生 SGS Excel 中...','正在計算各路段數據', ()=>{
   const wb = XLSX.utils.book_new()
 
-  // Sheet 1: Speed/Time summary
+  // Sheet 1: Travel time summary（旅行時間及行駛時間）
+  XLSX.utils.book_append_sheet(wb, buildTimeSheet(), '旅行時間')
+  // Sheet 2: Speed summary（旅行速率及行駛速率）
   XLSX.utils.book_append_sheet(wb, buildSpeedSheet(), '行駛速率')
   // Sheet 2: Delay summary
   XLSX.utils.book_append_sheet(wb, buildDelaySheet(), '延滯統計')
@@ -1055,38 +1057,71 @@ function buildTripSheetName(combo, n){
   return `${map[combo]}_${n}`
 }
 
-function buildSpeedSheet(){
-  const segs = route.segments || []
+// 各路段平均旅行時間及行駛時間統計表（秒）— 比照 PDF buildSegTimePage
+function buildTimeSheet(){
+  const segs=_mergeGhostSegs()
   const OB=avgTrips.off_peak_bound, OR=avgTrips.off_peak_return
   const PB=avgTrips.peak_bound, PR=avgTrips.peak_return
+  const T4=[OB,OR,PB,PR]
   const off=route.offPeakLabel||'離峰', pk=route.peakLabel||'尖峰'
+  const TL=route.totalLength||0
+  const info=`路線：${route.routeName}　起迄：${route.routeFromTo}　全長：${TL}m`
 
-  const rows = [
-    ['各路段平均旅行時間及行駛時間統計表'],
-    [`路線：${route.routeName}　起迄：${route.routeFromTo}　全長：${route.totalLength}m`],
+  // header rows (match PDF two-row header)
+  const rows=[
+    ['各路段平均旅行時間及行駛時間統計表（秒）'],
+    [info],
     [],
     ['路段位置','車道數','路寬(m)','路段長(m)',
-     `${off} 去程 旅行時間(秒)`,`${off} 回程 旅行時間(秒)`,
-     `${pk} 去程 旅行時間(秒)`,`${pk} 回程 旅行時間(秒)`,
-     `${off} 去程 行駛時間(秒)`,`${off} 回程 行駛時間(秒)`,
-     `${pk} 去程 行駛時間(秒)`,`${pk} 回程 行駛時間(秒)`,
-     `${off} 去程 旅行速率(km/h)`,`${off} 回程 旅行速率(km/h)`,
-     `${pk} 去程 旅行速率(km/h)`,`${pk} 回程 旅行速率(km/h)`],
-    ...segs.map((seg,i)=>[
-      seg.name, seg.lanes||'', seg.width||'', seg.length||0,
-      OB?.segTimes?.[i]?.travelS??'', OR?.segTimes?.[i]?.travelS??'',
-      PB?.segTimes?.[i]?.travelS??'', PR?.segTimes?.[i]?.travelS??'',
-      OB?.segTimes?.[i]?.runS??'',    OR?.segTimes?.[i]?.runS??'',
-      PB?.segTimes?.[i]?.runS??'',    PR?.segTimes?.[i]?.runS??'',
-      spd(seg.length,OB?.segTimes?.[i]?.travelS), spd(seg.length,OR?.segTimes?.[i]?.travelS),
-      spd(seg.length,PB?.segTimes?.[i]?.travelS), spd(seg.length,PR?.segTimes?.[i]?.travelS)
-    ]),
-    ['合計','','', route.totalLength||0,
-     OB?.travelS??'', OR?.travelS??'', PB?.travelS??'', PR?.travelS??'',
-     OB?.runS??'',    OR?.runS??'',    PB?.runS??'',    PR?.runS??'',
-     spd(route.totalLength,OB?.travelS), spd(route.totalLength,OR?.travelS),
-     spd(route.totalLength,PB?.travelS), spd(route.totalLength,PR?.travelS)]
+     `${off} 旅行時間(秒)`,'',`${pk} 旅行時間(秒)`,'',
+     `${off} 行駛時間(秒)`,'',`${pk} 行駛時間(秒)`,''],
+    ['','','','','去程','回程','去程','回程','去程','回程','去程','回程'],
   ]
+  let totLen=0
+  segs.forEach(seg=>{
+    const idxs=seg._origIdx||[]
+    const tv=T4.map(t=>{ const s=idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0); return s||'' })
+    const rv=T4.map(t=>{ const s=idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0); return s||'' })
+    totLen+=seg.length||0
+    rows.push([seg.name, seg.lanes||'', seg.width||'', seg.length||0,
+      tv[0],tv[1],tv[2],tv[3], rv[0],rv[1],rv[2],rv[3]])
+  })
+  rows.push(['合計','','',totLen,
+    OB?.travelS||'', OR?.travelS||'', PB?.travelS||'', PR?.travelS||'',
+    OB?.runS||'',    OR?.runS||'',    PB?.runS||'',    PR?.runS||''])
+  return XLSX.utils.aoa_to_sheet(rows)
+}
+
+// 各路段平均旅行速率及行駛速率統計表（公里/時）— 比照 PDF buildSegSpdPage
+function buildSpeedSheet(){
+  const segs=_mergeGhostSegs()
+  const OB=avgTrips.off_peak_bound, OR=avgTrips.off_peak_return
+  const PB=avgTrips.peak_bound, PR=avgTrips.peak_return
+  const T4=[OB,OR,PB,PR]
+  const off=route.offPeakLabel||'離峰', pk=route.peakLabel||'尖峰'
+  const TL=route.totalLength||0
+  const info=`路線：${route.routeName}　起迄：${route.routeFromTo}　全長：${TL}m`
+
+  const rows=[
+    ['各路段平均旅行速率及行駛速率統計表（公里/時）'],
+    [info],
+    [],
+    ['路段位置','路段長(m)',
+     `${off} 旅行速率(km/h)`,'',`${pk} 旅行速率(km/h)`,'',
+     `${off} 行駛速率(km/h)`,'',`${pk} 行駛速率(km/h)`,''],
+    ['','','去程','回程','去程','回程','去程','回程','去程','回程'],
+  ]
+  let totLen=0
+  segs.forEach(seg=>{
+    const idxs=seg._origIdx||[], L=seg.length||0
+    const tv=T4.map(t=>spd(L,idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)))
+    const rv=T4.map(t=>spd(L,idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)))
+    totLen+=L
+    rows.push([seg.name, L, tv[0],tv[1],tv[2],tv[3], rv[0],rv[1],rv[2],rv[3]])
+  })
+  rows.push(['合計',totLen,
+    spd(TL,OB?.travelS), spd(TL,OR?.travelS), spd(TL,PB?.travelS), spd(TL,PR?.travelS),
+    spd(TL,OB?.runS),    spd(TL,OR?.runS),    spd(TL,PB?.runS),    spd(TL,PR?.runS)])
   return XLSX.utils.aoa_to_sheet(rows)
 }
 
