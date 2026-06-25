@@ -142,6 +142,8 @@ td:first-child{text-align:left;font-weight:500}
 .dl-btn.green:hover{background:#15803d}
 .dl-btn.blue{background:#2563eb}
 .dl-btn.blue:hover{background:#1d4ed8}
+.dl-btn.orange{background:#ea580c}
+.dl-btn.orange:hover{background:#c2410c}
 .dl-note{font-size:12px;color:#64748b;margin-top:8px;line-height:1.7;text-align:left;background:#f8fafc;padding:14px;border-radius:10px}
 
 /* ── Trip map ── */
@@ -236,11 +238,10 @@ td:first-child{text-align:left;font-weight:500}
   <!-- DOWNLOAD -->
   <div id="panel-dl" class="panel">
     <div class="dl-section">
-      <h3>下載 SGS 公版報告</h3>
+      <h3>下載報告</h3>
       <p style="font-size:13px;color:#64748b;margin:8px 0 20px">依據「主次要幹道行駛時間及延滯調查表」格式產出報告</p>
-      <button class="dl-btn green" onclick="downloadSGS()">📥 下載 SGS Excel (.xlsx)</button>
-      <button class="dl-btn blue" onclick="downloadCSV()">📄 下載原始數據 (.csv)</button>
-      <button class="dl-btn red" onclick="downloadSGSPdf()">🖨️ 下載 SGS PDF</button>
+      <button class="dl-btn green" onclick="downloadSGS()">📥 下載 Excel (.xlsx)</button>
+      <button class="dl-btn orange" onclick="downloadSGSPdf()">🖨️ 下載 SGS 公版報告 PDF</button>
       <div class="dl-note" style="margin-top:20px">
         <b>SGS Excel 包含：</b><br>
         ・行駛速率統計表（各路段旅行時間 / 行駛時間 / 速率）<br>
