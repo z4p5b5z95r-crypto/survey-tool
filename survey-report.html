@@ -1236,11 +1236,12 @@ function downloadSGSPdf(){
     const ghostIdxSet=new Set(route.ghostNodeIndices||[])
     // Fallback A
     nodes.forEach((n,i)=>{ if(n?.ghost||n?.gh) ghostIdxSet.add(i) })
-    // Fallback B — segment k goes nodes[k]→nodes[k+1]; if boundary node name matches /^節點\d/ treat as ghost
-    for(let k=0;k<rawSegs.length-1;k++){
-      const aEnd=(rawSegs[k].name||'').split('→').pop()?.trim()||''
-      const bStart=(rawSegs[k+1].name||'').split('→')[0]?.trim()||''
-      if(aEnd&&bStart&&aEnd===bStart&&/^節點\d/.test(aEnd)) ghostIdxSet.add(k+1)
+    // Fallback B — if rawSegs[k].name starts with "節點N", nodes[k] is the ghost node.
+    // (pm.html renames seg[k-1] to the merged auto-name, so endpoint matching fails;
+    //  the ghost node's name survives only as the *start* of the outgoing segment.)
+    for(let k=1;k<rawSegs.length;k++){
+      const segStart=(rawSegs[k].name||'').split('→')[0]?.trim()||''
+      if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
     }
     if(!ghostIdxSet.size) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
     // Merge: rawSegs[i] connects nodes[i]→nodes[i+1].
