@@ -1191,21 +1191,6 @@ function downloadCSV(){
 
 
 // ════════════════ SGS PDF PRINT ════════════════
-
-
-
-
-// ════════════════ SGS PDF PRINT ════════════════
-
-
-
-
-// ════════════════ SGS PDF PRINT ════════════════
-
-
-
-
-// ════════════════ SGS PDF PRINT ════════════════
 function downloadSGSPdf(){
   if(!route||!surveys.length){ alert('尚無資料'); return }
 
@@ -1512,7 +1497,7 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
       </tr>`
     })
     rows += `<tr class="sr-tot">
-      <td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
+      <td></td><td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
       ${totTv.map(v=>`<td>${v||''}</td>`).join('')}
       ${totRv.map(v=>`<td>${v||''}</td>`).join('')}
     </tr>`
@@ -1546,7 +1531,7 @@ ${rows}</table></div>`
       </tr>`
     })
     rows += `<tr class="sr-tot">
-      <td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
+      <td></td><td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
       ${T4.map(t=>`<td>${_spd(totLen,t?.travelS)||''}</td>`).join('')}
       ${T4.map(t=>`<td>${_spd(totLen,t?.runS)||''}</td>`).join('')}
     </tr>`
