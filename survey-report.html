@@ -1501,11 +1501,10 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
       ${totTv.map(v=>`<td>${v||''}</td>`).join('')}
       ${totRv.map(v=>`<td>${v||''}</td>`).join('')}
     </tr>`
-    return `<div class="pg">
-<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px">各路段平均旅行時間及平均行駛時間統計表</div>
+    return `<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px">各路段平均旅行時間及平均行駛時間統計表</div>
 ${_segDateInfo()}
 <table class="seg-r">${_segTableHeader('平均旅行時間','平均行駛時間')}
-${rows}</table></div>`
+${rows}</table>`
   }
 
   // ── 各路段平均旅行速率及行駛速率統計表 ─────────────────────────────────
@@ -1535,11 +1534,10 @@ ${rows}</table></div>`
       ${T4.map(t=>`<td>${_spd(totLen,t?.travelS)||''}</td>`).join('')}
       ${T4.map(t=>`<td>${_spd(totLen,t?.runS)||''}</td>`).join('')}
     </tr>`
-    return `<div class="pg">
-<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px">各路段平均旅行速率及平均行駛速率統計表（公里/時）</div>
+    return `<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px;margin-top:14px">各路段平均旅行速率及平均行駛速率統計表（公里/時）</div>
 ${_segDateInfo()}
 <table class="seg-r">${_segTableHeader('平均旅行速率','平均行駛速率')}
-${rows}</table></div>`
+${rows}</table>`
   }
 
   // ── Per-trip SGS form (橫A4) ──────────────────────────────────────────────
@@ -1741,8 +1739,7 @@ ${segRows}${emptyRows}
   let pages = []
   pages.push(buildDelayPage('sec'))
   pages.push(buildDelayPage('pct'))
-  pages.push(buildSegTimePage())
-  pages.push(buildSegSpdPage())
+  pages.push(`<div class="pg">${buildSegTimePage()}${buildSegSpdPage()}</div>`)
   surveys.forEach((sv,si)=>{
     ;(sv.trips||[]).forEach(trip=>{
       pages.push(buildTripPage(sv,si,trip))
