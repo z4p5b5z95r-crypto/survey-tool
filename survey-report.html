@@ -473,8 +473,37 @@ function renderPage(){
 }
 
 // ── Travel Time Table ──
+
+// ── Ghost node merge helper (shared by renderTravelTable / renderSpeedTable) ──
+function _mergeGhostSegs(){
+  const rawSegs = route.segments||[]
+  const nodes   = route.nodes||[]
+  const ghostIdxSet = new Set(route.ghostNodeIndices||[])
+  nodes.forEach((n,i)=>{ if(n?.ghost||n?.gh) ghostIdxSet.add(i) })
+  for(let k=1;k<rawSegs.length;k++){
+    const segStart=(rawSegs[k].name||'').split('→')[0]?.trim()||''
+    if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
+  }
+  if(!ghostIdxSet.size) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
+  const out=[]; let i=0
+  while(i<rawSegs.length){
+    const idxs=[i]
+    while(i+idxs.length<rawSegs.length && ghostIdxSet.has(i+idxs.length))
+      idxs.push(i+idxs.length)
+    const merged=Object.assign({},rawSegs[i],{_origIdx:idxs})
+    if(idxs.length>1){
+      const startName=(rawSegs[i].name||'').split('→')[0]?.trim()||''
+      const lastSeg=rawSegs[i+idxs.length-1]
+      const endName=(lastSeg.name||'').split('→').pop()?.trim()||''
+      merged.name=startName+'→'+endName
+      merged.length=idxs.reduce((a,j)=>a+(rawSegs[j]?.length||0),0)
+    }
+    out.push(merged); i+=idxs.length
+  }
+  return out
+}
 function renderTravelTable(){
-  const segs = route.segments || []
+  const segs    = _mergeGhostSegs()
   const OB = avgTrips.off_peak_bound, OR = avgTrips.off_peak_return
   const PB = avgTrips.peak_bound,     PR = avgTrips.peak_return
   const offLabel = route.offPeakLabel||'離峰'
@@ -491,30 +520,31 @@ function renderTravelTable(){
     <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
   </tr>`
 
-  let totTvl = [0,0,0,0], totRun = [0,0,0,0], totLen = 0
-  segs.forEach((seg,i)=>{
-    const tv = [OB,OR,PB,PR].map(t=>t?.segTimes?.[i]?.travelS)
-    const rv = [OB,OR,PB,PR].map(t=>t?.segTimes?.[i]?.runS)
+  let totTvl=[0,0,0,0], totRun=[0,0,0,0], totLen=0
+  segs.forEach((seg)=>{
+    const idxs=seg._origIdx||[]
+    const tv=[OB,OR,PB,PR].map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)||undefined)
+    const rv=[OB,OR,PB,PR].map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)||undefined)
     tv.forEach((v,j)=>{ if(v) totTvl[j]+=v })
     rv.forEach((v,j)=>{ if(v) totRun[j]+=v })
-    totLen += seg.length||0
-    html += `<tr>
+    totLen+=seg.length||0
+    html+=`<tr>
       <td>${seg.name}</td><td>${seg.lanes||'—'}</td><td>${seg.width||'—'}</td><td>${seg.length||'—'}</td>
       ${tv.map(v=>`<td>${fmt(v)}</td>`).join('')}
       ${rv.map(v=>`<td>${fmt(v)}</td>`).join('')}
     </tr>`
   })
-  html += `<tr class="total-row">
+  html+=`<tr class="total-row">
     <td>合計</td><td></td><td></td><td>${totLen}</td>
     ${[OB,OR,PB,PR].map(t=>`<td class="highlight">${fmt(t?.travelS)}</td>`).join('')}
     ${[OB,OR,PB,PR].map(t=>`<td class="highlight">${fmt(t?.runS)}</td>`).join('')}
   </tr>`
-  document.getElementById('tbl-travel').innerHTML = html
+  document.getElementById('tbl-travel').innerHTML=html
 }
 
 // ── Speed Table ──
 function renderSpeedTable(){
-  const segs = route.segments || []
+  const segs    = _mergeGhostSegs()
   const OB = avgTrips.off_peak_bound, OR = avgTrips.off_peak_return
   const PB = avgTrips.peak_bound,     PR = avgTrips.peak_return
   const offLabel = route.offPeakLabel||'離峰'
@@ -531,24 +561,24 @@ function renderSpeedTable(){
     <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
   </tr>`
 
-  segs.forEach((seg,i)=>{
-    const L = seg.length||0
-    const trips = [OB,OR,PB,PR]
-    const tv = trips.map(t=>spd(L,t?.segTimes?.[i]?.travelS))
-    const rv = trips.map(t=>spd(L,t?.segTimes?.[i]?.runS))
-    html += `<tr>
+  segs.forEach((seg)=>{
+    const L=seg.length||0
+    const idxs=seg._origIdx||[]
+    const tv=[OB,OR,PB,PR].map(t=>spd(L,idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)))
+    const rv=[OB,OR,PB,PR].map(t=>spd(L,idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)))
+    html+=`<tr>
       <td>${seg.name}</td><td>${L}</td>
       ${tv.map(v=>`<td>${v}</td>`).join('')}
       ${rv.map(v=>`<td>${v}</td>`).join('')}
     </tr>`
   })
-  const TL = route.totalLength||0
-  html += `<tr class="total-row">
+  const TL=route.totalLength||0
+  html+=`<tr class="total-row">
     <td>合計</td><td>${TL}</td>
     ${[OB,OR,PB,PR].map(t=>`<td class="highlight">${spd(TL,t?.travelS)}</td>`).join('')}
     ${[OB,OR,PB,PR].map(t=>`<td class="highlight">${spd(TL,t?.runS)}</td>`).join('')}
   </tr>`
-  document.getElementById('tbl-speed').innerHTML = html
+  document.getElementById('tbl-speed').innerHTML=html
 }
 
 // ── Delay Table ──
