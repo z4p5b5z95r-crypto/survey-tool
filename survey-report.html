@@ -1230,11 +1230,12 @@ function downloadSGSPdf(){
   const nodes = route.nodes||[]
   // Merge segments that pass through ghost nodes (gh:true) for display in summary tables
   const segs=(function(){
-    if(!nodes.some(n=>n.gh)) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
+    if(!nodes.some(n=>n.ghost||n.gh)) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
+    const _isGhost=n=>!!(n?.ghost||n?.gh)
     const out=[]; let i=0
     while(i<rawSegs.length){
       let eIdx=i+1; const idxs=[i]
-      while(eIdx<nodes.length-1&&nodes[eIdx]?.gh){idxs.push(eIdx);eIdx++}
+      while(eIdx<nodes.length-1&&_isGhost(nodes[eIdx])){idxs.push(eIdx);eIdx++}
       const totalLen=idxs.reduce((a,j)=>a+(rawSegs[j]?.length||0),0)
       const merged=Object.assign({},rawSegs[i],{_origIdx:idxs})
       if(idxs.length>1){
