@@ -1163,6 +1163,7 @@ async function redo(){
   toast('↪ 已取消復原')
 }
 let segData=[]
+let _segDisplayMap=[] // maps display-row index → [segData indices] (ghost nodes are merged)
 // ── Polygon draw state ──
 let _polyDrawMode=false, _polyDrawNodeIdx=-1, _polyDrawPts=[], _polyDrawPreview=null, _polyDrawDotMarkers=[]
 let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], measureTooltipMarker=null
@@ -1986,23 +1987,57 @@ function clearNodePolygon(nodeIdx) {
 // ════════════════════════════════════════════════════════
 function renderSegTable() {
   const tbody=document.getElementById('seg-tbody'),hint=document.getElementById('seg-hint')
-  if(nodes.length<2){tbody.innerHTML='';hint.style.display='block';return}
+  if(nodes.length<2){tbody.innerHTML='';hint.style.display='block';_segDisplayMap=[];return}
   hint.style.display='none'
   const needed=nodes.length-1
   if(!_loadingTask){
     while(segData.length<needed)segData.push({name:'',lanes:2,width:8,length:0,_auto:true})
     segData.length=needed
   }
-  tbody.innerHTML=nodes.slice(0,-1).map((n,i)=>{
-    const autoName=`${n.exitName||n.name}→${nodes[i+1].name}`
-    if(!segData[i]._nameCustom)segData[i].name=autoName
-    const defName=segData[i].name||autoName
-    const badge=segData[i]._source==='straight'?'<span class="dist-manual">直線</span>':segData[i]._auto!==false?'<span class="dist-auto">✓</span>':'<span class="dist-manual">手動</span>'
-    return `<tr>
-      <td><input class="seg-input" style="text-align:left;min-width:90px" value="${defName}" onchange="segData[${i}].name=this.value;segData[${i}]._nameCustom=true"/></td>
-      <td><input class="seg-input" style="width:36px" type="number" value="${segData[i].lanes}" min="1" max="10" onchange="segData[${i}].lanes=+this.value||2"/></td>
-      <td><input class="seg-input" style="width:40px" type="number" value="${segData[i].width}" onchange="segData[${i}].width=+this.value||8"/></td>
-      <td style="white-space:nowrap"><input class="seg-input" style="width:50px" type="number" value="${segData[i].length}" onchange="segData[${i}].length=+this.value||0;segData[${i}]._auto=false;updateTotalLength()"/>${badge}</td>
+  // Build display rows: ghost nodes (n._ghost) are transparent pass-through points.
+  // When a node in the middle is ghost, merge the segments before and after it into one row.
+  _segDisplayMap=[]
+  const displayRows=[]
+  let i=0
+  while(i<nodes.length-1){
+    const startNode=nodes[i]
+    let endIdx=i+1
+    const mergedIndices=[i]
+    // Advance past consecutive ghost nodes
+    while(endIdx<nodes.length-1&&nodes[endIdx]._ghost){
+      mergedIndices.push(endIdx)
+      endIdx++
+    }
+    const endNode=nodes[endIdx]
+    const pi=mergedIndices[0]
+    const autoName=`${startNode.exitName||startNode.name}→${endNode.name}`
+    if(!segData[pi]._nameCustom) segData[pi].name=autoName
+    const mergedLength=mergedIndices.reduce((a,idx)=>a+(segData[idx].length||0),0)
+    displayRows.push({autoName,indices:mergedIndices,pi,mergedLength,
+      mergedLanes:segData[pi].lanes||2,mergedWidth:segData[pi].width||8})
+    _segDisplayMap.push(mergedIndices)
+    i=endIdx
+  }
+  tbody.innerHTML=displayRows.map(row=>{
+    const{pi,indices,mergedLength,mergedLanes,mergedWidth,autoName}=row
+    const defName=segData[pi]._nameCustom?segData[pi].name:autoName
+    const isMerged=indices.length>1
+    const badge=isMerged
+      ?'<span class="dist-manual" title="含假節點，距離已合併">合併</span>'
+      :segData[pi]._source==='straight'?'<span class="dist-manual">直線</span>'
+      :segData[pi]._auto!==false?'<span class="dist-auto">✓</span>'
+      :'<span class="dist-manual">手動</span>'
+    const onLanes=indices.map(idx=>`segData[${idx}].lanes=+this.value||2`).join(';')
+    const onWidth=indices.map(idx=>`segData[${idx}].width=+this.value||8`).join(';')
+    // Length change on merged row: distribute proportionally across constituent segments
+    const onLen=isMerged
+      ?`(function(nv){var idxs=${JSON.stringify(indices)};var tot=idxs.reduce(function(a,x){return a+(segData[x].length||0)},0)||1;var rem=nv;idxs.forEach(function(x,k){if(k<idxs.length-1){var v=Math.round((segData[x].length/tot)*nv);segData[x].length=v;rem-=v;segData[x]._auto=false}else{segData[x].length=rem;segData[x]._auto=false}});updateTotalLength()})(+this.value||0)`
+      :`segData[${pi}].length=+this.value||0;segData[${pi}]._auto=false;updateTotalLength()`
+    return`<tr>
+      <td><input class="seg-input" style="text-align:left;min-width:90px" value="${defName}" onchange="segData[${pi}].name=this.value;segData[${pi}]._nameCustom=true"/></td>
+      <td><input class="seg-input" style="width:36px" type="number" value="${mergedLanes}" min="1" max="10" onchange="${onLanes}"/></td>
+      <td><input class="seg-input" style="width:40px" type="number" value="${mergedWidth}" onchange="${onWidth}"/></td>
+      <td style="white-space:nowrap"><input class="seg-input" style="width:50px" type="number" value="${mergedLength}" onchange="${onLen}"/>${badge}</td>
     </tr>`
   }).join('')
 }
@@ -2024,9 +2059,20 @@ function clearAll() {
 //  ENCODE CONFIG
 // ════════════════════════════════════════════════════════
 function syncSegDataFromDOM() {
-  document.querySelectorAll('#seg-tbody tr').forEach((tr,i)=>{
+  document.querySelectorAll('#seg-tbody tr').forEach((tr,ri)=>{
     const ins=tr.querySelectorAll('input')
-    if(ins.length>=4&&segData[i]){segData[i].name=ins[0].value;segData[i].lanes=parseInt(ins[1].value)||2;segData[i].width=parseInt(ins[2].value)||8;segData[i].length=parseInt(ins[3].value)||0}
+    if(ins.length<4)return
+    const indices=_segDisplayMap[ri]
+    if(!indices)return
+    const pi=indices[0]
+    if(!segData[pi])return
+    segData[pi].name=ins[0].value
+    const lanes=parseInt(ins[1].value)||2
+    const width=parseInt(ins[2].value)||8
+    // Apply lanes/width to all constituent indices (ghost nodes keep same value)
+    indices.forEach(idx=>{if(segData[idx]){segData[idx].lanes=lanes;segData[idx].width=width}})
+    // For non-merged rows only: also sync length (merged rows handle length via onchange)
+    if(indices.length===1) segData[pi].length=parseInt(ins[3].value)||0
   })
 }
 function buildConfig() {
