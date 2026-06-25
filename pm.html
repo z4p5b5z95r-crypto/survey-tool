@@ -2397,7 +2397,7 @@ function renderProjects(filter='') {
             :`<button class="pc-btn edit" onclick="loadTask('${t.id}')">✏️ 編輯</button>`}
           <button class="pc-btn qr" onclick="showListQR('${t.id}')">🔲 QR</button>
           ${t.cloudId
-            ?`<button class="pc-btn rec" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}')">📋 記錄</button>`
+            ?`<button class="pc-btn rec" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}')">📋 報告</button>`
             :(gsUrl&&gsKey)?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
         </div>
         <div class="pc-actions-r">
