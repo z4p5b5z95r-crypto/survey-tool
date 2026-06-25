@@ -1997,13 +1997,13 @@ function onPos(p){
           sv.style.color=kmh<5?'#f87171':kmh<30?'#fbbf24':'#4ade80'
         }
       }
-      // ── 停止偵測（< 5 km/h 持續 3 秒，通過第一個節點後才啟用）──
+      // ── 停止偵測（< 5 km/h 持續 1.5 秒，通過第一個節點後才啟用）──
       if(!activeDelay&&currentNodeIdx>0){
         const STOP_TH=5/3.6
         if(speed!=null&&speed<STOP_TH){
           _stopResumeSince=null  // 低速時重置行車計時
           if(_stopSince===null) _stopSince=Date.now()
-          else if(!_stopActive&&Date.now()-_stopSince>=3000) triggerStopDetection()
+          else if(!_stopActive&&Date.now()-_stopSince>=1500) triggerStopDetection()
         } else {
           _stopSince=null
           // 面板顯示中車子重新行駛 > 5 km/h 持續 3 秒 → 自動縮回（同延滯自動解除邏輯）
