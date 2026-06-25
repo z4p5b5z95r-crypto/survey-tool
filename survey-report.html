@@ -1244,16 +1244,16 @@ function downloadSGSPdf(){
 
   // ── CSS ──────────────────────────────────────────────────────────────────
   const CSS = `
-/* Named pages for mixed portrait / landscape */
-@page portrait-p { size: A4 portrait;  margin: 10mm }
-@page landscape-p{ size: A4 landscape; margin: 8mm  }
+/* Named pages — margin:0 suppresses browser default headers/footers */
+@page portrait-p { size: A4 portrait;  margin: 0 }
+@page landscape-p{ size: A4 landscape; margin: 0 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#000;font-size:8.5pt}
 
-/* summary pages → portrait */
-.pg{page:portrait-p;page-break-after:always;padding:2px}
+/* summary pages → portrait (padding compensates for margin:0) */
+.pg{page:portrait-p;page-break-after:always;padding:10mm}
 /* trip pages → landscape */
-.pg-land{page:landscape-p;page-break-after:always;padding:2px}
+.pg-land{page:landscape-p;page-break-after:always;padding:8mm}
 .pg:last-child,.pg-land:last-child{page-break-after:auto}
 
 /* ── Summary tables (延滯統計表 etc.) ── */
