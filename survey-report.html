@@ -1486,7 +1486,7 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
       rv.forEach((v,j)=>{ totRv[j]+=v })
       totLen += seg.length||0
       const firstCol = i===0
-        ? `<td rowspan="${ns}" class="sr-vert">${route.routeName||startN+'到'+endN}</td>`
+        ? `<td rowspan="${ns+1}" class="sr-vert">${(route.routeName||startN+'到'+endN).replace(/延滯調查$/,'')}</td>`
         : ''
       rows += `<tr>
         ${firstCol}
@@ -1497,7 +1497,7 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
       </tr>`
     })
     rows += `<tr class="sr-tot">
-      <td></td><td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
+      <td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
       ${totTv.map(v=>`<td>${v||''}</td>`).join('')}
       ${totRv.map(v=>`<td>${v||''}</td>`).join('')}
     </tr>`
@@ -1519,7 +1519,7 @@ ${rows}</table>`
       const tv = T4.map(t=>_spd(L,t?.segTimes?.[i]?.travelS))
       const rv = T4.map(t=>_spd(L,t?.segTimes?.[i]?.runS))
       const firstCol = i===0
-        ? `<td rowspan="${ns}" class="sr-vert">${route.routeName||startN+'到'+endN}</td>`
+        ? `<td rowspan="${ns+1}" class="sr-vert">${(route.routeName||startN+'到'+endN).replace(/延滯調查$/,'')}</td>`
         : ''
       rows += `<tr>
         ${firstCol}
@@ -1530,7 +1530,7 @@ ${rows}</table>`
       </tr>`
     })
     rows += `<tr class="sr-tot">
-      <td></td><td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
+      <td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
       ${T4.map(t=>`<td>${_spd(totLen,t?.travelS)||''}</td>`).join('')}
       ${T4.map(t=>`<td>${_spd(totLen,t?.runS)||''}</td>`).join('')}
     </tr>`
@@ -1633,46 +1633,42 @@ ${rows}</table>`
   <col style="width:7.5%"><col style="width:7.5%">
 </colgroup>
 <tr class="ft-h">
-  <td rowspan="3" style="font-size:8pt">路<br><small>起點位置</small></td>
-  <td rowspan="3" style="font-size:8pt">線<br><small>終點位置</small></td>
-  <td rowspan="3" style="font-size:7pt">距離<br>(公尺)</td>
+  <td>路</td>
+  <td>線</td>
+  <td></td>
+  <td colspan="3" style="letter-spacing:4px">時</td>
+  <td colspan="3" style="letter-spacing:4px">刻</td>
+  <td colspan="4">總旅行時間(秒)及百分比</td>
+  <td rowspan="2" style="font-size:7pt">總旅行速率<br>(公里/時)</td>
+  <td rowspan="2" style="font-size:7pt">總行駛速率<br>(公里/時)</td>
+</tr>
+<tr class="ft-h">
+  <td style="font-size:7pt">起點位置</td>
+  <td style="font-size:7pt">終點位置</td>
+  <td style="font-size:7pt">距離(公尺)</td>
   <td colspan="3" style="letter-spacing:2px">起　點</td>
   <td colspan="3" style="letter-spacing:2px">終　點</td>
-  <td rowspan="2" style="font-size:7pt">合計</td>
-  <td rowspan="2" style="font-size:7pt">交叉口<br>延　滯</td>
-  <td rowspan="2" style="font-size:7pt">路段中<br>延　滯</td>
-  <td rowspan="2" style="font-size:7pt">行　駛<br>時　間</td>
-  <td rowspan="3" style="font-size:7pt">總旅行速率<br>(公里/時)</td>
-  <td rowspan="3" style="font-size:7pt">總行駛速率<br>(公里/時)</td>
-</tr>
-<tr class="ft-h">
-  <td colspan="3" style="letter-spacing:4px">時　　　刻</td>
-  <td colspan="3" style="letter-spacing:4px">時　　　刻</td>
-</tr>
-<tr class="ft-h">
-  <td>時</td><td>分</td><td>秒</td>
-  <td>時</td><td>分</td><td>秒</td>
   <td style="font-size:7pt">合計</td>
-  <td style="font-size:7pt">交叉口<br>延滯</td>
-  <td style="font-size:7pt">路段中<br>延滯</td>
-  <td style="font-size:7pt">行駛<br>時間</td>
+  <td style="font-size:7pt">交叉口<br>延　滯</td>
+  <td style="font-size:7pt">路段中<br>延　滯</td>
+  <td style="font-size:7pt">行　駛<br>時　間</td>
 </tr>
 <tr>
-  <td class="ft-la">${startN2}</td>
-  <td class="ft-la">${endN2}</td>
-  <td>${TL}</td>
+  <td class="ft-la" rowspan="2">${startN2}</td>
+  <td class="ft-la" rowspan="2">${endN2}</td>
+  <td rowspan="2">${TL}</td>
+  <td>時</td><td>分</td><td>秒</td>
+  <td>時</td><td>分</td><td>秒</td>
+  <td>${trip.travelS||0}</td><td>${intT}</td><td>${roadT}</td><td>${trip.runS||0}</td>
+  <td class="ft-bk" rowspan="2">${tSpd}</td><td class="ft-bk" rowspan="2">${rSpd}</td>
+</tr>
+<tr>
   <td class="ft-bl">${sH}</td><td class="ft-bl">${sM}</td><td class="ft-bl">${sS}</td>
   <td class="ft-bl">${eH}</td><td class="ft-bl">${eM}</td><td class="ft-bl">${eS}</td>
-  <td>${trip.travelS||0}</td><td>${intT}</td><td>${roadT}</td><td>${trip.runS||0}</td>
-  <td class="ft-bk">${tSpd}</td><td class="ft-bk">${rSpd}</td>
-</tr>
-<tr>
-  <td colspan="9" style="text-align:right;padding-right:4px;font-size:7pt">百分比</td>
-  <td style="font-size:7pt">100%</td>
+  <td style="font-size:7pt">百分比</td>
   <td style="font-size:7pt">${_pct(intT,trip.travelS)}%</td>
   <td style="font-size:7pt">${_pct(roadT,trip.travelS)}%</td>
   <td style="font-size:7pt">${_pct(trip.runS||0,trip.travelS)}%</td>
-  <td colspan="2"></td>
 </tr>
 </table>
 
