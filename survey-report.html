@@ -481,9 +481,11 @@ function _mergeGhostSegs(){
   const ghostIdxSet = new Set(route.ghostNodeIndices||[])
   nodes.forEach((n,i)=>{ if(n?.ghost||n?.gh) ghostIdxSet.add(i) })
   for(let k=1;k<rawSegs.length;k++){
-    const segStart=(rawSegs[k].name||'').split('→')[0]?.trim()||''
+    const segStart=(rawSegs[k].name||'').split('\u2192')[0]?.trim()||''
     if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
   }
+  console.log('[GHOST] rawSegs names:', rawSegs.map((s,i)=>i+':'+s.name))
+  console.log('[GHOST] ghostIdxSet:', [...ghostIdxSet])
   if(!ghostIdxSet.size) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
   const out=[]; let i=0
   while(i<rawSegs.length){
