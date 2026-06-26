@@ -1218,7 +1218,7 @@ function getNodeColor(i) {
   const realIdxs = nodes.map((n,j)=>n._ghost?-1:j).filter(j=>j>=0)
   const firstReal = realIdxs[0]??0, lastReal = realIdxs[realIdxs.length-1]??0
   if(nodes[i]?._ghost) return '#94a3b8'
-  return i===firstReal ? '#16a34a' : i===lastReal ? '#dc2626' : '#3b82f6'
+  return i===firstReal ? '#16a34a' : i===lastReal ? '#dc2626' : '#FF5C00'
 }
 
 // ════════════════════════════════════════════════════════
@@ -1227,7 +1227,7 @@ function getNodeColor(i) {
 function createMidIcon(active) {
   const inner=active?18:12
   // pointer-events:none on inner content — Leaflet drag handler needs to receive events on the outer icon element
-  return L.divIcon({ html:`<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:grab;pointer-events:none"><div style="width:${inner}px;height:${inner}px;background:white;border:3px solid ${active?'#1d4ed8':'#3b82f6'};border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.4);transition:width .1s,height .1s;pointer-events:none"></div></div>`, className:'', iconSize:[32,32], iconAnchor:[16,16] })
+  return L.divIcon({ html:`<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:grab;pointer-events:none"><div style="width:${inner}px;height:${inner}px;background:white;border:3px solid ${active?'#cc4a00':'#FF5C00'};border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.4);transition:width .1s,height .1s;pointer-events:none"></div></div>`, className:'', iconSize:[32,32], iconAnchor:[16,16] })
 }
 function getPolylineMidpoint(poly) {
   const pts=poly.getLatLngs(); if(pts.length<2) return pts[0]
@@ -1449,7 +1449,7 @@ async function refreshSegment(segIdx) {
   const n1=nodes[segIdx],n2=nodes[segIdx+1],wps=segData[segIdx]?.waypoints||[]
   const mode=segData[segIdx]?.mode||'driving'
   const result=await fetchRoute(n1.lat,n1.lng,n2.lat,n2.lng,wps,mode)
-  segPolylines[segIdx]=L.polyline(result.latlngs,{color:'#3b82f6',weight:4,opacity:.85}).addTo(map)
+  segPolylines[segIdx]=L.polyline(result.latlngs,{color:'#FF5C00',weight:4,opacity:.85}).addTo(map)
   if(!segData[segIdx])segData[segIdx]={name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]}
   segData[segIdx]._latlngs=result.latlngs  // primary: used by buildConfig
   segData[segIdx]._latlngsStr=JSON.stringify(result.latlngs)  // backup string copy
@@ -1649,7 +1649,7 @@ async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle
       result=await fetchRoute(prev.lat,prev.lng,lat,lng,preWps,preMode)
     }
     document.getElementById('route-loading').style.display='none'
-    segPolylines.push(L.polyline(result.latlngs,{color:'#3b82f6',weight:4,opacity:.85}).addTo(map))
+    segPolylines.push(L.polyline(result.latlngs,{color:'#FF5C00',weight:4,opacity:.85}).addTo(map))
     if(!segData[idx-1])segData[idx-1]={name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]}
     if(segData[idx-1]._auto!==false){segData[idx-1].length=result.distance;segData[idx-1]._source=result.source}
     if(result.source==='straight')toast('⚠️ 使用直線距離（OSRM 無回應）')
