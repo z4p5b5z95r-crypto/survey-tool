@@ -2121,9 +2121,9 @@ function buildURL() {
   if(nodes.length<2){toast('請至少在地圖上放置 2 個節點');return null}
   const base=document.getElementById('app-url').value.trim().replace(/\/$/,'')
   const task=currentTaskId?savedTasks.find(t=>t.id===currentTaskId):null
-  if(task&&task.cloudId&&gsUrl&&gsKey){
+  if(task&&task.cloudId&&gsUrl&&HARDCODED_GS_KEY){
     document.getElementById('qr-info').textContent=`☁️ 雲端路線 ${task.cloudId}（節點 ${cfg.nd.filter(n=>!n.gh).length} 個）`
-    return`${base}/?id=${encodeURIComponent(task.cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(gsKey)}`
+    return`${base}/?id=${encodeURIComponent(task.cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(HARDCODED_GS_KEY)}`
   }
   const encoded=encodeConfig(cfg)
   document.getElementById('qr-info').textContent=`📦 離線模式 — 節點 ${cfg.nd.length} 個、路段 ${cfg.sg.length} 個（${encoded.length} 字元）`
@@ -2167,7 +2167,7 @@ async function saveTask() {
   _dirty=false
   document.getElementById('ev-title').textContent=cfg.rn
   updateCrumb(cfg.rn)
-  if(gsUrl&&gsKey){
+  if(gsUrl&&getSessionToken()){
     toast('⏳ 同步至雲端...')
     try{
       const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
@@ -2197,7 +2197,7 @@ async function saveTaskFromSidebar() {
 async function uploadTask(id) {
   const task = savedTasks.find(t => t.id === id)
   if (!task) return
-  if (!gsUrl || !gsKey) { toast('雲端未設定'); return }
+  if (!gsUrl || !getSessionToken()) { toast('雲端未設定'); return }
   toast('⏳ 上傳中...')
   try {
     const cfg = task.cfg
@@ -2272,7 +2272,7 @@ async function loadTask(id) {
 async function deleteTask(id) {
   if(!confirm('刪除此專案？\n\n此操作可在 3 天內由管理員於垃圾桶還原。'))return
   const task=savedTasks.find(t=>t.id===id)
-  if(task&&task.cloudId&&gsUrl&&gsKey){
+  if(task&&task.cloudId&&gsUrl&&getSessionToken()){
     try{await cloudPost({action:'deleteRoute',id:task.cloudId,deletedBy:getCurrentUser()||'pm'})}catch(e){toast('⚠️ 雲端刪除失敗：'+e.message)}
   }
   if(currentTaskId===id){currentTaskId=null;showListView()}
@@ -2286,8 +2286,8 @@ function showListQR(taskId){
   const t=savedTasks.find(t=>t.id===taskId); if(!t){toast('找不到任務');return}
   const appBase=(document.getElementById('app-url')?.value||'').trim().replace(/\/$/,'')||location.href.replace(/\/[^\/]*$/,'')
   let url
-  if(t.cloudId&&gsUrl&&gsKey){
-    url=`${appBase}/?id=${encodeURIComponent(t.cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(gsKey)}`
+  if(t.cloudId&&gsUrl&&HARDCODED_GS_KEY){
+    url=`${appBase}/?id=${encodeURIComponent(t.cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(HARDCODED_GS_KEY)}`
   } else if(t.cfg){
     url=`${appBase}/?d=${encodeConfig(t.cfg)}`
   } else {toast('無法產生 QR Code，請先儲存任務');return}
@@ -2328,7 +2328,7 @@ function showListQR(taskId){
 //  SYNC FROM CLOUD
 // ════════════════════════════════════════════════════════
 async function syncFromCloud() {
-  if(!gsUrl||!gsKey)return
+  if(!gsUrl||!getSessionToken())return
   const me=getCurrentUser()||'未知'
   try{
     const routes=await cloudGet({action:'getRoutes'})
@@ -2412,7 +2412,7 @@ function renderProjects(filter='') {
           <button class="pc-btn qr" onclick="showListQR('${t.id}')">🔲 QR</button>
           ${t.cloudId
             ?`<button class="pc-btn rec" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}')">📋 報告</button>`
-            :(gsUrl&&gsKey)?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
+            :(gsUrl&&getSessionToken())?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
         </div>
         <div class="pc-actions-r">
           <button class="pc-btn icon del" title="刪除" onclick="deleteTask('${t.id}')">🗑</button>
@@ -2433,7 +2433,7 @@ function filterProjects() {
 let _svModalCloudId='', _svModalRouteName='', _svModalSurveys=[]
 function closeSurveyModal() { const el=document.getElementById('sv-modal-overlay');if(el)el.remove() }
 async function openSurveyManager(cloudId,routeName) {
-  if(!gsUrl||!gsKey){toast('雲端未設定，請聯絡管理員');return}
+  if(!gsUrl||!getSessionToken()){toast('雲端未設定，請聯絡管理員');return}
   _svModalCloudId=cloudId;_svModalRouteName=routeName
   const overlay=document.createElement('div')
   overlay.id='sv-modal-overlay';overlay.className='sv-modal-overlay'
