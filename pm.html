@@ -4,19 +4,10 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>🚗交通速率與延滯調查🚗</title>
-<!-- SRI: run `openssl dgst -sha384 -binary FILE | openssl base64 -A` to (re)compute hashes -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-  crossorigin="anonymous"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-  integrity="sha256-20nQCchB9co0qIjJZRGuk8IiGQKXl55+HHhlFnJH4ds="
-  crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
-  integrity="sha512-CNn5+6QKrKJFohnyAcZnEFD7M4a/kMKABFUFgUwDBcFh4OFwCEQEKMGiBPTBhK6mW1c7cXeXkf1/dg6DfQtw=="
-  crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
-  integrity="sha512-yjHlFTH6SnGOQj8xMTFHCNfeCBhGMRtPMhgp9X/2fH1xmREGkz5y0cIpv67B1PNl3OFGdcqkv1UrmWpDuHlXA=="
-  crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#1e293b;height:100vh;overflow:hidden}
@@ -2328,15 +2319,18 @@ function showListQR(taskId){
 //  SYNC FROM CLOUD
 // ════════════════════════════════════════════════════════
 async function syncFromCloud() {
-  if(!gsUrl||!getSessionToken())return
+  const _tok = getSessionToken()
+  // DEBUG: 永久顯示在雲端標籤（不會消失）
+  const _lbl = document.getElementById('cloud-label')
+  if(_lbl) _lbl.textContent = _tok ? 'tok='+_tok.slice(0,6) : 'NO TOKEN'
+  if(!gsUrl||!_tok)return
   const me=getCurrentUser()||'未知'
   try{
-    toast(`🔑 取得 token：${getSessionToken()?'✓':'✗'}，帳號：${me}`)
     const routes=await cloudGet({action:'getRoutes'})
     updateCloudDot('ok')
     // debug: 顯示雲端回傳及 owner 對應情況（上線穩定後可移除）
     const myCount=routes.filter(r=>!r.deletedAt&&(!r.owner||r.owner===me)).length
-    toast(`☁️ 雲端共 ${routes.length} 筆，我的：${myCount}（帳號：${me}）`)
+    if(_lbl) _lbl.textContent = `routes=${routes.length}/mine=${myCount}`
     let changed=0
     for(const r of routes){
       // 已刪除（軟刪除）的路線：從本機移除
@@ -2345,38 +2339,30 @@ async function syncFromCloud() {
         if(delIdx>=0){savedTasks.splice(delIdx,1);changed++}
         continue
       }
-      // 只處理屬於自己的路線（owner === me 或尚未指定 owner）
-      const isMine = !r.owner || r.owner === me
+      // owner filter：只同步屬於自己的路線
+      const isMine=!r.owner||r.owner===me
+      if(!isMine) continue
       const existIdx=savedTasks.findIndex(t=>t.cloudId===r.id)
       if(existIdx>=0){
-        // 若不屬於自己，從本機移除（例如被 admin 轉給別人）
-        if(!isMine && savedTasks[existIdx].creator===me){
-          savedTasks.splice(existIdx,1)
-          changed++
-          continue
-        }
-        if(!isMine) continue
-        // 路線已在本機：用雲端資料更新（名稱、路段等可能已在其他裝置修改）
+        // 路線已在本機：用雲端資料更新
         const loc=savedTasks[existIdx]
         if(loc.creator!==me){loc.creator=me;changed++}
         const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
         if(JSON.stringify(loc.cfg)!==JSON.stringify(newCfg)){loc.cfg=newCfg;changed++}
         continue
       }
-      // 不在本機：只匯入屬於自己的
-      if(!isMine) continue
       savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
       changed++
     }
-    // 移除本機有 cloudId 但雲端已不存在的項目（刪除同步）
-    const cloudIds=new Set(routes.map(r=>r.id))
+    // 移除本機有 cloudId 但雲端「我的路線」已不存在的項目（刪除同步 + 清除誤匯入的他人路線）
+    const myCloudIds=new Set(routes.filter(r=>!r.deletedAt&&(!r.owner||r.owner===me)).map(r=>r.id))
     const before=savedTasks.length
-    savedTasks=savedTasks.filter(t=>!t.cloudId||cloudIds.has(t.cloudId))
+    savedTasks=savedTasks.filter(t=>!t.cloudId||myCloudIds.has(t.cloudId))
     if(savedTasks.length!==before)changed+=before-savedTasks.length
     localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
     renderProjects()
     if(changed>0) toast(`☁️ 雲端同步完成`)
-  }catch(e){updateCloudDot('err','同步失敗');toast('sync錯誤: '+e.message)}
+  }catch(e){updateCloudDot('err','同步失敗');if(_lbl)_lbl.textContent='ERR:'+e.message.slice(0,30)}
 }
 
 // ════════════════════════════════════════════════════════
