@@ -817,10 +817,10 @@ let gsUrl = HARDCODED_GS_URL || ''
 // ════════════════════════════════════════════════════════
 function hashPwd(p) { return btoa(encodeURIComponent(p)) }   // 維持與 GAS Users sheet 相容
 
-// Session 存取（sessionStorage：分頁關閉即清除）
-function getCurrentUser()     { return sessionStorage.getItem('pm_user') || null }
-function getSessionToken()    { return sessionStorage.getItem('pm_session_token') || null }
-function getSessionExpires()  { return sessionStorage.getItem('pm_session_expires') || null }
+// Session 存取（localStorage：跨分頁/重新整理後仍保留，依 expiresAt 控制時效）
+function getCurrentUser()     { return localStorage.getItem('pm_user') || null }
+function getSessionToken()    { return localStorage.getItem('pm_session_token') || null }
+function getSessionExpires()  { return localStorage.getItem('pm_session_expires') || null }
 function isSessionValid() {
   const tok = getSessionToken()
   const exp = getSessionExpires()
@@ -829,12 +829,12 @@ function isSessionValid() {
   return true
 }
 function setSession(name, token, expiresAt) {
-  sessionStorage.setItem('pm_user',             name)
-  sessionStorage.setItem('pm_session_token',    token)
-  sessionStorage.setItem('pm_session_expires',  expiresAt)
+  localStorage.setItem('pm_user',             name)
+  localStorage.setItem('pm_session_token',    token)
+  localStorage.setItem('pm_session_expires',  expiresAt)
 }
 function clearSession() {
-  ['pm_user','pm_session_token','pm_session_expires'].forEach(k => sessionStorage.removeItem(k))
+  ['pm_user','pm_session_token','pm_session_expires'].forEach(k => localStorage.removeItem(k))
 }
 
 function switchLoginTab(tab) {
