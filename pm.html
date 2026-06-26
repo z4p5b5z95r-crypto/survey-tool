@@ -2333,6 +2333,9 @@ async function syncFromCloud() {
   try{
     const routes=await cloudGet({action:'getRoutes'})
     updateCloudDot('ok')
+    // debug: 顯示雲端回傳及 owner 對應情況（上線穩定後可移除）
+    const myCount=routes.filter(r=>!r.deletedAt&&(!r.owner||r.owner===me)).length
+    toast(`☁️ 雲端共 ${routes.length} 筆，我的：${myCount}（帳號：${me}）`)
     let changed=0
     for(const r of routes){
       // 已刪除（軟刪除）的路線：從本機移除
@@ -2369,7 +2372,9 @@ async function syncFromCloud() {
     const before=savedTasks.length
     savedTasks=savedTasks.filter(t=>!t.cloudId||cloudIds.has(t.cloudId))
     if(savedTasks.length!==before)changed+=before-savedTasks.length
-    if(changed>0){localStorage.setItem('pm_tasks',JSON.stringify(savedTasks));renderProjects();toast(`☁️ 雲端同步完成`)}
+    localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
+    renderProjects()
+    if(changed>0) toast(`☁️ 雲端同步完成`)
   }catch(e){updateCloudDot('err','同步失敗')}
 }
 
