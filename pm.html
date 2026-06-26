@@ -2331,6 +2331,7 @@ async function syncFromCloud() {
   if(!gsUrl||!getSessionToken())return
   const me=getCurrentUser()||'未知'
   try{
+    toast(`🔑 取得 token：${getSessionToken()?'✓':'✗'}，帳號：${me}`)
     const routes=await cloudGet({action:'getRoutes'})
     updateCloudDot('ok')
     // debug: 顯示雲端回傳及 owner 對應情況（上線穩定後可移除）
