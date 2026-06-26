@@ -4,10 +4,19 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>🚗交通速率與延滯調查🚗</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- SRI: run `openssl dgst -sha384 -binary FILE | openssl base64 -A` to (re)compute hashes -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin="anonymous"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk8IiGQKXl55+HHhlFnJH4ds="
+  crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+  integrity="sha512-CNn5+6QKrKJFohnyAcZnEFD7M4a/kMKABFUFgUwDBcFh4OFwCEQEKMGiBPTBhK6mW1c7cXeXkf1/dg6DfQtw=="
+  crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+  integrity="sha512-yjHlFTH6SnGOQj8xMTFHCNfeCBhGMRtPMhgp9X/2fH1xmREGkz5y0cIpv67B1PNl3OFGdcqkv1UrmWpDuHlXA=="
+  crossorigin="anonymous"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#1e293b;height:100vh;overflow:hidden}
@@ -799,34 +808,33 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 const HARDCODED_GS_URL = 'https://script.google.com/macros/s/AKfycbx0NO47Q0fbMv6dCtgBd-w_qcJxbfLDtZKFMI1hnjvn-dgTl5f3k3HBc0oeOr62su2dSg/exec'
 const HARDCODED_GS_KEY = '05751'
 
-let gsUrl = HARDCODED_GS_URL || localStorage.getItem('gs_url') || ''
-let gsKey = HARDCODED_GS_KEY || localStorage.getItem('gs_key') || ''
+let gsUrl = HARDCODED_GS_URL || ''
 
 // ════════════════════════════════════════════════════════
-//  AUTH
-//  優先模式：gsUrl + gsKey 皆設定時 → 雲端帳號（Users sheet）
-//  Fallback：localStorage（包含內建 '測試' 帳號）
+//  AUTH — Session Token 機制
+//  登入/註冊 → 後端回傳具時效性 sessionToken → 存 sessionStorage
+//  所有後續 API 呼叫改帶 sessionToken，不再傳靜態 key
 // ════════════════════════════════════════════════════════
-function getUsers()            { return JSON.parse(localStorage.getItem('pm_users') || '[]') }
-function saveUsers(u)          { localStorage.setItem('pm_users', JSON.stringify(u)) }
-function getCurrentUser()      { return sessionStorage.getItem('pm_user') || null }
-function setCurrentUser(name)  { sessionStorage.setItem('pm_user', name) }
-function clearCurrentUser()    { sessionStorage.removeItem('pm_user') }
+function hashPwd(p) { return btoa(encodeURIComponent(p)) }   // 維持與 GAS Users sheet 相容
 
-function hashPwd(p) { return btoa(encodeURIComponent(p)) }
-
-// ── 本地 fallback（不需雲端）
-function tryLoginLocal(name, pwd) {
-  return getUsers().some(u => u.name === name && u.hash === hashPwd(pwd))
+// Session 存取（sessionStorage：分頁關閉即清除）
+function getCurrentUser()     { return sessionStorage.getItem('pm_user') || null }
+function getSessionToken()    { return sessionStorage.getItem('pm_session_token') || null }
+function getSessionExpires()  { return sessionStorage.getItem('pm_session_expires') || null }
+function isSessionValid() {
+  const tok = getSessionToken()
+  const exp = getSessionExpires()
+  if (!tok) return false
+  if (exp && new Date(exp) <= new Date()) { clearSession(); return false }
+  return true
 }
-function tryRegisterLocal(name, pwd) {
-  if (!name || !pwd) return 'empty'
-  if (pwd.length < 4) return 'short'
-  const users = getUsers()
-  if (users.find(u => u.name === name)) return 'exists'
-  users.push({ name, hash: hashPwd(pwd) })
-  saveUsers(users)
-  return 'ok'
+function setSession(name, token, expiresAt) {
+  sessionStorage.setItem('pm_user',             name)
+  sessionStorage.setItem('pm_session_token',    token)
+  sessionStorage.setItem('pm_session_expires',  expiresAt)
+}
+function clearSession() {
+  ['pm_user','pm_session_token','pm_session_expires'].forEach(k => sessionStorage.removeItem(k))
 }
 
 function switchLoginTab(tab) {
@@ -845,23 +853,15 @@ async function doLogin() {
   const btn  = document.querySelector('#form-login .login-btn')
   if (!name || !pwd) { err.textContent = '請填入姓名與密碼'; return }
 
-  if (gsUrl && gsKey) {
-    // ── 雲端模式 ──
-    btn.disabled = true; btn.textContent = '驗證中...'
-    err.textContent = ''
-    try {
-      await cloudGet({ action: 'loginUser', name, hash: hashPwd(pwd) })
-      setCurrentUser(name)
-      enterApp(name)
-    } catch(e) {
-      err.textContent = e.message.includes('帳號') ? '姓名或密碼錯誤' : '連線失敗，請稍後再試'
-      btn.disabled = false; btn.textContent = '登入'
-    }
-  } else {
-    // ── 本地模式 ──
-    if (!tryLoginLocal(name, pwd)) { err.textContent = '姓名或密碼錯誤'; return }
-    setCurrentUser(name)
+  btn.disabled = true; btn.textContent = '驗證中...'
+  err.textContent = ''
+  try {
+    const res = await cloudAuth({ action: 'loginUser', name, hash: hashPwd(pwd) })
+    setSession(name, res.sessionToken, res.expiresAt)
     enterApp(name)
+  } catch(e) {
+    err.textContent = e.message.includes('帳號') ? '姓名或密碼錯誤' : '連線失敗，請稍後再試'
+    btn.disabled = false; btn.textContent = '登入'
   }
 }
 
@@ -875,31 +875,22 @@ async function doRegister() {
   if (pwd !== pwd2)  { err.textContent = '兩次密碼不符'; return }
   if (pwd.length < 4) { err.textContent = '密碼至少 4 個字元'; return }
 
-  if (gsUrl && gsKey) {
-    // ── 雲端模式 ──
-    btn.disabled = true; btn.textContent = '建立中...'
-    err.textContent = ''
-    try {
-      await cloudPost({ action: 'registerUser', name, hash: hashPwd(pwd) })
-      setCurrentUser(name)
-      enterApp(name)
-    } catch(e) {
-      err.textContent = e.message.includes('已被使用') ? '此姓名已存在，請直接登入' : '連線失敗，請稍後再試'
-      btn.disabled = false; btn.textContent = '建立帳號'
-    }
-  } else {
-    // ── 本地模式 ──
-    const res = tryRegisterLocal(name, pwd)
-    if (res === 'short')  { err.textContent = '密碼至少 4 個字元'; return }
-    if (res === 'exists') { err.textContent = '此姓名已存在，請直接登入'; return }
-    setCurrentUser(name)
+  btn.disabled = true; btn.textContent = '建立中...'
+  err.textContent = ''
+  try {
+    const res = await cloudAuth({ action: 'registerUser', name, hash: hashPwd(pwd) })
+    setSession(name, res.sessionToken, res.expiresAt)
     enterApp(name)
+  } catch(e) {
+    err.textContent = e.message.includes('已被使用') ? '此姓名已存在，請直接登入' : '連線失敗，請稍後再試'
+    btn.disabled = false; btn.textContent = '建立帳號'
   }
 }
 
-function doLogout() {
+async function doLogout() {
   if (!confirm('確定登出？')) return
-  clearCurrentUser()
+  try { await cloudPost({ action: 'logoutUser' }) } catch(e) {}
+  clearSession()
   location.reload()
 }
 
@@ -1179,19 +1170,42 @@ function updateCloudDot(state, label) {
   d.className = `cloud-dot ${state}`
   l.textContent = state==='ok' ? (label||'已連線') : state==='err' ? (label||'錯誤') : '雲端'
 }
-async function cloudGet(params) {
-  if (!gsUrl||!gsKey) throw new Error('未設定雲端')
-  const p = new URLSearchParams({ ...params, key:gsKey, _t:Date.now() })
-  const res = await fetch(`${gsUrl}?${p}`, { signal:AbortSignal.timeout(15000), cache:'no-store' })
+// cloudAuth — 僅供登入/註冊使用靜態 API key（不存 localStorage）
+async function cloudAuth(body) {
+  if (!gsUrl) throw new Error('未設定雲端')
+  const res = await fetch(gsUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ ...body, key: HARDCODED_GS_KEY }),
+    signal: AbortSignal.timeout(15000)
+  })
   const json = await res.json()
-  if (!json.ok) throw new Error(json.error||'cloud error')
+  if (!json.ok) throw new Error(json.error || 'auth error')
+  return json.data
+}
+// cloudGet / cloudPost — 登入後改用 sessionToken，靜態 key 不再傳出
+async function cloudGet(params) {
+  if (!gsUrl) throw new Error('未設定雲端')
+  const tok = getSessionToken()
+  if (!tok) throw new Error('未登入或 session 已過期，請重新登入')
+  const p = new URLSearchParams({ ...params, sessionToken: tok, _t: Date.now() })
+  const res = await fetch(`${gsUrl}?${p}`, { signal: AbortSignal.timeout(15000), cache: 'no-store' })
+  const json = await res.json()
+  if (!json.ok) throw new Error(json.error || 'cloud error')
   return json.data
 }
 async function cloudPost(body) {
-  if (!gsUrl||!gsKey) throw new Error('未設定雲端')
-  const res = await fetch(gsUrl, { method:'POST', headers:{ 'Content-Type':'text/plain' }, body:JSON.stringify({ ...body, key:gsKey }), signal:AbortSignal.timeout(15000) })
+  if (!gsUrl) throw new Error('未設定雲端')
+  const tok = getSessionToken()
+  if (!tok) throw new Error('未登入或 session 已過期，請重新登入')
+  const res = await fetch(gsUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ ...body, sessionToken: tok }),
+    signal: AbortSignal.timeout(15000)
+  })
   const json = await res.json()
-  if (!json.ok) throw new Error(json.error||'cloud error')
+  if (!json.ok) throw new Error(json.error || 'cloud error')
   return json.data
 }
 
@@ -2474,7 +2488,11 @@ window.deleteSurveyDate=async function(ids){
 function viewSurveyFromModal(idx) {
   const sv=_svModalSurveys[idx];if(!sv)return
   const date=sv.date?String(sv.date).slice(0,10):''
-  window.open(`survey-report.html?id=${encodeURIComponent(_svModalCloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(gsKey)}&date=${encodeURIComponent(date)}`,'_blank')
+  // 傳遞 gsUrl + sessionToken（非靜態 key）給子頁
+  const tok = crypto.randomUUID()
+  localStorage.setItem('sr_tok_' + tok, JSON.stringify({ gs: gsUrl, sessionToken: getSessionToken() }))
+  setTimeout(() => localStorage.removeItem('sr_tok_' + tok), 30000)
+  window.open(`survey-report.html?id=${encodeURIComponent(_svModalCloudId)}&tok=${encodeURIComponent(tok)}&date=${encodeURIComponent(date)}`,'_blank')
 }
 async function deleteSurveyRecord(surveyId) {
   if(!confirm('刪除此監測記錄？\n\n可在 3 天內於垃圾桶還原。'))return
@@ -2499,16 +2517,7 @@ function migrateTaskCreators() {
   localStorage.setItem('pm_tasks_migrated_v1','1')
 }
 
-// Ensure the '測試' built-in account exists (password: test1234)
-// 雲端模式下不需要，因為帳號存在 GAS Users sheet
-function ensureTestUser() {
-  if (gsUrl && gsKey) return   // 雲端模式：跳過
-  const users=getUsers()
-  if(!users.find(u=>u.name==='測試')){
-    users.push({name:'測試',hash:hashPwd('test1234')})
-    saveUsers(users)
-  }
-}
+// ensureTestUser 已移除（雲端 session token 模式無需本地帳號）
 
 // ════════════════════════════════════════════════════════
 //  ADMIN PANEL
@@ -2541,7 +2550,7 @@ function getSelectUrl() {
     : location.href.replace(/\/[^\/]*$/, '/select.html')
   const u = new URL(base)
   u.searchParams.set('gs', gsUrl)
-  u.searchParams.set('k',  gsKey)
+  u.searchParams.set('sessionToken', getSessionToken()||'')
   return u.toString()
 }
 
@@ -2876,10 +2885,12 @@ async function adminRestoreSurvey(id) {
 //  INIT
 // ════════════════════════════════════════════════════════
 ;(function init(){
-  ensureTestUser()
-  const user=getCurrentUser()
-  if(user){ enterApp(user) }
-  // else stay on login screen
+  // Session 存在且未過期 → 直接進 app
+  if (isSessionValid()) {
+    const user = getCurrentUser()
+    if (user) { enterApp(user); return }
+  }
+  clearSession()  // 過期或殘留 → 清除，顯示登入畫面
 })()
 
 // ════════════════════════════════════════════════════════

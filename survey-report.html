@@ -324,19 +324,31 @@ function _ldTick(){
   car.style.transition = 'none'  // JS drives position directly
 }
 
+// ════════════════ SECURITY HELPERS ════════════════
+const he = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+
 // ════════════════ INIT ════════════════
 window.addEventListener('load', async () => {
   const p = new URLSearchParams(location.search)
   const id  = p.get('id')
-  const gs  = p.get('gs')
-  const k   = p.get('k')
+  const tok = p.get('tok')
   _filterDate = p.get('date') || ''
-  if(!id||!gs||!k){ showError('缺少 URL 參數 (id / gs / k)'); return }
+  if(!id||!tok){ showError('缺少 URL 參數 (id / tok)'); return }
+
+  // Retrieve one-time credentials from localStorage and immediately remove them
+  let gs, sessionToken
+  try {
+    const raw = localStorage.getItem('sr_tok_' + tok)
+    if(!raw) throw new Error('憑證已過期或無效，請從主頁重新開啟報告')
+    localStorage.removeItem('sr_tok_' + tok)
+    ;({ gs, sessionToken } = JSON.parse(raw))
+    if(!gs||!sessionToken) throw new Error('憑證格式錯誤')
+  } catch(e) { showError(e.message); return }
 
   try{
     setLoadProgress(5)
     ld('從雲端載入路線設定...')
-    const routeRes = await cloudGet(gs, k, {action:'getRoute', id})
+    const routeRes = await cloudGet(gs, sessionToken, {action:'getRoute', id})
     if(!routeRes.ok) throw new Error(routeRes.error)
     route = routeRes.data
     // GAS may return arrays/objects as JSON strings — parse defensively
@@ -346,7 +358,7 @@ window.addEventListener('load', async () => {
     setLoadProgress(45)
 
     ld('載入調查結果...')
-    const surveyRes = await cloudGet(gs, k, {action:'getSurveys', routeId: id})
+    const surveyRes = await cloudGet(gs, sessionToken, {action:'getSurveys', routeId: id})
     if(!surveyRes.ok) throw new Error(surveyRes.error)
     const allSurveys = surveyRes.data || []
     // Parse JSON-string fields inside each survey/trip
@@ -389,8 +401,8 @@ function showError(msg){
   document.getElementById('ld-sub').textContent = msg
 }
 
-async function cloudGet(gsUrl, key, params){
-  const q = new URLSearchParams({...params, key})
+async function cloudGet(gsUrl, sessionToken, params){
+  const q = new URLSearchParams({...params, sessionToken})
   const res = await fetch(`${gsUrl}?${q}`, {signal: AbortSignal.timeout(20000)})
   return res.json()
 }
@@ -483,10 +495,10 @@ function renderTravelTable(){
 
   let html = `<tr>
     <th rowspan="2">路段位置</th><th rowspan="2">車道數</th><th rowspan="2">路寬(m)</th><th rowspan="2">路段長(m)</th>
-    <th colspan="2">${offLabel} 旅行時間(秒)</th>
-    <th colspan="2">${pkLabel} 旅行時間(秒)</th>
-    <th colspan="2">${offLabel} 行駛時間(秒)</th>
-    <th colspan="2">${pkLabel} 行駛時間(秒)</th>
+    <th colspan="2">${he(offLabel)} 旅行時間(秒)</th>
+    <th colspan="2">${he(pkLabel)} 旅行時間(秒)</th>
+    <th colspan="2">${he(offLabel)} 行駛時間(秒)</th>
+    <th colspan="2">${he(pkLabel)} 行駛時間(秒)</th>
   </tr><tr>
     <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
     <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
@@ -501,7 +513,7 @@ function renderTravelTable(){
     rv.forEach((v,j)=>{ if(v) totRun[j]+=v })
     totLen+=seg.length||0
     html += `<tr>
-      <td>${seg.name}</td><td>${seg.lanes||'—'}</td><td>${seg.width||'—'}</td><td>${seg.length||'—'}</td>
+      <td>${he(seg.name)}</td><td>${seg.lanes||'—'}</td><td>${seg.width||'—'}</td><td>${seg.length||'—'}</td>
       ${tv.map(v=>`<td>${fmt(v)}</td>`).join('')}
       ${rv.map(v=>`<td>${fmt(v)}</td>`).join('')}
     </tr>`
@@ -555,10 +567,10 @@ function renderSpeedTable(){
 
   let html = `<tr>
     <th rowspan="2">路段位置</th><th rowspan="2">路段長(m)</th>
-    <th colspan="2">${offLabel} 旅行速率(km/h)</th>
-    <th colspan="2">${pkLabel} 旅行速率(km/h)</th>
-    <th colspan="2">${offLabel} 行駛速率(km/h)</th>
-    <th colspan="2">${pkLabel} 行駛速率(km/h)</th>
+    <th colspan="2">${he(offLabel)} 旅行速率(km/h)</th>
+    <th colspan="2">${he(pkLabel)} 旅行速率(km/h)</th>
+    <th colspan="2">${he(offLabel)} 行駛速率(km/h)</th>
+    <th colspan="2">${he(pkLabel)} 行駛速率(km/h)</th>
   </tr><tr>
     <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
     <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
@@ -570,7 +582,7 @@ function renderSpeedTable(){
     const tv=[OB,OR,PB,PR].map(t=>spd(L,idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)))
     const rv=[OB,OR,PB,PR].map(t=>spd(L,idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)))
     html += `<tr>
-      <td>${seg.name}</td><td>${L}</td>
+      <td>${he(seg.name)}</td><td>${L}</td>
       ${tv.map(v=>`<td>${v}</td>`).join('')}
       ${rv.map(v=>`<td>${v}</td>`).join('')}
     </tr>`
@@ -597,8 +609,8 @@ function renderDelayTable(){
 
   let html = `<tr>
     <th>指標</th>
-    <th>${offLabel}<br>去程</th><th>${offLabel}<br>回程</th>
-    <th>${pkLabel}<br>去程</th><th>${pkLabel}<br>回程</th>
+    <th>${he(offLabel)}<br>去程</th><th>${he(offLabel)}<br>回程</th>
+    <th>${he(pkLabel)}<br>去程</th><th>${he(pkLabel)}<br>回程</th>
   </tr>`
   html += r('平均總旅行速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.travelS)))
   html += r('平均總行駛速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.runS)))
@@ -718,7 +730,7 @@ function renderComboRecords(combo){
       const sd=segD[i]
       const dv = (v) => v>0 ? `<b style="color:#1d4ed8">${v}</b>` : ''
       return `<tr>
-        <td colspan="2" class="pf-seg">${seg.name||'—'}</td>
+        <td colspan="2" class="pf-seg">${he(seg.name||'—')}</td>
         <td class="pf-time">${fH}</td><td class="pf-time">${fM}</td><td class="pf-time">${fS}</td>
         <td>${dv(sd.congestion)}</td><td>${dv(sd.bus_stop)}</td><td>${dv(sd.taxi_stop)}</td>
         <td>${dv(sd.parking)}</td><td>${dv(sd.ped_cross)}</td><td>${dv(sd.road_other)}</td>
@@ -739,11 +751,11 @@ function renderComboRecords(combo){
       <div class="sv-rec-header">
         <div>
           <div class="sv-num">調查 #${si+1}</div>
-          <div class="sv-info">👤 ${sv.surveyor||'未知'}</div>
+          <div class="sv-info">👤 ${he(sv.surveyor||'未知')}</div>
         </div>
         <div class="sv-meta">
-          📅 ${sv.date||'—'}<br>
-          🌤 ${sv.weather||'—'}
+          📅 ${he(sv.date||'—')}<br>
+          🌤 ${he(sv.weather||'—')}
         </div>
       </div>
       <!-- GPS Track Map -->
@@ -773,15 +785,15 @@ function renderComboRecords(combo){
         <!-- ② Meta -->
         <div class="sgs-pf-meta">
           <div class="sgs-pf-ml">
-            <div>站　名：&nbsp;<u>${route.routeName||''}</u></div>
+            <div>站　名：&nbsp;<u>${he(route.routeName||'')}</u></div>
             <div>旅次編號：</div>
             <div>方向往：&nbsp;${!isReturn?'■':'□'} 去　　${isReturn?'■':'□'} 回</div>
             <div>時　間：&nbsp;${!isPeak?'■':'□'} 離峰（${off}）　&nbsp;${isPeak?'■':'□'} 尖峰（${pk}）</div>
           </div>
           <div class="sgs-pf-mr">
-            <div>日　期：&nbsp;<span style="color:#dc2626;font-weight:700">${sv.date||''}</span></div>
-            <div>天　氣：&nbsp;${sv.weather||'—'}</div>
-            <div>調查員：&nbsp;<u>${sv.surveyor||'—'}</u></div>
+            <div>日　期：&nbsp;<span style="color:#dc2626;font-weight:700">${he(sv.date||'')}</span></div>
+            <div>天　氣：&nbsp;${he(sv.weather||'—')}</div>
+            <div>調查員：&nbsp;<u>${he(sv.surveyor||'—')}</u></div>
           </div>
         </div>
         <!-- ③ Summary table (路/線/時刻/速率) — 獨立欄位不跨表 -->
@@ -806,8 +818,8 @@ function renderComboRecords(combo){
             <td class="pfth2">行駛<br>時間</td>
           </tr>
           <tr>
-            <td rowspan="2" class="pf-seg">${fromNode?.name||'起點'}</td>
-            <td rowspan="2" class="pf-seg">${toNode?.name||'終點'}</td>
+            <td rowspan="2" class="pf-seg">${he(fromNode?.name||'起點')}</td>
+            <td rowspan="2" class="pf-seg">${he(toNode?.name||'終點')}</td>
             <td rowspan="2">${TL}</td>
             <td class="pf-time">${sH}</td><td class="pf-time">${sM}</td><td class="pf-time">${sS}</td>
             <td class="pf-time">${eH}</td><td class="pf-time">${eM}</td>

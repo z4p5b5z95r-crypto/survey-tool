@@ -3,10 +3,20 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no,viewport-fit=cover"/>
+<!-- Clickjacking 防護：靜態站無法設 HTTP header，以 frame-busting JS + CSP meta 替代 -->
+<!-- 伺服器端請另行配置：X-Frame-Options: SAMEORIGIN                                     -->
+<meta http-equiv="Content-Security-Policy" content="frame-ancestors 'self'"/>
 <title>---🚗---</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/nosleep.js/dist/NoSleep.min.js"></script>
+<script>
+// Frame-busting：防止本頁被外部 iframe 嵌入（Clickjacking 縱深防護）
+if(window.top!==window.self){
+  try{ window.top.location.replace(window.self.location.href) }
+  catch(e){ document.documentElement.innerHTML='' }
+}
+</script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC',sans-serif;touch-action:pan-x pan-y}
@@ -1955,14 +1965,32 @@ function onPos(p){
     }
   }
   if(cur&&!cur.endTime){
-    updateNavMapBearing(lat,lng,speed)   // hybrid Course Up / Heading Up
-    if(mapSurvey&&markerSurvey){
-      markerSurvey.setLatLng([lat,lng])
-      if(_mapFollowing) mapSurvey.setView([lat,lng],mapSurvey.getZoom()||17,{animate:true,duration:.5})
+    updateNavMapBearing(lat,lng,speed)   // hybrid Course Up / Heading Up（方位角輕量，永遠執行）
+    {
+      // 適應性節流：靜止（<3 km/h）且已停止偵測且無延滯事件 → 重操作節流至每 5 秒
+      const _gpsNow = Date.now()
+      const _gpsKmh = speed!=null ? speed*3.6 : null
+      const _gpsIsIdle = (_gpsKmh!=null && _gpsKmh<3) && _stopActive && !activeDelay
+      const _gpsThrottled = _gpsIsIdle && (_gpsNow - _gpsLastHeavyTs) < GPS_IDLE_THROTTLE_MS
+      if (!_gpsThrottled) _gpsLastHeavyTs = _gpsNow
+
+      // 地圖標記與畫面更新：靜止時節流（降低 GPU / CPU 重繪）
+      if(mapSurvey&&markerSurvey&&!_gpsThrottled){
+        markerSurvey.setLatLng([lat,lng])
+        if(_mapFollowing) mapSurvey.setView([lat,lng],mapSurvey.getZoom()||17,{animate:true,duration:.5})
+      }
     }
     {
-      cur.gpsTrack.push({lat,lng,speed_ms:speed,accuracy_m:accuracy,ts:new Date().toISOString()})
+      // GPS 軌跡寫入：靜止時節流（減少記憶體寫入，資料仍完整）
+      const _gpsNow2 = Date.now()
+      const _gpsKmh2 = speed!=null ? speed*3.6 : null
+      const _gpsThrottled2 = (_gpsKmh2!=null&&_gpsKmh2<3) && _stopActive && !activeDelay
+                          && (_gpsNow2 - _gpsLastHeavyTs) > 0  // 與上方同步節流狀態
+      if(!_gpsThrottled2){
+        cur.gpsTrack.push({lat,lng,speed_ms:speed,accuracy_m:accuracy,ts:new Date().toISOString()})
+      }
       // 節點感應用原始 GPS 座標（rl,ro），不用平滑後的座標，避免平滑延遲造成漏判
+      // 永遠執行：停在節點附近時必須持續偵測
       checkNodeProximity(rl,ro)
       // ── 移動自動結束延滯（3 秒緩衝，排除前車蠕行）──
       if(activeDelay){
@@ -3789,7 +3817,7 @@ document.addEventListener('touchmove', e=>{
     <span>📖 操作說明</span>
     <button class="manual-close-btn" onclick="closeManual()">✕</button>
   </div>
-  <iframe id="manual-frame" src="manual_v2.html" title="操作說明"></iframe>
+  <iframe id="manual-frame" src="manual_v2.html" title="操作說明" sandbox="allow-same-origin allow-scripts allow-popups"></iframe>
 </div>
 <script>
 // ── Help menu (? button) ──
@@ -3960,13 +3988,8 @@ async function runDeviceChecks(){
     renderDevResults()
   }
 
-  // ── 7. 震動（實際觸發）──
-  var vibOk=false
-  try{ if(navigator.vibrate){ navigator.vibrate([100,50,100]); vibOk=true } }catch(e){}
-  _devResults.push({id:'vib',name:'震動回饋',required:false,
-    status:vibOk?'pass':'warn',
-    desc:vibOk?'震動測試成功，節點記錄時有震動回饋':'不支援震動（iOS Safari 限制），其餘功能不受影響'})
-  renderDevResults()
+  // 震動測試已移除（非 GPS 必要指標，觸發震動會產生裝置特徵）
+  // iOS Safari 不支援 navigator.vibrate，節點記錄時震動由原生 Web Haptics 處理
 
   // 更新 summary
   updateDevSummary()
