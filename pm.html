@@ -2376,7 +2376,7 @@ async function syncFromCloud() {
     localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
     renderProjects()
     if(changed>0) toast(`☁️ 雲端同步完成`)
-  }catch(e){updateCloudDot('err','同步失敗')}
+  }catch(e){updateCloudDot('err','同步失敗');toast('sync錯誤: '+e.message)}
 }
 
 // ════════════════════════════════════════════════════════
