@@ -909,15 +909,15 @@ function renderComboRecords(combo){
             <td rowspan="2" class="pf-fl">延滯時間<br>百分比</td>
             <td class="pf-fl">小計</td>
             <td colspan="3" class="pf-fv"></td>
-            ${RC.map(c=>`<td class="pf-fv">${pct(colT[c],trip.travelS)}</td>`).join('')}
-            ${IC.map(c=>`<td class="pf-fv">${pct(colT[c],trip.travelS)}</td>`).join('')}
+            ${RC.map(c=>`<td class="pf-fv">${pct(colT[c],roadT+intT)}</td>`).join('')}
+            ${IC.map(c=>`<td class="pf-fv">${pct(colT[c],roadT+intT)}</td>`).join('')}
             <td colspan="5"></td>
           </tr>
           <tr>
             <td class="pf-fl">合計</td>
             <td colspan="3"></td>
-            <td colspan="6" class="pf-fv">${pct(roadT,trip.travelS)}</td>
-            <td colspan="7" class="pf-fv">${pct(intT,trip.travelS)}</td>
+            <td colspan="6" class="pf-fv">${pct(roadT,roadT+intT)}</td>
+            <td colspan="7" class="pf-fv">${pct(intT,roadT+intT)}</td>
             <td colspan="5"></td>
           </tr>
         </table>
@@ -1886,14 +1886,14 @@ ${segRows}${emptyRows}
     </div>
   </td>
   <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
-  ${ROAD_C.map(c=>`<td class="ft-sum" style="font-size:6.5pt">${_pct(rd[c],trip.travelS)}%</td>`).join('')}
-  ${INT_C.map(c=>`<td class="ft-sum" style="font-size:6.5pt">${_pct(id[c],trip.travelS)}%</td>`).join('')}
+  ${ROAD_C.map(c=>`<td class="ft-sum" style="font-size:6.5pt">${_pct(rd[c],roadT+intT)}%</td>`).join('')}
+  ${INT_C.map(c=>`<td class="ft-sum" style="font-size:6.5pt">${_pct(id[c],roadT+intT)}%</td>`).join('')}
   <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
 </tr>
 <tr>
   <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
-  <td colspan="6" class="ft-sum" style="font-size:7pt">${_pct(roadT,trip.travelS)}%</td>
-  <td colspan="7" class="ft-sum" style="font-size:7pt">${_pct(intT,trip.travelS)}%</td>
+  <td colspan="6" class="ft-sum" style="font-size:7pt">${_pct(roadT,roadT+intT)}%</td>
+  <td colspan="7" class="ft-sum" style="font-size:7pt">${_pct(intT,roadT+intT)}%</td>
   <td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td><td class="ft-sum"></td>
 </tr>
 </table></div>`
