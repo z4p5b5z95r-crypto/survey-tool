@@ -853,9 +853,9 @@ function renderComboRecords(combo){
             <td rowspan="2" class="pf-spd">${runSpd}</td>
           </tr>
           <tr>
-            <td colspan="3" class="pf-pct" style="text-align:left;padding-left:6px">百分比</td>
             <td colspan="3" class="pf-pct"></td>
-            <td class="pf-pct" style="color:#1d6fbd;font-weight:600">100%</td>
+            <td colspan="3" class="pf-pct"></td>
+            <td class="pf-pct" style="color:#1d6fbd;font-weight:600">百分比</td>
             <td class="pf-pct">${pct(trip.intTotalS||0,trip.travelS)}</td>
             <td class="pf-pct">${pct(trip.roadTotalS||0,trip.travelS)}</td>
             <td class="pf-pct">${pct(trip.runS||0,trip.travelS)}</td>
@@ -949,9 +949,16 @@ function initTripMap(mapId, trip, combo){
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(m)
 
-  // Route path (grey dashed)
+  // Route path (grey dashed) — use stored OSRM latlngs if available, else straight-line fallback
   if(nodes.length>=2){
-    L.polyline(nodes.map(n=>[n.lat,n.lng]),{color:'#94a3b8',weight:3,dashArray:'6 4',opacity:.7}).addTo(m)
+    const segs = route.segments||[]
+    const allHaveLL = segs.length>0 && segs.every(s=>s.latlngs?.length>=2)
+    if(allHaveLL){
+      const planLL = segs.flatMap(s=>s.latlngs)
+      L.polyline(planLL,{color:'#94a3b8',weight:2.5,dashArray:'8 5',opacity:.75}).addTo(m)
+    } else {
+      L.polyline(nodes.map(n=>[n.lat,n.lng]),{color:'#94a3b8',weight:2.5,dashArray:'8 5',opacity:.75}).addTo(m)
+    }
   }
 
   // GPS track (colored by combo)
