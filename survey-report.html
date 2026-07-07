@@ -730,6 +730,8 @@ function renderComboRecords(combo){
       const segIdx = isReturn ? segs.length-1-i : i
       const st2=trip.segTimes?.[segIdx]
       const sd=segD[i]
+      const segDelayTotal = Object.values(sd).reduce((a,v)=>a+(v||0),0)
+      const calcRunS = st2?.travelS != null ? Math.max(0, st2.travelS - segDelayTotal) : null
       const dv = (v) => v>0 ? `<b style="color:#1d4ed8">${v}</b>` : ''
       return `<tr>
         <td colspan="2" class="pf-seg">${he(flipSeg(seg.name))}</td>
@@ -738,11 +740,11 @@ function renderComboRecords(combo){
         <td>${dv(sd.parking)}</td><td>${dv(sd.ped_cross)}</td><td>${dv(sd.road_other)}</td>
         <td>${dv(sd.red_light)}</td><td>${dv(sd.left_same)}</td><td>${dv(sd.left_opp)}</td>
         <td>${dv(sd.right_turn)}</td><td>${dv(sd.cross_veh)}</td><td>${dv(sd.ped_int)}</td><td>${dv(sd.int_other)}</td>
-        <td style="font-weight:600">${st2?.travelS||''}</td>
+        <td style="font-weight:600">${st2?.travelS??''}</td>
         <td>${seg.length||''}</td>
-        <td style="font-weight:600">${st2?.runS||''}</td>
+        <td style="font-weight:600">${calcRunS??''}</td>
         <td>${spdFn(seg.length,st2?.travelS)}</td>
-        <td>${spdFn(seg.length,st2?.runS)}</td>
+        <td>${spdFn(seg.length,calcRunS)}</td>
       </tr>`
     }).join('')
     const emptyRows=Array(Math.max(0,7-segOrder.length)).fill(`<tr>${'<td></td>'.repeat(23)}</tr>`).join('')
@@ -1185,6 +1187,7 @@ function buildTripSheet(trip, survey, combo){
   const segs     = route.segments || []
   const segOrder = isReturn ? [...segs].reverse() : segs
   const times    = trip.segTimes || []
+  const flipSegXls = n => { if(!n||!isReturn) return n||''; const a=n.indexOf('→'); if(a>=0) return n.slice(a+1)+'→'+n.slice(0,a); const h=n.indexOf('-'); return h>=0?n.slice(h+1)+'-'+n.slice(0,h):n }
 
   const st = trip.startTime ? new Date(trip.startTime) : null
   const et = trip.endTime   ? new Date(trip.endTime)   : null
@@ -1224,13 +1227,14 @@ function buildTripSheet(trip, survey, combo){
      '紅燈','左轉同向','左轉對向','右轉','橫越車輛','行人','其他',
      '',''],
     ...segOrder.map((seg,i)=>{
-      const nodeTime = nodeTs[isReturn ? segs.length - i : i]
+      const nodeTime = nodeTs[isReturn ? segs.length - 1 - i : i]
       const [nH,nM,nS] = hms(nodeTime)
+      const segIdx = isReturn ? segs.length - 1 - i : i
       return [
-        seg.name,'',nH,nM,nS,
+        flipSegXls(seg.name),'',nH,nM,nS,
         0,0,0,0,0,0,
         0,0,0,0,0,0,0,
-        times[i]?.travelS??'', seg.length||''
+        times[segIdx]?.travelS??'', seg.length||''
       ]
     }),
     [],
@@ -1670,6 +1674,7 @@ ${rows}</table>`
     const isReturn = trip.direction==='return'
     const isPeak   = trip.peakType==='peak'
     const segOrd   = isReturn ? [...rawSegs].reverse() : rawSegs
+    const _flipSeg = n => { if(!n||!isReturn) return n||''; const a=n.indexOf('→'); if(a>=0) return n.slice(a+1)+'→'+n.slice(0,a); const h=n.indexOf('-'); return h>=0?n.slice(h+1)+'-'+n.slice(0,h):n }
     const nodeTs   = trip.nodeTimestamps||[]
     const times    = trip.segTimes||[]
     const rd = trip.roadDelays||{}, id = trip.intDelays||{}
@@ -1708,14 +1713,16 @@ ${rows}</table>`
       const segIdx = isReturn ? (rawSegs.length - 1 - i) : i
       const t = times[segIdx]||{}
       const sd = segD[i]
+      const segDelayTotal = Object.values(sd).reduce((a,v)=>a+(v||0),0)
+      const calcRunS = t.travelS != null ? Math.max(0, t.travelS - segDelayTotal) : null
       const _d = v => (v&&v!==0)?v:''
       return `<tr>
-        <td class="ft-la">${seg.name||''}</td>
+        <td class="ft-la">${_flipSeg(seg.name)||''}</td>
         <td class="ft-bl">${_n(nH)}</td><td class="ft-bl">${_n(nM)}</td><td class="ft-bl">${_n(nS)}</td>
         ${ROAD_C.map(c=>`<td>${_d(sd[c])}</td>`).join('')}
         ${INT_C.map(c=>`<td>${_d(sd[c])}</td>`).join('')}
-        <td>${_n(t.travelS)}</td><td>${_n(seg.length)}</td><td>${_n(t.runS)}</td>
-        <td>${_spd(seg.length,t.travelS)}</td><td>${_spd(seg.length,t.runS)}</td>
+        <td>${_n(t.travelS)}</td><td>${_n(seg.length)}</td><td>${_n(calcRunS)}</td>
+        <td>${_spd(seg.length,t.travelS)}</td><td>${_spd(seg.length,calcRunS)}</td>
       </tr>`
     }).join('')
 

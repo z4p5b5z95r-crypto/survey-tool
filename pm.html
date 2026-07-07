@@ -76,11 +76,14 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
   display:flex;align-items:center;gap:5px;
   background:#1e293b;padding:5px 9px;border-radius:7px;cursor:default;
 }
-.cloud-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:background .3s}
-.cloud-dot.ok{background:#22c55e}
-.cloud-dot.err{background:#ef4444}
-.cloud-dot.idle{background:#475569}
-.cloud-label{font-size:11px;color:#64748b}
+.cloud-icon{display:flex;align-items:center;cursor:default;color:#475569;transition:color .3s;flex-shrink:0}
+.cloud-icon.ok{color:#22c55e}
+.cloud-icon.err{color:#ef4444}
+.cloud-icon.syncing{color:#60a5fa}
+.cloud-icon.syncing .cloud-arr{animation:cloud-pulse .7s ease-in-out infinite}
+.cloud-icon.uploading{color:#a78bfa}
+.cloud-icon.uploading .cloud-arr{animation:cloud-pulse .7s ease-in-out infinite}
+@keyframes cloud-pulse{0%,100%{opacity:1;transform:translateY(0)}50%{opacity:.35;transform:translateY(2px)}}
 .tb-user{
   display:flex;align-items:center;gap:8px;
   background:#1e293b;border-radius:8px;padding:6px 11px;
@@ -452,9 +455,12 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     <div class="tb-divider"></div>
     <span style="color:#f59e0b;font-size:12px;font-weight:800;letter-spacing:.8px;flex:1">⚙ 管理後台</span>
     <div class="tb-right">
-      <div class="tb-cloud">
-        <div class="cloud-dot idle" id="admin-cloud-dot"></div>
-        <span class="cloud-label" id="admin-cloud-label">雲端</span>
+      <div class="tb-cloud" title="雲端連線狀態">
+        <div class="cloud-icon idle" id="admin-cloud-dot">
+          <svg width="22" height="17" viewBox="0 0 22 17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16.5 12H5.5a4 4 0 0 1-.2-8 5 5 0 0 1 9.8 1H16a3 3 0 0 1 .5 7z"/>
+          </svg>
+        </div>
       </div>
       <div class="tb-user">
         <span class="tb-user-name">admin</span>
@@ -548,9 +554,16 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     </div>
     <div class="tb-right">
       <button class="tb-save" id="tb-save" onclick="saveTask()">💾 儲存</button>
-      <div class="tb-cloud">
-        <div class="cloud-dot idle" id="cloud-dot"></div>
-        <span class="cloud-label" id="cloud-label">雲端</span>
+      <div class="tb-cloud" title="雲端同步狀態">
+        <div class="cloud-icon idle" id="cloud-icon">
+          <svg width="22" height="17" viewBox="0 0 22 17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16.5 12H5.5a4 4 0 0 1-.2-8 5 5 0 0 1 9.8 1H16a3 3 0 0 1 .5 7z"/>
+            <g class="cloud-arr">
+              <line x1="11" y1="9" x2="11" y2="15.5"/>
+              <polyline points="8.5,13 11,15.5 13.5,13"/>
+            </g>
+          </svg>
+        </div>
       </div>
       <div class="tb-user">
         <span class="tb-user-name" id="tb-username">—</span>
@@ -1155,11 +1168,18 @@ let currentTaskId = null
 // ════════════════════════════════════════════════════════
 //  CLOUD API
 // ════════════════════════════════════════════════════════
-function updateCloudDot(state, label) {
-  const d = document.getElementById('cloud-dot')
-  const l = document.getElementById('cloud-label')
-  d.className = `cloud-dot ${state}`
-  l.textContent = state==='ok' ? (label||'已連線') : state==='err' ? (label||'錯誤') : '雲端'
+function updateCloudDot(state) {
+  const ic = document.getElementById('cloud-icon')
+  if (!ic) return
+  ic.className = `cloud-icon ${state}`
+  // 依狀態切換箭頭方向（上傳↑ / 下載↓）
+  const arr = ic.querySelector('.cloud-arr')
+  if (!arr) return
+  if (state === 'uploading') {
+    arr.innerHTML = '<line x1="11" y1="15.5" x2="11" y2="9"/><polyline points="8.5,11.5 11,9 13.5,11.5"/>'
+  } else {
+    arr.innerHTML = '<line x1="11" y1="9" x2="11" y2="15.5"/><polyline points="8.5,13 11,15.5 13.5,13"/>'
+  }
 }
 // cloudAuth — 僅供登入/註冊使用靜態 API key（不存 localStorage）
 async function cloudAuth(body) {
@@ -2160,6 +2180,7 @@ async function saveTask() {
   updateCrumb(cfg.rn)
   if(gsUrl&&getSessionToken()){
     toast('⏳ 同步至雲端...')
+    updateCloudDot('uploading')
     try{
       const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
       const result=await cloudPost(payload)
@@ -2320,17 +2341,12 @@ function showListQR(taskId){
 // ════════════════════════════════════════════════════════
 async function syncFromCloud() {
   const _tok = getSessionToken()
-  // DEBUG: 永久顯示在雲端標籤（不會消失）
-  const _lbl = document.getElementById('cloud-label')
-  if(_lbl) _lbl.textContent = _tok ? 'tok='+_tok.slice(0,6) : 'NO TOKEN'
   if(!gsUrl||!_tok)return
+  updateCloudDot('syncing')
   const me=getCurrentUser()||'未知'
   try{
     const routes=await cloudGet({action:'getRoutes'})
     updateCloudDot('ok')
-    // debug: 顯示雲端回傳及 owner 對應情況（上線穩定後可移除）
-    const myCount=routes.filter(r=>!r.deletedAt&&(!r.owner||r.owner===me)).length
-    if(_lbl) _lbl.textContent = `routes=${routes.length}/mine=${myCount}`
     let changed=0
     for(const r of routes){
       // 已刪除（軟刪除）的路線：從本機移除
@@ -2516,7 +2532,7 @@ function migrateTaskCreators() {
 // ════════════════════════════════════════════════════════
 function enterAdminPanel() {
   document.getElementById('screen-admin').classList.add('visible')
-  document.getElementById('admin-cloud-dot').className = 'cloud-dot idle'
+  document.getElementById('admin-cloud-dot').className = 'cloud-icon idle'
   loadAdminUsers()
 }
 
@@ -2603,8 +2619,8 @@ function downloadQr() {
   a.click()
 }
 
-function adminCloudOk()  { document.getElementById('admin-cloud-dot').className='cloud-dot ok';  document.getElementById('admin-cloud-label').textContent='已連線' }
-function adminCloudErr() { document.getElementById('admin-cloud-dot').className='cloud-dot err'; document.getElementById('admin-cloud-label').textContent='錯誤' }
+function adminCloudOk()  { document.getElementById('admin-cloud-dot').className='cloud-icon ok' }
+function adminCloudErr() { document.getElementById('admin-cloud-dot').className='cloud-icon err' }
 
 // ── 帳號管理 ─────────────────────────────────────────────
 async function loadAdminUsers() {
