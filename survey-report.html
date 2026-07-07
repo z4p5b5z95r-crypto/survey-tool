@@ -704,7 +704,7 @@ function renderComboRecords(combo){
     // Per-segment delay breakdown
     const dl = v => v>0?v:''
     const spdFn = (d,s) => (d>0&&s>0)?(d/s*3.6).toFixed(1):''
-    const pct = (v,t) => t>0?Math.round(v/t*100)+'%':'0%'
+    const pct = (v,t) => t>0?(v/t*100).toFixed(2)+'%':'0.00%'
     // 回程路段名稱反轉：「A→B」→「B→A」 或 「A-B」→「B-A」
     const flipSeg = n => { if(!n||!isReturn) return n||'—'; const a=n.indexOf('→'); if(a>=0) return n.slice(a+1)+'→'+n.slice(0,a); const h=n.indexOf('-'); return h>=0?n.slice(h+1)+'-'+n.slice(0,h):n }
     const RC=ROAD_DELAYS.map(d=>d.cause), IC=INT_DELAYS.map(d=>d.cause)
@@ -1293,10 +1293,10 @@ function downloadSGSPdf(){
     return s.split(':').map(Number)
   }
   function _spd(lenM,tS){ return (!lenM||!tS||tS<=0)?'':((lenM/1000)/(tS/3600)).toFixed(1) }
-  function _pct(v,t,d=0){
-    if(!t||t<=0) return '0'
+  function _pct(v,t,d=2){
+    if(!t||t<=0) return (0).toFixed(d)
     const r=(v||0)/t*100
-    return d ? r.toFixed(d) : Math.round(r).toString()
+    return r.toFixed(d)
   }
   function _n(v){ return (v!==undefined&&v!==null&&v!=='')? v : '' }
   function _weather(w){
