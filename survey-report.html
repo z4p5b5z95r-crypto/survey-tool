@@ -16,28 +16,29 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color
 #loading-screen p{color:white;font-size:15px;font-weight:700;letter-spacing:.3px}
 #loading-screen small{color:#64748b;font-size:12px;margin-top:-12px}
 
-/* Loading road scene */
-.ld-road-scene{width:440px;position:relative;padding-top:36px} /* padding makes room for car above road */
-.ld-road{width:100%;height:52px;background:#334155;border-radius:12px;display:flex;align-items:center;overflow:hidden}
-.ld-dashes{display:flex;gap:10px;padding:0 12px;width:100%;flex-shrink:0}
-.ld-dash{flex:1;height:7px;background:#f59e0b;border-radius:3px;opacity:.9}
-/* Car sits above road — position driven by JS progress */
-.ld-car{position:absolute;font-size:52px;top:0;left:-60px;
-  transform:scaleX(-1);
-  transition:left 0.5s ease-out;
-  filter:drop-shadow(0 6px 10px rgba(0,0,0,.5));
-  z-index:10;line-height:1}
+/* Loading map scene */
+#ls-map-wrap{border-radius:8px;overflow:hidden;border:1px solid #334155}
 
 /* ── Download overlay ── */
 #dl-overlay{position:fixed;inset:0;background:#0f172a;display:none;align-items:center;justify-content:center;flex-direction:column;gap:20px;z-index:2000}
 #dl-overlay .dl-label{color:white;font-size:15px;font-weight:700;letter-spacing:.3px}
 #dl-overlay .dl-sub{color:#64748b;font-size:12px;margin-top:-12px}
 
-/* Map animation */
-#dl-map-wrap{border-radius:8px;overflow:hidden;border:1px solid #334155}
+/* Road scene */
+.dl-road-scene{width:440px;position:relative;padding-top:36px}
+.dl-road{width:100%;height:52px;background:#334155;border-radius:12px;display:flex;align-items:center;overflow:hidden}
+.dl-dashes{display:flex;gap:10px;padding:0 12px;width:100%;flex-shrink:0}
+.dl-dash{flex:1;height:7px;background:#f59e0b;border-radius:3px;opacity:.9}
+.dl-car{position:absolute;font-size:52px;top:0;left:-60px;
+  transform:scaleX(-1);
+  animation:car-drive var(--dl-dur,2.5s) linear forwards;
+  filter:drop-shadow(0 6px 10px rgba(0,0,0,.5));
+  z-index:10;line-height:1}
+@keyframes car-drive{0%{left:-60px}100%{left:calc(100% + 8px)}}
 /* Progress bar */
-.dl-progress-track{width:260px;height:4px;background:#334155;border-radius:2px;overflow:hidden}
-.dl-progress-bar{height:100%;background:#FF5C00;border-radius:2px;width:0%;transition:none}
+.dl-progress-track{width:440px;height:5px;background:#1e293b;border-radius:10px;overflow:hidden}
+.dl-progress-bar{height:100%;background:#3b82f6;border-radius:10px;width:0%;animation:dl-fill var(--dl-dur,2.5s) linear forwards}
+@keyframes dl-fill{0%{width:0%}100%{width:100%}}
 
 /* ── Page header ── */
 .page-header{background:#1e293b;color:white;padding:16px 20px 0;position:sticky;top:0;z-index:100}
@@ -149,26 +150,8 @@ td:first-child{text-align:left;font-weight:500}
 <body>
 
 <div id="loading-screen">
-  <div class="ld-road-scene">
-    <div class="ld-road">
-      <div class="ld-dashes">
-        <div class="ld-dash"></div><div class="ld-dash"></div><div class="ld-dash"></div>
-        <div class="ld-dash"></div><div class="ld-dash"></div><div class="ld-dash"></div>
-        <div class="ld-dash"></div><div class="ld-dash"></div><div class="ld-dash"></div>
-        <div class="ld-dash"></div><div class="ld-dash"></div><div class="ld-dash"></div>
-      </div>
-      <div class="ld-car" id="ld-car">🚗</div>
-    </div>
-  </div>
-  <p id="ld-msg">載入調查結果...</p>
-  <small id="ld-sub"></small>
-</div>
-
-<!-- Download overlay -->
-<div id="dl-overlay">
-  <p class="dl-label" id="dl-overlay-label">產生報告中...</p>
-  <div id="dl-map-wrap">
-    <svg id="dl-msv" viewBox="0 0 260 230" xmlns="http://www.w3.org/2000/svg" style="display:block;width:260px;height:230px">
+  <div id="ls-map-wrap">
+    <svg id="ls-msv" viewBox="0 0 260 230" xmlns="http://www.w3.org/2000/svg" style="display:block;width:260px;height:230px">
       <rect width="260" height="230" fill="#1e3a5f"/>
       <g stroke="#243d5c" stroke-width="7" stroke-linecap="square">
         <line x1="0" y1="65" x2="260" y2="65"/><line x1="0" y1="120" x2="260" y2="120"/>
@@ -185,16 +168,13 @@ td:first-child{text-align:left;font-weight:500}
         <rect x="4" y="181" width="50" height="45" rx="2"/><rect x="66" y="181" width="48" height="45" rx="2"/>
         <rect x="126" y="181" width="58" height="45" rx="2"/><rect x="196" y="181" width="60" height="45" rx="2"/>
       </g>
-      <!-- traffic lights -->
-      <g transform="translate(44,113)"><rect x="-1" y="7" width="2" height="6" fill="#475569"/><rect x="-4" y="-7" width="8" height="14" rx="1.5" fill="#0f172a"/><circle id="dl-tl0r" cx="0" cy="-5" r="1.8" fill="#ef4444"/><circle id="dl-tl0y" cx="0" cy="-0.5" r="1.8" fill="#1e293b"/><circle id="dl-tl0g" cx="0" cy="4" r="1.8" fill="#1e293b"/></g>
-      <g transform="translate(128,108)"><rect x="-1" y="7" width="2" height="6" fill="#475569"/><rect x="-4" y="-7" width="8" height="14" rx="1.5" fill="#0f172a"/><circle id="dl-tl1r" cx="0" cy="-5" r="1.8" fill="#1e293b"/><circle id="dl-tl1y" cx="0" cy="-0.5" r="1.8" fill="#1e293b"/><circle id="dl-tl1g" cx="0" cy="4" r="1.8" fill="#22c55e"/></g>
-      <g transform="translate(128,58)"><rect x="-1" y="7" width="2" height="6" fill="#475569"/><rect x="-4" y="-7" width="8" height="14" rx="1.5" fill="#0f172a"/><circle id="dl-tl2r" cx="0" cy="-5" r="1.8" fill="#ef4444"/><circle id="dl-tl2y" cx="0" cy="-0.5" r="1.8" fill="#1e293b"/><circle id="dl-tl2g" cx="0" cy="4" r="1.8" fill="#1e293b"/></g>
-      <g transform="translate(181,58)"><rect x="-1" y="7" width="2" height="6" fill="#475569"/><rect x="-4" y="-7" width="8" height="14" rx="1.5" fill="#0f172a"/><circle id="dl-tl3r" cx="0" cy="-5" r="1.8" fill="#1e293b"/><circle id="dl-tl3y" cx="0" cy="-0.5" r="1.8" fill="#fbbf24"/><circle id="dl-tl3g" cx="0" cy="4" r="1.8" fill="#1e293b"/></g>
-      <g transform="translate(181,169)"><rect x="-1" y="7" width="2" height="6" fill="#475569"/><rect x="-4" y="-7" width="8" height="14" rx="1.5" fill="#0f172a"/><circle id="dl-tl4r" cx="0" cy="-5" r="1.8" fill="#ef4444"/><circle id="dl-tl4y" cx="0" cy="-0.5" r="1.8" fill="#1e293b"/><circle id="dl-tl4g" cx="0" cy="4" r="1.8" fill="#1e293b"/></g>
-      <!-- route line -->
-      <path id="dl-rline" d="" fill="none" stroke="#FF5C00" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <!-- car top-down, nose points +x at angle=0 -->
-      <g id="dl-car" transform="translate(-30,-30)">
+      <g transform="translate(44,113)"><rect x="-1" y="7" width="2" height="6" fill="#475569"/><rect x="-4" y="-7" width="8" height="14" rx="1.5" fill="#0f172a"/><circle id="ls-tl0r" cx="0" cy="-5" r="1.8" fill="#ef4444"/><circle id="ls-tl0y" cx="0" cy="-0.5" r="1.8" fill="#1e293b"/><circle id="ls-tl0g" cx="0" cy="4" r="1.8" fill="#1e293b"/></g>
+      <g transform="translate(128,108)"><rect x="-1" y="7" width="2" height="6" fill="#475569"/><rect x="-4" y="-7" width="8" height="14" rx="1.5" fill="#0f172a"/><circle id="ls-tl1r" cx="0" cy="-5" r="1.8" fill="#1e293b"/><circle id="ls-tl1y" cx="0" cy="-0.5" r="1.8" fill="#1e293b"/><circle id="ls-tl1g" cx="0" cy="4" r="1.8" fill="#22c55e"/></g>
+      <g transform="translate(128,58)"><rect x="-1" y="7" width="2" height="6" fill="#475569"/><rect x="-4" y="-7" width="8" height="14" rx="1.5" fill="#0f172a"/><circle id="ls-tl2r" cx="0" cy="-5" r="1.8" fill="#ef4444"/><circle id="ls-tl2y" cx="0" cy="-0.5" r="1.8" fill="#1e293b"/><circle id="ls-tl2g" cx="0" cy="4" r="1.8" fill="#1e293b"/></g>
+      <g transform="translate(181,58)"><rect x="-1" y="7" width="2" height="6" fill="#475569"/><rect x="-4" y="-7" width="8" height="14" rx="1.5" fill="#0f172a"/><circle id="ls-tl3r" cx="0" cy="-5" r="1.8" fill="#1e293b"/><circle id="ls-tl3y" cx="0" cy="-0.5" r="1.8" fill="#fbbf24"/><circle id="ls-tl3g" cx="0" cy="4" r="1.8" fill="#1e293b"/></g>
+      <g transform="translate(181,169)"><rect x="-1" y="7" width="2" height="6" fill="#475569"/><rect x="-4" y="-7" width="8" height="14" rx="1.5" fill="#0f172a"/><circle id="ls-tl4r" cx="0" cy="-5" r="1.8" fill="#ef4444"/><circle id="ls-tl4y" cx="0" cy="-0.5" r="1.8" fill="#1e293b"/><circle id="ls-tl4g" cx="0" cy="4" r="1.8" fill="#1e293b"/></g>
+      <path id="ls-rline" d="" fill="none" stroke="#FF5C00" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <g id="ls-car" transform="translate(-30,-30)">
         <ellipse cx="1" cy="2" rx="10" ry="7" fill="#000" opacity=".25"/>
         <rect x="-10" y="-6.5" width="20" height="13" rx="3.5" fill="#FF5C00"/>
         <rect x="5" y="-5" width="5" height="10" rx="2" fill="#e64d00"/>
@@ -209,8 +189,26 @@ td:first-child{text-align:left;font-weight:500}
         <rect x="9.5" y="-5" width="1.5" height="3" rx=".5" fill="#fde68a"/>
         <rect x="9.5" y="2"  width="1.5" height="3" rx=".5" fill="#fde68a"/>
       </g>
-      <g id="dl-nodes"></g>
+      <g id="ls-nodes"></g>
     </svg>
+  </div>
+  <p id="ld-msg">載入調查結果...</p>
+  <small id="ld-sub"></small>
+</div>
+
+<!-- Download overlay -->
+<div id="dl-overlay">
+  <p class="dl-label" id="dl-overlay-label">產生報告中...</p>
+  <div class="dl-road-scene">
+    <div class="dl-road">
+      <div class="dl-dashes">
+        <div class="dl-dash"></div><div class="dl-dash"></div><div class="dl-dash"></div>
+        <div class="dl-dash"></div><div class="dl-dash"></div><div class="dl-dash"></div>
+        <div class="dl-dash"></div><div class="dl-dash"></div><div class="dl-dash"></div>
+        <div class="dl-dash"></div><div class="dl-dash"></div><div class="dl-dash"></div>
+      </div>
+      <div class="dl-car" id="dl-car">🚗</div>
+    </div>
   </div>
   <div class="dl-progress-track">
     <div class="dl-progress-bar" id="dl-progress-bar"></div>
@@ -313,35 +311,40 @@ const INT_DELAYS = [
   {cause:'int_other',  label:'其他'},
 ]
 
-// ════════════════ LOAD PROGRESS ════════════════
-let _ldCurrent = 0
-let _ldTarget  = 0
-let _ldRaf     = null
-
+// ════════════════ LOAD PROGRESS — map animation ════════════════
+let _ldCurrent = 0, _ldTarget = 0, _ldRaf = null
+let _lsInited = false, _lsShown = [], _lsTlTimers = []
+const LS_NS = 'http://www.w3.org/2000/svg'
+const LS_PTS = [{x:30,y:205},{x:30,y:120},{x:120,y:120},{x:120,y:65},{x:190,y:65},{x:190,y:175},{x:120,y:175},{x:120,y:205}]
+const LS_COLORS = ['#22c55e','#3b82f6','#3b82f6','#3b82f6','#3b82f6','#3b82f6','#3b82f6','#ef4444']
+const _LS=function(){let t=0;const s=[];for(let i=1;i<LS_PTS.length;i++){const dx=LS_PTS[i].x-LS_PTS[i-1].x,dy=LS_PTS[i].y-LS_PTS[i-1].y,d=Math.sqrt(dx*dx+dy*dy);s.push({a:LS_PTS[i-1],b:LS_PTS[i],d,cs:t,dx,dy});t+=d}return{segs:s,total:t}}()
+const LS_SEGS=_LS.segs,LS_TOTAL=_LS.total
+const LS_NODE_FRAC=LS_SEGS.map(s=>(s.cs+s.d)/LS_TOTAL)
+function _lsPA(frac){const t=frac*LS_TOTAL;for(const s of LS_SEGS){if(s.cs+s.d>=t-0.001){const f=Math.max(0,Math.min(1,(t-s.cs)/s.d));return{x:s.a.x+f*s.dx,y:s.a.y+f*s.dy,angle:Math.atan2(s.dy,s.dx)*180/Math.PI}}}const ls=LS_SEGS[LS_SEGS.length-1];return{x:LS_PTS[LS_PTS.length-1].x,y:LS_PTS[LS_PTS.length-1].y,angle:Math.atan2(ls.dy,ls.dx)*180/Math.PI}}
+function _lsBP(frac){const t=frac*LS_TOTAL;let d=`M${LS_PTS[0].x},${LS_PTS[0].y}`,cum=0;for(const s of LS_SEGS){if(cum+s.d<=t+0.001){d+=` L${s.b.x},${s.b.y}`;cum+=s.d}else{const f=(t-cum)/s.d;if(f>0)d+=` L${(s.a.x+f*s.dx).toFixed(1)},${(s.a.y+f*s.dy).toFixed(1)}`;break}}return d}
+function _lsCycleTL(idx,phase){const ph=[{r:'#ef4444',y:'#1e293b',g:'#1e293b',dur:2000},{r:'#1e293b',y:'#fbbf24',g:'#1e293b',dur:600},{r:'#1e293b',y:'#1e293b',g:'#22c55e',dur:1800}];const p=ph[phase%3];const ri=document.getElementById(`ls-tl${idx}r`),yi=document.getElementById(`ls-tl${idx}y`),gi=document.getElementById(`ls-tl${idx}g`);if(!ri)return;ri.setAttribute('fill',p.r);yi.setAttribute('fill',p.y);gi.setAttribute('fill',p.g);_lsTlTimers.push(setTimeout(()=>_lsCycleTL(idx,(phase+1)%3),p.dur))}
+function _lsAddNode(i){const ng=document.getElementById('ls-nodes');if(!ng)return;const p=LS_PTS[i],c=LS_COLORS[i];const g=document.createElementNS(LS_NS,'g');const ci=document.createElementNS(LS_NS,'circle');ci.setAttribute('cx',p.x);ci.setAttribute('cy',p.y);ci.setAttribute('r',0);ci.setAttribute('fill',c);ci.setAttribute('stroke','#1e293b');ci.setAttribute('stroke-width','1.5');const tx=document.createElementNS(LS_NS,'text');tx.setAttribute('x',p.x);tx.setAttribute('y',p.y+3);tx.setAttribute('text-anchor','middle');tx.setAttribute('font-size','7');tx.setAttribute('font-weight','700');tx.setAttribute('fill','white');tx.textContent=i+1;g.appendChild(ci);g.appendChild(tx);ng.appendChild(g);let r=0;(function grow(){r=Math.min(r+0.8,6.5);ci.setAttribute('r',r);if(r<6.5)requestAnimationFrame(grow)})()}
+function _lsInit(){
+  if(_lsInited)return;_lsInited=true
+  _lsShown=new Array(LS_PTS.length).fill(false);_lsShown[0]=true;_lsAddNode(0)
+  [[0,0],[1,2],[2,1],[3,2],[4,0]].forEach(([i,ph],j)=>{_lsTlTimers.push(setTimeout(()=>_lsCycleTL(i,ph),j*400))})
+}
 function setLoadProgress(pct){
+  _lsInit()
   _ldTarget = pct
   if(!_ldRaf) _ldRaf = requestAnimationFrame(_ldTick)
 }
-
 function _ldTick(){
-  const car = document.getElementById('ld-car')
-  const scene = document.querySelector('.ld-road-scene')
-  if(!car||!scene){ _ldRaf=null; return }
-  const sceneW = scene.offsetWidth || 440
-
-  // Ease toward target — fast when far, slow when close (natural feel)
-  const gap = _ldTarget - _ldCurrent
-  const step = Math.max(0.08, Math.abs(gap) * 0.035)  // min crawl, proportional
-  if(Math.abs(gap) < 0.05){
-    _ldCurrent = _ldTarget
-    _ldRaf = null
-  } else {
-    _ldCurrent += Math.sign(gap) * step
-    _ldRaf = requestAnimationFrame(_ldTick)
-  }
-  const pos = -60 + (_ldCurrent/100) * (sceneW + 68)
-  car.style.left = pos + 'px'
-  car.style.transition = 'none'  // JS drives position directly
+  const rline=document.getElementById('ls-rline'),car=document.getElementById('ls-car')
+  if(!rline){_ldRaf=null;return}
+  const gap=_ldTarget-_ldCurrent,step=Math.max(0.08,Math.abs(gap)*0.035)
+  if(Math.abs(gap)<0.05){_ldCurrent=_ldTarget;_ldRaf=null}
+  else{_ldCurrent+=Math.sign(gap)*step;_ldRaf=requestAnimationFrame(_ldTick)}
+  const frac=Math.min(1,Math.max(0,_ldCurrent/100))
+  rline.setAttribute('d',_lsBP(frac))
+  const{x,y,angle}=_lsPA(frac)
+  car.setAttribute('transform',`translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${angle.toFixed(1)},0,0)`)
+  LS_NODE_FRAC.forEach((nf,i)=>{if(!_lsShown[i+1]&&frac>=nf){_lsShown[i+1]=true;_lsAddNode(i+1)}})
 }
 
 // ════════════════ SECURITY HELPERS ════════════════
@@ -971,6 +974,32 @@ function initTripMap(mapId, trip, combo){
     L.polyline(gpsLL,{color:trackColor,weight:4,opacity:.85}).addTo(m)
   }
 
+  // Segment clickable overlays — invisible thick hit-targets per inter-node segment
+  const routeSegs=route.segments||[]
+  for(let si=0;si<nodes.length-1;si++){
+    const ts0=nodeTs[si],ts1=nodeTs[si+1]
+    const sd=routeSegs[si]
+    const distM=sd?.length||null
+    const secs=(ts0&&ts1)?Math.round((ts1-ts0)/1000):null
+    const speedKph=(distM&&secs>0)?+(distM/secs*3.6).toFixed(1):null
+    const segLL=(sd?.latlngs?.length>=2)?sd.latlngs:[[nodes[si].lat,nodes[si].lng],[nodes[si+1].lat,nodes[si+1].lng]]
+    const mm=secs!=null?String(Math.floor(secs/60)).padStart(2,'0'):'—'
+    const ss=secs!=null?String(secs%60).padStart(2,'0'):'—'
+    const mmss=secs!=null?`${mm}:${ss}`:'—'
+    const sName=sd?.name||`路段 ${si+1}`
+    const popup=`<div style="font-size:12px;min-width:200px;line-height:1.9">
+      <div style="font-weight:700;margin-bottom:5px;color:#1e293b;border-bottom:1px solid #e2e8f0;padding-bottom:4px">${he(sName)}</div>
+      <div>🕐 起始時間：<b>${ts0?fmtDTLocal(ts0):'—'}</b></div>
+      <div>🕑 結束時間：<b>${ts1?fmtDTLocal(ts1):'—'}</b></div>
+      <div>⏱ 行駛時間：<b>${mmss}</b></div>
+      ${speedKph!=null?`<div>🚗 平均時速：<b>${speedKph} km/h</b></div>`:''}
+      ${distM?`<div style="color:#94a3b8;font-size:10.5px;margin-top:3px">📏 距離 ${distM} m</div>`:''}
+    </div>`
+    L.polyline(segLL,{color:trackColor,weight:14,opacity:0,interactive:true})
+      .bindPopup(popup,{maxWidth:260})
+      .addTo(m)
+  }
+
   // Node markers — click to show crossing time & elapsed
   nodes.forEach((n,i)=>{
     const isStart=i===0, isEnd=i===nodes.length-1
@@ -1037,55 +1066,31 @@ function switchTab(tab){
   document.querySelectorAll('.panel').forEach(p=>{
     p.classList.toggle('active', p.id===`panel-${tab}`)
   })
+  // Leaflet maps initialised in hidden containers have wrong size — fix after reveal
+  if(tab==='trips'){
+    requestAnimationFrame(()=>{
+      Object.values(_tripMaps).forEach(m=>{
+        try{ m.invalidateSize() }catch(e){}
+      })
+    })
+  }
 }
 
 // ── Download overlay helpers ──
-const DL_PTS=[{x:30,y:205},{x:30,y:120},{x:120,y:120},{x:120,y:65},{x:190,y:65},{x:190,y:175},{x:120,y:175},{x:120,y:205}]
-const DL_COLORS=['#22c55e','#3b82f6','#3b82f6','#3b82f6','#3b82f6','#3b82f6','#3b82f6','#ef4444']
-const DL_NS='http://www.w3.org/2000/svg'
-let _dlAnimId=null,_dlTlTimers=[]
-const _DL=function(){let total=0;const segs=[];for(let i=1;i<DL_PTS.length;i++){const dx=DL_PTS[i].x-DL_PTS[i-1].x,dy=DL_PTS[i].y-DL_PTS[i-1].y,d=Math.sqrt(dx*dx+dy*dy);segs.push({a:DL_PTS[i-1],b:DL_PTS[i],d,cs:total,dx,dy});total+=d}return{segs,total}}()
-const DL_SEGS=_DL.segs,DL_TOTAL=_DL.total
-const DL_NODE_FRAC=DL_SEGS.map(s=>(s.cs+s.d)/DL_TOTAL)
-function _dlPA(frac){const t=frac*DL_TOTAL;for(const s of DL_SEGS){if(s.cs+s.d>=t-0.001){const f=Math.max(0,Math.min(1,(t-s.cs)/s.d));return{x:s.a.x+f*s.dx,y:s.a.y+f*s.dy,angle:Math.atan2(s.dy,s.dx)*180/Math.PI}}}const ls=DL_SEGS[DL_SEGS.length-1];return{x:DL_PTS[DL_PTS.length-1].x,y:DL_PTS[DL_PTS.length-1].y,angle:Math.atan2(ls.dy,ls.dx)*180/Math.PI}}
-function _dlBP(frac){const t=frac*DL_TOTAL;let d=`M${DL_PTS[0].x},${DL_PTS[0].y}`,cum=0;for(const s of DL_SEGS){if(cum+s.d<=t+0.001){d+=` L${s.b.x},${s.b.y}`;cum+=s.d}else{const f=(t-cum)/s.d;if(f>0)d+=` L${(s.a.x+f*s.dx).toFixed(1)},${(s.a.y+f*s.dy).toFixed(1)}`;break}}return d}
-function _dlCycleTL(idx,phase){const ph=[{r:'#ef4444',y:'#1e293b',g:'#1e293b',dur:2000},{r:'#1e293b',y:'#fbbf24',g:'#1e293b',dur:600},{r:'#1e293b',y:'#1e293b',g:'#22c55e',dur:1800}];const p=ph[phase%3];const ri=document.getElementById(`dl-tl${idx}r`);const yi=document.getElementById(`dl-tl${idx}y`);const gi=document.getElementById(`dl-tl${idx}g`);if(!ri)return;ri.setAttribute('fill',p.r);yi.setAttribute('fill',p.y);gi.setAttribute('fill',p.g);_dlTlTimers.push(setTimeout(()=>_dlCycleTL(idx,(phase+1)%3),p.dur))}
-function _dlStopTL(){_dlTlTimers.forEach(t=>clearTimeout(t));_dlTlTimers=[]}
-function _dlAddNode(ng,i){const p=DL_PTS[i],c=DL_COLORS[i];const g=document.createElementNS(DL_NS,'g');const ci=document.createElementNS(DL_NS,'circle');ci.setAttribute('cx',p.x);ci.setAttribute('cy',p.y);ci.setAttribute('r',0);ci.setAttribute('fill',c);ci.setAttribute('stroke','#1e293b');ci.setAttribute('stroke-width','1.5');const tx=document.createElementNS(DL_NS,'text');tx.setAttribute('x',p.x);tx.setAttribute('y',p.y+3);tx.setAttribute('text-anchor','middle');tx.setAttribute('font-size','7');tx.setAttribute('font-weight','700');tx.setAttribute('fill','white');tx.textContent=i+1;g.appendChild(ci);g.appendChild(tx);ng.appendChild(g);let r=0;(function grow(){r=Math.min(r+0.8,6.5);ci.setAttribute('r',r);if(r<6.5)requestAnimationFrame(grow)})()}
 function showDlOverlay(msg='產生報告中...',sub='請稍候',durMs=2500){
   const o=document.getElementById('dl-overlay')
   document.getElementById('dl-overlay-sub').textContent=sub
   document.getElementById('dl-overlay-label').textContent=msg
+  const car=document.getElementById('dl-car'),bar=document.getElementById('dl-progress-bar')
+  const dur=(durMs/1000)+'s'
+  o.style.setProperty('--dl-dur',dur)
+  car.style.animation='none';bar.style.animation='none'
+  void car.offsetWidth
+  car.style.animation=`car-drive ${dur} linear forwards`
+  bar.style.animation=`dl-fill ${dur} linear forwards`
   o.style.display='flex'
-  if(_dlAnimId){cancelAnimationFrame(_dlAnimId);_dlAnimId=null}
-  _dlStopTL()
-  const rline=document.getElementById('dl-rline')
-  const car=document.getElementById('dl-car')
-  const nodesG=document.getElementById('dl-nodes')
-  const pb=document.getElementById('dl-progress-bar')
-  if(!rline)return
-  rline.setAttribute('d','');car.setAttribute('transform','translate(-30,-30)')
-  pb.style.width='0%';nodesG.innerHTML=''
-  [[0,0],[1,2],[2,1],[3,2],[4,0]].forEach(([i,ph],j)=>{_dlTlTimers.push(setTimeout(()=>_dlCycleTL(i,ph),j*400))})
-  const shown=new Array(DL_PTS.length).fill(false);shown[0]=true;_dlAddNode(nodesG,0)
-  const start=performance.now()
-  function frame(now){
-    const frac=Math.min((now-start)/durMs,1)
-    rline.setAttribute('d',_dlBP(frac))
-    const {x,y,angle}=_dlPA(frac)
-    car.setAttribute('transform',`translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${angle.toFixed(1)},0,0)`)
-    pb.style.width=(frac*100).toFixed(1)+'%'
-    DL_NODE_FRAC.forEach((nf,i)=>{if(!shown[i+1]&&frac>=nf){shown[i+1]=true;_dlAddNode(nodesG,i+1)}})
-    if(frac<1)_dlAnimId=requestAnimationFrame(frame)
-    else car.setAttribute('transform','translate(-30,-30)')
-  }
-  _dlAnimId=requestAnimationFrame(frame)
 }
-function hideDlOverlay(){
-  document.getElementById('dl-overlay').style.display='none'
-  if(_dlAnimId){cancelAnimationFrame(_dlAnimId);_dlAnimId=null}
-  _dlStopTL()
-}
+function hideDlOverlay(){ document.getElementById('dl-overlay').style.display='none' }
 
 // Wrapper: show animation, run fn after delay, hide when done
 async function withDlAnim(msg, sub, fn, durMs=2200){
