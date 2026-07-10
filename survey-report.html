@@ -972,10 +972,21 @@ function initTripMap(mapId, trip, combo){
     }
   }
 
-  // GPS track (colored by combo)
+  // GPS track (colored by combo) + direction arrows
   const gpsLL=(trip.gpsTrack||[]).filter(p=>p.lat&&p.lng).map(p=>[p.lat,p.lng])
   if(gpsLL.length>=2){
     L.polyline(gpsLL,{color:trackColor,weight:4,opacity:.85}).addTo(m)
+    // Arrow markers every ~8 points to show travel direction
+    const step=Math.max(4,Math.floor(gpsLL.length/12))
+    for(let ai=step;ai<gpsLL.length-1;ai+=step){
+      const [la1,lo1]=gpsLL[ai-1],[la2,lo2]=gpsLL[ai]
+      const dy=la2-la1,dx=(lo2-lo1)*Math.cos(la1*Math.PI/180)
+      const angle=Math.atan2(dx,dy)*180/Math.PI
+      L.marker([la2,lo2],{icon:L.divIcon({
+        html:`<div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:10px solid ${trackColor};opacity:.9;transform:rotate(${angle.toFixed(0)}deg);transform-origin:center 6.7px"></div>`,
+        className:'',iconSize:[10,10],iconAnchor:[5,5]
+      }),interactive:false}).addTo(m)
+    }
   }
 
   // Segment clickable overlays — invisible thick hit-targets per inter-node segment
