@@ -983,8 +983,8 @@ function initTripMap(mapId, trip, combo){
       const dy=la2-la1,dx=(lo2-lo1)*Math.cos(la1*Math.PI/180)
       const angle=Math.atan2(dx,dy)*180/Math.PI
       L.marker([la2,lo2],{icon:L.divIcon({
-        html:`<div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:10px solid ${trackColor};opacity:.9;transform:rotate(${angle.toFixed(0)}deg);transform-origin:center 6.7px"></div>`,
-        className:'',iconSize:[10,10],iconAnchor:[5,5]
+        html:`<svg width="20" height="20" viewBox="-10 -10 20 20" style="overflow:visible;transform:rotate(${angle.toFixed(0)}deg)"><polygon points="0,-9 6,5 0,1 -6,5" fill="${trackColor}" stroke="white" stroke-width="2" stroke-linejoin="round"/></svg>`,
+        className:'',iconSize:[20,20],iconAnchor:[10,10]
       }),interactive:false}).addTo(m)
     }
   }
