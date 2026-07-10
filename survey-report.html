@@ -277,7 +277,8 @@ let surveys = []
 let avgTrips = {}  // {combo: {travelS, runS, intTotalS, roadTotalS, totalDelayS, segTimes:[{travelS,runS}]}}
 let currentCombo = 'peak_bound'
 let _filterDate = ''  // YYYY-MM-DD or ''
-let _tripMaps = {}  // mapId -> L.map instance
+let _tripMaps = {}       // mapId -> L.map instance
+let _tripMapBounds = {}  // mapId -> L.latLngBounds (for re-fitting after invalidateSize)
 
 const COMBO_KEYS = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
 const COMBO_LABEL = {
@@ -1038,13 +1039,17 @@ function initTripMap(mapId, trip, combo){
     .addTo(m)
   })
 
-  // Fit bounds
+  // Fit bounds — store bounds so switchTab can re-fit after invalidateSize
   const allPts=[...gpsLL,...nodes.map(n=>[n.lat,n.lng])]
   if(allPts.length>=2){
-    m.fitBounds(L.latLngBounds(allPts).pad(0.12))
+    const b=L.latLngBounds(allPts).pad(0.12)
+    _tripMapBounds[mapId]=b
+    m.fitBounds(b)
   } else if(allPts.length===1){
+    _tripMapBounds[mapId]=null
     m.setView(allPts[0],16)
   } else {
+    _tripMapBounds[mapId]=null
     m.setView([25.04776,121.51755],13)
   }
 }
@@ -1072,8 +1077,12 @@ function switchTab(tab){
   // Leaflet maps initialised in hidden containers have wrong size — fix after reveal
   if(tab==='trips'){
     requestAnimationFrame(()=>{
-      Object.values(_tripMaps).forEach(m=>{
-        try{ m.invalidateSize() }catch(e){}
+      Object.entries(_tripMaps).forEach(([id,m])=>{
+        try{
+          m.invalidateSize()
+          const b=_tripMapBounds[id]
+          if(b) m.fitBounds(b)
+        }catch(e){}
       })
     })
   }
