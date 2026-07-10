@@ -948,7 +948,10 @@ function initTripMap(mapId, trip, combo){
   const trackColor = TRACK_COLOR[combo]||'#2563eb'
   const nodes = route.nodes||[]
   const startTime = trip.startTime ? new Date(trip.startTime) : null
-  const nodeTs = (trip.nodeTimestamps||[]).map(t=>t?new Date(t):null)
+  const isReturn = trip.direction === 'return'
+  // nodeTimestamps are in trip-travel order; for return trips reverse to match route node order
+  const _rawNodeTs = (trip.nodeTimestamps||[]).map(t=>t?new Date(t):null)
+  const nodeTs = isReturn ? [..._rawNodeTs].reverse() : _rawNodeTs
 
   const m = L.map(el,{zoomControl:true,attributionControl:false,scrollWheelZoom:true})
   _tripMaps[mapId]=m
