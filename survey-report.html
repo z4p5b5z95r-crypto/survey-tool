@@ -32,14 +32,14 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color
 .dl-dash{flex:1;height:7px;background:#f59e0b;border-radius:3px;opacity:.9}
 .dl-car{position:absolute;font-size:52px;top:0;left:-60px;
   transform:scaleX(-1);
-  animation:car-drive var(--dl-dur,2.5s) linear forwards;
+  animation:car-loop 1.8s linear infinite;
   filter:drop-shadow(0 6px 10px rgba(0,0,0,.5));
   z-index:10;line-height:1}
-@keyframes car-drive{0%{left:-60px}100%{left:calc(100% + 8px)}}
-/* Progress bar */
-.dl-progress-track{width:440px;height:5px;background:#1e293b;border-radius:10px;overflow:hidden}
-.dl-progress-bar{height:100%;background:#3b82f6;border-radius:10px;width:0%;animation:dl-fill var(--dl-dur,2.5s) linear forwards}
-@keyframes dl-fill{0%{width:0%}100%{width:100%}}
+@keyframes car-loop{0%{left:-60px}100%{left:calc(100% + 8px)}}
+/* Progress bar — shimmer sweep */
+.dl-progress-track{width:440px;height:5px;background:#1e293b;border-radius:10px;overflow:hidden;position:relative}
+.dl-progress-bar{position:absolute;height:100%;width:55%;border-radius:10px;background:linear-gradient(90deg,transparent,#3b82f6 35%,#93c5fd 50%,#3b82f6 65%,transparent);animation:bar-sweep 1.6s ease-in-out infinite}
+@keyframes bar-sweep{0%{left:-55%}100%{left:100%}}
 
 /* ── Page header ── */
 .page-header{background:#1e293b;color:white;padding:16px 20px 0;position:sticky;top:0;z-index:100}
@@ -1216,29 +1216,37 @@ function switchTab(tab){
 }
 
 // ── Download overlay helpers ──
-function showDlOverlay(msg='產生報告中...',sub='請稍候',durMs=2500){
+function showDlOverlay(msg='產生報告中...',sub='請稍候'){
   const o=document.getElementById('dl-overlay')
   document.getElementById('dl-overlay-sub').textContent=sub
   document.getElementById('dl-overlay-label').textContent=msg
   const car=document.getElementById('dl-car'),bar=document.getElementById('dl-progress-bar')
-  const dur=(durMs/1000)+'s'
-  o.style.setProperty('--dl-dur',dur)
   car.style.animation='none';bar.style.animation='none'
   void car.offsetWidth
-  car.style.animation=`car-drive ${dur} linear forwards`
-  bar.style.animation=`dl-fill ${dur} linear forwards`
+  car.style.animation='car-loop 1.8s linear infinite'
+  bar.style.animation='bar-sweep 1.6s ease-in-out infinite'
   o.style.display='flex'
 }
-function hideDlOverlay(){ document.getElementById('dl-overlay').style.display='none' }
+function hideDlOverlay(){
+  const o=document.getElementById('dl-overlay')
+  const car=document.getElementById('dl-car'),bar=document.getElementById('dl-progress-bar')
+  car.style.animation='none'
+  bar.style.animation='none'
+  bar.style.position='static'
+  bar.style.width='100%'
+  bar.style.background='#22c55e'
+  document.getElementById('dl-overlay-sub').textContent='✅ 完成'
+  setTimeout(()=>{
+    o.style.display='none'
+    bar.style.position='';bar.style.width='';bar.style.background=''
+  },450)
+}
 
-// Wrapper: show animation, run fn after delay, hide when done
-async function withDlAnim(msg, sub, fn, durMs=2200){
-  showDlOverlay(msg, sub, durMs)
-  await new Promise(r=>setTimeout(r, 80))  // let overlay render
-  try{ fn() }finally{
-    // Hide exactly when animation ends
-    setTimeout(hideDlOverlay, Math.max(0, durMs-80))
-  }
+// Wrapper: show animation, run fn, hide overlay exactly when done
+async function withDlAnim(msg, sub, fn){
+  showDlOverlay(msg, sub)
+  await new Promise(r=>setTimeout(r,80))
+  try{ fn() }finally{ hideDlOverlay() }
 }
 
 // ════════════════ XLSX DOWNLOAD ════════════════
@@ -1510,7 +1518,8 @@ function downloadRawTimeline(){
     }
 
     const hdr=['調查次','調查員','日期','天氣','時期','方向','事件類型','名稱/延滯類別','延滯原因代碼','停留時間(秒)','時刻','TWD97_TM2_E(m)','TWD97_TM2_N(m)','緯度','經度','Google Maps 連結']
-    const rows=[hdr]
+    const colW=[{wch:6},{wch:8},{wch:12},{wch:6},{wch:6},{wch:6},{wch:10},{wch:14},{wch:12},{wch:8},{wch:10},{wch:14},{wch:14},{wch:12},{wch:12},{wch:42}]
+    const sheetNames=new Set()
 
     surveys.forEach((sv,si)=>{
       ;(sv.trips||[]).forEach(trip=>{
@@ -1537,6 +1546,7 @@ function downloadRawTimeline(){
 
         events.sort((a,b)=>(a.ts?new Date(a.ts).getTime():0)-(b.ts?new Date(b.ts).getTime():0))
 
+        const rows=[hdr]
         events.forEach(ev=>{
           let E='',N='',lat='',lng='',gml=''
           if(ev.lat!=null&&ev.lng!=null){
@@ -1546,17 +1556,24 @@ function downloadRawTimeline(){
           }
           rows.push([si+1,sv.surveyor||'',sv.date||'',sv.weather||'',peakL,dirL,ev.type,ev.name,ev.cause,ev.durS||'',hmsStr(ev.ts),E,N,lat,lng,gml])
         })
+
+        // Build unique sheet name (max 31 chars)
+        let sn=`調查${si+1}-${peakL}${dirL}`
+        let idx=2; const base=sn
+        while(sheetNames.has(sn))sn=`${base}(${idx++})`
+        sheetNames.add(sn)
+
+        const ws=XLSX.utils.aoa_to_sheet(rows)
+        ws['!cols']=colW
+        const range=XLSX.utils.decode_range(ws['!ref'])
+        for(let c=range.s.c;c<=range.e.c;c++){
+          const cell=ws[XLSX.utils.encode_cell({r:0,c})]
+          if(cell)cell.s={font:{bold:true},fill:{fgColor:{rgb:'1E293B'}}}
+        }
+        XLSX.utils.book_append_sheet(wb,ws,sn)
       })
     })
 
-    const ws=XLSX.utils.aoa_to_sheet(rows)
-    ws['!cols']=[{wch:6},{wch:8},{wch:12},{wch:6},{wch:6},{wch:6},{wch:10},{wch:14},{wch:12},{wch:8},{wch:10},{wch:14},{wch:14},{wch:12},{wch:12},{wch:42}]
-    const range=XLSX.utils.decode_range(ws['!ref'])
-    for(let c=range.s.c;c<=range.e.c;c++){
-      const cell=ws[XLSX.utils.encode_cell({r:0,c})]
-      if(cell)cell.s={font:{bold:true},fill:{fgColor:{rgb:'1E293B'}}}
-    }
-    XLSX.utils.book_append_sheet(wb,ws,'時序原始資料')
     XLSX.writeFile(wb,`${route.routeName}_時序原始資料.xlsx`)
   })
 }
