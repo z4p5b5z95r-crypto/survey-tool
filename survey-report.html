@@ -146,6 +146,42 @@ td:first-child{text-align:left;font-weight:500}
 .trip-map-wrap{position:relative;height:380px;background:#e2e8f0}
 .trip-map{width:100%;height:100%}
 .trip-map-note{padding:7px 14px;font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;display:flex;gap:14px;flex-wrap:wrap;background:#fafafa}
+
+/* ── Edit Modal ── */
+#edit-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;display:none;align-items:center;justify-content:center;padding:20px}
+#edit-modal.open{display:flex}
+.em-box{background:white;border-radius:16px;width:100%;max-width:700px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.3)}
+.em-hdr{background:#1e293b;color:white;padding:14px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.em-hdr h3{font-size:14px;font-weight:700;margin:0}
+.em-close{background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;line-height:1;padding:4px 8px}
+.em-close:hover{color:white}
+.em-tabs{display:flex;border-bottom:2px solid #e2e8f0;padding:0 16px;gap:2px;flex-shrink:0}
+.em-tab{padding:10px 16px;font-size:13px;font-weight:600;border:none;background:none;color:#64748b;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:.15s}
+.em-tab.active{color:#1e293b;border-bottom-color:#3b82f6}
+.em-body{padding:16px 20px;overflow-y:auto;flex:1;min-height:0}
+.em-sec-title{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.6px;margin:0 0 10px}
+.em-node-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9}
+.em-node-label{font-size:12px;color:#334155;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.em-time-inp{font-size:13px;padding:5px 8px;border:1.5px solid #cbd5e1;border-radius:6px;width:120px;font-family:monospace;text-align:center}
+.em-time-inp:focus{border-color:#3b82f6;outline:none}
+.em-dl-row{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid #f1f5f9}
+.em-dl-num{font-size:11px;color:#94a3b8;width:18px;text-align:right;flex-shrink:0}
+.em-dl-cause{flex:1;font-size:12px;padding:5px 7px;border:1.5px solid #cbd5e1;border-radius:6px;min-width:0}
+.em-dl-dur{width:65px;font-size:13px;padding:5px 7px;border:1.5px solid #cbd5e1;border-radius:6px;font-family:monospace}
+.em-dl-sec{font-size:11px;color:#64748b;flex-shrink:0}
+.em-dl-time{width:100px;font-size:12px;padding:5px 7px;border:1.5px solid #cbd5e1;border-radius:6px;font-family:monospace}
+.em-dl-del{background:#fee2e2;border:1px solid #fca5a5;color:#dc2626;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;flex-shrink:0}
+.em-add-btn{background:#f0f9ff;border:1.5px dashed #93c5fd;color:#2563eb;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:12px;font-weight:600;width:100%;margin-top:10px;transition:.15s}
+.em-add-btn:hover{background:#dbeafe}
+.em-footer{padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;align-items:center;justify-content:flex-end;gap:10px;background:#f8fafc;border-radius:0 0 16px 16px;flex-shrink:0}
+.em-cancel{padding:8px 18px;border:1.5px solid #cbd5e1;background:white;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#475569}
+.em-cancel:hover{border-color:#94a3b8}
+.em-save{padding:8px 20px;background:#1e293b;color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700}
+.em-save:hover{background:#0f172a}
+.em-warn{font-size:11px;color:#92400e;background:#fef9c3;border:1px solid #fde68a;border-radius:6px;padding:7px 10px;margin-top:12px;line-height:1.6}
+.em-edit-btn{background:transparent;border:1.5px solid #475569;color:#94a3b8;border-radius:7px;padding:5px 13px;cursor:pointer;font-size:12px;font-weight:600;transition:.15s;align-self:center}
+.em-edit-btn:hover{background:#334155;color:white;border-color:#334155}
+#em-toast{position:fixed;bottom:24px;right:24px;background:#1e293b;color:white;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;transition:opacity .4s;pointer-events:none;opacity:0}
 </style>
 </head>
 <body>
@@ -829,6 +865,7 @@ function renderComboRecords(combo){
           <div class="sv-num">調查 #${si+1}</div>
           <div class="sv-info">👤 ${he(sv.surveyor||'未知')}</div>
         </div>
+        <button class="em-edit-btn" onclick="openEditModal(${si},'${combo}')">✏️ 修改</button>
         <div class="sv-meta">
           📅 ${he(sv.date||'—')}<br>
           🌤 ${he(sv.weather||'—')}
@@ -2039,6 +2076,219 @@ ${pages.join('\n')}
   setTimeout(()=>w.print(), 700)
 }
 
+
+// ════════════════ EDIT MODAL ════════════════
+let _em={si:null,combo:null}
+
+function openEditModal(si,combo){
+  _em={si,combo}
+  const {sv,trip}=_emTarget(); if(!trip)return
+  document.getElementById('em-title').textContent=`調查 #${si+1} — ${he(sv.surveyor||'—')}`
+  _emBuildNodes(trip,sv)
+  _emBuildDelays(trip,sv)
+  switchEmTab('nodes')
+  document.getElementById('edit-modal').classList.add('open')
+}
+
+function closeEditModal(){
+  document.getElementById('edit-modal').classList.remove('open')
+  _em={si:null,combo:null}
+}
+
+function switchEmTab(t){
+  document.getElementById('em-panel-nodes').style.display=t==='nodes'?'':'none'
+  document.getElementById('em-panel-delays').style.display=t==='delays'?'':'none'
+  document.getElementById('em-tab-nodes').classList.toggle('active',t==='nodes')
+  document.getElementById('em-tab-delays').classList.toggle('active',t==='delays')
+}
+
+function _emTarget(){
+  const si=_em.si; if(si==null)return{}
+  const sv=surveys[si]
+  const [pt,dir]=parseCombo(_em.combo)
+  return{sv,trip:sv?.trips?.find(t=>t.peakType===pt&&t.direction===dir)}
+}
+
+function _tsHMS(ts){
+  if(!ts)return''
+  return new Date(ts).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'})
+}
+
+function _rebuildTS(origISO,newHMS,prevISO,survDate){
+  if(!newHMS)return origISO
+  const parts=newHMS.split(':')
+  const h=parts[0]||'00',m=parts[1]||'00',s=parts[2]||'00'
+  const dateStr=origISO
+    ?new Date(origISO).toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'})
+    :(survDate||'')
+  if(!dateStr)return origISO
+  let d=new Date(`${dateStr}T${h.padStart(2,'0')}:${m.padStart(2,'0')}:${s.padStart(2,'0')}+08:00`)
+  if(prevISO){const pD=new Date(prevISO);if(d<=pD)d=new Date(d.getTime()+86400000)}
+  return d.toISOString()
+}
+
+function _emBuildNodes(trip,sv){
+  const nodes=route.nodes||[]
+  const isRet=trip.direction==='return'
+  const nodeOrder=isRet?[...nodes].reverse():nodes
+  const nTs=trip.nodeTimestamps||[]
+  const n=nodeOrder.length
+  let html=`<p class="em-sec-title">節點經過時刻（Asia/Taipei）</p>`
+  nodeOrder.forEach((nd,i)=>{
+    const ts=nTs[i]||(i===0?trip.startTime:null)||(i===n-1?trip.endTime:null)
+    const hms=_tsHMS(ts)
+    const isS=i===0,isE=i===n-1
+    const badge=isS?'起':isE?'終':String(i+1)
+    const bc=isS?'#22c55e':isE?'#ef4444':'#3b82f6'
+    html+=`<div class="em-node-row">
+      <div style="width:22px;height:22px;background:${bc};border-radius:50%;color:white;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">${badge}</div>
+      <span class="em-node-label">${he(nd.name||`節點${i+1}`)}</span>
+      <input class="em-time-inp" type="time" step="1" value="${hms}" data-ni="${i}">
+    </div>`
+  })
+  html+=`<div class="em-warn">⚠ 修改時間後，路段旅行時間與行駛速率將自動重新計算。節點時刻須按時間先後排列。</div>`
+  document.getElementById('em-panel-nodes').innerHTML=html
+}
+
+function _emBuildDelays(trip,sv){
+  const log=trip.delayLog||[]
+  let html=`<p class="em-sec-title">延滯紀錄</p><div id="em-dl-list">`
+  if(!log.length)html+=`<div style="text-align:center;color:#94a3b8;padding:24px 0;font-size:13px">尚無延滯紀錄</div>`
+  log.forEach((dl,i)=>{html+=_emDlRow(dl,i)})
+  html+=`</div><button class="em-add-btn" onclick="_emAddDelay()">＋ 新增延滯</button>`
+  document.getElementById('em-panel-delays').innerHTML=html
+}
+
+function _emDlRow(dl,i){
+  const rOpts=ROAD_DELAYS.map(d=>`<option value="${d.cause}"${dl.cause===d.cause?' selected':''}>${d.label}</option>`).join('')
+  const iOpts=INT_DELAYS.map(d=>`<option value="${d.cause}"${dl.cause===d.cause?' selected':''}>${d.label}</option>`).join('')
+  const tVal=_tsHMS(dl.startedAt)
+  return`<div class="em-dl-row">
+    <span class="em-dl-num">${i+1}</span>
+    <select class="em-dl-cause"><optgroup label="路段延滯">${rOpts}</optgroup><optgroup label="交叉口延滯">${iOpts}</optgroup></select>
+    <input class="em-dl-dur" type="number" min="0" max="9999" value="${dl.durationS||0}">
+    <span class="em-dl-sec">秒</span>
+    <input class="em-dl-time" type="time" step="1" value="${tVal}">
+    <button class="em-dl-del" onclick="_emRmDelay(${i})" title="刪除">✕</button>
+  </div>`
+}
+
+function _emAddDelay(){
+  const {sv,trip}=_emTarget(); if(!trip)return
+  if(!trip.delayLog)trip.delayLog=[]
+  trip.delayLog.push({cause:'red_light',durationS:0,startedAt:trip.startTime||null,label:'紅燈',icon:'🚦'})
+  _emBuildDelays(trip,sv); switchEmTab('delays')
+}
+
+function _emRmDelay(i){
+  const {sv,trip}=_emTarget(); if(!trip)return
+  trip.delayLog.splice(i,1); _emBuildDelays(trip,sv)
+}
+
+function saveEdit(){
+  const {sv,trip}=_emTarget(); if(!trip)return
+  const nodes=route.nodes||[]
+  const nNodes=nodes.length
+  const survDate=sv?.date||''
+
+  // 1. Node timestamps
+  const nodeInputs=[...document.querySelectorAll('#em-panel-nodes .em-time-inp')]
+  const newTs=new Array(nNodes).fill(null)
+  let prevISO=null
+  nodeInputs.forEach((inp,i)=>{
+    const origISO=(trip.nodeTimestamps||[])[i]||(i===0?trip.startTime:null)||(i===nNodes-1?trip.endTime:null)
+    const newISO=_rebuildTS(origISO,inp.value,prevISO,survDate)
+    newTs[i]=newISO; prevISO=newISO
+  })
+  trip.nodeTimestamps=newTs
+  trip.startTime=newTs[0]
+  trip.endTime=newTs[nNodes-1]
+
+  // 2. Delay log
+  const dlRows=[...document.querySelectorAll('#em-dl-list .em-dl-row')]
+  dlRows.forEach((row,i)=>{
+    if(!trip.delayLog[i])return
+    const cause=row.querySelector('.em-dl-cause')?.value
+    const dur=parseInt(row.querySelector('.em-dl-dur')?.value)||0
+    const tVal=row.querySelector('.em-dl-time')?.value
+    trip.delayLog[i].cause=cause
+    trip.delayLog[i].durationS=dur
+    const found=[...ROAD_DELAYS,...INT_DELAYS].find(d=>d.cause===cause)
+    if(found)trip.delayLog[i].label=found.label
+    if(tVal){
+      const orig=trip.delayLog[i].startedAt||trip.startTime
+      trip.delayLog[i].startedAt=_rebuildTS(orig,tVal,null,survDate)
+    }
+  })
+
+  // 3. Recalculate & re-render
+  _recalcTrip(trip)
+  calcAverages()
+  renderTravelTable(); renderSpeedTable(); renderDelayTable()
+  renderComboRecords(_em.combo)
+  closeEditModal()
+  _emToast('✅ 已儲存並重新計算')
+}
+
+function _recalcTrip(trip){
+  const RC=ROAD_DELAYS.map(d=>d.cause),IC=INT_DELAYS.map(d=>d.cause)
+  const nSegs=route.segments?.length||0
+  const st=trip.startTime?new Date(trip.startTime):null
+  const et=trip.endTime?new Date(trip.endTime):null
+  const nTs=(trip.nodeTimestamps||[]).map(t=>t?new Date(t):null)
+  if(st&&et)trip.travelS=Math.round((et-st)/1000)
+  if(!trip.segTimes)trip.segTimes=[]
+  for(let i=0;i<nSegs;i++){
+    const t0=nTs[i]||(i===0?st:null)
+    const t1=nTs[i+1]||(i===nSegs-1?et:null)
+    const tS=(t0&&t1)?Math.round((t1-t0)/1000):null
+    let segDel=0
+    if(trip.delayLog&&t0&&t1)trip.delayLog.forEach(dl=>{
+      const ds=dl.startedAt?new Date(dl.startedAt):null
+      if(ds&&ds>=t0&&ds<t1)segDel+=dl.durationS||0
+    })
+    trip.segTimes[i]={travelS:tS,runS:tS!=null?Math.max(0,tS-segDel):null}
+  }
+  trip.intDelays={}; trip.roadDelays={}
+  IC.forEach(c=>trip.intDelays[c]=0); RC.forEach(c=>trip.roadDelays[c]=0)
+  ;(trip.delayLog||[]).forEach(dl=>{
+    if(IC.includes(dl.cause))trip.intDelays[dl.cause]=(trip.intDelays[dl.cause]||0)+(dl.durationS||0)
+    else if(RC.includes(dl.cause))trip.roadDelays[dl.cause]=(trip.roadDelays[dl.cause]||0)+(dl.durationS||0)
+  })
+  trip.intTotalS=IC.reduce((s,c)=>s+(trip.intDelays[c]||0),0)
+  trip.roadTotalS=RC.reduce((s,c)=>s+(trip.roadDelays[c]||0),0)
+  trip.totalDelayS=trip.intTotalS+trip.roadTotalS
+  trip.runS=Math.max(0,(trip.travelS||0)-trip.totalDelayS)
+}
+
+function _emToast(msg){
+  let t=document.getElementById('em-toast')
+  if(!t){t=document.createElement('div');t.id='em-toast';document.body.appendChild(t)}
+  t.textContent=msg; t.style.opacity='1'
+  clearTimeout(t._tmr); t._tmr=setTimeout(()=>{t.style.opacity='0'},2500)
+}
 </script>
+
+<!-- ════════ EDIT MODAL ════════ -->
+<div id="edit-modal">
+  <div class="em-box">
+    <div class="em-hdr">
+      <h3>✏️ 修改調查紀錄 — <span id="em-title"></span></h3>
+      <button class="em-close" onclick="closeEditModal()">✕</button>
+    </div>
+    <div class="em-tabs">
+      <button class="em-tab active" id="em-tab-nodes" onclick="switchEmTab('nodes')">⏱ 節點時間</button>
+      <button class="em-tab" id="em-tab-delays" onclick="switchEmTab('delays')">🚦 延滯紀錄</button>
+    </div>
+    <div class="em-body">
+      <div id="em-panel-nodes"></div>
+      <div id="em-panel-delays" style="display:none"></div>
+    </div>
+    <div class="em-footer">
+      <button class="em-cancel" onclick="closeEditModal()">取消</button>
+      <button class="em-save" onclick="saveEdit()">💾 儲存並重新計算</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
