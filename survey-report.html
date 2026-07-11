@@ -1540,8 +1540,17 @@ function downloadRawTimeline(){
 
         // Delay events
         ;(trip.delayLog||[]).forEach(dl=>{
-          const gpt=findGps(gps,dl.startedAt)
-          events.push({ts:dl.startedAt,type:isInt(dl.cause)?'交叉口延滯':'路段延滯',name:dl.label||dl.cause,cause:dl.cause,durS:dl.durationS||0,lat:gpt?.lat??null,lng:gpt?.lng??null})
+          // Priority 1: pos recorded live when delay button was tapped
+          let dlLat=dl.pos?.lat??null, dlLng=dl.pos?.lng??null
+          // Priority 2: nearest GPS track point by timestamp
+          if(dlLat==null){const gpt=findGps(gps,dl.startedAt);dlLat=gpt?.lat??null;dlLng=gpt?.lng??null}
+          // Priority 3: start node of the segment (last resort)
+          if(dlLat==null){
+            const dlT=dl.startedAt?new Date(dl.startedAt).getTime():0
+            const ni=nTs.findIndex(ts=>ts&&Math.abs(new Date(ts).getTime()-dlT)<1000)
+            if(ni>=0&&ni<nodeOrder.length){dlLat=nodeOrder[ni].lat??null;dlLng=nodeOrder[ni].lng??null}
+          }
+          events.push({ts:dl.startedAt,type:isInt(dl.cause)?'交叉口延滯':'路段延滯',name:dl.label||dl.cause,cause:dl.cause,durS:dl.durationS||0,lat:dlLat,lng:dlLng})
         })
 
         events.sort((a,b)=>(a.ts?new Date(a.ts).getTime():0)-(b.ts?new Date(b.ts).getTime():0))
@@ -1566,9 +1575,22 @@ function downloadRawTimeline(){
         const ws=XLSX.utils.aoa_to_sheet(rows)
         ws['!cols']=colW
         const range=XLSX.utils.decode_range(ws['!ref'])
+        // Header row style
         for(let c=range.s.c;c<=range.e.c;c++){
           const cell=ws[XLSX.utils.encode_cell({r:0,c})]
           if(cell)cell.s={font:{bold:true},fill:{fgColor:{rgb:'1E293B'}}}
+        }
+        // Delay row highlight (column G = index 6 = event type)
+        const delayColors={'路段延滯':'FEF3C7','交叉口延滯':'DBEAFE'}
+        for(let r=1;r<=range.e.r;r++){
+          const typeCell=ws[XLSX.utils.encode_cell({r,c:6})]
+          const rgb=delayColors[typeCell?.v]
+          if(rgb){
+            for(let c=range.s.c;c<=range.e.c;c++){
+              const cell=ws[XLSX.utils.encode_cell({r,c})]
+              if(cell)cell.s={...(cell.s||{}),fill:{fgColor:{rgb}}}
+            }
+          }
         }
         XLSX.utils.book_append_sheet(wb,ws,sn)
       })
