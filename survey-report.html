@@ -97,6 +97,7 @@ td:first-child{text-align:left;font-weight:500}
 .sgs-pf-title-wrap h2{font-size:15px;font-weight:700;color:#fff;letter-spacing:2px;white-space:nowrap}
 .sgs-pf-date-box{display:flex;align-items:center;padding:8px 14px;font-size:11px;color:#a8c4e0;white-space:nowrap}
 .sgs-pf-date-box .dv{color:#f87171;font-weight:700;margin-left:4px}
+.pf-hdr-btn-wrap{display:flex;align-items:center;gap:8px;padding:0 14px;flex-shrink:0}
 .sgs-pf-meta{display:flex;background:#eef3fa;border-bottom:1.5px solid #1e3a5f}
 .sgs-pf-ml{flex:1;padding:7px 14px;border-right:1px solid #94a3b8;font-size:11px;line-height:1.9;color:#1e3a5f}
 .sgs-pf-ml u{text-decoration-color:#3d6490}
@@ -356,6 +357,18 @@ td:first-child{text-align:left;font-weight:500}
         ・行駛速率統計表（各路段旅行時間 / 行駛時間 / 速率）<br>
         ・延滯統計表（交叉口延滯 / 路段延滯 / 比例）<br>
         ・每趟旅次詳細記錄（主次要幹道行駛時間及延滯調查表格式）
+      </div>
+    </div>
+    <div class="dl-section" style="margin-top:16px">
+      <h3>📍 時序原始資料</h3>
+      <p style="font-size:13px;color:#64748b;margin:8px 0 20px">依時間先後呈現每趟旅次的所有節點與延滯點，含雙座標系統</p>
+      <button class="dl-btn" style="background:#7c3aed" onclick="downloadRawTimeline()">📍 下載時序原始資料 (.xlsx)</button>
+      <div class="dl-note" style="margin-top:16px">
+        <b>每列代表一個時間點（節點或延滯），欄位包含：</b><br>
+        ・時刻、事件類型（節點 / 路段延滯 / 交叉口延滯）<br>
+        ・TWD97 TM2 座標（E, N，單位：公尺）<br>
+        ・WGS84 座標（緯度, 經度）及 Google Maps 連結<br>
+        ・延滯類別及停留時間（秒）
       </div>
     </div>
   </div>
@@ -883,7 +896,6 @@ function renderComboRecords(combo){
           <div class="sv-num">調查 #${si+1}</div>
           <div class="sv-info">👤 ${he(sv.surveyor||'未知')}</div>
         </div>
-        ${headerBtns}
         <div class="sv-meta">
           📅 ${he(sv.date||'—')}<br>
           🌤 ${he(sv.weather||'—')}
@@ -912,6 +924,7 @@ function renderComboRecords(combo){
         <!-- ① Header -->
         <div class="sgs-pf-hdr">
           <div class="sgs-pf-title-wrap"><h2>主次要幹道行駛時間及延滯調查表</h2></div>
+          <div class="pf-hdr-btn-wrap">${headerBtns}</div>
         </div>
         <!-- ② Meta -->
         <div class="sgs-pf-meta">
@@ -1462,6 +1475,91 @@ function downloadCSV(){
   })
 }
 
+// ════════════════ RAW TIMELINE XLSX ════════════════
+function _wgs84ToTM2(lat,lng){
+  const r=d=>d*Math.PI/180, a=6378137, f=1/298.257222101
+  const e2=2*f-f*f, e4=e2*e2, e6=e2*e4
+  const k0=0.9999, lon0=r(121), FE=250000
+  const phi=r(lat), lam=r(lng), dl=lam-lon0
+  const sinP=Math.sin(phi), cosP=Math.cos(phi), tanP=Math.tan(phi)
+  const N=a/Math.sqrt(1-e2*sinP*sinP), T=tanP*tanP
+  const C=e2/(1-e2)*cosP*cosP, A=cosP*dl
+  const ep2=e2/(1-e2)
+  const M=a*((1-e2/4-3*e4/64-5*e6/256)*phi-(3*e2/8+3*e4/32+45*e6/1024)*Math.sin(2*phi)+(15*e4/256+45*e6/1024)*Math.sin(4*phi)-(35*e6/3072)*Math.sin(6*phi))
+  const E=FE+k0*N*(A+(1-T+C)*A**3/6+(5-18*T+T*T+72*C-58*ep2)*A**5/120)
+  const Nm=k0*(M+N*tanP*(A*A/2+(5-T+9*C+4*C*C)*A**4/24+(61-58*T+T*T+600*C-330*ep2)*A**6/720))
+  return{E:Math.round(E),N:Math.round(Nm)}
+}
+
+function downloadRawTimeline(){
+  if(!route||!surveys.length){alert('尚無資料');return}
+  withDlAnim('產生時序原始資料...','整理節點與延滯座標',()=>{
+    const wb=XLSX.utils.book_new()
+    const allDefs=[...ROAD_DELAYS,...INT_DELAYS]
+    const isInt=c=>INT_DELAYS.some(d=>d.cause===c)
+    const hmsStr=ts=>ts?new Date(ts).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false}):''
+    const findGps=(gpsTrack,isoTime)=>{
+      if(!gpsTrack||!gpsTrack.length||!isoTime)return null
+      const t=new Date(isoTime).getTime(); let best=null,bestD=Infinity
+      for(const pt of gpsTrack){
+        if(!pt.timestamp||pt.lat==null||pt.lng==null)continue
+        const d=Math.abs(new Date(pt.timestamp).getTime()-t)
+        if(d<bestD){bestD=d;best=pt}
+      }
+      return best
+    }
+
+    const hdr=['調查次','調查員','日期','天氣','時期','方向','事件類型','名稱/延滯類別','延滯原因代碼','停留時間(秒)','時刻','TWD97_TM2_E(m)','TWD97_TM2_N(m)','緯度','經度','Google Maps 連結']
+    const rows=[hdr]
+
+    surveys.forEach((sv,si)=>{
+      ;(sv.trips||[]).forEach(trip=>{
+        const peakL=trip.peakType==='peak'?'尖峰':'離峰'
+        const dirL=trip.direction==='bound'?'去程':'回程'
+        const isRet=trip.direction==='return'
+        const nodes=route.nodes||[]
+        const nodeOrder=isRet?[...nodes].reverse():nodes
+        const nTs=trip.nodeTimestamps||[]
+        const gps=trip.gpsTrack||[]
+        const events=[]
+
+        // Node events
+        nodeOrder.forEach((nd,i)=>{
+          const ts=nTs[i]||(i===0?trip.startTime:null)||(i===nodeOrder.length-1?trip.endTime:null)
+          events.push({ts,type:'節點',name:nd.name||`節點${i+1}`,cause:'',durS:0,lat:nd.lat??null,lng:nd.lng??null})
+        })
+
+        // Delay events
+        ;(trip.delayLog||[]).forEach(dl=>{
+          const gpt=findGps(gps,dl.startedAt)
+          events.push({ts:dl.startedAt,type:isInt(dl.cause)?'交叉口延滯':'路段延滯',name:dl.label||dl.cause,cause:dl.cause,durS:dl.durationS||0,lat:gpt?.lat??null,lng:gpt?.lng??null})
+        })
+
+        events.sort((a,b)=>(a.ts?new Date(a.ts).getTime():0)-(b.ts?new Date(b.ts).getTime():0))
+
+        events.forEach(ev=>{
+          let E='',N='',lat='',lng='',gml=''
+          if(ev.lat!=null&&ev.lng!=null){
+            const tm2=_wgs84ToTM2(ev.lat,ev.lng)
+            E=tm2.E;N=tm2.N;lat=+ev.lat.toFixed(7);lng=+ev.lng.toFixed(7)
+            gml=`https://www.google.com/maps?q=${ev.lat.toFixed(7)},${ev.lng.toFixed(7)}`
+          }
+          rows.push([si+1,sv.surveyor||'',sv.date||'',sv.weather||'',peakL,dirL,ev.type,ev.name,ev.cause,ev.durS||'',hmsStr(ev.ts),E,N,lat,lng,gml])
+        })
+      })
+    })
+
+    const ws=XLSX.utils.aoa_to_sheet(rows)
+    ws['!cols']=[{wch:6},{wch:8},{wch:12},{wch:6},{wch:6},{wch:6},{wch:10},{wch:14},{wch:12},{wch:8},{wch:10},{wch:14},{wch:14},{wch:12},{wch:12},{wch:42}]
+    const range=XLSX.utils.decode_range(ws['!ref'])
+    for(let c=range.s.c;c<=range.e.c;c++){
+      const cell=ws[XLSX.utils.encode_cell({r:0,c})]
+      if(cell)cell.s={font:{bold:true},fill:{fgColor:{rgb:'1E293B'}}}
+    }
+    XLSX.utils.book_append_sheet(wb,ws,'時序原始資料')
+    XLSX.writeFile(wb,`${route.routeName}_時序原始資料.xlsx`)
+  })
+}
 
 // ════════════════ SGS PDF PRINT ════════════════
 function downloadSGSPdf(){
