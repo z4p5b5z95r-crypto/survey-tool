@@ -12,13 +12,13 @@
 body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color:#1e293b;min-height:100vh}
 
 /* ── Loading / Error ── */
-#loading-screen{position:fixed;inset:0;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;z-index:999}
-#loading-screen p{color:#1e293b;font-size:15px;font-weight:700;letter-spacing:.3px}
-#loading-screen small{color:#64748b;font-size:12px;margin-top:-12px}
-#ls-map-wrap{border-radius:10px;overflow:hidden;box-shadow:0 2px 24px rgba(30,41,59,.13)}
+#loading-screen{position:fixed;inset:0;background:#0f172a;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;z-index:999}
+#loading-screen p{color:#f1f5f9;font-size:15px;font-weight:700;letter-spacing:.3px}
+#loading-screen small{color:#94a3b8;font-size:12px;margin-top:-12px}
+#ls-map-wrap{border-radius:10px;overflow:hidden;box-shadow:0 2px 32px rgba(0,0,0,.5)}
 
 /* Loading map scene */
-#ls-map-wrap{border-radius:8px;overflow:hidden;border:1px solid #334155}
+#ls-map-wrap{border-radius:8px;overflow:hidden;border:1px solid #1e3a5f}
 
 /* ── Download overlay ── */
 #dl-overlay{position:fixed;inset:0;background:#0f172a;display:none;align-items:center;justify-content:center;flex-direction:column;gap:20px;z-index:2000}
@@ -151,16 +151,16 @@ td:first-child{text-align:left;font-weight:500}
 <div id="loading-screen">
   <div id="ls-map-wrap">
     <svg id="ls-msv" viewBox="0 0 260 230" xmlns="http://www.w3.org/2000/svg" style="display:block;width:260px;height:230px">
-      <rect width="260" height="230" fill="#f1f5f9"/>
+      <rect width="260" height="230" fill="#0f172a"/>
       <!-- Street grid: horizontal y=50,95,145,195; vertical x=55,120,180 -->
-      <g stroke="#94a3b8" stroke-width="8" stroke-linecap="square">
+      <g stroke="#1e3a5f" stroke-width="8" stroke-linecap="square">
         <line x1="0" y1="50" x2="260" y2="50"/><line x1="0" y1="95" x2="260" y2="95"/>
         <line x1="0" y1="145" x2="260" y2="145"/><line x1="0" y1="195" x2="260" y2="195"/>
         <line x1="55" y1="0" x2="55" y2="230"/><line x1="120" y1="0" x2="120" y2="230"/>
         <line x1="180" y1="0" x2="180" y2="230"/>
       </g>
       <!-- Buildings -->
-      <g fill="#c8d4e3" opacity=".8">
+      <g fill="#162d47" opacity=".9">
         <rect x="2" y="2" width="47" height="42" rx="2"/><rect x="61" y="2" width="53" height="42" rx="2"/>
         <rect x="126" y="2" width="48" height="42" rx="2"/><rect x="186" y="2" width="70" height="42" rx="2"/>
         <rect x="2" y="56" width="47" height="33" rx="2"/><rect x="61" y="56" width="53" height="33" rx="2"/>
@@ -184,7 +184,7 @@ td:first-child{text-align:left;font-weight:500}
       <!-- TL0: P1 corner (55,145) NE — GREEN -->
       <g transform="translate(62,137)">
         <rect x="-1" y="9" width="2" height="7" fill="#64748b"/>
-        <rect x="-5" y="-10" width="10" height="20" rx="2" fill="#1e293b" stroke="#cbd5e1" stroke-width=".5"/>
+        <rect x="-5" y="-10" width="10" height="20" rx="2" fill="#334155" stroke="#475569" stroke-width=".5"/>
         <circle id="ls-tl0r" cx="0" cy="-7" r="2.5" fill="#334155"/>
         <circle id="ls-tl0y" cx="0" cy="0" r="2.5" fill="#334155"/>
         <circle id="ls-tl0g" cx="0" cy="7" r="2.5" fill="#22c55e"/>
@@ -192,7 +192,7 @@ td:first-child{text-align:left;font-weight:500}
       <!-- TL1: P2 crossroad (55,95) NE — RED -->
       <g transform="translate(62,87)">
         <rect x="-1" y="9" width="2" height="7" fill="#64748b"/>
-        <rect x="-5" y="-10" width="10" height="20" rx="2" fill="#1e293b" stroke="#cbd5e1" stroke-width=".5"/>
+        <rect x="-5" y="-10" width="10" height="20" rx="2" fill="#334155" stroke="#475569" stroke-width=".5"/>
         <circle id="ls-tl1r" cx="0" cy="-7" r="2.5" fill="#ef4444"/>
         <circle id="ls-tl1y" cx="0" cy="0" r="2.5" fill="#334155"/>
         <circle id="ls-tl1g" cx="0" cy="7" r="2.5" fill="#334155"/>
@@ -200,7 +200,7 @@ td:first-child{text-align:left;font-weight:500}
       <!-- TL2: P3 corner (180,95) NE — GREEN -->
       <g transform="translate(185,87)">
         <rect x="-1" y="9" width="2" height="7" fill="#64748b"/>
-        <rect x="-5" y="-10" width="10" height="20" rx="2" fill="#1e293b" stroke="#cbd5e1" stroke-width=".5"/>
+        <rect x="-5" y="-10" width="10" height="20" rx="2" fill="#334155" stroke="#475569" stroke-width=".5"/>
         <circle id="ls-tl2r" cx="0" cy="-7" r="2.5" fill="#334155"/>
         <circle id="ls-tl2y" cx="0" cy="0" r="2.5" fill="#334155"/>
         <circle id="ls-tl2g" cx="0" cy="7" r="2.5" fill="#22c55e"/>
@@ -208,21 +208,21 @@ td:first-child{text-align:left;font-weight:500}
       <!-- TL3: P4 corner (180,50) NE — RED -->
       <g transform="translate(185,44)">
         <rect x="-1" y="9" width="2" height="7" fill="#64748b"/>
-        <rect x="-5" y="-10" width="10" height="20" rx="2" fill="#1e293b" stroke="#cbd5e1" stroke-width=".5"/>
+        <rect x="-5" y="-10" width="10" height="20" rx="2" fill="#334155" stroke="#475569" stroke-width=".5"/>
         <circle id="ls-tl3r" cx="0" cy="-7" r="2.5" fill="#ef4444"/>
         <circle id="ls-tl3y" cx="0" cy="0" r="2.5" fill="#334155"/>
         <circle id="ls-tl3g" cx="0" cy="7" r="2.5" fill="#334155"/>
       </g>
       <!-- Planned route (dashed) — car enters from left -->
       <path id="ls-rline-plan" d="M-8,145 L55,145 L55,95 L180,95 L180,50 L245,50"
-            fill="none" stroke="#d45200" stroke-width="2.5" stroke-dasharray="8 5"
+            fill="none" stroke="#fb923c" stroke-width="2.5" stroke-dasharray="8 5"
             opacity="0.7" stroke-linecap="round"/>
       <!-- Progress route (solid) — drawn by JS -->
-      <path id="ls-rline" d="" fill="none" stroke="#FF5C00" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path id="ls-rline" d="" fill="none" stroke="#FF8C42" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
       <g id="ls-car" transform="translate(-30,-30)">
         <ellipse cx="1" cy="2" rx="10" ry="7" fill="#000" opacity=".12"/>
-        <rect x="-10" y="-6.5" width="20" height="13" rx="3.5" fill="#FF5C00"/>
-        <rect x="5" y="-5" width="5" height="10" rx="2" fill="#e64d00"/>
+        <rect x="-10" y="-6.5" width="20" height="13" rx="3.5" fill="#FF8C42"/>
+        <rect x="5" y="-5" width="5" height="10" rx="2" fill="#ea6c10"/>
         <rect x="2" y="-4.5" width="6" height="9" rx="1.5" fill="#bae6fd" opacity=".85"/>
         <rect x="-8" y="-3.5" width="5" height="7" rx="1" fill="#7dd3fc" opacity=".6"/>
         <rect x="-2" y="-6.5" width="7" height="2" rx="1" fill="#c44200"/>
@@ -370,7 +370,7 @@ const LS_NODE_FRAC=LS_SEGS.map(s=>(s.cs+s.d)/LS_TOTAL)
 function _lsPA(frac){const t=frac*LS_TOTAL;for(const s of LS_SEGS){if(s.cs+s.d>=t-0.001){const f=Math.max(0,Math.min(1,(t-s.cs)/s.d));return{x:s.a.x+f*s.dx,y:s.a.y+f*s.dy,angle:Math.atan2(s.dy,s.dx)*180/Math.PI}}}const ls=LS_SEGS[LS_SEGS.length-1];return{x:LS_PTS[LS_PTS.length-1].x,y:LS_PTS[LS_PTS.length-1].y,angle:Math.atan2(ls.dy,ls.dx)*180/Math.PI}}
 function _lsBP(frac){const t=frac*LS_TOTAL;let d=`M${LS_PTS[0].x},${LS_PTS[0].y}`,cum=0;for(const s of LS_SEGS){if(cum+s.d<=t+0.001){d+=` L${s.b.x},${s.b.y}`;cum+=s.d}else{const f=(t-cum)/s.d;if(f>0)d+=` L${(s.a.x+f*s.dx).toFixed(1)},${(s.a.y+f*s.dy).toFixed(1)}`;break}}return d}
 function _lsCycleTL(idx,phase){const ph=[{r:'#ef4444',y:'#1e293b',g:'#1e293b',dur:2000},{r:'#1e293b',y:'#fbbf24',g:'#1e293b',dur:600},{r:'#1e293b',y:'#1e293b',g:'#22c55e',dur:1800}];const p=ph[phase%3];const ri=document.getElementById(`ls-tl${idx}r`),yi=document.getElementById(`ls-tl${idx}y`),gi=document.getElementById(`ls-tl${idx}g`);if(!ri)return;ri.setAttribute('fill',p.r);yi.setAttribute('fill',p.y);gi.setAttribute('fill',p.g);_lsTlTimers.push(setTimeout(()=>_lsCycleTL(idx,(phase+1)%3),p.dur))}
-function _lsAddNode(i){const ng=document.getElementById('ls-nodes');if(!ng)return;const p=LS_PTS[i],c=LS_COLORS[i];const g=document.createElementNS(LS_NS,'g');const ci=document.createElementNS(LS_NS,'circle');ci.setAttribute('cx',p.x);ci.setAttribute('cy',p.y);ci.setAttribute('r',0);ci.setAttribute('fill',c);ci.setAttribute('stroke','#1e293b');ci.setAttribute('stroke-width','1.5');const tx=document.createElementNS(LS_NS,'text');tx.setAttribute('x',p.x);tx.setAttribute('y',p.y+3);tx.setAttribute('text-anchor','middle');tx.setAttribute('font-size','7');tx.setAttribute('font-weight','700');tx.setAttribute('fill','white');tx.textContent=i+1;g.appendChild(ci);g.appendChild(tx);ng.appendChild(g);let r=0;(function grow(){r=Math.min(r+0.8,6.5);ci.setAttribute('r',r);if(r<6.5)requestAnimationFrame(grow)})()}
+function _lsAddNode(i){const ng=document.getElementById('ls-nodes');if(!ng)return;const p=LS_PTS[i],c=LS_COLORS[i];const g=document.createElementNS(LS_NS,'g');const ci=document.createElementNS(LS_NS,'circle');ci.setAttribute('cx',p.x);ci.setAttribute('cy',p.y);ci.setAttribute('r',0);ci.setAttribute('fill',c);ci.setAttribute('stroke','#0f172a');ci.setAttribute('stroke-width','1.5');const tx=document.createElementNS(LS_NS,'text');tx.setAttribute('x',p.x);tx.setAttribute('y',p.y+3);tx.setAttribute('text-anchor','middle');tx.setAttribute('font-size','7');tx.setAttribute('font-weight','700');tx.setAttribute('fill','white');tx.textContent=i+1;g.appendChild(ci);g.appendChild(tx);ng.appendChild(g);let r=0;(function grow(){r=Math.min(r+0.8,6.5);ci.setAttribute('r',r);if(r<6.5)requestAnimationFrame(grow)})()}
 function _lsInit(){
   if(_lsInited)return;_lsInited=true
   _lsShown=new Array(LS_PTS.length).fill(false);_lsShown[0]=true;_lsAddNode(0);
