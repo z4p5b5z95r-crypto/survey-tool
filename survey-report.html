@@ -182,6 +182,14 @@ td:first-child{text-align:left;font-weight:500}
 .em-edit-btn{background:transparent;border:1.5px solid #475569;color:#94a3b8;border-radius:7px;padding:5px 13px;cursor:pointer;font-size:12px;font-weight:600;transition:.15s;align-self:center}
 .em-edit-btn:hover{background:#334155;color:white;border-color:#334155}
 #em-toast{position:fixed;bottom:24px;right:24px;background:#1e293b;color:white;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;transition:opacity .4s;pointer-events:none;opacity:0}
+/* ── Inline table edit ── */
+.pf-time-inp{width:34px;font-size:11px;padding:2px 2px;border:1.5px solid #3b82f6;border-radius:4px;text-align:center;font-family:monospace;background:#eff6ff;color:#1e3a5f}
+.pf-edit-inp{width:42px;font-size:11px;padding:2px 3px;border:1.5px solid #3b82f6;border-radius:4px;text-align:center;font-family:monospace;background:#eff6ff;color:#1e3a5f}
+.sv-rec-header.editing{background:#1d4374}
+.em-save-inline{padding:5px 14px;background:#22c55e;color:white;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap}
+.em-save-inline:hover{background:#16a34a}
+.em-cancel-inline{padding:5px 12px;background:transparent;border:1.5px solid #94a3b8;color:#cbd5e1;border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap}
+.em-cancel-inline:hover{background:#334155;color:white}
 </style>
 </head>
 <body>
@@ -830,6 +838,10 @@ function renderComboRecords(combo){
     const colT={}; ;[...RC,...IC].forEach(c=>colT[c]=segD.reduce((s,d)=>s+(d[c]||0),0))
     const roadT=RC.reduce((s,c)=>s+colT[c],0), intT=IC.reduce((s,c)=>s+colT[c],0)
     const travelSpd=spdFn(TL,trip.travelS), runSpd=spdFn(TL,trip.runS)
+    const isEdit=_editModes.has(`${si}-${combo}`)
+    const headerBtns=isEdit
+      ?`<div style="display:flex;gap:8px"><button class="em-save-inline" onclick="saveInlineEdit(${si},'${combo}')">💾 儲存</button><button class="em-cancel-inline" onclick="cancelInlineEdit(${si},'${combo}')">✕ 取消</button></div>`
+      :`<button class="em-edit-btn" onclick="startInlineEdit(${si},'${combo}')">✏️ 修改</button>`
 
     const segRows=segOrder.map((seg,i)=>{
       // 「經過時刻」= 到達該路段終點的時間 = nodeTs[i+1]
@@ -841,13 +853,19 @@ function renderComboRecords(combo){
       const segDelayTotal = Object.values(sd).reduce((a,v)=>a+(v||0),0)
       const calcRunS = st2?.travelS != null ? Math.max(0, st2.travelS - segDelayTotal) : null
       const dv = (v) => v>0 ? `<b style="color:#1d4ed8">${v}</b>` : ''
+      const tCells=isEdit
+        ?`<td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="23" data-ie="node-h-${i}" value="${fH==='—'?0:+fH}"></td><td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="node-m-${i}" value="${fM==='—'?0:+fM}"></td><td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="node-s-${i}" value="${fS==='—'?0:+fS}"></td>`
+        :`<td class="pf-time">${fH}</td><td class="pf-time">${fM}</td><td class="pf-time">${fS}</td>`
+      const dCell=(c)=>isEdit
+        ?`<td><input class="pf-edit-inp" type="number" min="0" max="9999" data-ie="dl-${c}-${i}" value="${sd[c]||0}"></td>`
+        :`<td>${dv(sd[c])}</td>`
       return `<tr>
         <td colspan="2" class="pf-seg">${he(flipSeg(seg.name))}</td>
-        <td class="pf-time">${fH}</td><td class="pf-time">${fM}</td><td class="pf-time">${fS}</td>
-        <td>${dv(sd.congestion)}</td><td>${dv(sd.bus_stop)}</td><td>${dv(sd.taxi_stop)}</td>
-        <td>${dv(sd.parking)}</td><td>${dv(sd.ped_cross)}</td><td>${dv(sd.road_other)}</td>
-        <td>${dv(sd.red_light)}</td><td>${dv(sd.left_same)}</td><td>${dv(sd.left_opp)}</td>
-        <td>${dv(sd.right_turn)}</td><td>${dv(sd.cross_veh)}</td><td>${dv(sd.ped_int)}</td><td>${dv(sd.int_other)}</td>
+        ${tCells}
+        ${dCell('congestion')}${dCell('bus_stop')}${dCell('taxi_stop')}
+        ${dCell('parking')}${dCell('ped_cross')}${dCell('road_other')}
+        ${dCell('red_light')}${dCell('left_same')}${dCell('left_opp')}
+        ${dCell('right_turn')}${dCell('cross_veh')}${dCell('ped_int')}${dCell('int_other')}
         <td style="font-weight:600">${st2?.travelS??''}</td>
         <td>${seg.length||''}</td>
         <td style="font-weight:600">${calcRunS??''}</td>
@@ -859,13 +877,13 @@ function renderComboRecords(combo){
 
     const delayCount=(trip.delayLog||[]).filter(d=>d.pos).length
 
-    return `<div class="sv-record">
-      <div class="sv-rec-header">
+    return `<div class="sv-record" data-sv-key="${si}-${combo}">
+      <div class="sv-rec-header${isEdit?' editing':''}">
         <div>
           <div class="sv-num">調查 #${si+1}</div>
           <div class="sv-info">👤 ${he(sv.surveyor||'未知')}</div>
         </div>
-        <button class="em-edit-btn" onclick="openEditModal(${si},'${combo}')">✏️ 修改</button>
+        ${headerBtns}
         <div class="sv-meta">
           📅 ${he(sv.date||'—')}<br>
           🌤 ${he(sv.weather||'—')}
@@ -934,7 +952,7 @@ function renderComboRecords(combo){
             <td rowspan="2" class="pf-seg">${he(fromNode?.name||'起點')}</td>
             <td rowspan="2" class="pf-seg">${he(toNode?.name||'終點')}</td>
             <td rowspan="2">${TL}</td>
-            <td class="pf-time">${sH}</td><td class="pf-time">${sM}</td><td class="pf-time">${sS}</td>
+            ${isEdit?`<td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="23" data-ie="start-h" value="${+sH||0}"></td><td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="start-m" value="${+sM||0}"></td><td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="start-s" value="${+sS||0}"></td>`:`<td class="pf-time">${sH}</td><td class="pf-time">${sM}</td><td class="pf-time">${sS}</td>`}
             <td class="pf-time">${eH}</td><td class="pf-time">${eM}</td>
             <td class="pf-arrive">${eS}</td>
             <td style="font-weight:700">${trip.travelS||0}</td>
@@ -2079,6 +2097,7 @@ ${pages.join('\n')}
 
 // ════════════════ EDIT MODAL ════════════════
 let _em={si:null,combo:null}
+let _editModes=new Set()
 
 function openEditModal(si,combo){
   _em={si,combo}
@@ -2266,6 +2285,73 @@ function _emToast(msg){
   if(!t){t=document.createElement('div');t.id='em-toast';document.body.appendChild(t)}
   t.textContent=msg; t.style.opacity='1'
   clearTimeout(t._tmr); t._tmr=setTimeout(()=>{t.style.opacity='0'},2500)
+}
+
+// ════════════════ INLINE EDIT ════════════════
+function startInlineEdit(si,combo){
+  _editModes.add(`${si}-${combo}`)
+  renderComboRecords(combo)
+  setTimeout(()=>{const el=document.querySelector(`[data-sv-key="${si}-${combo}"]`);if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'})},120)
+}
+
+function cancelInlineEdit(si,combo){
+  _editModes.delete(`${si}-${combo}`)
+  renderComboRecords(combo)
+}
+
+function saveInlineEdit(si,combo){
+  const key=`${si}-${combo}`
+  const [pt,dir]=parseCombo(combo)
+  const sv=surveys[si]
+  const trip=sv?.trips?.find(t=>t.peakType===pt&&t.direction===dir)
+  if(!trip)return
+  const container=document.querySelector(`[data-sv-key="${key}"]`)
+  if(!container)return
+  const survDate=sv?.date||''
+  const isReturn=dir==='return'
+  const nodes=route.nodes||[]
+  const nNodes=nodes.length
+  const segs=route.segments||[]
+  const segOrder=isReturn?[...segs].reverse():segs
+  const pad=v=>String(v||0).padStart(2,'0')
+  const inpV=name=>(container.querySelector(`[data-ie="${name}"]`)?.value??'')
+  const inpN=name=>parseInt(container.querySelector(`[data-ie="${name}"]`)?.value)||0
+
+  // 1. Start time (node 0)
+  const origStart=trip.nodeTimestamps?.[0]||trip.startTime
+  const newStart=_rebuildTS(origStart,`${pad(inpV('start-h'))}:${pad(inpV('start-m'))}:${pad(inpV('start-s'))}`,null,survDate)
+  const newTs=new Array(nNodes).fill(null)
+  newTs[0]=newStart; let prevISO=newStart
+
+  // 2. Arrival times from segment rows → nodes 1..n-1
+  for(let i=0;i<segOrder.length;i++){
+    const ni=i+1
+    const origISO=trip.nodeTimestamps?.[ni]||(ni===nNodes-1?trip.endTime:null)
+    const h=pad(inpV(`node-h-${i}`)),m=pad(inpV(`node-m-${i}`)),s=pad(inpV(`node-s-${i}`))
+    const newISO=_rebuildTS(origISO,`${h}:${m}:${s}`,prevISO,survDate)
+    newTs[ni]=newISO; prevISO=newISO
+  }
+  trip.nodeTimestamps=newTs; trip.startTime=newTs[0]; trip.endTime=newTs[nNodes-1]
+
+  // 3. Rebuild delayLog from per-segment per-cause inputs
+  const allDefs=[...ROAD_DELAYS,...INT_DELAYS]
+  const newLog=[]
+  for(let i=0;i<segOrder.length;i++){
+    const t0iso=trip.nodeTimestamps[i]||trip.startTime
+    for(const d of allDefs){
+      const val=inpN(`dl-${d.cause}-${i}`)
+      if(val>0) newLog.push({cause:d.cause,durationS:val,startedAt:t0iso,label:d.label,icon:d.icon||''})
+    }
+  }
+  trip.delayLog=newLog
+
+  // 4. Recalculate & re-render
+  _recalcTrip(trip)
+  calcAverages()
+  renderTravelTable(); renderSpeedTable(); renderDelayTable()
+  _editModes.delete(key)
+  renderComboRecords(combo)
+  _emToast('✅ 已儲存並重新計算')
 }
 </script>
 
