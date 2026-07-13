@@ -316,6 +316,7 @@ td:first-child{text-align:left;font-weight:500}
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="stats" onclick="switchTab('stats')">📊 統計表</button>
       <button class="tab-btn" data-tab="trips" onclick="switchTab('trips')">📋 調查紀錄</button>
+      <button class="tab-btn" data-tab="dl" onclick="switchTab('dl')">📥 下載報告</button>
     </div>
   </div>
 
@@ -342,6 +343,34 @@ td:first-child{text-align:left;font-weight:500}
     <div class="combo-selector" id="combo-selector"></div>
     <!-- Survey records for selected combo -->
     <div id="combo-records"></div>
+  </div>
+
+  <!-- DOWNLOAD -->
+  <div id="panel-dl" class="panel">
+    <div class="dl-section">
+      <h3>下載報告</h3>
+      <p style="font-size:13px;color:#64748b;margin:8px 0 20px">依據「主次要幹道行駛時間及延滯調查表」格式產出報告</p>
+      <button class="dl-btn green" onclick="downloadSGS()">📥 下載 Excel (.xlsx)</button>
+      <button class="dl-btn orange" onclick="downloadSGSPdf()">🖨️ 下載 SGS 公版報告 PDF</button>
+      <div class="dl-note" style="margin-top:20px">
+        <b>SGS Excel 包含：</b><br>
+        ・行駛速率統計表（各路段旅行時間 / 行駛時間 / 速率）<br>
+        ・延滯統計表（交叉口延滯 / 路段延滯 / 比例）<br>
+        ・每趟旅次詳細記錄（主次要幹道行駛時間及延滯調查表格式）
+      </div>
+    </div>
+    <div class="dl-section" style="margin-top:16px">
+      <h3>📍 時序原始資料</h3>
+      <p style="font-size:13px;color:#64748b;margin:8px 0 20px">依時間先後呈現每趟旅次的所有節點與延滯點，含雙座標系統</p>
+      <button class="dl-btn" style="background:#7c3aed" onclick="downloadRawTimeline()">📍 下載時序原始資料 (.xlsx)</button>
+      <div class="dl-note" style="margin-top:16px">
+        <b>每列代表一個時間點（節點或延滯），欄位包含：</b><br>
+        ・時刻、事件類型（節點 / 路段延滯 / 交叉口延滯）<br>
+        ・TWD97 TM2 座標（E, N，單位：公尺）<br>
+        ・WGS84 座標（緯度, 經度）及 Google Maps 連結<br>
+        ・延滯類別及停留時間（秒）
+      </div>
+    </div>
   </div>
 </div>
 
@@ -434,6 +463,12 @@ window.addEventListener('load', async () => {
   const tok = p.get('tok')
   _filterDate = p.get('date') || ''
   if(!id||!tok){ showError('缺少 URL 參數 (id / tok)'); return }
+
+  // 現場調查員模式：隱藏下載報告 tab
+  if(p.get('field')==='1'){
+    const dlBtn=document.querySelector('.tab-btn[data-tab="dl"]')
+    if(dlBtn) dlBtn.style.display='none'
+  }
 
   // Retrieve one-time credentials from localStorage and immediately remove them
   let gs, sessionToken
