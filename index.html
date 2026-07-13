@@ -676,7 +676,6 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
   <div class="rpt-tab-bar">
     <button class="rpt-tab active" onclick="switchRptTab('overview',this)">總覽</button>
     <button class="rpt-tab" onclick="switchRptTab('official',this)">調查紀錄</button>
-    <button class="rpt-tab" onclick="switchRptTab('download',this)">下載報告</button>
   </div>
   <div class="scroll-body" style="margin-top:8px">
     <!-- 總覽 panel -->
@@ -712,21 +711,6 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
         </div>
       </div>
       <div id="official-forms"></div>
-    </div>
-    <!-- 下載報告 panel -->
-    <div id="rpt-panel-download" class="rpt-panel">
-      <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
-        <div style="font-size:13px;color:#64748b;font-weight:600">選擇格式下載報告</div>
-        <button onclick="downloadSGSPdf()" style="width:100%;padding:16px;background:#1e3a5f;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;color:white;text-align:left">
-          🖨 列印 SGS PDF 表格<br><span style="font-size:11px;font-weight:400;opacity:.8">依官方格式列印，可存成 PDF</span>
-        </button>
-        <button onclick="exportReport()" style="width:100%;padding:16px;background:#1d6f42;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;color:white;text-align:left">
-          📥 下載 SGS HTML+Excel 報告<br><span style="font-size:11px;font-weight:400;opacity:.8">下載 HTML 檔，內含 Excel 下載按鈕</span>
-        </button>
-        <button onclick="downloadCsv()" style="width:100%;padding:16px;background:#374151;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;color:white;text-align:left">
-          📋 下載原始數據 CSV<br><span style="font-size:11px;font-weight:400;opacity:.8">所有旅次原始紀錄</span>
-        </button>
-      </div>
     </div>
   </div>
 </div>
