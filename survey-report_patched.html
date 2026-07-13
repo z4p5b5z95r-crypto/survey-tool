@@ -1653,10 +1653,6 @@ function downloadSGSPdf(){
   const off = route.offPeakLabel||'離峰', pk = route.peakLabel||'尖峰'
   const rawSegs = route.segments||[], TL = route.totalLength||0
   const nodes = route.nodes||[]
-  // DEBUG — remove after confirming merge works
-  console.log('[SGS DEBUG] rawSegs names:', rawSegs.map((s,i)=>`[${i}] ${s.name} len=${s.length}`))
-  console.log('[SGS DEBUG] nodes:', nodes.map((n,i)=>`[${i}] ${n.name} ghost=${n.ghost} gh=${n.gh}`))
-  console.log('[SGS DEBUG] ghostNodeIndices:', route.ghostNodeIndices)
   // Build ghost node index set.
   // Primary: route.ghostNodeIndices (explicit DB field saved by GAS since 2026-06).
   // Fallback A: nodes[i].ghost / nodes[i].gh metadata.
@@ -1672,7 +1668,6 @@ function downloadSGSPdf(){
       const segStart=(rawSegs[k].name||'').split('→')[0]?.trim()||''
       if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
     }
-    console.log('[SGS DEBUG] ghostIdxSet:', [...ghostIdxSet])
     if(!ghostIdxSet.size) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
     // Merge: rawSegs[i] connects nodes[i]→nodes[i+1].
     // If nodes[i+1] is ghost, rawSegs[i] and rawSegs[i+1] must be merged.

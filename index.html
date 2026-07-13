@@ -903,14 +903,6 @@ function haversine(lat1,lng1,lat2,lng2){
   return Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
 }
 // Ray-casting point-in-polygon — poly is [[lat,lng],...]
-function pointInPolygon(lat,lng,poly){
-  let inside=false
-  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
-    const [yi,xi]=poly[i],[yj,xj]=poly[j]
-    if(((xi>lng)!==(xj>lng))&&(lat<(yj-yi)*(lng-xi)/(xj-xi)+yi)) inside=!inside
-  }
-  return inside
-}
 // Compute route direction unit vectors at each node (accounts for lat/lng scaling)
 // If node has a manually-set lineAngle, the travel direction = lineAngle - 90° (picks direction that matches route flow)
 function computeNodeDirections(ordered){
@@ -1175,44 +1167,10 @@ async function loadCloudHistory(){
     const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey})
     const res=await fetch(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(10000)})
     const json=await res.json()
-    if(json.ok){ _histCache=json.data; renderHistory(); renderHistModal(); syncChipsFromCloudHistory() }
+    if(json.ok){ _histCache=json.data; renderHistModal(); syncChipsFromCloudHistory() }
     else{ console.error('[history] GAS error:', json.error) }
   }catch(e){ console.error('[history] fetch error:', e.message) }
 }
-
-function renderHistory(){
-  const el=document.getElementById('history-section')
-  if(!el) return
-  const grouped=groupHistoryByDate(getHistory())
-  const countEl=document.getElementById('hist-count-badge')
-  if(countEl) countEl.textContent=grouped.length?`(${grouped.length})`:''
-  if(!grouped.length){ el.style.display='none'; return }
-  el.style.display='block'
-  const listEl=document.getElementById('history-list')
-  if(!listEl||listEl.dataset.open!=='1') return
-  const CZH={off_peak_bound:'離峰去',off_peak_return:'離峰回',peak_bound:'尖峰去',peak_return:'尖峰回'}
-  const WZH={sunny:'☀️',cloudy:'☁️',rainy:'🌧️'}
-  listEl.innerHTML = grouped.map((g,i)=>{
-    const chips = Object.entries(g.trips||{}).map(([k,t])=>
-      `<span style="background:#eff6ff;color:#1d4ed8;padding:2px 7px;border-radius:6px;font-size:11px;white-space:nowrap">${CZH[k]||k} ${fmtTime(t.travelS)}</span>`
-    ).join('')
-    const src = _histCache!==null ? '☁️' : '📱'
-    const surveyorStr=g.surveyors.join('、')
-    return `<div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:6px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div style="font-size:12px;font-weight:700;color:#1e293b">${src} ${WZH[g.weather]||''} ${g.date} · ${surveyorStr}</div>
-        <button onclick="viewHistoryReport(${i})"
-          style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:7px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
-          📊 查看
-        </button>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px">${chips}</div>
-    </div>`
-  }).join('')
-}
-
-// Keep old name as alias for call sites
-function renderLocalHistory(){ renderHistory() }
 
 // After cloud history loads, restore today's trips into allTrips so chips turn green
 function syncChipsFromCloudHistory(){
@@ -1330,35 +1288,11 @@ function renderHistModal(){
   }).join('')
 }
 
-function toggleHistory(){
-  const listEl=document.getElementById('history-list')
-  const btn=document.getElementById('hist-toggle-btn')
-  if(!listEl||!btn) return
-  const open = listEl.dataset.open==='1'
-  listEl.dataset.open = open?'0':'1'
-  listEl.style.display = open?'none':'block'
-  const cnt=document.getElementById('hist-count-badge')
-  const cntTxt=cnt?cnt.textContent:''
-  btn.innerHTML=open?`📋 過去調查記錄 <span id="hist-count-badge" style="color:#2563eb">${cntTxt}</span>`:`📋 過去調查記錄 ▲ <span id="hist-count-badge" style="color:#2563eb">${cntTxt}</span>`
-  if(!open){ renderHistory(); loadCloudHistory() }
-}
-
-function updateRestoredBanner(count){
-  const b=$('restored-banner'); if(!b) return
-  if(count>0){
-    $('restored-count').textContent=count
-    b.style.display='flex'
-  } else {
-    b.style.display='none'
-  }
-}
-
 function confirmClearStorage(){
   if(!confirm('確定清除本條路線所有已儲存的調查記錄？此動作無法復原。')) return
   clearTripStorage()
   allTrips={}
   updateProgressChips()
-  updateRestoredBanner(0)
   checkStart()
   showToast('已清除所有記錄')
 }
@@ -1637,7 +1571,6 @@ function buildDateSelect(){
   config.date=today
   const curDate=today
   const allKnown=[today,...pastDates]
-  const isCustom=false
   const WZH={sunny:'☀️',cloudy:'☁️',rainy:'🌧️'}
   sel.innerHTML=''
   // Today
@@ -1659,20 +1592,12 @@ function buildDateSelect(){
     opt.textContent=`📋 ${mm}/${dd2}（${rel}）${info}`
     sel.appendChild(opt)
   })
-  // Custom date entry
-  if(isCustom){
-    const optC=document.createElement('option')
-    optC.value=config.date
-    optC.textContent=`📋 ${config.date}`
-    sel.appendChild(optC)
-  }
   // "Add custom" option
   const optAdd=document.createElement('option')
   optAdd.value='custom'
   optAdd.textContent='＋ 自訂其他日期...'
   sel.appendChild(optAdd)
-  // Set selected value
-  sel.value=isCustom?config.date:config.date
+  sel.value=config.date
   // Show/hide custom input
   const customInp=$('si-date-custom')
   if(customInp) customInp.style.display='none'
@@ -1748,11 +1673,10 @@ function startFromQR(){
   const restored=loadTripsFromStorage()
   initCompass()   // request compass on user gesture (sign-in button click)
   updateProgressChips()
-  showScreen('screen-ready')   // show FIRST so container has real size
+  showScreen('screen-ready')
   $('ready-title').textContent='🚗 '+config.routeName
-  requestAnimationFrame(()=>initMaps())  // init map AFTER browser paints the screen
+  requestAnimationFrame(()=>initMaps())
   $('ready-route-info').textContent=config.routeFromTo
-  updateRestoredBanner(Object.keys(allTrips).length)
   syncChipsFromCloudHistory()   // restore today's cloud trips into allTrips if already loaded
   autoSelectPeak()   // auto-detect by current time on first entry
   if(restored>0) showToast(`📂 已恢復 ${restored} 筆旅次記錄`)
@@ -2198,12 +2122,6 @@ function svyDismissStop(){
   showToast('⊘ 已忽略，不記錄')
 }
 
-// Legacy shim (no longer auto-called but kept in case referenced elsewhere)
-function svyPickReason(reason){
-  if(reason==='cancel'){ svyDismissStop(); return }
-  svyDismissStop()
-}
-
 // ════════════════════════════════════
 //  AUTO NODE DETECTION
 // ════════════════════════════════════
@@ -2464,7 +2382,6 @@ function doResetCombo(k){
   delete allTrips[k]
   saveTripsToStorage()
   updateProgressChips()
-  updateRestoredBanner(Object.keys(allTrips).length)
   checkStart()
   showToast(`「${COMBO_ZH[k]||k}」已清除，可重新調查`)
 }
@@ -2786,7 +2703,6 @@ function endSurvey(){
     nodeTimestamps:[...nodeTimestamps],
   }
   saveTripsToStorage()   // persist so page-close won't lose this trip
-  updateRestoredBanner(Object.keys(allTrips).length)
   buildTripDoneUI(travelS,totalDelayS,runS)
   // ── Auto-upload to cloud after every trip end ──
   // Capture cur.key NOW (synchronously) — cur may be cleared before the timeout fires
@@ -2832,8 +2748,6 @@ function goReport(){
 function goReady(){
   showScreen('screen-ready')
   checkStart()
-  updateRestoredBanner(Object.keys(allTrips).length)
-  renderHistory()
   loadCloudHistory()   // refresh from cloud in background
   autoSelectPeak()     // auto-detect peak/off-peak by current time (skips if user already chose)
 }
@@ -2951,7 +2865,6 @@ function segDelaysForIdx(trip, i){
   return r
 }
 
-const COMBO_ZH_FULL=COMBO_ZH   // alias
 let _activeComboTab=null
 
 function buildOfficialForms(){
@@ -2963,7 +2876,7 @@ function buildOfficialForms(){
   // Build tab bar
   if(tabBar){
     tabBar.innerHTML=doneCombos.map((k,i)=>
-      `<button class="rtab${i===0?' active':''}" data-tab="${k}" onclick="showComboTab('${k}')">${COMBO_ZH_FULL[k]||k}</button>`
+      `<button class="rtab${i===0?' active':''}" data-tab="${k}" onclick="showComboTab('${k}')">${COMBO_ZH[k]||k}</button>`
     ).join('')
   }
   // Show first tab
@@ -3162,13 +3075,12 @@ const RESULT_TRACK_COLORS={
   off_peak_bound:'#2563eb', off_peak_return:'#60a5fa',
   peak_bound:'#dc2626',     peak_return:'#f87171'
 }
-let _resultGpsLayer=null
 let _resultTrackGroup=null   // layer for current combo GPS track
 let _resultDelayGroup=null   // layer for current combo delay markers
 let _resultPlanBounds=null   // bounds of planned route (never changes)
 
 function buildResultMap(){
-  if(mapResult){mapResult.remove();mapResult=null;_resultGpsLayer=null;_resultTrackGroup=null;_resultDelayGroup=null;_resultPlanBounds=null}
+  if(mapResult){mapResult.remove();mapResult=null;_resultTrackGroup=null;_resultDelayGroup=null;_resultPlanBounds=null}
   mapResult=L.map('map-result',{zoomControl:true,attributionControl:false,scrollWheelZoom:true,dragging:true,touchZoom:true,doubleClickZoom:true,boxZoom:true,keyboard:false})
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapResult)
   // Planned route (grey dashed) — always visible regardless of active tab

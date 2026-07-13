@@ -1474,7 +1474,6 @@ async function refreshSegment(segIdx) {
   segData[segIdx]._latlngs=result.latlngs  // primary: used by buildConfig
   segData[segIdx]._latlngsStr=JSON.stringify(result.latlngs)  // backup string copy
   segData[segIdx].length=result.distance;segData[segIdx]._source=result.source;updateTotalLength();renderSegTable()
-  console.log('[refresh] seg',segIdx,'→',result.latlngs.length,'pts,',Math.round(result.distance),'m')
   if(result.source==='straight')toast('⚠️ 使用直線距離（OSRM 無回應）')
 }
 function waypointInsertIdx(segIdx,newPt) {
@@ -2172,8 +2171,6 @@ async function saveTask() {
   const taskObj={id,cloudId:existingTask?.cloudId||null,cfg,savedAt:new Date().toLocaleDateString('zh-TW'),creator:getCurrentUser()||'未知'}
   if(existingTask){const idx=savedTasks.findIndex(t=>t.id===id);savedTasks[idx]=taskObj}
   else{savedTasks.unshift(taskObj);if(savedTasks.length>30)savedTasks.pop()}
-  const llCount=cfg.sg.filter(s=>s.ll?.length>=2).length
-  console.log('[save] segments with latlngs:',llCount,'/',cfg.sg.length,cfg.sg.map(s=>s.ll?.length||0),'lengths:',cfg.sg.map(s=>s.d||0),'total:',cfg.sg.reduce((a,s)=>a+(s.d||0),0))
   localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
   _dirty=false
   document.getElementById('ev-title').textContent=cfg.rn
@@ -2270,7 +2267,6 @@ async function loadTask(id) {
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   nodes=[]
   segData=cfg.sg?cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:false,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o})),mode:s.m||'driving',_latlngs:s.ll||null})):[]
-  console.log('[load] segments with latlngs:',segData.filter(s=>s._latlngs?.length>=2).length,'/',segData.length,segData.map(s=>s._latlngs?.length||0),'lengths:',segData.map(s=>s.length||0),'total:',segData.reduce((a,s)=>a+(s.length||0),0))
   _loadingTask=true
   if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||20,n.gh||false)}
   _loadingTask=false
