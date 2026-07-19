@@ -810,21 +810,30 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 //  若要直接寫死，填入以下兩個常數；否則沿用 localStorage。
 // ════════════════════════════════════════════════════════
 const HARDCODED_GS_URL = 'https://script.google.com/macros/s/AKfycbx0NO47Q0fbMv6dCtgBd-w_qcJxbfLDtZKFMI1hnjvn-dgTl5f3k3HBc0oeOr62su2dSg/exec'
-const HARDCODED_GS_KEY = '05751'
+// ⚠️  API key 不再硬編碼於原始碼 — 由後端在登入成功後回傳，存入 sessionStorage
 
 let gsUrl = HARDCODED_GS_URL || ''
 
 // ════════════════════════════════════════════════════════
 //  AUTH — Session Token 機制
-//  登入/註冊 → 後端回傳具時效性 sessionToken → 存 sessionStorage
+//  登入 → 後端回傳 sessionToken + apiKey → 存 localStorage / sessionStorage
 //  所有後續 API 呼叫改帶 sessionToken，不再傳靜態 key
 // ════════════════════════════════════════════════════════
-function hashPwd(p) { return btoa(encodeURIComponent(p)) }   // 維持與 GAS Users sheet 相容
+
+// SHA-256 密碼雜湊（不可逆）
+async function hashPwd(p) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p))
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+// 舊格式 btoa（僅登入時傳給後端做過渡期比對，不儲存）
+function hashPwdLegacy(p) { return btoa(encodeURIComponent(p)) }
 
 // Session 存取（localStorage：跨分頁/重新整理後仍保留，依 expiresAt 控制時效）
 function getCurrentUser()     { return localStorage.getItem('pm_user') || null }
 function getSessionToken()    { return localStorage.getItem('pm_session_token') || null }
 function getSessionExpires()  { return localStorage.getItem('pm_session_expires') || null }
+// API key 存 sessionStorage（分頁關閉即清除，比 localStorage 更安全）
+function getGsKey()           { return sessionStorage.getItem('pm_gs_key') || '' }
 function isSessionValid() {
   const tok = getSessionToken()
   const exp = getSessionExpires()
@@ -832,13 +841,15 @@ function isSessionValid() {
   if (exp && new Date(exp) <= new Date()) { clearSession(); return false }
   return true
 }
-function setSession(name, token, expiresAt) {
+function setSession(name, token, expiresAt, apiKey) {
   localStorage.setItem('pm_user',             name)
   localStorage.setItem('pm_session_token',    token)
   localStorage.setItem('pm_session_expires',  expiresAt)
+  if (apiKey) sessionStorage.setItem('pm_gs_key', apiKey)
 }
 function clearSession() {
   ['pm_user','pm_session_token','pm_session_expires'].forEach(k => localStorage.removeItem(k))
+  sessionStorage.removeItem('pm_gs_key')
 }
 
 function switchLoginTab(tab) {
@@ -860,8 +871,10 @@ async function doLogin() {
   btn.disabled = true; btn.textContent = '驗證中...'
   err.textContent = ''
   try {
-    const res = await cloudAuth({ action: 'loginUser', name, hash: hashPwd(pwd) })
-    setSession(name, res.sessionToken, res.expiresAt)
+    const hash = await hashPwd(pwd)
+    const legacyHash = hashPwdLegacy(pwd)   // 供後端過渡期比對舊帳號
+    const res = await cloudAuth({ action: 'loginUser', name, hash, legacyHash })
+    setSession(name, res.sessionToken, res.expiresAt, res.apiKey)
     enterApp(name)
   } catch(e) {
     err.textContent = e.message.includes('帳號') ? '姓名或密碼錯誤' : '連線失敗，請稍後再試'
@@ -877,13 +890,15 @@ async function doRegister() {
   const btn   = document.querySelector('#form-register .login-btn')
   if (!name || !pwd) { err.textContent = '請填入姓名與密碼'; return }
   if (pwd !== pwd2)  { err.textContent = '兩次密碼不符'; return }
-  if (pwd.length < 4) { err.textContent = '密碼至少 4 個字元'; return }
+  if (pwd.length < 8) { err.textContent = '密碼至少 8 個字元'; return }
+  if (/^\d+$/.test(pwd)) { err.textContent = '密碼不能全為數字'; return }
 
   btn.disabled = true; btn.textContent = '建立中...'
   err.textContent = ''
   try {
-    const res = await cloudAuth({ action: 'registerUser', name, hash: hashPwd(pwd) })
-    setSession(name, res.sessionToken, res.expiresAt)
+    const hash = await hashPwd(pwd)
+    const res = await cloudAuth({ action: 'registerUser', name, hash })
+    setSession(name, res.sessionToken, res.expiresAt, res.apiKey)
     enterApp(name)
   } catch(e) {
     err.textContent = e.message.includes('已被使用') ? '此姓名已存在，請直接登入' : '連線失敗，請稍後再試'
@@ -1181,13 +1196,13 @@ function updateCloudDot(state) {
     arr.innerHTML = '<line x1="11" y1="9" x2="11" y2="15.5"/><polyline points="8.5,13 11,15.5 13.5,13"/>'
   }
 }
-// cloudAuth — 僅供登入/註冊使用靜態 API key（不存 localStorage）
+// cloudAuth — 供登入/註冊使用（不帶 key，後端憑帳密核發 token）
 async function cloudAuth(body) {
   if (!gsUrl) throw new Error('未設定雲端')
   const res = await fetch(gsUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ ...body, key: HARDCODED_GS_KEY }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(15000)
   })
   const json = await res.json()
@@ -2131,9 +2146,9 @@ function buildURL() {
   if(nodes.length<2){toast('請至少在地圖上放置 2 個節點');return null}
   const base=document.getElementById('app-url').value.trim().replace(/\/$/,'')
   const task=currentTaskId?savedTasks.find(t=>t.id===currentTaskId):null
-  if(task&&task.cloudId&&gsUrl&&HARDCODED_GS_KEY){
+  if(task&&task.cloudId&&gsUrl&&getGsKey()){
     document.getElementById('qr-info').textContent=`☁️ 雲端路線 ${task.cloudId}（節點 ${cfg.nd.filter(n=>!n.gh).length} 個）`
-    return`${base}/?id=${encodeURIComponent(task.cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(HARDCODED_GS_KEY)}`
+    return`${base}/?id=${encodeURIComponent(task.cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(getGsKey())}`
   }
   const encoded=encodeConfig(cfg)
   document.getElementById('qr-info').textContent=`📦 離線模式 — 節點 ${cfg.nd.length} 個、路段 ${cfg.sg.length} 個（${encoded.length} 字元）`
@@ -2317,8 +2332,8 @@ function showListQR(taskId){
   const t=savedTasks.find(t=>t.id===taskId); if(!t){toast('找不到任務');return}
   const appBase=(document.getElementById('app-url')?.value||'').trim().replace(/\/$/,'')||location.href.replace(/\/[^\/]*$/,'')
   let url
-  if(t.cloudId&&gsUrl&&HARDCODED_GS_KEY){
-    url=`${appBase}/?id=${encodeURIComponent(t.cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(HARDCODED_GS_KEY)}`
+  if(t.cloudId&&gsUrl&&getGsKey()){
+    url=`${appBase}/?id=${encodeURIComponent(t.cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(getGsKey())}`
   } else if(t.cfg){
     url=`${appBase}/?d=${encodeConfig(t.cfg)}`
   } else {toast('無法產生 QR Code，請先儲存任務');return}
@@ -2676,9 +2691,11 @@ async function adminAddUser() {
   const name = document.getElementById('adm-new-name').value.trim()
   const pwd  = document.getElementById('adm-new-pwd').value
   if (!name || !pwd) { toast('請填入姓名與密碼'); return }
-  if (pwd.length < 4) { toast('密碼至少 4 碼'); return }
+  if (pwd.length < 8) { toast('密碼至少 8 個字元'); return }
+  if (/^\d+$/.test(pwd)) { toast('密碼不能全為數字'); return }
   try {
-    await cloudPost({ action: 'registerUser', name, hash: hashPwd(pwd) })
+    const hash = await hashPwd(pwd)
+    await cloudPost({ action: 'registerUser', name, hash })
     document.getElementById('adm-new-name').value = ''
     document.getElementById('adm-new-pwd').value  = ''
     toast(`✅ 帳號「${name}」已建立`)
@@ -2687,11 +2704,13 @@ async function adminAddUser() {
 }
 
 async function adminResetPwd(name) {
-  const pwd = prompt(`重設「${name}」的新密碼（至少 4 碼）：`)
+  const pwd = prompt(`重設「${name}」的新密碼（至少 8 碼，不能全為數字）：`)
   if (pwd === null) return
-  if (!pwd || pwd.length < 4) { toast('密碼至少 4 碼'); return }
+  if (!pwd || pwd.length < 8) { toast('密碼至少 8 個字元'); return }
+  if (/^\d+$/.test(pwd)) { toast('密碼不能全為數字'); return }
   try {
-    await cloudPost({ action: 'resetPassword', name, hash: hashPwd(pwd) })
+    const hash = await hashPwd(pwd)
+    await cloudPost({ action: 'resetPassword', name, hash })
     toast(`✅ 「${name}」密碼已重設`)
   } catch(e) { toast('❌ ' + e.message) }
 }
