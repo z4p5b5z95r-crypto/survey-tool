@@ -6,7 +6,7 @@
 <title>🚗交通速率與延滯調查🚗</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -2143,12 +2143,24 @@ function buildURL() {
 // ════════════════════════════════════════════════════════
 //  QR CODE
 // ════════════════════════════════════════════════════════
+// qrcode (soldair/node-qrcode) wrapper — replaces unmaintained qrcodejs
+function renderQR(containerEl, url, size=220) {
+  containerEl.innerHTML = ''
+  const canvas = document.createElement('canvas')
+  containerEl.appendChild(canvas)
+  return QRCode.toCanvas(canvas, url, {
+    width: size,
+    color: { dark: '#1e293b', light: '#ffffff' },
+    errorCorrectionLevel: 'M'
+  })
+}
+
 let lastURL=''
-function generateQR() {
+async function generateQR() {
   const url=buildURL();if(!url)return
   lastURL=url
-  const box=document.getElementById('qr-box-acc');box.innerHTML=''
-  new QRCode(box,{text:url,width:220,height:220,correctLevel:QRCode.CorrectLevel.M,colorDark:'#1e293b',colorLight:'#ffffff'})
+  const box=document.getElementById('qr-box-acc')
+  await renderQR(box, url, 220)
   toast('✅ QR Code 已產生')
 }
 function copyLink() { const url=buildURL();if(!url)return; navigator.clipboard.writeText(url).then(()=>toast('✅ 連結已複製')).catch(()=>prompt('複製連結：',url)) }
@@ -2327,9 +2339,7 @@ function showListQR(taskId){
     const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download=`QR_${name}.png`;a.click()
   })
   document.body.appendChild(overlay)
-  setTimeout(()=>{
-    new QRCode(document.getElementById('list-qr-box'),{text:url,width:200,height:200,correctLevel:QRCode.CorrectLevel.M,colorDark:'#1e293b',colorLight:'#ffffff'})
-  },30)
+  setTimeout(()=>{ renderQR(document.getElementById('list-qr-box'), url, 200) },30)
 }
 
 // ════════════════════════════════════════════════════════
@@ -2558,7 +2568,6 @@ function getSelectUrl() {
   return u.toString()
 }
 
-let _qrInstance = null
 
 function renderSelectUrl() {
   const url = getSelectUrl()
@@ -2571,14 +2580,7 @@ function renderSelectUrl() {
   // Generate QR Code
   const box = document.getElementById('qr-box')
   box.innerHTML = ''
-  _qrInstance = new QRCode(box, {
-    text: url,
-    width: 220,
-    height: 220,
-    colorDark: '#1e293b',
-    colorLight: '#ffffff',
-    correctLevel: QRCode.CorrectLevel.M
-  })
+  renderQR(box, url, 220)
 }
 
 function copySelectUrl() {

@@ -729,6 +729,9 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 <div class="toast" id="toast"></div>
 
 <script>
+// HTML escape helper — guards bindPopup() against CVE-2025-69993
+const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+
 // ════════════════════════════════════
 //  CONSTANTS
 // ════════════════════════════════════
@@ -3124,10 +3127,10 @@ function updateResultMapTrack(key){
       if(!r.pos) return
       L.marker([r.pos.lat,r.pos.lng],{
         icon:L.divIcon({
-          html:`<div style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1">${r.icon}</div>`,
+          html:`<div style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1">${esc(r.icon)}</div>`,
           className:'',iconSize:[26,26],iconAnchor:[13,13]
         }),zIndexOffset:1000
-      }).bindPopup(`${r.icon} ${r.label}<br>${r.durationS}秒`).addTo(_resultDelayGroup)
+      }).bindPopup(`${esc(r.icon)} ${esc(r.label)}<br>${r.durationS}秒`).addTo(_resultDelayGroup)
     })
   }
   if(bounds) mapResult.fitBounds(bounds,{padding:[24,24]})

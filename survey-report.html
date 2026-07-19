@@ -1149,7 +1149,7 @@ function initTripMap(mapId, trip, combo){
       className:'',iconSize:[28,28],iconAnchor:[14,14]
     })})
     .bindPopup(`<div style="font-size:12px;min-width:170px;line-height:1.8">
-      <div style="font-weight:700;margin-bottom:4px">${n.name||`節點${i+1}`}</div>
+      <div style="font-weight:700;margin-bottom:4px">${he(n.name||`節點${i+1}`)}</div>
       <div style="color:#475569">⏱ 經過時間：${timeStr}</div>
       <div style="color:#475569">🔢 旅程第 ${elapsedStr}</div>
     </div>`,{maxWidth:220})
@@ -1165,7 +1165,7 @@ function initTripMap(mapId, trip, combo){
       className:'',iconSize:[26,26],iconAnchor:[13,13]
     })})
     .bindPopup(`<div style="font-size:12px;min-width:160px;line-height:1.8">
-      <div style="font-weight:700;margin-bottom:4px">${icon} ${d.label||''}</div>
+      <div style="font-weight:700;margin-bottom:4px">${he(icon)} ${he(d.label||'')}</div>
       <div style="color:#475569">⏰ 按下時間：${timeStr}</div>
       <div style="color:#475569">⌛ 延滯時長：${d.durationS||0} 秒</div>
     </div>`,{maxWidth:220})
