@@ -1781,11 +1781,11 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
 <h2 class="pg-title">${title}</h2>
 <div class="pg-info">
   <div class="pi-row">
-    <span>路　　　名${route.routeName||''}</span>
+    <span>路　　　名${he(route.routeName||'')}</span>
     <span>日　　期：${dates}</span>
   </div>
   <div class="pi-row">
-    <span>起迄點位置${route.routeFromTo||route.routeName||''}</span>
+    <span>起迄點位置${he(route.routeFromTo||route.routeName||'')}</span>
     <span>天　　氣：${weathers}</span>
   </div>
   <div class="pi-row">
@@ -1881,7 +1881,7 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
   <td rowspan="5" class="sr-mc">
     <div class="sr-mc-in">
       <span style="flex:1;display:flex;align-items:center;justify-content:center;letter-spacing:4px;font-size:9pt">位　　置</span>
-      <span style="text-align:left;font-size:8pt;white-space:nowrap">${route.routeName||''}</span>
+      <span style="text-align:left;font-size:8pt;white-space:nowrap">${he(route.routeName||'')}</span>
     </div>
   </td>
   <td rowspan="5" class="sr-vhdr">車道數</td>
@@ -1940,11 +1940,11 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
       rv.forEach((v,j)=>{ totRv[j]+=v })
       totLen += seg.length||0
       const firstCol = i===0
-        ? `<td rowspan="${ns+1}" class="sr-vert">${(route.routeName||startN+'到'+endN).replace(/延滯調查$/,'')}</td>`
+        ? `<td rowspan="${ns+1}" class="sr-vert">${he((route.routeName||startN+'到'+endN).replace(/延滯調查$/,''))}</td>`
         : ''
       rows += `<tr>
         ${firstCol}
-        <td class="sr-sl">${seg.name||''}</td>
+        <td class="sr-sl">${he(seg.name||'')}</td>
         <td>${seg.lanes||''}</td><td>${seg.width||''}</td>
         <td class="sr-len">${seg.length||''}</td>
         ${tv.map(_v).join('')}${rv.map(_v).join('')}
@@ -1974,11 +1974,11 @@ ${rows}</table>`
       const tv=T4.map(t=>_spd(L,origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)))
       const rv=T4.map(t=>_spd(L,origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)))
       const firstCol = i===0
-        ? `<td rowspan="${ns+1}" class="sr-vert">${(route.routeName||startN+'到'+endN).replace(/延滯調查$/,'')}</td>`
+        ? `<td rowspan="${ns+1}" class="sr-vert">${he((route.routeName||startN+'到'+endN).replace(/延滯調查$/,''))}</td>`
         : ''
       rows += `<tr>
         ${firstCol}
-        <td class="sr-sl">${seg.name||''}</td>
+        <td class="sr-sl">${he(seg.name||'')}</td>
         <td>${seg.lanes||''}</td><td>${seg.width||''}</td>
         <td class="sr-len">${L||''}</td>
         ${tv.map(_v).join('')}${rv.map(_v).join('')}
@@ -2064,8 +2064,8 @@ ${rows}</table>`
 <table class="trip-info">
 <colgroup><col style="width:58%"><col style="width:42%"></colgroup>
 <tr>
-  <td>站　　名：　${route.routeName||''}</td>
-  <td style="text-align:right">日　　期：　<span class="ti-r">${sv.date||''}</span></td>
+  <td>站　　名：　${he(route.routeName||'')}</td>
+  <td style="text-align:right">日　　期：　<span class="ti-r">${he(sv.date||'')}</span></td>
 </tr>
 <tr>
   <td>旅次編號：　${si+1}</td>
@@ -2077,7 +2077,7 @@ ${rows}</table>`
 </tr>
 <tr>
   <td>時　　間：　${isPeak?'□':'■'} 離峰（${off}）　　　${isPeak?'■':'□'} 尖峰（${pk}）</td>
-  <td style="text-align:right">調查員：　<span style="text-decoration:underline">${sv.surveyor||''}</span></td>
+  <td style="text-align:right">調查員：　<span style="text-decoration:underline">${he(sv.surveyor||'')}</span></td>
 </tr>
 </table>
 
@@ -2219,7 +2219,7 @@ ${segRows}${emptyRows}
   })
 
   const doc = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"/>
-<title>SGS報告 ${route.routeName||''}</title>
+<title>SGS報告 ${he(route.routeName||'')}</title>
 <style>${CSS}</style></head><body>
 <button class="pdf-btn" onclick="window.print()">🖨 列印 / 儲存 PDF</button>
 ${pages.join('\n')}
