@@ -727,10 +727,12 @@ function renderTravelTable(){
       ${rv.map(cellHtml).join('')}
     </tr>`
   })
+  // 合計欄改為「加總上面每個路段的數字」，跟表格內容互相對得起來
+  // （原本用 avgTrips 裡整趟的 travelS/runS，是另一種各自平均後的數字，兩者可能對不上，會讓人誤以為算錯）
   html += `<tr class="total-row">
     <td>合計</td><td></td><td></td><td>${totLen}</td>
-    ${[OB,OR,PB,PR].map(t=>`<td class="highlight">${fmt(t?.travelS)}</td>`).join('')}
-    ${[OB,OR,PB,PR].map(t=>`<td class="highlight">${fmt(t?.runS)}</td>`).join('')}
+    ${combos.map((t,j)=>`<td class="highlight">${fmt(t?totTvl[j]:undefined)}</td>`).join('')}
+    ${combos.map((t,j)=>`<td class="highlight">${fmt(t?totRun[j]:undefined)}</td>`).join('')}
   </tr>`
   document.getElementById('tbl-travel').innerHTML = html
 }
@@ -785,22 +787,29 @@ function renderSpeedTable(){
     <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
   </tr>`
 
+  const combos=[OB,OR,PB,PR]
+  let totTvl=[0,0,0,0], totRun=[0,0,0,0], totLen=0
   segs.forEach((seg)=>{
     const L=seg.length||0
     const idxs=seg._origIdx||[]
-    const tv=[OB,OR,PB,PR].map(t=>spd(L,idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)))
-    const rv=[OB,OR,PB,PR].map(t=>spd(L,idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)))
+    const segTvl=combos.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0))
+    const segRun=combos.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0))
+    const tv=segTvl.map(v=>spd(L,v))
+    const rv=segRun.map(v=>spd(L,v))
+    segTvl.forEach((v,j)=>{ if(v) totTvl[j]+=v })
+    segRun.forEach((v,j)=>{ if(v) totRun[j]+=v })
+    totLen+=L
     html += `<tr>
       <td>${he(seg.name)}</td><td>${L}</td>
       ${tv.map(v=>`<td>${v}</td>`).join('')}
       ${rv.map(v=>`<td>${v}</td>`).join('')}
     </tr>`
   })
-  const TL = route.totalLength||0
+  // 合計欄改用「路段長度總和 ÷ 每個路段旅行時間加總」，跟上面各路段的數字加總一致
   html += `<tr class="total-row">
-    <td>合計</td><td>${TL}</td>
-    ${[OB,OR,PB,PR].map(t=>`<td class="highlight">${spd(TL,t?.travelS)}</td>`).join('')}
-    ${[OB,OR,PB,PR].map(t=>`<td class="highlight">${spd(TL,t?.runS)}</td>`).join('')}
+    <td>合計</td><td>${totLen}</td>
+    ${combos.map((t,j)=>`<td class="highlight">${t?spd(totLen,totTvl[j]):'—'}</td>`).join('')}
+    ${combos.map((t,j)=>`<td class="highlight">${t?spd(totLen,totRun[j]):'—'}</td>`).join('')}
   </tr>`
   document.getElementById('tbl-speed').innerHTML = html
 }
@@ -1384,18 +1393,22 @@ function buildTimeSheet(){
      `${off} 行駛時間(秒)`,'',`${pk} 行駛時間(秒)`,''],
     ['','','','','去程','回程','去程','回程','去程','回程','去程','回程'],
   ]
-  let totLen=0
+  let totLen=0, totTv=[0,0,0,0], totRv=[0,0,0,0]
   segs.forEach(seg=>{
     const idxs=seg._origIdx||[]
-    const tv=T4.map(t=>{ const s=idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0); return s||'' })
-    const rv=T4.map(t=>{ const s=idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0); return s||'' })
+    const segTv=T4.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0))
+    const segRv=T4.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0))
+    segTv.forEach((v,j)=>totTv[j]+=v)
+    segRv.forEach((v,j)=>totRv[j]+=v)
     totLen+=seg.length||0
+    const tv=segTv.map(v=>v||''), rv=segRv.map(v=>v||'')
     rows.push([seg.name, seg.lanes||'', seg.width||'', seg.length||0,
       tv[0],tv[1],tv[2],tv[3], rv[0],rv[1],rv[2],rv[3]])
   })
+  // 合計欄改用「加總上面每個路段的數字」，跟表格內容一致
   rows.push(['合計','','',totLen,
-    OB?.travelS||'', OR?.travelS||'', PB?.travelS||'', PR?.travelS||'',
-    OB?.runS||'',    OR?.runS||'',    PB?.runS||'',    PR?.runS||''])
+    T4[0]?totTv[0]:'', T4[1]?totTv[1]:'', T4[2]?totTv[2]:'', T4[3]?totTv[3]:'',
+    T4[0]?totRv[0]:'', T4[1]?totRv[1]:'', T4[2]?totRv[2]:'', T4[3]?totRv[3]:''])
   return XLSX.utils.aoa_to_sheet(rows)
 }
 
@@ -1418,17 +1431,21 @@ function buildSpeedSheet(){
      `${off} 行駛速率(km/h)`,'',`${pk} 行駛速率(km/h)`,''],
     ['','','去程','回程','去程','回程','去程','回程','去程','回程'],
   ]
-  let totLen=0
+  let totLen=0, totTv=[0,0,0,0], totRv=[0,0,0,0]
   segs.forEach(seg=>{
     const idxs=seg._origIdx||[], L=seg.length||0
-    const tv=T4.map(t=>spd(L,idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)))
-    const rv=T4.map(t=>spd(L,idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)))
+    const segTv=T4.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0))
+    const segRv=T4.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0))
+    segTv.forEach((v,j)=>totTv[j]+=v)
+    segRv.forEach((v,j)=>totRv[j]+=v)
     totLen+=L
+    const tv=segTv.map(v=>spd(L,v)), rv=segRv.map(v=>spd(L,v))
     rows.push([seg.name, L, tv[0],tv[1],tv[2],tv[3], rv[0],rv[1],rv[2],rv[3]])
   })
+  // 合計欄改用「路段長度總和 ÷ 每個路段時間加總」，跟上面各路段的數字加總一致
   rows.push(['合計',totLen,
-    spd(TL,OB?.travelS), spd(TL,OR?.travelS), spd(TL,PB?.travelS), spd(TL,PR?.travelS),
-    spd(TL,OB?.runS),    spd(TL,OR?.runS),    spd(TL,PB?.runS),    spd(TL,PR?.runS)])
+    T4[0]?spd(totLen,totTv[0]):'—', T4[1]?spd(totLen,totTv[1]):'—', T4[2]?spd(totLen,totTv[2]):'—', T4[3]?spd(totLen,totTv[3]):'—',
+    T4[0]?spd(totLen,totRv[0]):'—', T4[1]?spd(totLen,totRv[1]):'—', T4[2]?spd(totLen,totRv[2]):'—', T4[3]?spd(totLen,totRv[3]):'—'])
   return XLSX.utils.aoa_to_sheet(rows)
 }
 
@@ -2039,14 +2056,17 @@ ${rows}</table>`
   function buildSegSpdPage(){
     const ns = segs.length
     const _v = v => v ? `<td class="sr-val">${v}</td>` : '<td></td>'
-    let totLen=0
+    let totLen=0, totTv=[0,0,0,0], totRv=[0,0,0,0]
     let rows = ''
     segs.forEach((seg,i)=>{
       const L = seg.length||0
       totLen += L
       const origIdxs=seg._origIdx||[i]
-      const tv=T4.map(t=>_spd(L,origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)))
-      const rv=T4.map(t=>_spd(L,origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)))
+      const segTv=T4.map(t=>origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0))
+      const segRv=T4.map(t=>origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0))
+      segTv.forEach((v,j)=>totTv[j]+=v)
+      segRv.forEach((v,j)=>totRv[j]+=v)
+      const tv=segTv.map(v=>_spd(L,v)), rv=segRv.map(v=>_spd(L,v))
       const firstCol = i===0
         ? `<td rowspan="${ns+1}" class="sr-vert">${he((route.routeName||startN+'到'+endN).replace(/延滯調查$/,''))}</td>`
         : ''
@@ -2058,10 +2078,11 @@ ${rows}</table>`
         ${tv.map(_v).join('')}${rv.map(_v).join('')}
       </tr>`
     })
+    // 總計欄改用「路段長度總和 ÷ 每個路段時間加總」，跟上面各路段的數字加總一致
     rows += `<tr class="sr-tot">
       <td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
-      ${T4.map(t=>`<td>${_spd(totLen,t?.travelS)||''}</td>`).join('')}
-      ${T4.map(t=>`<td>${_spd(totLen,t?.runS)||''}</td>`).join('')}
+      ${T4.map((t,j)=>`<td>${t?_spd(totLen,totTv[j])||'':''}</td>`).join('')}
+      ${T4.map((t,j)=>`<td>${t?_spd(totLen,totRv[j])||'':''}</td>`).join('')}
     </tr>`
     return `<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px;margin-top:14px">各路段平均旅行速率及平均行駛速率統計表（公里/時）</div>
 ${_segDateInfo()}
