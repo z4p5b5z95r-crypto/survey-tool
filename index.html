@@ -170,6 +170,11 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .combo-btn.dr{background:#0c2a4e;border-color:#3b82f6;color:#93c5fd}
 .combo-btn.rd{background:#1c1a05;border-color:#eab308;color:#fde68a}
 .sel-badge{text-align:center;font-size:13px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,.12);padding:6px 12px;border-radius:10px;display:none}
+.combo-grid-4{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px}
+.combo-grid-btn{padding:16px 8px;background:#0f172a;border:2px solid #334155;border-radius:14px;color:#94a3b8;font-size:15px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px;font-family:inherit}
+.combo-grid-btn.sel{background:#0c2a4e;border-color:#3b82f6;color:#93c5fd}
+.combo-grid-btn.done{background:#14532d;border-color:#16a34a;color:#4ade80}
+.combo-grid-btn .cgb-check{font-size:13px}
 .progress-chips{display:flex;gap:5px;margin-top:4px}
 .prog-chip{flex:1;padding:9px 4px;border-radius:10px;font-size:11px;font-weight:700;border:1.5px solid #334155;background:#0f172a;color:#475569;cursor:default;font-family:inherit;text-align:center;transition:all .15s;white-space:nowrap}
 .prog-chip.done{background:#14532d;border-color:#16a34a;color:#4ade80;cursor:pointer}
@@ -523,25 +528,10 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     </div>
     <div>
       <div class="combo-label">今日第幾次監測</div>
-      <div class="combo-row" id="round-row">
-        <button class="combo-btn" id="btn-r1" onclick="pickRound(1)">第 1 次</button>
-        <button class="combo-btn" id="btn-r2" onclick="pickRound(2)">第 2 次</button>
-        <button class="combo-btn" id="btn-r3" onclick="pickRound(3)">第 3 次</button>
-      </div>
-      <div class="combo-label">時段</div>
-      <div class="combo-row">
-        <button class="combo-btn" id="btn-peak"    onclick="selPeak('peak')">🔴 尖峰</button>
-        <button class="combo-btn" id="btn-offpeak" onclick="selPeak('off_peak')">🟢 離峰</button>
-      </div>
-      <div class="combo-label">方向</div>
-      <div class="combo-row">
-        <button class="combo-btn" id="btn-bound"  onclick="selDir('bound')">→ 去程</button>
-        <button class="combo-btn" id="btn-return" onclick="selDir('return')">← 回程</button>
-      </div>
+      <div class="combo-row" id="round-row" style="flex-wrap:wrap;row-gap:8px"><!-- 按鈕由 renderRoundRow() 依 PM 設定的次數動態產生 --></div>
+      <div class="combo-label">選擇監測組合</div>
+      <div class="combo-grid-4" id="combo-grid"><!-- 由 renderComboGrid() 動態產生：尖峰去程／尖峰回程／離峰去程／離峰回程 --></div>
     </div>
-    <div class="sel-badge" id="sel-badge"></div>
-    <div style="font-size:11px;font-weight:700;color:#64748b;letter-spacing:.4px;margin-top:10px;margin-bottom:4px">本次監測記錄</div>
-    <div class="progress-chips" id="progress-chips"></div>
     <button class="btn-start" id="btn-start" disabled onclick="startSurvey()">▶ 開始調查</button>
   </div>
 </div>
@@ -773,14 +763,16 @@ let config = {
   routeName:'', routeFromTo:'', totalLength:0,
   surveyor:'', weather:'', date:'',
   offPeakLabel:'14:00~16:00', peakLabel:'17:00~19:00',
+  roundCount:3,
   segments:[], nodes:[]
 }
 let routePolylines = []   // OSRM latlngs per segment (pre-fetched)
 let qrMode = false
 let qrKey = ''       // raw encoded string from URL — used as localStorage key
 let signinWeather = ''
-// 每天最多 3 次完整監測（回合）；每個回合各自擁有一組完整的四趟組合(COMBO_KEYS)
-const ROUND_KEYS = [1,2,3]
+// 每天最多幾次完整監測（回合）由 PM 在路線設定中決定（1~6，預設3）；
+// 每個回合各自擁有一組完整的四趟組合(COMBO_KEYS)。applyRoundCount() 會依 config.roundCount 重建下面兩個變數。
+let ROUND_KEYS = [1,2,3]
 let allTripsByRound = {1:{},2:{},3:{}}
 let selRound = 1
 let allTrips = allTripsByRound[selRound]   // 目前選取回合的四趟資料（其餘程式碼皆透過此別名讀寫，不需個別修改）
@@ -983,6 +975,9 @@ function applyConfig(cfg){
   config.offPeakLabel=cfg.offPeakLabel||cfg.op||'14:00~16:00'
   config.peakLabel   =cfg.peakLabel   ||cfg.pk||'17:00~19:00'
   config.date        =todayStr()   // always default to today; surveyor picks their own date
+  // PM 設定的每日調查次數（1~6，預設3）；套用後重建回合選鈕
+  config.roundCount = Math.min(6, Math.max(1, parseInt(cfg.roundCount||cfg.rc)||3))
+  applyRoundCount()
   const rawNodes=(cfg.nodes||cfg.nd||[]).map(n=>{
     if(n.lat!==undefined) return {name:n.name||'節點',exitName:n.exitName||n.n2||'',lat:n.lat,lng:n.lng,radius:n.radius||15,polygon:n.polygon||null,lineAngle:n.lineAngle??null,lineLength:n.lineLength||10,_ghost:n.ghost||false}
     return {name:n.n||n.r1||'節點',exitName:n.n2||n.exitName||'',lat:n.a,lng:n.o,radius:n.r||15,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,_ghost:n.gh||false}
@@ -1326,7 +1321,8 @@ function renderHistModal(){
 function confirmClearStorage(){
   if(!confirm('確定清除本條路線所有已儲存的調查記錄？此動作無法復原。')) return
   clearTripStorage()
-  allTripsByRound={1:{},2:{},3:{}}
+  allTripsByRound={}
+  ROUND_KEYS.forEach(r=>{ allTripsByRound[r]={} })
   allTrips=allTripsByRound[selRound]
   renderRoundRow()
   updateProgressChips()
@@ -1424,7 +1420,7 @@ function drawRouteArrows(direction){
 //  AUTO PEAK DETECTION
 // ════════════════════════════════════
 function autoSelectPeak(){
-  if(selPeakType) return  // user already chose manually
+  if(selPeakType&&selDirection) return  // user already chose manually
   const parseRange=label=>{
     const m=label.match(/(\d{1,2}):(\d{2})[~\-](\d{1,2}):(\d{2})/)
     if(!m) return null
@@ -1433,8 +1429,13 @@ function autoSelectPeak(){
   const now=new Date(); const cur_min=now.getHours()*60+now.getMinutes()
   const peakR=parseRange(config.peakLabel||'')
   const offR =parseRange(config.offPeakLabel||'')
-  if(peakR&&cur_min>=peakR.start&&cur_min<=peakR.end) selPeak('peak')
-  else if(offR&&cur_min>=offR.start&&cur_min<=offR.end) selPeak('off_peak')
+  // 合併按鈕需要「時段+方向」兩者都有值才能選取到某一顆按鈕，方向預設猜「去程」，使用者仍可再點別的按鈕改選
+  if(peakR&&cur_min>=peakR.start&&cur_min<=peakR.end){ selPeakType='peak'; selDirection=selDirection||'bound' }
+  else if(offR&&cur_min>=offR.start&&cur_min<=offR.end){ selPeakType='off_peak'; selDirection=selDirection||'bound' }
+  else return
+  drawRouteArrows(selDirection)
+  renderComboGrid()
+  checkStart()
 }
 
 // ════════════════════════════════════
@@ -2369,10 +2370,20 @@ function updateNextNodeCard(){
 let selPeakType=null,selDirection=null
 
 // ── 回合（第幾次）選擇 ──
+// PM 在路線設定裡指定 config.roundCount（1~6）後呼叫此函式重建 ROUND_KEYS / allTripsByRound
+function applyRoundCount(){
+  const n = Math.min(6, Math.max(1, config.roundCount||3))
+  ROUND_KEYS = Array.from({length:n}, (_,i)=>i+1)
+  allTripsByRound = {}
+  ROUND_KEYS.forEach(r=>{ allTripsByRound[r]={} })
+  if(!ROUND_KEYS.includes(selRound)) selRound=1
+  allTrips = allTripsByRound[selRound]
+  renderRoundRow()
+}
 function roundAllDone(n){ return COMBO_KEYS.every(k=>allTripsByRound[n][k]) }
 function autoPickRound(){
   const n = ROUND_KEYS.find(n=>!roundAllDone(n))
-  selRound = n || 3
+  selRound = n || ROUND_KEYS[ROUND_KEYS.length-1]
   allTrips = allTripsByRound[selRound]
 }
 function pickRound(n){
@@ -2383,20 +2394,22 @@ function pickRound(n){
   checkStart()
 }
 function renderRoundRow(){
+  const row=$('round-row')
+  if(row){
+    // 依 ROUND_KEYS 動態產生按鈕（PM 可能設定 1~6 次，不固定是3個；超過3個時自動換行）
+    row.innerHTML = ROUND_KEYS.map(n=>`<button class="combo-btn" id="btn-r${n}" style="flex:1 1 auto;min-width:64px" onclick="pickRound(${n})">第 ${n} 次</button>`).join('')
+  }
   ROUND_KEYS.forEach(n=>{
     const btn=$('btn-r'+n); if(!btn) return
     btn.classList.toggle('rd', n===selRound)
     btn.textContent = roundAllDone(n) ? `第 ${n} 次 ✓` : `第 ${n} 次`
   })
 }
-function selPeak(t){selPeakType=t;$('btn-peak').classList.toggle('pk',t==='peak');$('btn-offpeak').classList.toggle('pk',t==='off_peak');updateBadge()}
-function selDir(d){selDirection=d;$('btn-bound').classList.toggle('dr',d==='bound');$('btn-return').classList.toggle('dr',d==='return');drawRouteArrows(d);updateBadge()}
-function updateBadge(){
-  const b=$('sel-badge')
-  if(selPeakType&&selDirection){b.style.display='block';b.textContent=`${PEAK_LABEL[selPeakType]}  ${DIR_LABEL[selDirection]}`}
-  else b.style.display='none'
-  checkStart()
-}
+// ── 監測組合選擇（尖峰去程／尖峰回程／離峰去程／離峰回程 合併成單一按鈕）──
+// 未完成：點一下＝選取該組合，準備「開始調查」
+// 已完成（綠色打勾）：點一下＝彈出「查看調查結果／重新調查」動作選單
+function selPeak(t){ selPeakType=t; renderComboGrid(); checkStart() }
+function selDir(d){ selDirection=d; drawRouteArrows(d); renderComboGrid(); checkStart() }
 function checkStart(){
   const gpsOk=$('gps-dot').classList.contains('good')||$('gps-dot').classList.contains('poor')
   const key=`${selPeakType}_${selDirection}`
@@ -2405,21 +2418,34 @@ function checkStart(){
   if(done)$('btn-start').textContent=`此組合已完成（第${selRound}次）`
   else $('btn-start').textContent='▶ 開始調查'
 }
-function updateProgressChips(){
-  $('progress-chips').innerHTML=COMBO_KEYS.map(k=>{
+// 保留舊函式名稱 updateProgressChips，內部改為畫新的合併按鈕格（呼叫端很多處不用逐一修改）
+function updateProgressChips(){ renderComboGrid() }
+function renderComboGrid(){
+  const box=$('combo-grid'); if(!box) return
+  box.innerHTML = COMBO_KEYS.map(k=>{
+    const [pt,dir]=parseComboKey(k)
     const label=COMBO_ZH[k]||k
-    if(allTrips[k]){
-      return`<button class="prog-chip done" onclick="confirmResetCombo('${k}')">${label} ✏️</button>`
-    }
-    return`<button class="prog-chip" disabled>${label}</button>`
+    const done=!!allTrips[k]
+    const isSel=!done && selPeakType===pt && selDirection===dir
+    const cls = done?'combo-grid-btn done':(isSel?'combo-grid-btn sel':'combo-grid-btn')
+    return `<button class="${cls}" onclick="onComboGridClick('${k}')">${label}${done?' <span class="cgb-check">✓</span>':''}</button>`
   }).join('')
   renderRoundRow()
+}
+function onComboGridClick(k){
+  if(allTrips[k]){ confirmResetCombo(k); return }
+  document.getElementById('chip-action-sheet')?.remove()
+  const [pt,dir]=parseComboKey(k)
+  selPeakType=pt; selDirection=dir
+  drawRouteArrows(dir)
+  renderComboGrid()
+  checkStart()
 }
 
 const COMBO_ZH={off_peak_bound:'離峰去程',off_peak_return:'離峰回程',peak_bound:'尖峰去程',peak_return:'尖峰回程'}
 
 function confirmResetCombo(k){
-  // Toggle: second click on same chip closes the sheet
+  // Toggle: second click on same combo button closes the sheet
   const existing=document.getElementById('chip-action-sheet')
   if(existing){const ek=existing.dataset.key; existing.remove(); if(ek===k) return}
   const label=COMBO_ZH[k]||k
@@ -2434,14 +2460,18 @@ function confirmResetCombo(k){
       onclick="doResetCombo('${k}')">🔄 重新調查此組合</button>
     <button class="cas-btn" style="background:transparent;border:1px solid #334155;color:#64748b"
       onclick="document.getElementById('chip-action-sheet')?.remove()">取消</button>`
-  const chips=$('progress-chips')
-  chips.parentNode.insertBefore(sheet,chips.nextSibling)
+  const grid=$('combo-grid')
+  grid.parentNode.insertBefore(sheet,grid.nextSibling)
 }
 
 function doResetCombo(k){
   document.getElementById('chip-action-sheet')?.remove()
   delete allTrips[k]
   saveTripsToStorage()
+  // 清除後直接選取該組合，方便馬上按「開始調查」重測
+  const [pt,dir]=parseComboKey(k)
+  selPeakType=pt; selDirection=dir
+  drawRouteArrows(dir)
   updateProgressChips()
   checkStart()
   showToast(`「${COMBO_ZH[k]||k}」已清除，可重新調查`)
@@ -2809,7 +2839,7 @@ function goReport(){
 }
 function goReady(){
   showScreen('screen-ready')
-  renderRoundRow()
+  updateProgressChips()   // 畫出合併按鈕格（尖峰去程/尖峰回程/離峰去程/離峰回程）+ 回合列
   checkStart()
   loadCloudHistory()   // refresh from cloud in background
   autoSelectPeak()     // auto-detect peak/off-peak by current time (skips if user already chose)
