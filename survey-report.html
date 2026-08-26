@@ -599,11 +599,19 @@ function setRoundFilter(n){
 function calcAverages(){
   COMBO_KEYS.forEach(combo=>{
     const [peakType, direction] = parseCombo(combo)
-    const tripsList = []
+    // 先依「回合」去重——同一回合若因重測產生多筆紀錄，只取最新一筆代表該回合，
+    // 這樣「全部平均」才是「每回合各一票」的平均，不會被某回合的重複紀錄拉偏權重。
+    const byRound = {}
     surveys.forEach(sv=>{
       const t = sv.trips?.find(t=>t.peakType===peakType && t.direction===direction)
-      if(t) tripsList.push(t)
+      if(!t) return
+      const rnd = +sv.round||1
+      const prevSv = byRound[rnd]
+      if(!prevSv || new Date(sv.submittedAt||0) >= new Date(prevSv.submittedAt||0)){
+        byRound[rnd] = sv
+      }
     })
+    const tripsList = Object.values(byRound).map(sv=>sv.trips.find(t=>t.peakType===peakType&&t.direction===direction))
     if(!tripsList.length){ avgTrips[combo]=null; return }
     const n = tripsList.length
     const avg = {
