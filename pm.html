@@ -617,6 +617,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
               <div class="field"><label>路線名稱</label><input id="rn" placeholder="台二省道轉新市二路到港子平" oninput="updateEvTitle()"/></div>
               <div class="field"><label>起迄點</label><input id="ft" placeholder="港子平 ↔ 台二線"/></div>
               <div class="field"><label>全長（公尺）</label><input id="tl" type="number" placeholder="自動計算"/></div>
+              <div class="field"><label>每日調查次數</label><input id="rc" type="number" min="1" max="6" step="1" value="3" oninput="clampRoundCountInput()"/></div>
             </div>
           </div>
 
@@ -2128,6 +2129,14 @@ function syncSegDataFromDOM() {
     if(indices.length===1) segData[pi].length=parseInt(ins[3].value)||0
   })
 }
+// 「每日調查次數」輸入框：即時夾在 1~6 之間
+function clampRoundCountInput() {
+  const el = document.getElementById('rc'); if (!el) return
+  let v = parseInt(el.value)
+  if (isNaN(v)) return
+  if (v > 6) el.value = 6
+  if (v < 1 && el.value !== '') el.value = 1
+}
 function buildConfig() {
   syncSegDataFromDOM()
   return{
@@ -2135,6 +2144,7 @@ function buildConfig() {
     rn:document.getElementById('rn').value.trim(),
     ft:document.getElementById('ft').value.trim(),
     tl:parseInt(document.getElementById('tl').value)||0,
+    rc:Math.min(6,Math.max(1,parseInt(document.getElementById('rc').value)||3)),
     op:document.getElementById('op').value.trim()||'14:00~16:00',
     pk:document.getElementById('pk').value.trim()||'17:00~19:00',
     nd:nodes.map(n=>({n:n.name,n2:n.exitName||'',a:parseFloat(n.lat.toFixed(6)),o:parseFloat(n.lng.toFixed(6)),r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n._ghost||false})),
@@ -2219,7 +2229,7 @@ async function saveTask() {
     toast('⏳ 同步至雲端...')
     updateCloudDot('uploading')
     try{
-      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
+      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,roundCount:cfg.rc||3,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
       const result=await cloudPost(payload)
       const taskIdx=savedTasks.findIndex(t=>t.id===id)
       if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
@@ -2255,6 +2265,7 @@ async function uploadTask(id) {
       routeName:    cfg.rn,
       routeFromTo:  cfg.ft,
       totalLength:  cfg.tl,
+      roundCount:   cfg.rc||3,
       offPeakLabel: cfg.op,
       peakLabel:    cfg.pk,
       owner:        task.creator || getCurrentUser() || '',
@@ -2279,6 +2290,7 @@ function newTask() {
   document.getElementById('rn').value=''
   document.getElementById('ft').value=''
   document.getElementById('tl').value=''
+  document.getElementById('rc').value='3'
   document.getElementById('op').value='14:00~16:00'
   document.getElementById('pk').value='17:00~19:00'
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
@@ -2300,6 +2312,7 @@ async function loadTask(id) {
   document.getElementById('rn').value=cfg.rn||''
   document.getElementById('ft').value=cfg.ft||''
   document.getElementById('tl').value=cfg.tl||''
+  document.getElementById('rc').value=cfg.rc||3
   document.getElementById('op').value=cfg.op||'14:00~16:00'
   document.getElementById('pk').value=cfg.pk||'17:00~19:00'
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
@@ -2397,11 +2410,11 @@ async function syncFromCloud() {
         // 路線已在本機：用雲端資料更新
         const loc=savedTasks[existIdx]
         if(loc.creator!==me){loc.creator=me;changed++}
-        const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
+        const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(6,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
         if(JSON.stringify(loc.cfg)!==JSON.stringify(newCfg)){loc.cfg=newCfg;changed++}
         continue
       }
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(6,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
       changed++
     }
     // 移除本機有 cloudId 但雲端「我的路線」已不存在的項目（刪除同步 + 清除誤匯入的他人路線）
