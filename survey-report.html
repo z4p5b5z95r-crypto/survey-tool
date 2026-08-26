@@ -49,6 +49,8 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color
 .tab-bar{display:flex;gap:2px}
 .tab-btn{padding:11px 20px;font-size:13px;font-weight:700;border:none;background:transparent;color:#64748b;cursor:pointer;border-radius:8px 8px 0 0;transition:.15s;border-bottom:3px solid transparent}
 .tab-btn.active{background:#f1f5f9;color:#1e293b;border-bottom-color:#3b82f6}
+.rf-btn{padding:6px 14px;font-size:12px;font-weight:700;border:1.5px solid #475569;background:transparent;color:#cbd5e1;border-radius:20px;cursor:pointer;transition:.15s}
+.rf-btn.active{background:#eab308;border-color:#eab308;color:#1e293b}
 
 /* ── Panels ── */
 .panel{display:none;padding:20px;animation:fadeIn .2s;max-width:1200px;margin:0 auto}
@@ -313,6 +315,7 @@ td:first-child{text-align:left;font-weight:500}
     <div class="rpt-title">📊 調查報告</div>
     <h1 id="hdr-title">—</h1>
     <div class="sub" id="hdr-sub">—</div>
+    <div id="round-filter-row" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap"></div>
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="stats" onclick="switchTab('stats')">📊 統計表</button>
       <button class="tab-btn" data-tab="trips" onclick="switchTab('trips')">📋 調查紀錄</button>
@@ -377,10 +380,12 @@ td:first-child{text-align:left;font-weight:500}
 <script>
 // ════════════════ GLOBALS ════════════════
 let route = null
+let allSurveys = []  // unfiltered — every survey ever returned for this route
 let surveys = []
 let avgTrips = {}  // {combo: {travelS, runS, intTotalS, roadTotalS, totalDelayS, segTimes:[{travelS,runS}]}}
 let currentCombo = 'peak_bound'
 let _filterDate = ''  // YYYY-MM-DD or ''
+let _filterRound = null  // 1/2/3 or null = 全部次數
 let _tripMaps = {}       // mapId -> L.map instance
 let _tripMapBounds = {}  // mapId -> L.latLngBounds (for re-fitting after invalidateSize)
 
@@ -495,9 +500,10 @@ window.addEventListener('load', async () => {
     ld('載入調查結果...')
     const surveyRes = await cloudGet(gs, sessionToken, {action:'getSurveys', routeId: id})
     if(!surveyRes.ok) throw new Error(surveyRes.error)
-    const allSurveys = surveyRes.data || []
+    allSurveys = surveyRes.data || []
     // Parse JSON-string fields inside each survey/trip
     allSurveys.forEach(sv => {
+      sv.round = +sv.round || 1
       sv.trips = _tryParse(sv.trips, [])
       ;(Array.isArray(sv.trips) ? sv.trips : []).forEach(t => {
         t.gpsTrack       = _tryParse(t.gpsTrack,       [])
@@ -508,8 +514,7 @@ window.addEventListener('load', async () => {
         t.intDelays      = _tryParse(t.intDelays,       {})
       })
     })
-    // Filter to date if provided
-    surveys = _filterDate ? allSurveys.filter(sv=>String(sv.date||'').slice(0,10)===_filterDate) : allSurveys
+    applyFilters()
     setLoadProgress(80)
 
     ld('計算統計...')
@@ -540,6 +545,33 @@ async function cloudGet(gsUrl, sessionToken, params){
   const q = new URLSearchParams({...params, sessionToken})
   const res = await fetch(`${gsUrl}?${q}`, {signal: AbortSignal.timeout(20000)})
   return res.json()
+}
+
+// ════════════════ FILTERS (date / 第幾次) ════════════════
+function applyFilters(){
+  surveys = allSurveys.filter(sv=>{
+    if(_filterDate && String(sv.date||'').slice(0,10)!==_filterDate) return false
+    if(_filterRound && (+sv.round||1)!==_filterRound) return false
+    return true
+  })
+}
+function availableRounds(){
+  const set = new Set(allSurveys.map(sv=>+sv.round||1))
+  return [...set].sort((a,b)=>a-b)
+}
+function renderRoundFilter(){
+  const el = document.getElementById('round-filter-row')
+  if(!el) return
+  const rounds = availableRounds()
+  if(rounds.length<=1){ el.innerHTML=''; return }
+  const btn=(label,val)=>`<button class="rf-btn${_filterRound===val?' active':''}" onclick="setRoundFilter(${val===null?'null':val})">${label}</button>`
+  el.innerHTML = btn('全部次數',null) + rounds.map(n=>btn(`第 ${n} 次`,n)).join('')
+}
+function setRoundFilter(n){
+  _filterRound = n
+  applyFilters()
+  calcAverages()
+  renderPage()
 }
 
 // ════════════════ CALCULATE AVERAGES ════════════════
@@ -602,6 +634,7 @@ function renderPage(){
   const weathers = [...new Set(surveys.map(s=>s.weather).filter(Boolean))].join('/')
   document.getElementById('hdr-sub').textContent =
     `${route.routeFromTo||''}　調查日期：${dateRange}　天氣：${weathers||'—'}　全長：${route.totalLength}m`
+  renderRoundFilter()
 
   // Summary cards
   const totalTrips = surveys.reduce((a,s)=>a+(s.trips?.length||0),0)
@@ -899,7 +932,7 @@ function renderComboRecords(combo){
     return `<div class="sv-record" data-sv-key="${si}-${combo}">
       <div class="sv-rec-header${isEdit?' editing':''}">
         <div>
-          <div class="sv-num">調查 #${si+1}</div>
+          <div class="sv-num">調查 #${si+1} · 第${sv.round||1}次</div>
           <div class="sv-info">👤 ${he(sv.surveyor||'未知')}</div>
         </div>
         <div class="sv-meta">

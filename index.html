@@ -168,6 +168,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .combo-btn{flex:1;padding:11px 6px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:#94a3b8;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s}
 .combo-btn.pk{background:#450a0a;border-color:#ef4444;color:#fca5a5}
 .combo-btn.dr{background:#0c2a4e;border-color:#3b82f6;color:#93c5fd}
+.combo-btn.rd{background:#1c1a05;border-color:#eab308;color:#fde68a}
 .sel-badge{text-align:center;font-size:13px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,.12);padding:6px 12px;border-radius:10px;display:none}
 .progress-chips{display:flex;gap:5px;margin-top:4px}
 .prog-chip{flex:1;padding:9px 4px;border-radius:10px;font-size:11px;font-weight:700;border:1.5px solid #334155;background:#0f172a;color:#475569;cursor:default;font-family:inherit;text-align:center;transition:all .15s;white-space:nowrap}
@@ -520,6 +521,12 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
       <span id="gps-text">等待 GPS 訊號...</span>
     </div>
     <div>
+      <div class="combo-label">今日第幾次監測</div>
+      <div class="combo-row" id="round-row">
+        <button class="combo-btn" id="btn-r1" onclick="pickRound(1)">第 1 次</button>
+        <button class="combo-btn" id="btn-r2" onclick="pickRound(2)">第 2 次</button>
+        <button class="combo-btn" id="btn-r3" onclick="pickRound(3)">第 3 次</button>
+      </div>
       <div class="combo-label">時段</div>
       <div class="combo-row">
         <button class="combo-btn" id="btn-peak"    onclick="selPeak('peak')">🔴 尖峰</button>
@@ -771,7 +778,11 @@ let routePolylines = []   // OSRM latlngs per segment (pre-fetched)
 let qrMode = false
 let qrKey = ''       // raw encoded string from URL — used as localStorage key
 let signinWeather = ''
-let allTrips = {}
+// 每天最多 3 次完整監測（回合）；每個回合各自擁有一組完整的四趟組合(COMBO_KEYS)
+const ROUND_KEYS = [1,2,3]
+let allTripsByRound = {1:{},2:{},3:{}}
+let selRound = 1
+let allTrips = allTripsByRound[selRound]   // 目前選取回合的四趟資料（其餘程式碼皆透過此別名讀寫，不需個別修改）
 let cur = null
 
 // Cloud connection (populated when URL uses ?id=...&gs=...&k=...)
@@ -1071,7 +1082,7 @@ function todayStr(){ return new Date().toLocaleDateString('sv-SE',{timeZone:'Asi
 
 function saveTripsToStorage(){
   const k=storageKey(); if(!k) return
-  try{ localStorage.setItem(k, JSON.stringify({date:todayStr(), trips:allTrips})) }catch(e){}
+  try{ localStorage.setItem(k, JSON.stringify({date:todayStr(), tripsByRound:allTripsByRound})) }catch(e){}
 }
 
 // Returns number of trips restored (skips if a different day — new day = fresh start)
@@ -1080,15 +1091,25 @@ function loadTripsFromStorage(){
   try{
     const raw=localStorage.getItem(k); if(!raw) return 0
     const parsed=JSON.parse(raw)
-    // Support legacy format (plain allTrips object without date field)
     const savedDate = parsed.date
-    const savedTrips = parsed.trips || parsed
     // If saved on a different day, don't restore (new day = fresh start)
     if(savedDate && savedDate !== todayStr()) return 0
     let count=0
-    Object.keys(savedTrips).forEach(tripKey=>{
-      if(!allTrips[tripKey]){ allTrips[tripKey]=savedTrips[tripKey]; count++ }
-    })
+    if(parsed.tripsByRound){
+      ROUND_KEYS.forEach(n=>{
+        const bucket=parsed.tripsByRound[n]||parsed.tripsByRound[String(n)]; if(!bucket) return
+        Object.keys(bucket).forEach(tripKey=>{
+          if(!allTripsByRound[n][tripKey]){ allTripsByRound[n][tripKey]=bucket[tripKey]; count++ }
+        })
+      })
+    }else{
+      // Legacy format (pre-回合 support): plain allTrips object, treat as round 1
+      const savedTrips = parsed.trips || parsed
+      Object.keys(savedTrips).forEach(tripKey=>{
+        if(!allTripsByRound[1][tripKey]){ allTripsByRound[1][tripKey]=savedTrips[tripKey]; count++ }
+      })
+    }
+    allTrips=allTripsByRound[selRound]
     return count
   }catch(e){ return 0 }
 }
@@ -1109,6 +1130,7 @@ function saveToLocalHistory(){
     const history = JSON.parse(localStorage.getItem(histKey)||'[]')
     const entry = {
       date: (config.date||todayStr()).slice(0,10),
+      round: selRound,
       surveyor: config.surveyor || '',
       weather: config.weather || '',
       trips: Object.fromEntries(
@@ -1118,7 +1140,7 @@ function saveToLocalHistory(){
       ),
       uploadedAt: new Date().toISOString()
     }
-    const idx = history.findIndex(h=>h.date?.slice(0,10)===entry.date && h.surveyor===entry.surveyor)
+    const idx = history.findIndex(h=>h.date?.slice(0,10)===entry.date && h.surveyor===entry.surveyor && (h.round||1)===entry.round)
     if(idx>=0) history[idx]=entry; else history.unshift(entry)
     if(history.length>30) history.length=30
     localStorage.setItem(histKey, JSON.stringify(history))
@@ -1133,18 +1155,21 @@ function getLocalHistory(){
 // Returns cached cloud history, or local if cloud not loaded
 function getHistory(){ return _histCache !== null ? _histCache : getLocalHistory() }
 
-// Group raw history entries by date — merge all surveyors' trips into one entry per day
+// Group raw history entries by date+回合 — one row per day per round (rounds kept separate,
+// so a 2nd/3rd round's trips on the same day no longer overwrite/hide the 1st round's data)
 function groupHistoryByDate(hist){
-  const byDate={}
+  const byKey={}
   hist.forEach(h=>{
     const date=(h.date||'').slice(0,10)
-    if(!byDate[date]) byDate[date]={date,surveyors:[],weather:h.weather,trips:{}}
-    const g=byDate[date]
+    const round=h.round||1
+    const key=date+'_'+round
+    if(!byKey[key]) byKey[key]={date,round,surveyors:[],weather:h.weather,trips:{}}
+    const g=byKey[key]
     if(h.surveyor&&!g.surveyors.includes(h.surveyor)) g.surveyors.push(h.surveyor)
-    // Merge trips — first record wins per combo key
+    // Merge trips — first record wins per combo key (within the same round)
     Object.entries(h.trips||{}).forEach(([k,t])=>{ if(!g.trips[k]) g.trips[k]=t })
   })
-  return Object.values(byDate).sort((a,b)=>b.date.localeCompare(a.date))
+  return Object.values(byKey).sort((a,b)=>b.date.localeCompare(a.date) || a.round-b.round)
 }
 
 // Fetch history from cloud and refresh display
@@ -1159,38 +1184,46 @@ async function loadCloudHistory(){
   }catch(e){ console.error('[history] fetch error:', e.message) }
 }
 
-// After cloud history loads, restore today's trips into allTrips so chips turn green
+// After cloud history loads, restore today's trips into allTripsByRound so chips turn green
+// (loops over every entry for today, across all 3 rounds — not just the first match)
 function syncChipsFromCloudHistory(){
   const today=todayStr()
   const hist=getHistory()
-  const entry=hist.find(h=>h.date===today)
-  if(!entry) return
+  const todays=hist.filter(h=>h.date===today)
+  if(!todays.length) return
   let changed=false
-  Object.entries(entry.trips||{}).forEach(([k,t])=>{
-    if(allTrips[k]) return   // don't overwrite data recorded in this session
-    // Preserve ALL fields the cloud returns — segTimes/nodeTimestamps/gpsTrack
-    // are needed for the official form and result map. Fall back to [] only if absent.
-    allTrips[k]={
-      peakType:        k.startsWith('peak')?'peak':'off_peak',
-      direction:       k.endsWith('bound')?'bound':'return',
-      startTime:       t.startTime       || null,
-      endTime:         t.endTime         || null,
-      travelS:         t.travelS         ||0,
-      runS:            t.runS            ||0,
-      totalDelayS:     t.totalDelayS     ||0,
-      intTotalS:       t.intTotalS       ||0,
-      roadTotalS:      t.roadTotalS      ||0,
-      gpsTrack:        t.gpsTrack        ||[],
-      segTimes:        t.segTimes        ||[],
-      nodeTimestamps:  t.nodeTimestamps  ||[],
-      roadDelays:      t.roadDelays      ||{},
-      intDelays:       t.intDelays       ||{},
-      delayLog:        t.delayLog        ||[],
-      _fromCloud: true   // flag: loaded from cloud (not recorded this session)
-    }
-    changed=true
+  todays.forEach(entry=>{
+    const rnd = entry.round||1
+    const bucket = allTripsByRound[rnd]; if(!bucket) return
+    Object.entries(entry.trips||{}).forEach(([k,t])=>{
+      if(bucket[k]) return   // don't overwrite data recorded in this session
+      // Preserve ALL fields the cloud returns — segTimes/nodeTimestamps/gpsTrack
+      // are needed for the official form and result map. Fall back to [] only if absent.
+      bucket[k]={
+        peakType:        k.startsWith('peak')?'peak':'off_peak',
+        direction:       k.endsWith('bound')?'bound':'return',
+        startTime:       t.startTime       || null,
+        endTime:         t.endTime         || null,
+        travelS:         t.travelS         ||0,
+        runS:            t.runS            ||0,
+        totalDelayS:     t.totalDelayS     ||0,
+        intTotalS:       t.intTotalS       ||0,
+        roadTotalS:      t.roadTotalS      ||0,
+        gpsTrack:        t.gpsTrack        ||[],
+        segTimes:        t.segTimes        ||[],
+        nodeTimestamps:  t.nodeTimestamps  ||[],
+        roadDelays:      t.roadDelays      ||{},
+        intDelays:       t.intDelays       ||{},
+        delayLog:        t.delayLog        ||[],
+        _fromCloud: true   // flag: loaded from cloud (not recorded this session)
+      }
+      changed=true
+    })
   })
-  if(changed){ saveTripsToStorage(); updateProgressChips(); checkStart() }
+  if(changed){
+    allTrips=allTripsByRound[selRound]
+    saveTripsToStorage(); updateProgressChips(); checkStart(); renderRoundRow()
+  }
 }
 
 function viewHistoryReport(idx){
@@ -1226,6 +1259,8 @@ function viewHistoryReport(idx){
   allTrips=synth
   config.date=(g.date||'').slice(0,10)
   buildReport()
+  const sub=document.getElementById('report-subtitle')
+  if(sub) sub.textContent += `　第${g.round||1}次`
   showScreen('screen-report')
   // Back button → restore live data and return to signin (where history list lives)
   const backBtn=document.getElementById('report-back-btn')
@@ -1264,7 +1299,7 @@ function renderHistModal(){
     ).join('')
     return `<div style="padding:10px 14px;border-bottom:1px solid #f8fafc;display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div style="min-width:0">
-        <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:5px">${WZH[g.weather]||''} ${g.date} · ${g.surveyors.join('、')}</div>
+        <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:5px">${WZH[g.weather]||''} ${g.date} · 第${g.round||1}次 · ${g.surveyors.join('、')}</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div>
       </div>
       <button onclick="closeHistModal();viewHistoryReport(${i})"
@@ -1278,7 +1313,9 @@ function renderHistModal(){
 function confirmClearStorage(){
   if(!confirm('確定清除本條路線所有已儲存的調查記錄？此動作無法復原。')) return
   clearTripStorage()
-  allTrips={}
+  allTripsByRound={1:{},2:{},3:{}}
+  allTrips=allTripsByRound[selRound]
+  renderRoundRow()
   updateProgressChips()
   checkStart()
   showToast('已清除所有記錄')
@@ -1658,6 +1695,7 @@ function startFromQR(){
   saveSurveyorInfo()   // remember this name+weather for today
   // Restore any trips recorded in earlier sessions for this QR
   const restored=loadTripsFromStorage()
+  autoPickRound()  // default to the first round that isn't fully done yet
   initCompass()   // request compass on user gesture (sign-in button click)
   updateProgressChips()
   showScreen('screen-ready')
@@ -2316,6 +2354,28 @@ function updateNextNodeCard(){
 //  READY SCREEN
 // ════════════════════════════════════
 let selPeakType=null,selDirection=null
+
+// ── 回合（第幾次）選擇 ──
+function roundAllDone(n){ return COMBO_KEYS.every(k=>allTripsByRound[n][k]) }
+function autoPickRound(){
+  const n = ROUND_KEYS.find(n=>!roundAllDone(n))
+  selRound = n || 3
+  allTrips = allTripsByRound[selRound]
+}
+function pickRound(n){
+  selRound=n
+  allTrips=allTripsByRound[selRound]
+  renderRoundRow()
+  updateProgressChips()
+  checkStart()
+}
+function renderRoundRow(){
+  ROUND_KEYS.forEach(n=>{
+    const btn=$('btn-r'+n); if(!btn) return
+    btn.classList.toggle('rd', n===selRound)
+    btn.textContent = roundAllDone(n) ? `第 ${n} 次 ✓` : `第 ${n} 次`
+  })
+}
 function selPeak(t){selPeakType=t;$('btn-peak').classList.toggle('pk',t==='peak');$('btn-offpeak').classList.toggle('pk',t==='off_peak');updateBadge()}
 function selDir(d){selDirection=d;$('btn-bound').classList.toggle('dr',d==='bound');$('btn-return').classList.toggle('dr',d==='return');drawRouteArrows(d);updateBadge()}
 function updateBadge(){
@@ -2329,7 +2389,7 @@ function checkStart(){
   const key=`${selPeakType}_${selDirection}`
   const done=allTrips[key]
   $('btn-start').disabled=!(selPeakType&&selDirection&&gpsOk&&!done)
-  if(done)$('btn-start').textContent='此組合已完成'
+  if(done)$('btn-start').textContent=`此組合已完成（第${selRound}次）`
   else $('btn-start').textContent='▶ 開始調查'
 }
 function updateProgressChips(){
@@ -2340,6 +2400,7 @@ function updateProgressChips(){
     }
     return`<button class="prog-chip" disabled>${label}</button>`
   }).join('')
+  renderRoundRow()
 }
 
 const COMBO_ZH={off_peak_bound:'離峰去程',off_peak_return:'離峰回程',peak_bound:'尖峰去程',peak_return:'尖峰回程'}
@@ -2385,7 +2446,7 @@ function viewComboFromChip(k){
 // ════════════════════════════════════
 function startSurvey(){
   const key=`${selPeakType}_${selDirection}`
-  cur={peakType:selPeakType,direction:selDirection,key,
+  cur={peakType:selPeakType,direction:selDirection,round:selRound,key,
     startTime:null,endTime:null,gpsTrack:[],
     roadDelays:{},intDelays:{}}
   ROAD_DELAYS.forEach(d=>{cur.roadDelays[d.cause]=0})
@@ -2695,9 +2756,10 @@ function endSurvey(){
   // Capture cur.key NOW (synchronously) — cur may be cleared before the timeout fires
   if(cloudRouteId && cloudScriptUrl && cloudApiKey) {
     const _uploadKey = cur.key
+    const _uploadRound = cur.round
     const tdStatus = document.getElementById('td-cloud-status')
     if(tdStatus){ tdStatus.style.display='block'; tdStatus.style.background='#f0f9ff'; tdStatus.style.color='#0369a1'; tdStatus.textContent='⏳ 上傳雲端中...' }
-    setTimeout(()=>submitToCloud(_uploadKey), 800)
+    setTimeout(()=>submitToCloud(_uploadKey, _uploadRound), 800)
   }
   showScreen('screen-tripdone')
 }
@@ -2734,6 +2796,7 @@ function goReport(){
 }
 function goReady(){
   showScreen('screen-ready')
+  renderRoundRow()
   checkStart()
   loadCloudHistory()   // refresh from cloud in background
   autoSelectPeak()     // auto-detect peak/off-peak by current time (skips if user already chose)
@@ -2743,7 +2806,7 @@ function goReady(){
 //  CLOUD SUBMIT
 // ════════════════════════════════════
 let _uploadBusy=false
-async function submitToCloud(tripKey){
+async function submitToCloud(tripKey, round){
   if(!cloudRouteId||!cloudScriptUrl||!cloudApiKey) return
   if(_uploadBusy) return
   _uploadBusy=true
@@ -2759,6 +2822,7 @@ async function submitToCloud(tripKey){
     surveyor: config.surveyor,
     weather:  config.weather,
     date:     config.date,
+    round:    round || selRound || 1,
     trips:    buildTripsPayload(tripKey)
   }
 
