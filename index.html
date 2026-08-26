@@ -170,11 +170,28 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .combo-btn.dr{background:#0c2a4e;border-color:#3b82f6;color:#93c5fd}
 .combo-btn.rd{background:#1c1a05;border-color:#eab308;color:#fde68a}
 .sel-badge{text-align:center;font-size:13px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,.12);padding:6px 12px;border-radius:10px;display:none}
-.combo-grid-4{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px}
-.combo-grid-btn{padding:16px 8px;background:#0f172a;border:2px solid #334155;border-radius:14px;color:#94a3b8;font-size:15px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px;font-family:inherit}
-.combo-grid-btn.sel{background:#0c2a4e;border-color:#3b82f6;color:#93c5fd}
-.combo-grid-btn.done{background:#14532d;border-color:#16a34a;color:#4ade80}
-.combo-grid-btn .cgb-check{font-size:13px}
+.combo-grid-4{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px}
+.combo-grid-btn{position:relative;padding:13px 14px 12px;background:#131c2e;border:1.5px solid #263449;border-radius:16px;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:stretch;gap:7px;font-family:inherit;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.combo-grid-btn:active{transform:scale(.97)}
+.combo-grid-btn.sel{background:#0c2a4e;border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f6,0 4px 14px rgba(59,130,246,.25)}
+.combo-grid-btn.done{background:#122a1c;border-color:#16a34a}
+.cgb-row1{display:flex;align-items:center;gap:6px}
+.cgb-tag{font-size:10px;font-weight:800;padding:3px 7px;border-radius:7px;letter-spacing:.3px;flex-shrink:0}
+.cgb-tag.pk{background:#450a0a;color:#fca5a5}
+.cgb-tag.op{background:#0c2a4e;color:#93c5fd}
+.combo-grid-btn.done .cgb-tag.pk{background:#7f1d1d;color:#fecaca}
+.combo-grid-btn.done .cgb-tag.op{background:#1e3a5f;color:#bfdbfe}
+.cgb-dir{font-size:15px;font-weight:800;color:#e2e8f0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.combo-grid-btn.done .cgb-dir{color:#bbf7d0}
+.cgb-check{width:20px;height:20px;border-radius:50%;background:#16a34a;color:white;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cgb-time{font-size:12px;color:#64748b;font-variant-numeric:tabular-nums;padding-left:1px}
+.combo-grid-btn.sel .cgb-time{color:#93c5fd}
+.combo-grid-btn.done .cgb-time{color:#86efac}
+.round-pill-wrap{display:flex;gap:4px;background:#0b1220;border:1.5px solid #263449;border-radius:14px;padding:4px;flex-wrap:wrap}
+.round-pill{flex:1 1 auto;min-width:56px;padding:9px 6px;border-radius:10px;border:none;background:transparent;color:#64748b;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px}
+.round-pill.rd{background:#1d4ed8;color:white;box-shadow:0 2px 8px rgba(29,78,216,.4)}
+.round-pill.done:not(.rd){color:#4ade80}
+.round-pill .rp-check{font-size:11px}
 .progress-chips{display:flex;gap:5px;margin-top:4px}
 .prog-chip{flex:1;padding:9px 4px;border-radius:10px;font-size:11px;font-weight:700;border:1.5px solid #334155;background:#0f172a;color:#475569;cursor:default;font-family:inherit;text-align:center;transition:all .15s;white-space:nowrap}
 .prog-chip.done{background:#14532d;border-color:#16a34a;color:#4ade80;cursor:pointer}
@@ -528,7 +545,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     </div>
     <div>
       <div class="combo-label">今日第幾次監測</div>
-      <div class="combo-row" id="round-row" style="flex-wrap:wrap;row-gap:8px"><!-- 按鈕由 renderRoundRow() 依 PM 設定的次數動態產生 --></div>
+      <div class="round-pill-wrap" id="round-row"><!-- 按鈕由 renderRoundRow() 依 PM 設定的次數動態產生 --></div>
       <div class="combo-label">選擇監測組合</div>
       <div class="combo-grid-4" id="combo-grid"><!-- 由 renderComboGrid() 動態產生：尖峰去程／尖峰回程／離峰去程／離峰回程 --></div>
     </div>
@@ -2397,12 +2414,14 @@ function renderRoundRow(){
   const row=$('round-row')
   if(row){
     // 依 ROUND_KEYS 動態產生按鈕（PM 可能設定 1~6 次，不固定是3個；超過3個時自動換行）
-    row.innerHTML = ROUND_KEYS.map(n=>`<button class="combo-btn" id="btn-r${n}" style="flex:1 1 auto;min-width:64px" onclick="pickRound(${n})">第 ${n} 次</button>`).join('')
+    row.innerHTML = ROUND_KEYS.map(n=>`<button class="round-pill" id="btn-r${n}" onclick="pickRound(${n})">第 ${n} 次</button>`).join('')
   }
   ROUND_KEYS.forEach(n=>{
     const btn=$('btn-r'+n); if(!btn) return
+    const done = roundAllDone(n)
     btn.classList.toggle('rd', n===selRound)
-    btn.textContent = roundAllDone(n) ? `第 ${n} 次 ✓` : `第 ${n} 次`
+    btn.classList.toggle('done', done)
+    btn.innerHTML = `第 ${n} 次${done?' <span class="rp-check">✓</span>':''}`
   })
 }
 // ── 監測組合選擇（尖峰去程／尖峰回程／離峰去程／離峰回程 合併成單一按鈕）──
@@ -2424,11 +2443,23 @@ function renderComboGrid(){
   const box=$('combo-grid'); if(!box) return
   box.innerHTML = COMBO_KEYS.map(k=>{
     const [pt,dir]=parseComboKey(k)
-    const label=COMBO_ZH[k]||k
+    const isPeak = pt==='peak'
+    const tagTxt = isPeak?'尖峰':'離峰'
+    const tagCls = isPeak?'cgb-tag pk':'cgb-tag op'
+    const dirTxt = dir==='bound'?'去程':'回程'
+    const dirIcon = dir==='bound'?'▶':'◀'
+    const timeTxt = isPeak?(config.peakLabel||''):(config.offPeakLabel||'')
     const done=!!allTrips[k]
     const isSel=!done && selPeakType===pt && selDirection===dir
-    const cls = done?'combo-grid-btn done':(isSel?'combo-grid-btn sel':'combo-grid-btn')
-    return `<button class="${cls}" onclick="onComboGridClick('${k}')">${label}${done?' <span class="cgb-check">✓</span>':''}</button>`
+    const cls = 'combo-grid-btn'+(done?' done':(isSel?' sel':''))
+    return `<button class="${cls}" onclick="onComboGridClick('${k}')">
+      <div class="cgb-row1">
+        <span class="${tagCls}">${tagTxt}</span>
+        <span class="cgb-dir">${dirIcon} ${dirTxt}</span>
+        ${done?'<span class="cgb-check">✓</span>':''}
+      </div>
+      <div class="cgb-time">${timeTxt}</div>
+    </button>`
   }).join('')
   renderRoundRow()
 }
