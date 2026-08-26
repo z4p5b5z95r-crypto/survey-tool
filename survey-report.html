@@ -541,10 +541,21 @@ function showError(msg){
   document.getElementById('ld-sub').textContent = msg
 }
 
-async function cloudGet(gsUrl, sessionToken, params){
+// Apps Script 剛部署新版本時，第一次呼叫常會有「冷啟動」延遲（可能超過20秒）。
+// 這裡把逾時拉長到45秒，並在逾時/網路錯誤時自動重試一次，避免一開網頁就顯示載入失敗。
+async function cloudGet(gsUrl, sessionToken, params, _retried){
   const q = new URLSearchParams({...params, sessionToken})
-  const res = await fetch(`${gsUrl}?${q}`, {signal: AbortSignal.timeout(20000)})
-  return res.json()
+  try{
+    const res = await fetch(`${gsUrl}?${q}`, {signal: AbortSignal.timeout(45000)})
+    return res.json()
+  }catch(e){
+    if(!_retried){
+      try{ ld('⏳ 連線逾時，重試中...（伺服器剛部署，首次載入較慢）') }catch(_){}
+      await new Promise(r=>setTimeout(r,1500))
+      return cloudGet(gsUrl, sessionToken, params, true)
+    }
+    throw e
+  }
 }
 
 // ════════════════ FILTERS (date / 第幾次) ════════════════
