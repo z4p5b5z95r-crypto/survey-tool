@@ -353,6 +353,7 @@ td:first-child{text-align:left;font-weight:500}
     <div class="dl-section">
       <h3>下載報告</h3>
       <p style="font-size:13px;color:#64748b;margin:8px 0 20px">依據「主次要幹道行駛時間及延滯調查表」格式產出報告</p>
+      <div id="dl-scope-note" style="display:inline-block;font-size:12px;font-weight:700;color:#92400e;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:6px 12px;margin-bottom:14px"></div><br>
       <button class="dl-btn green" onclick="downloadSGS()">📥 下載 Excel (.xlsx)</button>
       <button class="dl-btn orange" onclick="downloadSGSPdf()">🖨️ 下載 SGS 公版報告 PDF</button>
       <div class="dl-note" style="margin-top:20px">
@@ -574,9 +575,18 @@ function renderRoundFilter(){
   const el = document.getElementById('round-filter-row')
   if(!el) return
   const rounds = availableRounds()
-  if(rounds.length<=1){ el.innerHTML=''; return }
+  if(rounds.length<=1){ el.innerHTML=''; const note=document.getElementById('dl-scope-note'); if(note) note.textContent=''; return }
   const btn=(label,val)=>`<button class="rf-btn${_filterRound===val?' active':''}" onclick="setRoundFilter(${val===null?'null':val})">${label}</button>`
-  el.innerHTML = btn('全部次數',null) + rounds.map(n=>btn(`第 ${n} 次`,n)).join('')
+  // 第1次／第2次／第3次 排在前面，「全部平均」放最後
+  el.innerHTML = rounds.map(n=>btn(`第 ${n} 次`,n)).join('') + btn('全部平均',null)
+  renderDlScopeNote(rounds)
+}
+function renderDlScopeNote(rounds){
+  const note = document.getElementById('dl-scope-note')
+  if(!note) return
+  note.textContent = _filterRound
+    ? `📥 下載範圍：只包含「第${_filterRound}次」的資料`
+    : `📥 下載範圍：全部次數平均（目前共 ${(rounds||availableRounds()).length} 次）`
 }
 function setRoundFilter(n){
   _filterRound = n
