@@ -1220,7 +1220,7 @@ async function loadCloudHistory(){
     const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey})
     const res=await fetch(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(10000)})
     const json=await res.json()
-    if(json.ok){ _histCache=json.data; renderHistModal(); syncChipsFromCloudHistory() }
+    if(json.ok){ _histCache=json.data; renderHistModal(); syncChipsFromCloudHistory(); renderDateSelectOptions() }
     else{ console.error('[history] GAS error:', json.error) }
   }catch(e){ console.error('[history] fetch error:', e.message) }
 }
@@ -1631,17 +1631,25 @@ function loadSavedSurveyor(){
 }
 
 function buildDateSelect(){
+  // 進入登入頁時重置成今天（不要沿用上一個 session 選的日期）
+  config.date=todayStr()
+  renderDateSelectOptions()
+}
+
+// 重畫日期下拉選單的選項清單。用 getHistory()（雲端優先、本地備援）而不是只看
+// getLocalHistory()，這樣別台裝置上傳過的補調查日期，這台裝置也看得到。
+// 雲端歷史是非同步載入的，所以 loadCloudHistory() 拿到資料後也會呼叫這個函式重畫一次，
+// 但不會動到 config.date／目前選取的日期（除非那個日期已經不在新清單裡）。
+function renderDateSelectOptions(){
   const sel=$('si-date-sel'); if(!sel) return
   const today=todayStr()
-  const hist=getLocalHistory()
+  const hist=getHistory()
   // Normalize all history dates to YYYY-MM-DD
   const pastDates=[...new Set(
     hist.map(h=>h.date?h.date.slice(0,10):null)
        .filter(d=>d&&d!==today)
   )].slice(0,5)
-  // Always reset to today — never carry over yesterday's date into a new session
-  config.date=today
-  const curDate=today
+  const keep = config.date || sel.value || today
   const allKnown=[today,...pastDates]
   const WZH={sunny:'☀️',cloudy:'☁️',rainy:'🌧️'}
   sel.innerHTML=''
@@ -1669,7 +1677,9 @@ function buildDateSelect(){
   optAdd.value='custom'
   optAdd.textContent='＋ 自訂其他日期...'
   sel.appendChild(optAdd)
-  sel.value=config.date
+  // 保留目前選的日期（如果還在新清單裡），否則才退回今天
+  sel.value = allKnown.includes(keep) ? keep : today
+  config.date = sel.value
   // Show/hide custom input
   const customInp=$('si-date-custom')
   if(customInp) customInp.style.display='none'
@@ -1685,7 +1695,7 @@ function onDateSelChange(val){
   if(inp) inp.style.display='none'
   config.date=val
   // Auto-fill name+weather from history for that date
-  const hist=getLocalHistory()
+  const hist=getHistory()
   const entry=hist.find(h=>h.date&&h.date.slice(0,10)===val)
   if(entry){
     if(entry.surveyor) $('si-name').value=entry.surveyor
