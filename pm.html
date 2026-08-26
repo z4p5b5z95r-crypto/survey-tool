@@ -363,6 +363,15 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .sv-btn{padding:5px 10px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;border:1.5px solid;white-space:nowrap}
 .sv-btn-view{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
 .sv-btn-del{background:#fee2e2;color:#dc2626;border-color:#fecaca}
+.sv-del-menu{background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:10px;margin:-3px 0 7px;display:flex;flex-direction:column;gap:6px}
+.sv-del-menu-hd{font-size:11px;font-weight:700;color:#64748b;padding:0 2px 2px}
+.sv-del-menu-item{text-align:left;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid;background:white;font-family:inherit}
+.sv-del-menu-item.all{background:#fee2e2;color:#dc2626;border-color:#fecaca;font-weight:700}
+.sv-del-menu-item.one{background:white;color:#374151;border-color:#e2e8f0}
+.sv-del-menu-item.one:hover{background:#fef2f2;border-color:#fecaca;color:#dc2626}
+.sv-del-menu-item.cancel{background:transparent;color:#94a3b8;border-color:#e2e8f0;text-align:center}
+.sv-del-menu-sep{height:1px;background:#e2e8f0;margin:2px 0}
+.sv-del-menu-label{font-size:11px;color:#94a3b8;padding:0 2px}
 @media(max-width:768px){.layout{flex-direction:column}.sidebar{width:100%;max-height:45vh}.map-area{flex:1}}
 /* Node markers always show grab cursor, overriding map crosshair/default */
 .leaflet-marker-pane .leaflet-marker-icon{cursor:grab!important}
@@ -2526,11 +2535,40 @@ async function refreshSurveyModal() {
           <div class="sv-row-meta"><span style="background:#e2e8f0;color:#64748b;font-size:11px;padding:1px 7px;border-radius:10px">${items.length} 筆調查</span></div>
         </div>
         <button class="sv-btn sv-btn-view" onclick="viewSurveyFromModal(${firstIdx})">📊 查看</button>
-        <button class="sv-btn sv-btn-del" onclick="deleteSurveyDate(${JSON.stringify(allIds)})">🗑</button>
+        <button class="sv-btn sv-btn-del" onclick="toggleDeleteMenu('${date}', this)">🗑</button>
       </div>`
     }).join('')
   }catch(e){body.innerHTML=`<div style="padding:16px;color:#dc2626">載入失敗：${e.message}</div>`}
   finally{if(btn){btn.textContent='↺ 重新整理';btn.disabled=false}}
+}
+// 點垃圾桶：在該日期列下方展開一個選單，讓使用者選「全部刪除」或「刪除單筆」
+const SV_COMBO_ZH={off_peak_bound:'離峰去程',off_peak_return:'離峰回程',peak_bound:'尖峰去程',peak_return:'尖峰回程'}
+function toggleDeleteMenu(date, btnEl){
+  const existing=document.getElementById('sv-del-menu')
+  const wasSameDate = existing && existing.dataset.date===date
+  if(existing) existing.remove()
+  if(wasSameDate) return   // 再按一次同一個垃圾桶＝收合
+  const items=_svModalSurveys.filter(sv=>(sv.date?String(sv.date).slice(0,10):'')===date)
+  const allIds=items.map(sv=>sv.id)
+  const menu=document.createElement('div')
+  menu.id='sv-del-menu'
+  menu.className='sv-del-menu'
+  menu.dataset.date=date
+  menu.innerHTML=`
+    <div class="sv-del-menu-hd">${date} · 共 ${items.length} 筆，選擇要刪除的方式</div>
+    <button class="sv-del-menu-item all" onclick="deleteSurveyDate(${JSON.stringify(allIds).replace(/"/g,'&quot;')})">🗑 全部刪除（${items.length} 筆）</button>
+    <div class="sv-del-menu-sep"></div>
+    <div class="sv-del-menu-label">或只刪除單筆調查結果：</div>
+    ${items.map(sv=>{
+      const t=sv.trips&&sv.trips[0]
+      const key=t?`${t.peakType}_${t.direction}`:''
+      const label=`第${sv.round||1}次 · ${SV_COMBO_ZH[key]||'—'}${sv.surveyor?'　'+sv.surveyor:''}`
+      return `<button class="sv-del-menu-item one" onclick="deleteSurveyRecord('${sv.id}','${label.replace(/'/g,"\\'")}')">🗑 ${label}</button>`
+    }).join('')}
+    <button class="sv-del-menu-item cancel" onclick="document.getElementById('sv-del-menu')?.remove()">取消</button>
+  `
+  const row=btnEl.closest('.sv-row')
+  row.parentNode.insertBefore(menu,row.nextSibling)
 }
 window.deleteSurveyDate=async function(ids){
   if(!confirm(`刪除這天共 ${ids.length} 筆監測記錄？\n\n可在 3 天內於垃圾桶還原。`))return
@@ -2549,8 +2587,8 @@ function viewSurveyFromModal(idx) {
   setTimeout(() => localStorage.removeItem('sr_tok_' + tok), 30000)
   window.open(`survey-report.html?id=${encodeURIComponent(_svModalCloudId)}&tok=${encodeURIComponent(tok)}&date=${encodeURIComponent(date)}`,'_blank')
 }
-async function deleteSurveyRecord(surveyId) {
-  if(!confirm('刪除此監測記錄？\n\n可在 3 天內於垃圾桶還原。'))return
+async function deleteSurveyRecord(surveyId, label) {
+  if(!confirm(`刪除「${label||'此筆'}」這筆監測記錄？\n\n可在 3 天內於垃圾桶還原。`))return
   try{
     await cloudPost({action:'deleteSurvey',surveyId,deletedBy:getCurrentUser()||'pm'})
     toast('🗑 已移至垃圾桶');await refreshSurveyModal()
