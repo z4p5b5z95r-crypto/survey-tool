@@ -631,7 +631,8 @@ function calcAverages(){
       const validR = tripsList.filter(t=>t.segTimes?.[i]?.runS)
       avg.segTimes.push({
         travelS: validT.length ? Math.round(validT.reduce((a,t)=>a+t.segTimes[i].travelS,0)/validT.length) : null,
-        runS:    validR.length ? Math.round(validR.reduce((a,t)=>a+t.segTimes[i].runS,0)/validR.length) : null
+        runS:    validR.length ? Math.round(validR.reduce((a,t)=>a+t.segTimes[i].runS,0)/validR.length) : null,
+        n: validT.length   // 這個路段實際有幾筆(幾回合)資料被平均進去——用來標示樣本數，方便發現「路段被改過、某回合缺資料」的狀況
       })
     }
     // Average delay breakdown
@@ -701,18 +702,29 @@ function renderTravelTable(){
     <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
   </tr>`
 
+  const combos=[OB,OR,PB,PR]
   let totTvl=[0,0,0,0], totRun=[0,0,0,0], totLen=0
   segs.forEach((seg)=>{
     const idxs=seg._origIdx||[]
-    const tv=[OB,OR,PB,PR].map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)||undefined)
-    const rv=[OB,OR,PB,PR].map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)||undefined)
+    const tv=combos.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)||undefined)
+    const rv=combos.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)||undefined)
+    // 這個(合併後)路段實際被幾筆資料平均進去——用最少的那個原始路段為準
+    const tn=combos.map(t=>idxs.length?Math.min(...idxs.map(j=>t?.segTimes?.[j]?.n??0)):0)
     tv.forEach((v,j)=>{ if(v) totTvl[j]+=v })
     rv.forEach((v,j)=>{ if(v) totRun[j]+=v })
     totLen+=seg.length||0
+    // 若這個路段的樣本數少於該組合的總調查次數，代表某些回合在這個路段沒有資料
+    // （常見於：路線的節點/路段在不同回合之間被調整過）——用底線提示可以滑鼠懸停查看
+    const cellHtml = (v,ci)=>{
+      const t=combos[ci], n=tn[ci]
+      const mismatch = t && n>0 && t.count && n<t.count
+      const title = t ? ` title="${n} 筆資料平均${mismatch?`（總共有 ${t.count} 筆資料，但這個路段只有 ${n} 筆——可能是路段/節點在某些回合之間被調整過，導致無法對齊）`:''}"` : ''
+      return `<td${title}${mismatch?' style="text-decoration:underline dotted #c2410c;text-underline-offset:3px"':''}>${fmt(v)}</td>`
+    }
     html += `<tr>
       <td>${he(seg.name)}</td><td>${seg.lanes||'—'}</td><td>${seg.width||'—'}</td><td>${seg.length||'—'}</td>
-      ${tv.map(v=>`<td>${fmt(v)}</td>`).join('')}
-      ${rv.map(v=>`<td>${fmt(v)}</td>`).join('')}
+      ${tv.map(cellHtml).join('')}
+      ${rv.map(cellHtml).join('')}
     </tr>`
   })
   html += `<tr class="total-row">
