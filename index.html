@@ -175,6 +175,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .combo-grid-btn:active{transform:scale(.97)}
 .combo-grid-btn.sel{background:#0c2a4e;border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f6,0 4px 14px rgba(59,130,246,.25)}
 .combo-grid-btn.done{background:#122a1c;border-color:#16a34a}
+.combo-grid-btn.done.sel{background:#122a1c;border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f6,0 4px 14px rgba(59,130,246,.25)}
 .cgb-row1{display:flex;align-items:center;justify-content:center;gap:6px}
 .cgb-tag{font-size:15px;font-weight:800;padding:2px 8px;border-radius:7px;letter-spacing:.3px;flex-shrink:0}
 .cgb-tag.pk{background:#450a0a;color:#fca5a5}
@@ -198,6 +199,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .prog-chip.done:active{opacity:.8}
 .btn-start{width:100%;padding:16px;background:#16a34a;color:white;border:none;border-radius:16px;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(22,163,74,.3);margin-top:auto;flex-shrink:0}
 .btn-start:disabled{background:#374151;box-shadow:none;cursor:default}
+.btn-start.redo{background:#ea580c;box-shadow:0 4px 16px rgba(234,88,12,.35)}
 
 /* ══ Survey ══ */
 #screen-survey{position:relative;overflow:hidden}
@@ -549,7 +551,19 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
       <div class="combo-label">選擇監測組合</div>
       <div class="combo-grid-4" id="combo-grid"><!-- 由 renderComboGrid() 動態產生：尖峰去程／尖峰回程／離峰去程／離峰回程 --></div>
     </div>
-    <button class="btn-start" id="btn-start" disabled onclick="startSurvey()">▶ 開始調查</button>
+    <button class="btn-start" id="btn-start" disabled onclick="onStartBtnClick()">▶ 開始調查</button>
+  </div>
+</div>
+
+<!-- ── 重新調查確認彈窗 ── -->
+<div id="redo-confirm-modal" style="display:none;position:fixed;inset:0;z-index:5000;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.6)">
+  <div style="background:#1e293b;border-radius:18px;width:100%;max-width:340px;padding:22px 20px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
+    <div style="font-size:16px;font-weight:800;color:white;text-align:center;margin-bottom:8px">確定要重新調查？</div>
+    <div style="font-size:13px;color:#94a3b8;text-align:center;line-height:1.6;margin-bottom:18px">重新調查將覆蓋前一次調查資料</div>
+    <div style="display:flex;gap:10px">
+      <button onclick="closeRedoConfirm()" style="flex:1;padding:12px;border-radius:12px;border:1.5px solid #334155;background:transparent;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">返回</button>
+      <button onclick="doConfirmRedo()" style="flex:1;padding:12px;border-radius:12px;border:none;background:#ea580c;color:white;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">確定</button>
+    </div>
   </div>
 </div>
 
@@ -2425,17 +2439,18 @@ function renderRoundRow(){
   })
 }
 // ── 監測組合選擇（尖峰去程／尖峰回程／離峰去程／離峰回程 合併成單一按鈕）──
-// 未完成：點一下＝選取該組合，準備「開始調查」
-// 已完成（綠色打勾）：點一下＝彈出「查看調查結果／重新調查」動作選單
+// 點一下＝選取該組合（不論是否已完成，都只會有這顆按鈕顯示藍框選取）
+// 已完成的組合：下方「開始調查」按鈕會變橘色「重新調查」，按下後才跳確認彈窗
 function selPeak(t){ selPeakType=t; renderComboGrid(); checkStart() }
 function selDir(d){ selDirection=d; drawRouteArrows(d); renderComboGrid(); checkStart() }
 function checkStart(){
   const gpsOk=$('gps-dot').classList.contains('good')||$('gps-dot').classList.contains('poor')
   const key=`${selPeakType}_${selDirection}`
   const done=allTrips[key]
-  $('btn-start').disabled=!(selPeakType&&selDirection&&gpsOk&&!done)
-  if(done)$('btn-start').textContent=`此組合已完成（第${selRound}次）`
-  else $('btn-start').textContent='▶ 開始調查'
+  const btn=$('btn-start')
+  btn.disabled=!(selPeakType&&selDirection&&gpsOk)
+  btn.classList.toggle('redo', !!done)
+  btn.textContent = done ? '🔄 重新調查' : '▶ 開始調查'
 }
 // 保留舊函式名稱 updateProgressChips，內部改為畫新的合併按鈕格（呼叫端很多處不用逐一修改）
 function updateProgressChips(){ renderComboGrid() }
@@ -2450,8 +2465,9 @@ function renderComboGrid(){
     const dirIcon = dir==='bound'?'▶':'◀'
     const timeTxt = isPeak?(config.peakLabel||''):(config.offPeakLabel||'')
     const done=!!allTrips[k]
-    const isSel=!done && selPeakType===pt && selDirection===dir
-    const cls = 'combo-grid-btn'+(done?' done':(isSel?' sel':''))
+    // 選取狀態只看目前選了哪個組合，跟是否完成無關——同一時間只會有這一顆按鈕出現藍框
+    const isSel = selPeakType===pt && selDirection===dir
+    const cls = 'combo-grid-btn'+(done?' done':'')+(isSel?' sel':'')
     return `<button class="${cls}" onclick="onComboGridClick('${k}')">
       <div class="cgb-row1">
         <span class="${tagCls}">${tagTxt}</span>
@@ -2464,8 +2480,6 @@ function renderComboGrid(){
   renderRoundRow()
 }
 function onComboGridClick(k){
-  if(allTrips[k]){ confirmResetCombo(k); return }
-  document.getElementById('chip-action-sheet')?.remove()
   const [pt,dir]=parseComboKey(k)
   selPeakType=pt; selDirection=dir
   drawRouteArrows(dir)
@@ -2475,44 +2489,32 @@ function onComboGridClick(k){
 
 const COMBO_ZH={off_peak_bound:'離峰去程',off_peak_return:'離峰回程',peak_bound:'尖峰去程',peak_return:'尖峰回程'}
 
-function confirmResetCombo(k){
-  // Toggle: second click on same combo button closes the sheet
-  const existing=document.getElementById('chip-action-sheet')
-  if(existing){const ek=existing.dataset.key; existing.remove(); if(ek===k) return}
-  const label=COMBO_ZH[k]||k
-  const sheet=document.createElement('div')
-  sheet.id='chip-action-sheet'
-  sheet.dataset.key=k
-  sheet.innerHTML=`
-    <div style="font-size:11px;color:#64748b;font-weight:700;text-align:center;padding:2px 0 6px">${label}</div>
-    <button class="cas-btn" style="background:#1e3a5f;border:1px solid #2563eb;color:#93c5fd"
-      onclick="viewComboFromChip('${k}')">📊 查看此次調查結果</button>
-    <button class="cas-btn" style="background:#1c0a0a;border:1px solid #ef4444;color:#fca5a5"
-      onclick="doResetCombo('${k}')">🔄 重新調查此組合</button>
-    <button class="cas-btn" style="background:transparent;border:1px solid #334155;color:#64748b"
-      onclick="document.getElementById('chip-action-sheet')?.remove()">取消</button>`
-  const grid=$('combo-grid')
-  grid.parentNode.insertBefore(sheet,grid.nextSibling)
+// ── 開始調查按鈕（未完成＝直接開始／已完成＝先跳確認彈窗才能覆蓋）──
+let _redoKey=null
+function onStartBtnClick(){
+  const key=`${selPeakType}_${selDirection}`
+  if(allTrips[key]){ openRedoConfirm(key); return }
+  startSurvey()
 }
-
-function doResetCombo(k){
-  document.getElementById('chip-action-sheet')?.remove()
-  delete allTrips[k]
+function openRedoConfirm(key){
+  _redoKey=key
+  const m=$('redo-confirm-modal')
+  if(m) m.style.display='flex'
+}
+function closeRedoConfirm(){
+  _redoKey=null
+  const m=$('redo-confirm-modal')
+  if(m) m.style.display='none'
+}
+function doConfirmRedo(){
+  const key=_redoKey
+  closeRedoConfirm()
+  if(!key) return
+  delete allTrips[key]
   saveTripsToStorage()
-  // 清除後直接選取該組合，方便馬上按「開始調查」重測
-  const [pt,dir]=parseComboKey(k)
-  selPeakType=pt; selDirection=dir
-  drawRouteArrows(dir)
   updateProgressChips()
   checkStart()
-  showToast(`「${COMBO_ZH[k]||k}」已清除，可重新調查`)
-}
-
-function viewComboFromChip(k){
-  document.getElementById('chip-action-sheet')?.remove()
-  buildReport()
-  showScreen('screen-report')
-  setTimeout(()=>showComboTab(k),150)
+  startSurvey()
 }
 
 // ════════════════════════════════════
