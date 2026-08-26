@@ -689,8 +689,8 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     </div>
     <!-- Cloud upload status — visible only in cloud mode -->
     <div id="td-cloud-status" style="display:none;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:600;text-align:center;margin-bottom:4px">⏳ 上傳中...</div>
-    <button class="btn-blue" id="btn-next-combo" onclick="goNextCombo()">繼續下一個組合 →</button>
-    <button class="btn-purple" onclick="goReport()">📊 產出調查報告</button>
+    <button class="btn-blue" id="btn-next-combo" onclick="goNextCombo()">繼續調查 →</button>
+    <button class="btn-purple" onclick="goReport()">📊 查看調查報告</button>
     <button style="width:100%;padding:13px;background:#1e293b;border:1.5px solid #334155;border-radius:14px;font-size:13px;font-weight:600;color:#94a3b8;cursor:pointer" onclick="confirmClearStorage()">🗑 清除所有調查記錄（重新開始）</button>
   </div>
 </div>
@@ -1121,18 +1121,20 @@ function todayStr(){ return new Date().toLocaleDateString('sv-SE',{timeZone:'Asi
 
 function saveTripsToStorage(){
   const k=storageKey(); if(!k) return
-  try{ localStorage.setItem(k, JSON.stringify({date:todayStr(), tripsByRound:allTripsByRound})) }catch(e){}
+  // 存的是「目前選擇的調查日期」（不是系統今天），這樣切換到補調查某一天時，本地暫存才對得起來
+  try{ localStorage.setItem(k, JSON.stringify({date:(config.date||todayStr()).slice(0,10), tripsByRound:allTripsByRound})) }catch(e){}
 }
 
-// Returns number of trips restored (skips if a different day — new day = fresh start)
+// Returns number of trips restored (skips if a different working date — 不同的調查日期 = 重新開始)
 function loadTripsFromStorage(){
   const k=storageKey(); if(!k) return 0
   try{
     const raw=localStorage.getItem(k); if(!raw) return 0
     const parsed=JSON.parse(raw)
     const savedDate = parsed.date
-    // If saved on a different day, don't restore (new day = fresh start)
-    if(savedDate && savedDate !== todayStr()) return 0
+    const workDate = (config.date||todayStr()).slice(0,10)
+    // 本地暫存跟目前選擇的調查日期不同，就不還原（換一天調查＝重新開始，避免跟別天的資料混在一起）
+    if(savedDate && savedDate.slice(0,10) !== workDate) return 0
     let count=0
     if(parsed.tripsByRound){
       ROUND_KEYS.forEach(n=>{
@@ -1223,12 +1225,13 @@ async function loadCloudHistory(){
   }catch(e){ console.error('[history] fetch error:', e.message) }
 }
 
-// After cloud history loads, restore today's trips into allTripsByRound so chips turn green
-// (loops over every entry for today, across all 3 rounds — not just the first match)
+// After cloud history loads，把「目前選擇的調查日期」（不一定是今天，PM/調查員可切換到補調查某一天）
+// 的雲端紀錄還原進 allTripsByRound，讓對應的組合按鈕變綠色——這樣切到昨天也能看到哪些做過、哪些還沒
+// (loops over every entry for that date, across all rounds — not just the first match)
 function syncChipsFromCloudHistory(){
-  const today=todayStr()
+  const workDate=(config.date||todayStr()).slice(0,10)
   const hist=getHistory()
-  const todays=hist.filter(h=>h.date===today)
+  const todays=hist.filter(h=>(h.date||'').slice(0,10)===workDate)
   if(!todays.length) return
   let changed=false
   todays.forEach(entry=>{
@@ -1733,12 +1736,22 @@ function checkSigninReady(){
 }
 $('si-name').addEventListener('input',checkSigninReady)
 
+let _lastLoadedWorkDate=null
 function startFromQR(){
   config.surveyor=$('si-name').value.trim()
   config.weather=signinWeather
   qrMode=true
   saveSurveyorInfo()   // remember this name+weather for today
-  // Restore any trips recorded in earlier sessions for this QR
+  // 如果調查日期跟上一次載入的不一樣（例如：先進今天，返回後又切成補調查昨天），
+  // 記憶體中的 allTripsByRound 要先清空，不然舊日期的完成狀態會混進新日期
+  const workDate=(config.date||todayStr()).slice(0,10)
+  if(_lastLoadedWorkDate && _lastLoadedWorkDate!==workDate){
+    allTripsByRound={}
+    ROUND_KEYS.forEach(r=>{ allTripsByRound[r]={} })
+    allTrips=allTripsByRound[selRound]
+  }
+  _lastLoadedWorkDate=workDate
+  // Restore any trips recorded in earlier sessions for this QR（同一個調查日期才會還原）
   const restored=loadTripsFromStorage()
   autoPickRound()  // default to the first round that isn't fully done yet
   initCompass()   // request compass on user gesture (sign-in button click)
@@ -1746,8 +1759,24 @@ function startFromQR(){
   showScreen('screen-ready')
   $('ready-title').textContent='🚗 '+config.routeName
   requestAnimationFrame(()=>initMaps())
-  $('ready-route-info').textContent=config.routeFromTo
-  syncChipsFromCloudHistory()   // restore today's cloud trips into allTrips if already loaded
+  {
+    // 如果不是「今天」，在路線資訊下面顯示目前補調查/重測的日期，避免跟今天搞混
+    const wd=(config.date||todayStr()).slice(0,10)
+    const isToday=wd===todayStr()
+    const infoEl=$('ready-route-info')
+    if(isToday){
+      infoEl.textContent=config.routeFromTo
+    }else{
+      infoEl.textContent=''
+      const line1=document.createElement('div')
+      line1.textContent=config.routeFromTo
+      const line2=document.createElement('div')
+      line2.style.cssText='color:#fbbf24;font-weight:700;margin-top:2px'
+      line2.textContent=`📅 補調查日期：${wd}`
+      infoEl.appendChild(line1); infoEl.appendChild(line2)
+    }
+  }
+  syncChipsFromCloudHistory()   // 把選定調查日期的雲端紀錄還原進 allTrips（若雲端資料已載入）
   autoSelectPeak()   // auto-detect by current time on first entry
   if(restored>0) showToast(`📂 已恢復 ${restored} 筆旅次記錄`)
 }
