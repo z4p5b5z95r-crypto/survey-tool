@@ -1023,12 +1023,24 @@ function applyConfig(cfg){
 // ════════════════════════════════════
 //  CLOUD FETCH HELPERS
 // ════════════════════════════════════
-async function cloudFetchRoute(id, gsUrl, apiKey){
+// Apps Script 剛部署新版本時，第一次呼叫常有「冷啟動」延遲（可能超過15秒）。
+// 逾時拉長到45秒，並在逾時/網路錯誤時自動重試一次，避免現場人員一開頁就看到「任務下載失敗」。
+async function cloudFetchRoute(id, gsUrl, apiKey, _retried){
   const p=new URLSearchParams({action:'getRoute',id,key:apiKey,t:Date.now()})
-  const res=await fetch(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(15000),cache:'no-store'})
-  const json=await res.json()
-  if(!json.ok) throw new Error(json.error||'cloud error')
-  return json.data
+  try{
+    const res=await fetch(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(45000),cache:'no-store'})
+    const json=await res.json()
+    if(!json.ok) throw new Error(json.error||'cloud error')
+    return json.data
+  }catch(e){
+    if(!_retried){
+      const sub=document.getElementById('loading-sub')
+      if(sub) sub.textContent='連線逾時，重試中...（伺服器剛部署，首次載入較慢）'
+      await new Promise(r=>setTimeout(r,1500))
+      return cloudFetchRoute(id, gsUrl, apiKey, true)
+    }
+    throw e
+  }
 }
 
 async function cloudPostSurvey(gsUrl, apiKey, body){
