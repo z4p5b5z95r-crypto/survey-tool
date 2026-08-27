@@ -2464,8 +2464,8 @@ function updateNavBanner(lat,lng,nextNode,dist){
   if(arrow) arrow.style.transform=`rotate(${turn.rotate}deg)`
   const distText = dist>=1000 ? (dist/1000).toFixed(1)+' 公里' : Math.round(dist/10)*10+' 公尺'
   $('nav-banner-dist').textContent = dist<NAV_NEAR_M ? '即將' : distText+'後'
-  $('nav-banner-turn').textContent = `${turn.label} · ${nextNode.name||''}`
-  // 語音提示：遠距離提醒一次、近距離再提醒一次，換下個節點會重置
+  $('nav-banner-turn').textContent = nextNode.name ? `${turn.label}進入 ${nextNode.name}` : turn.label
+  // 語音提示：遠距離提醒一次、近距離再提醒一次，換下個節點會重置（節點紀錄是背景自動進行，語音不用特別報路口名稱）
   if(dist<=NAV_NEAR_M && _navAnnouncedTier<2){
     _navAnnouncedTier=2
     speakNav(turn.label)
