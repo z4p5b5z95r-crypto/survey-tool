@@ -1819,12 +1819,20 @@ async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle
       // 用存好的路徑，不重跑 OSRM
       result={latlngs:savedLatlngs,distance:segData[idx-1].length||0,source:segData[idx-1]._source||'saved'}
     }else{
-      // fallback：用 OSRM，但不把結果存回 _latlngs（等使用者手動調整後再存）
+      // 新插入的節點（含假節點）在這裡第一次算出路徑；
+      // 之前這裡只把結果畫在地圖上、不存回 segData[idx-1]._latlngs，
+      // 是靠 buildConfig() 存檔時再從 segPolylines 圖層現抓一次座標當備援。
+      // 但只要儲存前這段路線又被其他流程重繪過（例如再插入別的節點、rebuildAllNodes 整批重建過），
+      // 舊的 segPolylines 圖層物件就會被換掉，備援撈到的可能是別段或空值，
+      // 最後存到雲端的 latlngs 就是空的——這正是新增假節點後路線跑掉、卻怎麼看都像「沒修」的源頭。
+      // 現在改成算完就直接存進 segData，不再依賴那個容易被取代的地圖圖層備援。
       result=await fetchRoute(prev.lat,prev.lng,lat,lng,preWps,preMode)
     }
     document.getElementById('route-loading').style.display='none'
     segPolylines.push(L.polyline(result.latlngs,{color:'#FF5C00',weight:4,opacity:.85}).addTo(map))
     if(!segData[idx-1])segData[idx-1]={name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]}
+    segData[idx-1]._latlngs=result.latlngs
+    segData[idx-1]._latlngsStr=JSON.stringify(result.latlngs)
     if(segData[idx-1]._auto!==false){segData[idx-1].length=result.distance;segData[idx-1]._source=result.source}
     if(result.source==='straight')toast('⚠️ 使用直線距離（OSRM 無回應）')
     updateTotalLength()
