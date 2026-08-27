@@ -1730,7 +1730,7 @@ function downloadSGSPdf(){
     return m[(w||'').toLowerCase()] || w
   }
 
-  const off = route.offPeakName||'離峰', pk = route.peakName||'尖峰'
+  const off = route.offPeakLabel||'14:00~16:00', pk = route.peakLabel||'17:00~19:00'
   const rawSegs = route.segments||[], TL = route.totalLength||0
   const nodes = route.nodes||[]
   // Build ghost node index set.
