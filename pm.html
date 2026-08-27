@@ -162,6 +162,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .proj-group{background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;margin-bottom:12px;overflow:hidden}
 .proj-group-hd{display:flex;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;user-select:none}
 .proj-group-name{font-size:14.5px;font-weight:800;color:#0f172a;flex:1;line-height:1.3}
+.proj-group-rename{flex-shrink:0;background:none;border:none;font-size:12px;padding:2px 4px;cursor:pointer;opacity:.55}
+.proj-group-rename:hover{opacity:1}
 .proj-group-count{font-size:11px;color:#94a3b8;font-weight:700;white-space:nowrap}
 .proj-group-arrow{transition:transform .15s;color:#94a3b8;flex-shrink:0}
 .proj-group.open .proj-group-arrow{transform:rotate(180deg)}
@@ -2737,24 +2739,33 @@ function renderProjects(filter='') {
   // Only show tasks belonging to the logged-in user
   let myTasks=savedTasks.filter(t=>t.creator===me)
   const list=filter ? myTasks.filter(t=>(t.cfg.rn||'').includes(filter)||(t.cfg.ft||'').includes(filter)) : myTasks
-  if(!list.length){
+  // 依 projectId 分組路線（搜尋時若某專案內只有部分路線符合，仍只顯示符合的路線）
+  const groups={}
+  list.forEach(t=>{
+    const pid=t.projectId||'_none'
+    if(!groups[pid])groups[pid]=[]
+    groups[pid].push(t)
+  })
+  // 專案排列順序：沒有搜尋時，PM 自己的所有專案都列出來（包含還沒放路線的空專案），最新建立的排最前面；
+  // 搜尋時只顯示有符合路線的專案，避免一堆不相關的空專案洗版
+  let order
+  if(filter){
+    order=Object.keys(groups)
+  }else{
+    order=savedProjects.filter(p=>p.creator===me).map(p=>p.id).reverse()
+    Object.keys(groups).forEach(pid=>{ if(!order.includes(pid)) order.push(pid) })
+  }
+  if(!order.length){
     wrap.innerHTML=`<div class="no-projects">
       <span class="no-projects-icon">${filter?'🔍':'🗺'}</span>
       <p>${filter?'沒有符合的路線':'還沒有任何專案<br><b>按右上角「＋ 新建專案」開始</b>'}</p>
     </div>`
     return
   }
-  // 依 projectId 分組（搜尋時若某專案內只有部分路線符合，仍只顯示符合的路線）
-  const groups={}, order=[]
-  list.forEach(t=>{
-    const pid=t.projectId||'_none'
-    if(!groups[pid]){groups[pid]=[];order.push(pid)}
-    groups[pid].push(t)
-  })
   wrap.innerHTML=order.map(pid=>{
     const proj=savedProjects.find(p=>p.id===pid)
     const projName=proj?.name||'未分類路線'
-    const routes=groups[pid]
+    const routes=groups[pid]||[]
     const isOpen=filter?true:_openProjectIds.has(pid)
     const routesHtml=routes.map(t=>{
       const isEdit=t.id===currentTaskId&&_inEditView
@@ -2786,10 +2797,11 @@ function renderProjects(filter='') {
           </div>
         </div>
       </div>`
-    }).join('')
+    }).join('') || `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12.5px">這個專案還沒有路線<br>按上面「＋ 新增路線」建立，或用其他路線卡片上的「📁 搬移」搬過來</div>`
     return`<div class="proj-group${isOpen?' open':''}">
       <div class="proj-group-hd" onclick="toggleProjectGroup('${pid}')">
         <span class="proj-group-name">📁 ${projName}</span>
+        <button class="proj-group-rename" title="重新命名" onclick="event.stopPropagation();renameProject('${pid}')">✏️</button>
         <span class="proj-group-count">${routes.length} 條路線</span>
         <svg class="proj-group-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
@@ -2804,15 +2816,31 @@ function renderProjects(filter='') {
 }
 
 // 新建專案：先取名，再直接進入路線編輯畫面（該路線會歸屬這個新專案）
+// 只建立專案空殼本身，不強迫馬上新增路線 —— PM 之後可以按「＋ 新增路線」建立新的，
+// 或用既有路線卡片上的「📁 搬移」把路線搬進來
 function newProject(){
-  if(_inEditView && _dirty && !confirm('清除目前設定，開始新建專案？'))return
   const name=prompt('專案名稱：')
   if(name===null) return   // 取消
   const proj={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:null,name:name.trim()||'未命名專案',savedAt:new Date().toLocaleDateString('zh-TW'),creator:getCurrentUser()||'未知'}
   savedProjects.push(proj)
   localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
   _openProjectIds.add(proj.id)
-  newTask(proj.id)
+  renderProjects()
+  toast(`✅ 專案「${proj.name}」已建立`)
+}
+
+// 重新命名專案；若已同步雲端，一併更新雲端資料
+async function renameProject(pid){
+  const proj=savedProjects.find(p=>p.id===pid)
+  if(!proj){toast('找不到專案');return}
+  const name=prompt('專案名稱：', proj.name)
+  if(name===null) return
+  proj.name=name.trim()||proj.name
+  localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
+  renderProjects()
+  if(proj.cloudId&&gsUrl&&getSessionToken()){
+    try{await cloudPost({action:'saveProject',id:proj.cloudId,name:proj.name})}catch(e){toast('⚠️ 雲端更新失敗：'+e.message)}
+  }
 }
 
 // 刪除專案：底下還有路線的話先提醒（避免路線變成孤兒資料）
