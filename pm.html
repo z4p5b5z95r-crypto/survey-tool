@@ -2370,6 +2370,10 @@ async function downloadQR() {
 // ════════════════════════════════════════════════════════
 //  SAVE / LOAD / DELETE TASKS
 // ════════════════════════════════════════════════════════
+// 共用：把一個 cfg 物件包成 saveRoute 要送出的 payload（saveTask 及清單頁 QR 自動上傳都用這個，避免兩邊邏輯兜不起來）
+function buildRoutePayload(cfg, cloudId, owner) {
+  return {action:'saveRoute',id:cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,roundCount:cfg.rc||3,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:owner||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
+}
 async function saveTask(silent) {
   const cfg=buildConfig()
   if(!cfg.rn){toast('請先填寫路線名稱');return false}
@@ -2388,7 +2392,7 @@ async function saveTask(silent) {
     if(!silent) toast('⏳ 同步至雲端...')
     updateCloudDot('uploading')
     try{
-      const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,roundCount:cfg.rc||3,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
+      const payload=buildRoutePayload(cfg, taskObj.cloudId, getCurrentUser())
       const result=await cloudPost(payload)
       const taskIdx=savedTasks.findIndex(t=>t.id===id)
       if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
@@ -2524,14 +2528,29 @@ async function deleteTask(id) {
 }
 async function loadAndQR(id){await loadTask(id);openAcc('acc-qr');generateQR()}
 
-function showListQR(taskId){
-  const t=savedTasks.find(t=>t.id===taskId); if(!t){toast('找不到任務');return}
+// 專案清單卡片的 QR 按鈕沒有經過編輯畫面，若該任務還沒連上雲端，這裡直接補上傳（不影響目前正在編輯的任務）
+async function ensureTaskCloudSynced(t) {
+  if(!(gsUrl&&getSessionToken())||!t.cfg) return t
+  if(t.cloudId&&getGsKey()) return t
+  if(!getGsKey()){toast('⚠️ 找不到雲端金鑰，請登出後重新登入一次即可修復（右上角帳號選單）');return t}
+  toast('⏳ 尚未上傳雲端，正在自動上傳以產生短網址...')
+  try{
+    const result=await cloudPost(buildRoutePayload(t.cfg, t.cloudId, t.creator))
+    const idx=savedTasks.findIndex(x=>x.id===t.id)
+    if(idx>=0){savedTasks[idx].cloudId=result.id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks));t=savedTasks[idx]}
+  }catch(e){toast('⚠️ 雲端上傳失敗，將以離線模式產生（資料量較大，掃描可能不穩定）：'+e.message)}
+  return t
+}
+
+async function showListQR(taskId){
+  let t=savedTasks.find(t=>t.id===taskId); if(!t){toast('找不到任務');return}
+  t=await ensureTaskCloudSynced(t)
   const appBase=(document.getElementById('app-url')?.value||'').trim().replace(/\/$/,'')||location.href.replace(/\/[^\/]*$/,'')
   let url
   if(t.cloudId&&gsUrl&&getGsKey()){
     url=`${appBase}/?id=${encodeURIComponent(t.cloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(getGsKey())}`
   } else if(t.cfg){
-    url=`${appBase}/?d=${encodeConfig(t.cfg)}`
+    url=`${appBase}/?c=${encodeConfig(t.cfg)}`
   } else {toast('無法產生 QR Code，請先儲存任務');return}
   const name=t.cfg?.rn||'任務'
   const shortUrl=url.length>55?url.slice(0,55)+'…':url
