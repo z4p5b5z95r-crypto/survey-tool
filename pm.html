@@ -361,6 +361,9 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .sv-row-date{font-size:13px;font-weight:700;color:#1e293b}
 .sv-row-meta{font-size:11px;color:#64748b;margin-top:2px}
 .sv-btn{padding:5px 10px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;border:1.5px solid;white-space:nowrap}
+.rc-btn-row{display:flex;gap:8px}
+.rc-btn{flex:1;padding:10px 6px;border:1.5px solid #e2e8f0;border-radius:10px;background:white;color:#475569;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
+.rc-btn.sel{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}
 .sv-btn-view{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
 .sv-btn-del{background:#fee2e2;color:#dc2626;border-color:#fecaca}
 .sv-del-menu{background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:10px;margin:-3px 0 7px;display:flex;flex-direction:column;gap:6px}
@@ -625,8 +628,6 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
             <div class="acc-bd">
               <div class="field"><label>路線名稱</label><input id="rn" placeholder="台二省道轉新市二路到港子平" oninput="updateEvTitle()"/></div>
               <div class="field"><label>起迄點</label><input id="ft" placeholder="港子平 ↔ 台二線"/></div>
-              <div class="field"><label>全長（公尺）</label><input id="tl" type="number" placeholder="自動計算"/></div>
-              <div class="field"><label>每日調查次數</label><input id="rc" type="number" min="1" max="6" step="1" value="3" oninput="clampRoundCountInput()"/></div>
             </div>
           </div>
 
@@ -641,6 +642,11 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
               <div class="row2">
                 <div class="field"><label>離峰時間</label><input id="op" value="14:00~16:00"/></div>
                 <div class="field"><label>尖峰時間</label><input id="pk" value="17:00~19:00"/></div>
+              </div>
+              <div class="field">
+                <label>調查次數設定</label>
+                <div class="rc-btn-row" id="rc-btn-row"></div>
+                <input type="hidden" id="rc" value="3"/>
               </div>
             </div>
           </div>
@@ -677,6 +683,18 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
                 </table>
               </div>
               <p id="seg-hint" style="font-size:12px;color:#94a3b8;margin-top:6px">新增 2 個以上節點後自動產生</p>
+              <div class="field" style="margin-top:12px">
+                <label style="display:flex;align-items:center;gap:6px">
+                  全長（公尺）
+                  <span style="font-size:10px;font-weight:600;color:#16a34a;background:#f0fdf4;border-radius:6px;padding:1px 6px">自動加總</span>
+                </label>
+                <div style="display:flex;gap:6px">
+                  <input id="tl" type="number" placeholder="自動計算" style="flex:1" oninput="_tlManualOverride=true"/>
+                  <button type="button" onclick="resetTotalLength()" title="重新用路段長度加總"
+                    style="flex-shrink:0;padding:0 12px;border:1.5px solid #e2e8f0;border-radius:10px;background:white;color:#475569;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">↺ 自動</button>
+                </div>
+                <p style="font-size:11px;color:#94a3b8;margin-top:4px">預設會用上面各路段長度自動加總，也可以自己手動輸入調整</p>
+              </div>
             </div>
           </div>
 
@@ -1717,7 +1735,17 @@ function updateAllIcons() {
   })
   _applyNodeTooltips()
 }
-function updateTotalLength() { const total=segData.reduce((s,d)=>s+(d.length||0),0); if(total>0)document.getElementById('tl').value=total }
+// 全長預設用路段長度自動加總；如果使用者已經手動改過（_tlManualOverride），就不要再覆蓋它
+let _tlManualOverride=false
+function updateTotalLength() {
+  if(_tlManualOverride) return
+  const total=segData.reduce((s,d)=>s+(d.length||0),0)
+  if(total>0)document.getElementById('tl').value=total
+}
+function resetTotalLength() {
+  _tlManualOverride=false
+  updateTotalLength()
+}
 
 window.focusSidebarNode = function(i) {
   openAcc('acc-nodes')
@@ -2141,13 +2169,18 @@ function syncSegDataFromDOM() {
     if(indices.length===1) segData[pi].length=parseInt(ins[3].value)||0
   })
 }
-// 「每日調查次數」輸入框：即時夾在 1~6 之間
-function clampRoundCountInput() {
-  const el = document.getElementById('rc'); if (!el) return
-  let v = parseInt(el.value)
-  if (isNaN(v)) return
-  if (v > 6) el.value = 6
-  if (v < 1 && el.value !== '') el.value = 1
+// 「調查次數設定」：用按鈕呈現 1～5 次（隱藏的 #rc 存實際數值，buildConfig() 直接讀它）
+const RC_MAX = 5
+function renderRcButtons() {
+  const row = document.getElementById('rc-btn-row'); if (!row) return
+  const cur = Math.min(RC_MAX, Math.max(1, parseInt(document.getElementById('rc').value) || 3))
+  row.innerHTML = Array.from({length: RC_MAX}, (_, i) => i + 1)
+    .map(n => `<button type="button" class="rc-btn${n === cur ? ' sel' : ''}" onclick="selectRoundCount(${n})">${n}</button>`)
+    .join('')
+}
+function selectRoundCount(n) {
+  document.getElementById('rc').value = Math.min(RC_MAX, Math.max(1, n))
+  renderRcButtons()
 }
 function buildConfig() {
   syncSegDataFromDOM()
@@ -2156,7 +2189,7 @@ function buildConfig() {
     rn:document.getElementById('rn').value.trim(),
     ft:document.getElementById('ft').value.trim(),
     tl:parseInt(document.getElementById('tl').value)||0,
-    rc:Math.min(6,Math.max(1,parseInt(document.getElementById('rc').value)||3)),
+    rc:Math.min(RC_MAX,Math.max(1,parseInt(document.getElementById('rc').value)||3)),
     op:document.getElementById('op').value.trim()||'14:00~16:00',
     pk:document.getElementById('pk').value.trim()||'17:00~19:00',
     nd:nodes.map(n=>({n:n.name,n2:n.exitName||'',a:parseFloat(n.lat.toFixed(6)),o:parseFloat(n.lng.toFixed(6)),r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n._ghost||false})),
@@ -2304,7 +2337,9 @@ function newTask() {
   document.getElementById('rn').value=''
   document.getElementById('ft').value=''
   document.getElementById('tl').value=''
+  _tlManualOverride=false
   document.getElementById('rc').value='3'
+  renderRcButtons()
   document.getElementById('op').value='14:00~16:00'
   document.getElementById('pk').value='17:00~19:00'
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
@@ -2324,7 +2359,9 @@ async function loadTask(id) {
   document.getElementById('rn').value=cfg.rn||''
   document.getElementById('ft').value=cfg.ft||''
   document.getElementById('tl').value=cfg.tl||''
+  _tlManualOverride=true   // 載入節點時中途可能會重算路段長度，先鎖住不要把存好的全長蓋掉
   document.getElementById('rc').value=cfg.rc||3
+  renderRcButtons()
   document.getElementById('op').value=cfg.op||'14:00~16:00'
   document.getElementById('pk').value=cfg.pk||'17:00~19:00'
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
@@ -2337,6 +2374,12 @@ async function loadTask(id) {
   _loadingTask=false
   renderSegTable()
   if(nodes.length>=2)map.fitBounds(L.polyline(nodes.map(n=>[n.lat,n.lng])).getBounds(),{padding:[40,40]})
+  // 存的全長如果剛好等於路段長度加總，代表原本就是自動算的，之後繼續自動更新；
+  // 如果不一樣，代表 PM 之前手動調整過，保留手動覆蓋、之後編輯路段不會再被自動蓋掉
+  {
+    const autoSum=segData.reduce((s,d)=>s+(d.length||0),0)
+    _tlManualOverride = !!(cfg.tl && autoSum && +cfg.tl!==autoSum)
+  }
   _dirty=false
   showEditView(cfg.rn||'未命名路線')
   collapseAllAcc()   // 五個欄位全部先最小化
@@ -2423,11 +2466,11 @@ async function syncFromCloud() {
         // 路線已在本機：用雲端資料更新
         const loc=savedTasks[existIdx]
         if(loc.creator!==me){loc.creator=me;changed++}
-        const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(6,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
+        const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
         if(JSON.stringify(loc.cfg)!==JSON.stringify(newCfg)){loc.cfg=newCfg;changed++}
         continue
       }
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(6,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
       changed++
     }
     // 移除本機有 cloudId 但雲端「我的路線」已不存在的項目（刪除同步 + 清除誤匯入的他人路線）

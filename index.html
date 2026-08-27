@@ -1007,7 +1007,7 @@ function applyConfig(cfg){
   config.peakLabel   =cfg.peakLabel   ||cfg.pk||'17:00~19:00'
   config.date        =todayStr()   // always default to today; surveyor picks their own date
   // PM 設定的每日調查次數（1~6，預設3）；套用後重建回合選鈕
-  config.roundCount = Math.min(6, Math.max(1, parseInt(cfg.roundCount||cfg.rc)||3))
+  config.roundCount = Math.min(5, Math.max(1, parseInt(cfg.roundCount||cfg.rc)||3))
   applyRoundCount()
   const rawNodes=(cfg.nodes||cfg.nd||[]).map(n=>{
     if(n.lat!==undefined) return {name:n.name||'節點',exitName:n.exitName||n.n2||'',lat:n.lat,lng:n.lng,radius:n.radius||15,polygon:n.polygon||null,lineAngle:n.lineAngle??null,lineLength:n.lineLength||10,_ghost:n.ghost||false}
@@ -2442,7 +2442,7 @@ let selPeakType=null,selDirection=null
 // ── 回合（第幾次）選擇 ──
 // PM 在路線設定裡指定 config.roundCount（1~6）後呼叫此函式重建 ROUND_KEYS / allTripsByRound
 function applyRoundCount(){
-  const n = Math.min(6, Math.max(1, config.roundCount||3))
+  const n = Math.min(5, Math.max(1, config.roundCount||3))
   ROUND_KEYS = Array.from({length:n}, (_,i)=>i+1)
   allTripsByRound = {}
   ROUND_KEYS.forEach(r=>{ allTripsByRound[r]={} })
