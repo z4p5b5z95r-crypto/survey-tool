@@ -743,32 +743,6 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
             </div>
           </div>
 
-          <!-- ⑤ QR Code -->
-          <div class="acc-sec" id="acc-qr">
-            <div class="acc-hd" onclick="toggleAcc('acc-qr')">
-              <span class="acc-hd-icon">📱</span>
-              <span class="acc-hd-label">產生任務 QR Code</span>
-              <svg class="acc-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-            </div>
-            <div class="acc-bd">
-              <div class="qr-url-row">
-                <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px">監測者 App 網址</label>
-                <input id="app-url" value="https://z4p5b5z95r-crypto.github.io/survey-tool/"/>
-              </div>
-              <button class="btn-gen" onclick="generateQR()">🔲 產生 QR Code</button>
-              <div id="qr-box-acc"><span class="qr-placeholder">按上方按鈕產生</span></div>
-              <div class="copy-row">
-                <button class="copy-btn link" onclick="copyLink()">🔗 複製連結</button>
-                <button class="copy-btn png" onclick="downloadQR()">⬇ 下載 QR</button>
-              </div>
-              <div class="qr-info" id="qr-info"></div>
-            </div>
-          </div>
-
-
-          <!-- ⑥ 下載 SGS 報告 -->
-          
-
         </div><!-- acc-wrap -->
 
         <!-- 固定底部儲存列 -->
@@ -1087,18 +1061,18 @@ function updateCrumb(cur) {
 function toggleAcc(id) {
   const el=document.getElementById(id)
   const wasOpen=el.classList.contains('open')
-  ;['acc-route','acc-time','acc-nodes','acc-segs','acc-qr'].forEach(i=>document.getElementById(i)?.classList.remove('open'))
+  ;['acc-route','acc-time','acc-nodes','acc-segs'].forEach(i=>document.getElementById(i)?.classList.remove('open'))
   if(!wasOpen) el.classList.add('open')
   renderStepBar()
 }
 function openAcc(id) {
-  ;['acc-route','acc-time','acc-nodes','acc-segs','acc-qr'].forEach(i=>document.getElementById(i)?.classList.remove('open'))
+  ;['acc-route','acc-time','acc-nodes','acc-segs'].forEach(i=>document.getElementById(i)?.classList.remove('open'))
   document.getElementById(id)?.classList.add('open')
   renderStepBar()
 }
-// 進入編輯畫面（新建或載入既有專案）時，五個欄位全部收合，避免殘留上一次展開的狀態
+// 進入編輯畫面（新建或載入既有專案）時，四個欄位全部收合，避免殘留上一次展開的狀態
 function collapseAllAcc() {
-  ;['acc-route','acc-time','acc-nodes','acc-segs','acc-qr'].forEach(id=>{
+  ;['acc-route','acc-time','acc-nodes','acc-segs'].forEach(id=>{
     document.getElementById(id)?.classList.remove('open')
   })
   renderStepBar()
@@ -1128,13 +1102,13 @@ function renderSegConfirmBanner(){
   }
 }
 
-// ── 頂部步驟條：①路線 ②時間 ③節點 ④路段 ⑤QR，不強制順序，但用完成度＋目前位置提醒 PM 別漏填 ──
+// ── 頂部步驟條：①路線 ②時間 ③節點 ④路段，不強制順序，但用完成度＋目前位置提醒 PM 別漏填 ──
+// QR Code 現在改成專案層級產生（掃專案 QR 後現場選路線），單一路線編輯流程不再需要這一步
 const STEP_DEFS=[
   {id:'acc-route', label:'路線', num:1, check:()=>document.getElementById('rn').value.trim()&&document.getElementById('ft').value.trim()},
   {id:'acc-time',  label:'時間', num:2, check:()=>document.getElementById('op').value.trim()&&document.getElementById('pk').value.trim()},
   {id:'acc-nodes', label:'節點', num:3, check:()=>nodes.length>=2},
   {id:'acc-segs',  label:'路段', num:4, check:()=>segData.length>0&&(parseInt(document.getElementById('tl').value)||0)>0&&_segsConfirmed()},
-  {id:'acc-qr',    label:'QR',  num:5, check:()=>!!document.querySelector('#qr-box-acc canvas')},
 ]
 function renderStepBar() {
   const bar=document.getElementById('step-bar'); if(!bar) return
@@ -2616,7 +2590,6 @@ async function deleteTask(id) {
   localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
   renderProjects()
 }
-async function loadAndQR(id){await loadTask(id);openAcc('acc-qr');generateQR()}
 
 // 專案清單卡片的 QR 按鈕沒有經過編輯畫面，若該任務還沒連上雲端，這裡直接補上傳（不影響目前正在編輯的任務）
 async function ensureTaskCloudSynced(t) {
@@ -2825,12 +2798,17 @@ function renderProjects(filter='') {
               :(gsUrl&&getSessionToken())?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
           </div>
           <div class="pc-actions-r">
-            <button class="pc-btn mv" title="搬移至其他專案" onclick="moveRouteToProject('${t.id}')">📂 搬移</button>
+            <button class="pc-btn icon mv" title="搬移至其他專案" onclick="moveRouteToProject('${t.id}')">
+              <span style="display:flex;flex-direction:column;align-items:center;line-height:0">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(90deg);margin-bottom:-2px"><path d="M3 8h11l-3-3"/><path d="M3 8l3 3"/><path d="M21 16H10l3-3"/><path d="M21 16l-3 3"/></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+              </span>
+            </button>
             <button class="pc-btn icon del" title="刪除" onclick="deleteTask('${t.id}')">🗑</button>
           </div>
         </div>
       </div>`
-    }).join('') || `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12.5px">這個專案還沒有路線<br>按上面「＋ 新增路線」建立，或用其他路線卡片上的「📁 搬移」搬過來</div>`
+    }).join('') || `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12.5px">這個專案還沒有路線<br>按上面「＋ 新增路線」建立，或用其他路線卡片右下角的搬移圖示搬過來</div>`
     return`<div class="proj-group${isOpen?' open':''}">
       <div class="proj-group-hd" onclick="toggleProjectGroup('${pid}')">
         <span class="proj-group-name">📁 ${projName}</span>
