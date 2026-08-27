@@ -55,6 +55,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .w-btn.sel span{color:#1d4ed8}
 /* Signin route map */
 #map-signin{height:185px;border-radius:12px;overflow:hidden;margin-bottom:8px;z-index:0}
+#map-project-routes{height:220px;border-radius:12px;overflow:hidden;z-index:0;background:#f1f5f9}
 /* Locate-me button (shared across all maps) */
 .locate-btn{position:absolute;z-index:999;background:white;border:none;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.2);width:36px;height:36px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
 .locate-btn:active{background:#eff6ff}
@@ -408,6 +409,14 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     </div>
   </div>
   <div class="scroll-body">
+    <div class="signin-card" style="margin-bottom:0">
+      <h3>🗺️ 專案路線地圖</h3>
+      <div style="position:relative">
+        <div id="map-project-routes"></div>
+        <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapProjectRoutes)" title="定位目前位置"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg></button>
+      </div>
+      <p style="font-size:11px;color:#94a3b8;margin-top:6px">點地圖上的編號路線，或下方清單，都可以直接開始調查</p>
+    </div>
     <div id="pr-list" style="display:flex;flex-direction:column;gap:10px"></div>
   </div>
 </div>
@@ -843,7 +852,7 @@ let cloudApiKey   = ''
 let cloudSubmitted = false  // prevent double-submit
 
 // GPS
-let watchId=null, mapReady=null, mapSurvey=null, mapResult=null, mapSignin=null
+let watchId=null, mapReady=null, mapSurvey=null, mapResult=null, mapSignin=null, mapProjectRoutes=null
 let totalPausedMs=0
 let markerReady=null, markerSurvey=null, surveyRouteLayer=null
 let lastPos=null, clockTimer=null, elapsedSec=0
@@ -1435,6 +1444,49 @@ function initSigninMap(){
   const dirEl=$('route-dir-text')
   if(dirEl){
     dirEl.innerHTML=`去程：${nums.join(' → ')}<br>回程：${[...nums].reverse().join(' → ')}`
+  }
+}
+
+// ════════════════════════════════════
+//  PROJECT ROUTE PICKER MAP（掃專案 QR 後：一次畫出底下所有路線＋編號，點線或點編號直接進入該路線調查）
+// ════════════════════════════════════
+const PR_MAP_COLORS=['#2563eb','#ea580c','#0d9488','#dc2626','#7c3aed','#0891b2','#ca8a04','#db2777']
+function renderProjectRoutesMap(routes, gsParam, kParam){
+  const box=document.getElementById('map-project-routes'); if(!box) return
+  if(mapProjectRoutes){ try{mapProjectRoutes.remove()}catch(e){} mapProjectRoutes=null }
+  mapProjectRoutes=L.map('map-project-routes',{zoomControl:true,attributionControl:false,dragging:true,scrollWheelZoom:true,touchZoom:true})
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(mapProjectRoutes)
+
+  const bounds=[]
+  routes.forEach((r,i)=>{
+    const nodes=r.nodes||[]
+    if(nodes.length<2) return
+    const color=PR_MAP_COLORS[i%PR_MAP_COLORS.length]
+    const lls=nodes.map(n=>[n.lat,n.lng])
+    const poly=L.polyline(lls,{color,weight:5,opacity:.85}).addTo(mapProjectRoutes)
+    poly.on('click',()=>loadCloudRouteAndProceed(r.id,gsParam,kParam))
+    lls.forEach(p=>bounds.push(p))
+    const midIdx=Math.floor(nodes.length/2)
+    const midPt=[nodes[midIdx].lat,nodes[midIdx].lng]
+    const marker=L.marker(midPt,{icon:L.divIcon({
+      html:`<div style="width:26px;height:26px;background:${color};border:2.5px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:white;box-shadow:0 2px 6px rgba(0,0,0,.35)">${i+1}</div>`,
+      className:'',iconSize:[26,26],iconAnchor:[13,13]
+    })}).addTo(mapProjectRoutes)
+    marker.on('click',()=>loadCloudRouteAndProceed(r.id,gsParam,kParam))
+  })
+  if(bounds.length){
+    mapProjectRoutes.fitBounds(bounds,{padding:[24,24]})
+  }else{
+    mapProjectRoutes.setView([24.99,121.30],13)  // 沒有任何路線有節點資料時的預設中心點
+  }
+  // 靜默取得目前定位，畫一個小藍點（拿不到就算了，不影響選路線）
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(p=>{
+      if(!mapProjectRoutes) return
+      L.circleMarker([p.coords.latitude,p.coords.longitude],{
+        radius:8, fillColor:'#3b82f6', color:'white', weight:3, fillOpacity:.95
+      }).addTo(mapProjectRoutes)
+    }, ()=>{}, {enableHighAccuracy:true, timeout:6000, maximumAge:10000})
   }
 }
 
@@ -3913,6 +3965,7 @@ async function showProjectRoutePicker(pid, gsParam, kParam){
     }
     _cameFromProjectPicker = true
     showScreen('screen-project-routes')
+    setTimeout(()=>renderProjectRoutesMap(routes,gsParam,kParam), 120)
   }catch(e){
     document.getElementById('loading-msg').textContent='❌ 載入失敗'
     document.getElementById('loading-sub').textContent=e.message
