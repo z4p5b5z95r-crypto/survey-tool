@@ -2297,7 +2297,9 @@ async function uploadTask(id) {
 }
 
 function newTask() {
-  if(!confirm('清除目前設定，開始新建專案？'))return
+  // 只有在「目前正在編輯、且有未儲存變更」時才需要提醒會被清掉；
+  // 從專案列表頁按「新建專案」（還沒開啟任何專案）不用跳這個確認
+  if(_inEditView && _dirty && !confirm('清除目前設定，開始新建專案？'))return
   currentTaskId=null
   document.getElementById('rn').value=''
   document.getElementById('ft').value=''
