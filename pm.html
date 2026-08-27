@@ -174,6 +174,12 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .pc-btn.projadd{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
 .pc-btn.projdel{background:#fee2e2;color:#dc2626;border-color:#fecaca}
 .pc-btn.mv{background:#fff7ed;color:#c2410c;border-color:#fed7aa}
+.pc-btn.icon.more{font-size:15px;font-weight:800;letter-spacing:1px;line-height:1}
+/* 路線卡片「⋯」更多選單：搬移／刪除這兩個比較少用的操作收在這裡 */
+.pc-more-menu{background:white;border:1.5px solid #e2e8f0;border-radius:11px;padding:6px;margin:2px 0 10px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;flex-direction:column;gap:2px}
+.pc-more-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:9px 10px;background:none;border:none;border-radius:8px;font-size:13px;font-weight:600;color:#334155;cursor:pointer;font-family:inherit}
+.pc-more-item:hover{background:#f8fafc}
+.pc-more-item.danger{color:#dc2626}
 /* 專案分組展開後，裡面的路線改成扁平列表列（用分隔線而不是各自一個獨立卡片），避免「盒中盒」太厚重 */
 .proj-group-body{background:white;border-top:1px solid #e2e8f0;padding:0 12px}
 .proj-group-body .pc{border:none;border-radius:0;border-bottom:1px solid #f1f5f9;margin-bottom:0;padding:12px 2px;box-shadow:none}
@@ -2784,7 +2790,6 @@ function renderProjects(filter='') {
           <div class="pc-name">${t.cfg.rn||'未命名路線'}</div>
           <div class="pc-chips">
             ${isEdit?'<span class="pc-chip editing-chip">▶ 編輯中</span>':''}
-            ${t.cloudId?'<span class="pc-chip cloud">☁ 雲端</span>':'<span class="pc-chip local">本地</span>'}
           </div>
         </div>
         <div class="pc-meta">${metaHtml}</div>
@@ -2798,17 +2803,11 @@ function renderProjects(filter='') {
               :(gsUrl&&getSessionToken())?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
           </div>
           <div class="pc-actions-r">
-            <button class="pc-btn icon mv" title="搬移至其他專案" onclick="moveRouteToProject('${t.id}')">
-              <span style="display:flex;flex-direction:column;align-items:center;line-height:0">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(90deg);margin-bottom:-2px"><path d="M3 8h11l-3-3"/><path d="M3 8l3 3"/><path d="M21 16H10l3-3"/><path d="M21 16l-3 3"/></svg>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
-              </span>
-            </button>
-            <button class="pc-btn icon del" title="刪除" onclick="deleteTask('${t.id}')">🗑</button>
+            <button class="pc-btn icon more" title="更多操作" onclick="toggleRouteMoreMenu('${t.id}',this)">⋯</button>
           </div>
         </div>
       </div>`
-    }).join('') || `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12.5px">這個專案還沒有路線<br>按上面「＋ 新增路線」建立，或用其他路線卡片右下角的搬移圖示搬過來</div>`
+    }).join('') || `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12.5px">這個專案還沒有路線<br>按上面「＋ 新增路線」建立，或用其他路線卡片的「⋯」更多選單搬過來</div>`
     return`<div class="proj-group${isOpen?' open':''}">
       <div class="proj-group-hd" onclick="toggleProjectGroup('${pid}')">
         <span class="proj-group-name">📁 ${projName}</span>
@@ -2874,6 +2873,24 @@ async function deleteProject(pid){
   savedProjects=savedProjects.filter(p=>p.id!==pid)
   localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
   renderProjects()
+}
+
+// 路線卡片右上角「⋯」更多選單：收合搬移／刪除這兩個比較少用的操作，列表常駐只留編輯／報告
+function toggleRouteMoreMenu(taskId, btnEl){
+  const existing=document.getElementById('pc-more-menu')
+  const wasSameTask = existing && existing.dataset.taskId===taskId
+  if(existing) existing.remove()
+  if(wasSameTask) return
+  const menu=document.createElement('div')
+  menu.id='pc-more-menu'
+  menu.className='pc-more-menu'
+  menu.dataset.taskId=taskId
+  menu.innerHTML=`
+    <button class="pc-more-item" onclick="document.getElementById('pc-more-menu')?.remove();moveRouteToProject('${taskId}')">📂 搬移至其他專案</button>
+    <button class="pc-more-item danger" onclick="document.getElementById('pc-more-menu')?.remove();deleteTask('${taskId}')">🗑 刪除路線</button>
+  `
+  const card=btnEl.closest('.pc')
+  if(card) card.parentNode.insertBefore(menu, card.nextSibling)
 }
 
 // 把一條既有路線搬移到別的專案（或新建一個專案再搬過去）——用來把原本各自獨立的路線合併成同一個群組
