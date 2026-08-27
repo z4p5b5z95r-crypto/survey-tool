@@ -168,12 +168,16 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .proj-group-arrow{transition:transform .15s;color:#94a3b8;flex-shrink:0}
 .proj-group.open .proj-group-arrow{transform:rotate(180deg)}
 .proj-group-actions{display:flex;gap:6px;padding:0 14px 12px}
-.proj-group-body{display:none;padding:0 10px 10px}
+.proj-group-body{display:none}
 .proj-group.open .proj-group-body{display:block}
 .pc-btn.proj{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
 .pc-btn.projadd{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
 .pc-btn.projdel{background:#fee2e2;color:#dc2626;border-color:#fecaca}
 .pc-btn.mv{background:#fff7ed;color:#c2410c;border-color:#fed7aa}
+/* 專案分組展開後，裡面的路線改成扁平列表列（用分隔線而不是各自一個獨立卡片），避免「盒中盒」太厚重 */
+.proj-group-body{background:white;border-top:1px solid #e2e8f0;padding:0 12px}
+.proj-group-body .pc{border:none;border-radius:0;border-bottom:1px solid #f1f5f9;margin-bottom:0;padding:12px 2px;box-shadow:none}
+.proj-group-body .pc:last-child{border-bottom:none}
 /* 搬移路線到其他專案的選單 */
 .mv-proj-item{display:block;width:100%;text-align:left;padding:11px 14px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:11px;font-size:13.5px;font-weight:600;color:#0f172a;cursor:pointer;font-family:inherit;margin-bottom:6px}
 .mv-proj-item:hover{background:#f1f5f9}
@@ -2812,9 +2816,9 @@ function renderProjects(filter='') {
             ${t.cloudId
               ?`<button class="pc-btn rec" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}','${(t.cfg.opn||'離峰').replace(/'/g,"\\'")}','${(t.cfg.pkn||'尖峰').replace(/'/g,"\\'")}')">📋 報告</button>`
               :(gsUrl&&getSessionToken())?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
-            <button class="pc-btn mv" onclick="moveRouteToProject('${t.id}')">📁 搬移</button>
           </div>
           <div class="pc-actions-r">
+            <button class="pc-btn icon mv" title="搬移至其他專案" onclick="moveRouteToProject('${t.id}')">📁</button>
             <button class="pc-btn icon del" title="刪除" onclick="deleteTask('${t.id}')">🗑</button>
           </div>
         </div>
