@@ -655,6 +655,11 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
             </div>
             <div class="acc-bd">
               <div class="row2">
+                <div class="field"><label>離峰名稱</label><input id="opn" value="離峰" placeholder="離峰" oninput="renderStepBar()"/></div>
+                <div class="field"><label>尖峰名稱</label><input id="pkn" value="尖峰" placeholder="尖峰" oninput="renderStepBar()"/></div>
+              </div>
+              <p style="font-size:11px;color:#94a3b8;margin:-4px 0 10px">可自訂顯示文字，會套用到現場調查按鈕、PM後台與調查報告；預設仍是「離峰」「尖峰」</p>
+              <div class="row2">
                 <div class="field"><label>離峰時間</label><input id="op" value="14:00~16:00" oninput="renderStepBar()"/></div>
                 <div class="field"><label>尖峰時間</label><input id="pk" value="17:00~19:00" oninput="renderStepBar()"/></div>
               </div>
@@ -2275,6 +2280,8 @@ function buildConfig() {
     rc:Math.min(RC_MAX,Math.max(1,parseInt(document.getElementById('rc').value)||3)),
     op:document.getElementById('op').value.trim()||'14:00~16:00',
     pk:document.getElementById('pk').value.trim()||'17:00~19:00',
+    opn:document.getElementById('opn').value.trim()||'離峰',
+    pkn:document.getElementById('pkn').value.trim()||'尖峰',
     nd:nodes.map(n=>({n:n.name,n2:n.exitName||'',a:parseFloat(n.lat.toFixed(6)),o:parseFloat(n.lng.toFixed(6)),r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n._ghost||false})),
     sg:segData.map((s,i)=>{const obj={n:s.name,l:s.lanes||2,w:s.width||8,d:s.length||0};if(s.waypoints?.length)obj.wp=s.waypoints.map(w=>({a:+w.lat.toFixed(6),o:+w.lng.toFixed(6)}));if(s.mode&&s.mode!=='driving')obj.m=s.mode;let ll=s._latlngs;if(!ll&&s._latlngsStr){try{ll=JSON.parse(s._latlngsStr)}catch{}}if(!ll){const poly=segPolylines[i];if(poly){const pts=poly.getLatLngs();ll=Array.isArray(pts[0])?pts.map(p=>[+p[0].toFixed(6),+p[1].toFixed(6)]):pts.map(p=>[+p.lat.toFixed(6),+p.lng.toFixed(6)])}}if(ll?.length>=2)obj.ll=ll;return obj})
   }
@@ -2372,7 +2379,7 @@ async function downloadQR() {
 // ════════════════════════════════════════════════════════
 // 共用：把一個 cfg 物件包成 saveRoute 要送出的 payload（saveTask 及清單頁 QR 自動上傳都用這個，避免兩邊邏輯兜不起來）
 function buildRoutePayload(cfg, cloudId, owner) {
-  return {action:'saveRoute',id:cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,roundCount:cfg.rc||3,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:owner||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
+  return {action:'saveRoute',id:cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,roundCount:cfg.rc||3,offPeakLabel:cfg.op,peakLabel:cfg.pk,offPeakName:cfg.opn||'離峰',peakName:cfg.pkn||'尖峰',owner:owner||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
 }
 async function saveTask(silent) {
   const cfg=buildConfig()
@@ -2468,6 +2475,8 @@ function newTask() {
   renderRcButtons()
   document.getElementById('op').value='14:00~16:00'
   document.getElementById('pk').value='17:00~19:00'
+  document.getElementById('opn').value='離峰'
+  document.getElementById('pkn').value='尖峰'
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
   radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
@@ -2491,6 +2500,8 @@ async function loadTask(id) {
   renderRcButtons()
   document.getElementById('op').value=cfg.op||'14:00~16:00'
   document.getElementById('pk').value=cfg.pk||'17:00~19:00'
+  document.getElementById('opn').value=cfg.opn||'離峰'
+  document.getElementById('pkn').value=cfg.pkn||'尖峰'
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
   radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
@@ -2610,11 +2621,11 @@ async function syncFromCloud() {
         // 路線已在本機：用雲端資料更新
         const loc=savedTasks[existIdx]
         if(loc.creator!==me){loc.creator=me;changed++}
-        const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
+        const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
         if(JSON.stringify(loc.cfg)!==JSON.stringify(newCfg)){loc.cfg=newCfg;changed++}
         continue
       }
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
       changed++
     }
     // 移除本機有 cloudId 但雲端「我的路線」已不存在的項目（刪除同步 + 清除誤匯入的他人路線）
@@ -2666,7 +2677,7 @@ function renderProjects(filter='') {
             :`<button class="pc-btn edit" onclick="loadTask('${t.id}')">✏️ 編輯</button>`}
           <button class="pc-btn qr" onclick="showListQR('${t.id}')">🔲 QR</button>
           ${t.cloudId
-            ?`<button class="pc-btn rec" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}')">📋 報告</button>`
+            ?`<button class="pc-btn rec" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}','${(t.cfg.opn||'離峰').replace(/'/g,"\\'")}','${(t.cfg.pkn||'尖峰').replace(/'/g,"\\'")}')">📋 報告</button>`
             :(gsUrl&&getSessionToken())?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
         </div>
         <div class="pc-actions-r">
@@ -2685,11 +2696,11 @@ function filterProjects() {
 // ════════════════════════════════════════════════════════
 //  SURVEY MANAGER MODAL
 // ════════════════════════════════════════════════════════
-let _svModalCloudId='', _svModalRouteName='', _svModalSurveys=[]
+let _svModalCloudId='', _svModalRouteName='', _svModalSurveys=[], _svModalOpn='離峰', _svModalPkn='尖峰'
 function closeSurveyModal() { const el=document.getElementById('sv-modal-overlay');if(el)el.remove() }
-async function openSurveyManager(cloudId,routeName) {
+async function openSurveyManager(cloudId,routeName,opn,pkn) {
   if(!gsUrl||!getSessionToken()){toast('雲端未設定，請聯絡管理員');return}
-  _svModalCloudId=cloudId;_svModalRouteName=routeName
+  _svModalCloudId=cloudId;_svModalRouteName=routeName;_svModalOpn=opn||'離峰';_svModalPkn=pkn||'尖峰'
   const overlay=document.createElement('div')
   overlay.id='sv-modal-overlay';overlay.className='sv-modal-overlay'
   overlay.innerHTML=`<div class="sv-modal"><div class="sv-modal-head"><h3>📋 監測記錄 · ${routeName}</h3><div style="display:flex;align-items:center;gap:6px"><button onclick="refreshSurveyModal()" title="重新整理" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:4px 10px;font-size:13px;cursor:pointer;color:#64748b">↺ 重新整理</button><button class="sv-modal-close" onclick="closeSurveyModal()">✕</button></div></div><div class="sv-modal-body" id="sv-modal-body"><div style="padding:20px;text-align:center;color:#64748b">載入中...</div></div></div>`
@@ -2733,7 +2744,7 @@ async function refreshSurveyModal() {
   finally{if(btn){btn.textContent='↺ 重新整理';btn.disabled=false}}
 }
 // 點垃圾桶：在該日期列下方展開一個選單，讓使用者選「全部刪除」或「刪除單筆」
-const SV_COMBO_ZH={off_peak_bound:'離峰去程',off_peak_return:'離峰回程',peak_bound:'尖峰去程',peak_return:'尖峰回程'}
+function svComboZh(key){ return {off_peak_bound:_svModalOpn+'去程',off_peak_return:_svModalOpn+'回程',peak_bound:_svModalPkn+'去程',peak_return:_svModalPkn+'回程'}[key] }
 function toggleDeleteMenu(date, btnEl){
   const existing=document.getElementById('sv-del-menu')
   const wasSameDate = existing && existing.dataset.date===date
@@ -2753,7 +2764,7 @@ function toggleDeleteMenu(date, btnEl){
     ${items.map(sv=>{
       const t=sv.trips&&sv.trips[0]
       const key=t?`${t.peakType}_${t.direction}`:''
-      const label=`第${sv.round||1}次 · ${SV_COMBO_ZH[key]||'—'}${sv.surveyor?'　'+sv.surveyor:''}`
+      const label=`第${sv.round||1}次 · ${svComboZh(key)||'—'}${sv.surveyor?'　'+sv.surveyor:''}`
       return `<button class="sv-del-menu-item one" onclick="deleteSurveyRecord('${sv.id}','${label.replace(/'/g,"\\'")}')">🗑 ${label}</button>`
     }).join('')}
     <button class="sv-del-menu-item cancel" onclick="document.getElementById('sv-del-menu')?.remove()">取消</button>
@@ -3194,10 +3205,10 @@ function downloadSGS() {
   const nodesR = [...nodes].reverse()
 
   const sheetConfigs = [
-    { name:'往台二線(離)', segs:segsF, nds:nodesF, t6:`  ■離峰    (${cfg.op||'14:00 ~ 16:00'})`, t7:'  □尖峰    (17:00 ~ 19:00)', dir:`往 ${nodesF[nodesF.length-1]?.name||''}` },
-    { name:'往港子平(離)', segs:segsR, nds:nodesR, t6:`  ■離峰    (${cfg.op||'14:00 ~ 16:00'})`, t7:'  □尖峰    (17:00 ~ 19:00)', dir:`往 ${nodesR[nodesR.length-1]?.name||''}` },
-    { name:'往台二線(尖)', segs:segsF, nds:nodesF, t6:'  □離峰    (14:00 ~ 16:00)', t7:`  ■尖峰    (${cfg.pk||'17:00 ~ 19:00'})`, dir:`往 ${nodesF[nodesF.length-1]?.name||''}` },
-    { name:'往港子平(尖)', segs:segsR, nds:nodesR, t6:'  □離峰    (14:00 ~ 16:00)', t7:`  ■尖峰    (${cfg.pk||'17:00 ~ 19:00'})`, dir:`往 ${nodesR[nodesR.length-1]?.name||''}` },
+    { name:'往台二線(離)', segs:segsF, nds:nodesF, t6:`  ■${cfg.opn||'離峰'}    (${cfg.op||'14:00 ~ 16:00'})`, t7:`  □${cfg.pkn||'尖峰'}    (17:00 ~ 19:00)`, dir:`往 ${nodesF[nodesF.length-1]?.name||''}` },
+    { name:'往港子平(離)', segs:segsR, nds:nodesR, t6:`  ■${cfg.opn||'離峰'}    (${cfg.op||'14:00 ~ 16:00'})`, t7:`  □${cfg.pkn||'尖峰'}    (17:00 ~ 19:00)`, dir:`往 ${nodesR[nodesR.length-1]?.name||''}` },
+    { name:'往台二線(尖)', segs:segsF, nds:nodesF, t6:`  □${cfg.opn||'離峰'}    (14:00 ~ 16:00)`, t7:`  ■${cfg.pkn||'尖峰'}    (${cfg.pk||'17:00 ~ 19:00'})`, dir:`往 ${nodesF[nodesF.length-1]?.name||''}` },
+    { name:'往港子平(尖)', segs:segsR, nds:nodesR, t6:`  □${cfg.opn||'離峰'}    (14:00 ~ 16:00)`, t7:`  ■${cfg.pkn||'尖峰'}    (${cfg.pk||'17:00 ~ 19:00'})`, dir:`往 ${nodesR[nodesR.length-1]?.name||''}` },
   ]
 
   function sv(ws, addr, val) {

@@ -391,12 +391,8 @@ let _tripMaps = {}       // mapId -> L.map instance
 let _tripMapBounds = {}  // mapId -> L.latLngBounds (for re-fitting after invalidateSize)
 
 const COMBO_KEYS = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
-const COMBO_LABEL = {
-  off_peak_bound: '離峰 去程',
-  off_peak_return:'離峰 回程',
-  peak_bound:     '尖峰 去程',
-  peak_return:    '尖峰 回程'
-}
+function COMBO_LABEL_(key){ const o=(route&&route.offPeakName)||'離峰', p=(route&&route.peakName)||'尖峰'; return {off_peak_bound:o+' 去程',off_peak_return:o+' 回程',peak_bound:p+' 去程',peak_return:p+' 回程'}[key] }
+const COMBO_LABEL = new Proxy({}, {get:(_,key)=>COMBO_LABEL_(key)})   // route 尚未載入時安全 fallback，載入後即時反映 PM 自訂名稱
 const TRACK_COLOR = {
   off_peak_bound:'#2563eb',
   off_peak_return:'#60a5fa',
@@ -688,8 +684,8 @@ function renderTravelTable(){
   const segs = _mergeGhostSegs()
   const OB = avgTrips.off_peak_bound, OR = avgTrips.off_peak_return
   const PB = avgTrips.peak_bound,     PR = avgTrips.peak_return
-  const offLabel = route.offPeakLabel||'離峰'
-  const pkLabel  = route.peakLabel||'尖峰'
+  const offLabel = route.offPeakName||'離峰'
+  const pkLabel  = route.peakName||'尖峰'
 
   let html = `<tr>
     <th rowspan="2">路段位置</th><th rowspan="2">車道數</th><th rowspan="2">路寬(m)</th><th rowspan="2">路段長(m)</th>
@@ -773,8 +769,8 @@ function renderSpeedTable(){
   const segs = _mergeGhostSegs()
   const OB = avgTrips.off_peak_bound, OR = avgTrips.off_peak_return
   const PB = avgTrips.peak_bound,     PR = avgTrips.peak_return
-  const offLabel = route.offPeakLabel||'離峰'
-  const pkLabel  = route.peakLabel||'尖峰'
+  const offLabel = route.offPeakName||'離峰'
+  const pkLabel  = route.peakName||'尖峰'
 
   let html = `<tr>
     <th rowspan="2">路段位置</th><th rowspan="2">路段長(m)</th>
@@ -819,8 +815,8 @@ function renderDelayTable(){
   const OB = avgTrips.off_peak_bound, OR = avgTrips.off_peak_return
   const PB = avgTrips.peak_bound,     PR = avgTrips.peak_return
   const trips = [OB,OR,PB,PR]
-  const offLabel = route.offPeakLabel||'離峰'
-  const pkLabel  = route.peakLabel||'尖峰'
+  const offLabel = route.offPeakName||'離峰'
+  const pkLabel  = route.peakName||'尖峰'
 
   const r = (label, vals) =>
     `<tr><td>${label}</td>${vals.map(v=>`<td>${fmt(v)}</td>`).join('')}</tr>`
@@ -854,11 +850,12 @@ function renderDelayTable(){
 
 // ════════════════ COMBO SELECTOR ════════════════
 function renderComboSelector(){
+  const _pkN=route.peakName||'尖峰', _opN=route.offPeakName||'離峰'
   const COMBOS = [
-    {key:'peak_bound',    label:'尖峰去程', cls:'peak'},
-    {key:'peak_return',   label:'尖峰回程', cls:'peak'},
-    {key:'off_peak_bound',label:'離峰去程', cls:'offpeak'},
-    {key:'off_peak_return',label:'離峰回程',cls:'offpeak'},
+    {key:'peak_bound',    label:_pkN+'去程', cls:'peak'},
+    {key:'peak_return',   label:_pkN+'回程', cls:'peak'},
+    {key:'off_peak_bound',label:_opN+'去程', cls:'offpeak'},
+    {key:'off_peak_return',label:_opN+'回程',cls:'offpeak'},
   ]
   document.getElementById('combo-selector').innerHTML = COMBOS.map(c=>{
     const [pt,dir]=parseCombo(c.key)
@@ -1021,7 +1018,7 @@ function renderComboRecords(combo){
             <div>站　名：&nbsp;<u>${he(route.routeName||'')}</u></div>
             <div>旅次編號：</div>
             <div>方向往：&nbsp;${!isReturn?'■':'□'} 去　　${isReturn?'■':'□'} 回</div>
-            <div>時　間：&nbsp;${!isPeak?'■':'□'} 離峰（${off}）　&nbsp;${isPeak?'■':'□'} 尖峰（${pk}）</div>
+            <div>時　間：&nbsp;${!isPeak?'■':'□'} ${route.offPeakName||'離峰'}（${off}）　&nbsp;${isPeak?'■':'□'} ${route.peakName||'尖峰'}（${pk}）</div>
           </div>
           <div class="sgs-pf-mr">
             <div>日　期：&nbsp;<span style="color:#dc2626;font-weight:700">${he(sv.date||'')}</span></div>
@@ -1369,7 +1366,8 @@ function downloadSGS(){
 }
 
 function buildTripSheetName(combo, n){
-  const map = {off_peak_bound:'離峰去',off_peak_return:'離峰回',peak_bound:'尖峰去',peak_return:'尖峰回'}
+  const _o=route.offPeakName||'離峰', _p=route.peakName||'尖峰'
+  const map = {off_peak_bound:_o+'去',off_peak_return:_o+'回',peak_bound:_p+'去',peak_return:_p+'回'}
   return `${map[combo]}_${n}`
 }
 
@@ -1379,7 +1377,7 @@ function buildTimeSheet(){
   const OB=avgTrips.off_peak_bound, OR=avgTrips.off_peak_return
   const PB=avgTrips.peak_bound, PR=avgTrips.peak_return
   const T4=[OB,OR,PB,PR]
-  const off=route.offPeakLabel||'離峰', pk=route.peakLabel||'尖峰'
+  const off=route.offPeakName||'離峰', pk=route.peakName||'尖峰'
   const TL=route.totalLength||0
   const info=`路線：${route.routeName}　起迄：${route.routeFromTo}　全長：${TL}m`
 
@@ -1418,7 +1416,7 @@ function buildSpeedSheet(){
   const OB=avgTrips.off_peak_bound, OR=avgTrips.off_peak_return
   const PB=avgTrips.peak_bound, PR=avgTrips.peak_return
   const T4=[OB,OR,PB,PR]
-  const off=route.offPeakLabel||'離峰', pk=route.peakLabel||'尖峰'
+  const off=route.offPeakName||'離峰', pk=route.peakName||'尖峰'
   const TL=route.totalLength||0
   const info=`路線：${route.routeName}　起迄：${route.routeFromTo}　全長：${TL}m`
 
@@ -1453,7 +1451,7 @@ function buildDelaySheet(){
   const OB=avgTrips.off_peak_bound, OR=avgTrips.off_peak_return
   const PB=avgTrips.peak_bound, PR=avgTrips.peak_return
   const trips=[OB,OR,PB,PR]
-  const off=route.offPeakLabel||'離峰', pk=route.peakLabel||'尖峰'
+  const off=route.offPeakName||'離峰', pk=route.peakName||'尖峰'
   const hdr = [`${off} 去程`,`${off} 回程`,`${pk} 去程`,`${pk} 回程`]
 
   const v=(t,key)=>t?t[key]??'':'—'
@@ -1513,7 +1511,7 @@ function buildTripSheet(trip, survey, combo){
     ['站名:','',route.routeName,'','','','','日期：',survey.date||''],
     ['旅次編號:','','','','','','','',''],
     ['方向往:','',isReturn?'□去 ■回':'■去 □回','','','','','天氣：',survey.weather||''],
-    ['時間:','',`${isPeak?'□離峰 ■尖峰':'■離峰 □尖峰'} (${isPeak?pk:off})`,
+    ['時間:','',`${isPeak?`□${route.offPeakName||'離峰'} ■${route.peakName||'尖峰'}`:`■${route.offPeakName||'離峰'} □${route.peakName||'尖峰'}`} (${isPeak?pk:off})`,
      '','','','','',''],
     ['調查員：','',survey.surveyor||''],
     [],
@@ -1566,7 +1564,7 @@ function downloadCSV(){
     surveys.forEach((sv,si)=>{
       sv.trips?.forEach(t=>{
         rows.push([si+1, sv.surveyor||'', sv.date||'', sv.weather||'',
-          t.peakType==='peak'?'尖峰':'離峰', t.direction==='bound'?'去程':'回程',
+          t.peakType==='peak'?(route.peakName||'尖峰'):(route.offPeakName||'離峰'), t.direction==='bound'?'去程':'回程',
           t.travelS||0, t.runS||0, t.intTotalS||0, t.roadTotalS||0,
           spd(route.totalLength, t.travelS)])
       })
@@ -1620,7 +1618,7 @@ function downloadRawTimeline(){
 
     surveys.forEach((sv,si)=>{
       ;(sv.trips||[]).forEach(trip=>{
-        const peakL=trip.peakType==='peak'?'尖峰':'離峰'
+        const peakL=trip.peakType==='peak'?(route.peakName||'尖峰'):(route.offPeakName||'離峰')
         const dirL=trip.direction==='bound'?'去程':'回程'
         const isRet=trip.direction==='return'
         const nodes=route.nodes||[]
@@ -1732,7 +1730,7 @@ function downloadSGSPdf(){
     return m[(w||'').toLowerCase()] || w
   }
 
-  const off = route.offPeakLabel||'離峰', pk = route.peakLabel||'尖峰'
+  const off = route.offPeakName||'離峰', pk = route.peakName||'尖峰'
   const rawSegs = route.segments||[], TL = route.totalLength||0
   const nodes = route.nodes||[]
   // Build ghost node index set.
@@ -1891,8 +1889,8 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
 </colgroup>
 <tr>
   <td colspan="3" rowspan="2" style="letter-spacing:3px">調　查　時　間</td>
-  <td colspan="2">離峰時間</td>
-  <td colspan="2">下午尖峰時間</td>
+  <td colspan="2">${route.offPeakName||'離峰'}時間</td>
+  <td colspan="2">${route.peakName||'尖峰'}時間</td>
 </tr>
 <tr>
   <td colspan="2">${off}</td>
@@ -1982,8 +1980,8 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
   <td colspan="4" style="font-weight:700">${unitLabel}(秒)</td>
 </tr>
 <tr>
-  <td colspan="2">離峰時間</td><td colspan="2">下午尖峰時間</td>
-  <td colspan="2">離峰時間</td><td colspan="2">下午尖峰時間</td>
+  <td colspan="2">${route.offPeakName||'離峰'}時間</td><td colspan="2">${route.peakName||'尖峰'}時間</td>
+  <td colspan="2">${route.offPeakName||'離峰'}時間</td><td colspan="2">${route.peakName||'尖峰'}時間</td>
 </tr>
 <tr>
   <td colspan="2" style="font-size:7.5pt">${offl}</td>
@@ -2171,7 +2169,7 @@ ${rows}</table>`
   <td style="text-align:right">天　　氣：　${_weather(sv.weather)}</td>
 </tr>
 <tr>
-  <td>時　　間：　${isPeak?'□':'■'} 離峰（${off}）　　　${isPeak?'■':'□'} 尖峰（${pk}）</td>
+  <td>時　　間：　${isPeak?'□':'■'} ${route.offPeakName||'離峰'}（${off}）　　　${isPeak?'■':'□'} ${route.peakName||'尖峰'}（${pk}）</td>
   <td style="text-align:right">調查員：　<span style="text-decoration:underline">${he(sv.surveyor||'')}</span></td>
 </tr>
 </table>

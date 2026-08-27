@@ -405,11 +405,11 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     </div>
     <div class="signin-info">
       <div class="signin-card-mini">
-        <div class="signin-card-mini-label">離峰</div>
+        <div class="signin-card-mini-label" id="si-offpeak-lb">離峰</div>
         <div class="signin-card-mini-val" id="si-offpeak"></div>
       </div>
       <div class="signin-card-mini">
-        <div class="signin-card-mini-label">尖峰</div>
+        <div class="signin-card-mini-label" id="si-peak-lb">尖峰</div>
         <div class="signin-card-mini-val" id="si-peak"></div>
       </div>
       <div class="signin-card-mini">
@@ -781,7 +781,8 @@ const INT_DELAYS = [
   {cause:'right_turn', label:'右轉',    icon:'↱'},
   {cause:'int_other',  label:'其他',    icon:'❓'},
 ]
-const PEAK_LABEL  = {peak:'尖峰', off_peak:'離峰'}
+function PEAK_LABEL_(key){ return {peak:config.peakName||'尖峰', off_peak:config.offPeakName||'離峰'}[key] }
+const PEAK_LABEL  = new Proxy({}, {get:(_,key)=>PEAK_LABEL_(key)})   // 保留 PEAK_LABEL[key] 既有用法，但每次讀取都即時反映 PM 自訂名稱
 const DIR_LABEL   = {bound:'去程', return:'回程'}
 const COMBO_KEYS  = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
 const WEATHER_ZH  = {sunny:'晴', cloudy:'陰', rainy:'雨'}
@@ -794,6 +795,7 @@ let config = {
   routeName:'', routeFromTo:'', totalLength:0,
   surveyor:'', weather:'', date:'',
   offPeakLabel:'14:00~16:00', peakLabel:'17:00~19:00',
+  offPeakName:'離峰', peakName:'尖峰',
   roundCount:3,
   segments:[], nodes:[]
 }
@@ -1005,6 +1007,8 @@ function applyConfig(cfg){
   config.totalLength =cfg.totalLength ||cfg.tl||0
   config.offPeakLabel=cfg.offPeakLabel||cfg.op||'14:00~16:00'
   config.peakLabel   =cfg.peakLabel   ||cfg.pk||'17:00~19:00'
+  config.offPeakName =cfg.offPeakName ||cfg.opn||'離峰'
+  config.peakName    =cfg.peakName    ||cfg.pkn||'尖峰'
   config.date        =todayStr()   // always default to today; surveyor picks their own date
   // PM 設定的每日調查次數（1~6，預設3）；套用後重建回合選鈕
   config.roundCount = Math.min(5, Math.max(1, parseInt(cfg.roundCount||cfg.rc)||3))
@@ -1333,7 +1337,8 @@ function renderHistModal(){
     box.innerHTML='<p style="text-align:center;color:#94a3b8;padding:28px 0;font-size:13px">尚無歷史記錄</p>'
     return
   }
-  const CZH={off_peak_bound:'離峰去',off_peak_return:'離峰回',peak_bound:'尖峰去',peak_return:'尖峰回'}
+  const _opN=config.offPeakName||'離峰', _pkN=config.peakName||'尖峰'
+  const CZH={off_peak_bound:_opN+'去',off_peak_return:_opN+'回',peak_bound:_pkN+'去',peak_return:_pkN+'回'}
   const WZH={sunny:'☀️',cloudy:'☁️',rainy:'🌧️'}
   box.innerHTML=grouped.map((g,i)=>{
     const chips=Object.entries(g.trips||{}).map(([k,t])=>
@@ -1723,6 +1728,8 @@ function showSigninScreen(){
   $('si-fromto').textContent=config.routeFromTo
   $('si-offpeak').textContent=config.offPeakLabel
   $('si-peak').textContent=config.peakLabel
+  $('si-offpeak-lb').textContent=config.offPeakName||'離峰'
+  $('si-peak-lb').textContent=config.peakName||'尖峰'
   $('si-segs').textContent=config.segments.length+' 段'
   $('si-seg-preview').innerHTML=config.segments.map((s,i)=>`
     <div class="seg-row"><div class="seg-dot"></div>
@@ -2498,7 +2505,7 @@ function renderComboGrid(){
   box.innerHTML = COMBO_KEYS.map(k=>{
     const [pt,dir]=parseComboKey(k)
     const isPeak = pt==='peak'
-    const tagTxt = isPeak?'尖峰':'離峰'
+    const tagTxt = isPeak?(config.peakName||'尖峰'):(config.offPeakName||'離峰')
     const tagCls = isPeak?'cgb-tag pk':'cgb-tag op'
     const dirTxt = dir==='bound'?'去程':'回程'
     const dirIcon = dir==='bound'?'▶':'◀'
@@ -2526,7 +2533,8 @@ function onComboGridClick(k){
   checkStart()
 }
 
-const COMBO_ZH={off_peak_bound:'離峰去程',off_peak_return:'離峰回程',peak_bound:'尖峰去程',peak_return:'尖峰回程'}
+function COMBO_ZH_(key){ const o=config.offPeakName||'離峰', p=config.peakName||'尖峰'; return {off_peak_bound:o+'去程',off_peak_return:o+'回程',peak_bound:p+'去程',peak_return:p+'回程'}[key] }
+const COMBO_ZH = new Proxy({}, {get:(_,key)=>COMBO_ZH_(key)})
 
 // ── 開始調查按鈕（未完成＝直接開始／已完成＝先跳確認彈窗才能覆蓋）──
 let _redoKey=null
@@ -3142,7 +3150,7 @@ function buildOneOfficialForm(trip,pt,dir){
     <tr>
       <td colspan="4" class="sgs-meta-l">時　間：</td>
       <td colspan="19" class="sgs-meta-v">
-        ${pt==='off_peak'?'■':'□'} 離峰（${config.offPeakLabel}）　　${pt==='peak'?'■':'□'} 尖峰（${config.peakLabel}）
+        ${pt==='off_peak'?'■':'□'} ${config.offPeakName||'離峰'}（${config.offPeakLabel}）　　${pt==='peak'?'■':'□'} ${config.peakName||'尖峰'}（${config.peakLabel}）
       </td>
     </tr>
     <tr class="sgs-th">
@@ -3287,7 +3295,7 @@ function updateResultMapTrack(key){
   const sw=document.getElementById('rml-track-swatch')
   const lb=document.getElementById('rml-track-label')
   if(sw) sw.style.background=color
-  if(lb){const CZH2={off_peak_bound:'離峰去',off_peak_return:'離峰回',peak_bound:'尖峰去',peak_return:'尖峰回'};lb.textContent=CZH2[key]||'GPS軌跡'}
+  if(lb){const _o=config.offPeakName||'離峰',_p=config.peakName||'尖峰';const CZH2={off_peak_bound:_o+'去',off_peak_return:_o+'回',peak_bound:_p+'去',peak_return:_p+'回'};lb.textContent=CZH2[key]||'GPS軌跡'}
   // Start bounds from full planned route so it's always in view
   let bounds=_resultPlanBounds
     ? L.latLngBounds(_resultPlanBounds.getSouthWest(),_resultPlanBounds.getNorthEast())
@@ -3324,7 +3332,7 @@ function buildTable1(){
   <tr><th colspan="5" style="text-align:left;padding:8px 10px">路名：${config.routeName}　日期：${config.date}</th></tr>
   <tr><th colspan="3" style="text-align:left;padding:4px 10px">起迄點：${config.routeFromTo}</th><th colspan="2">天氣：${WEATHER_ZH[config.weather]||'—'}</th></tr>
   <tr><th colspan="3" style="text-align:left;padding:4px 10px">全長：${config.totalLength}m　調查員：${config.surveyor}</th><th colspan="2">&nbsp;</th></tr>
-  <tr><th rowspan="2">調查時間</th><th colspan="2">離峰 ${config.offPeakLabel}</th><th colspan="2">尖峰 ${config.peakLabel}</th></tr>
+  <tr><th rowspan="2">調查時間</th><th colspan="2">${config.offPeakName||'離峰'} ${config.offPeakLabel}</th><th colspan="2">${config.peakName||'尖峰'} ${config.peakLabel}</th></tr>
   <tr><th>去程</th><th>回程</th><th>去程</th><th>回程</th></tr>
   ${r('平均總旅行速率(km/h)',...trips.map(t=>t?spd(len,t.travelS):'—'))}
   ${r('平均總行駛速率(km/h)',...trips.map(t=>t?spd(len,t.runS):'—'))}
@@ -3350,7 +3358,7 @@ function buildTable2(){
   <tr><th colspan="${4+8}" style="padding:8px">各路段平均旅行時間及平均行駛時間統計表（秒）</th></tr>
   <tr><th rowspan="3">路段</th><th rowspan="3">車道</th><th rowspan="3">路寬</th><th rowspan="3">長度</th>
     <th colspan="4">平均旅行時間(秒)</th><th colspan="4">平均行駛時間(秒)</th></tr>
-  <tr><th colspan="2">離峰</th><th colspan="2">下午尖峰</th><th colspan="2">離峰</th><th colspan="2">下午尖峰</th></tr>
+  <tr><th colspan="2">${config.offPeakName||'離峰'}</th><th colspan="2">${config.peakName||'尖峰'}</th><th colspan="2">${config.offPeakName||'離峰'}</th><th colspan="2">${config.peakName||'尖峰'}</th></tr>
   <tr><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th></tr>
   ${segs.map((s,i)=>`<tr>
     <td class="rtl">${segLabel(i)||s.name}</td><td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
@@ -3368,7 +3376,7 @@ function buildTable3(){
   <tr><th colspan="${4+8}" style="padding:8px">各路段平均旅行速率及平均行駛速率統計表（km/h）</th></tr>
   <tr><th rowspan="3">路段</th><th rowspan="3">車道</th><th rowspan="3">路寬</th><th rowspan="3">長度</th>
     <th colspan="4">旅行速率</th><th colspan="4">行駛速率</th></tr>
-  <tr><th colspan="2">離峰</th><th colspan="2">下午尖峰</th><th colspan="2">離峰</th><th colspan="2">下午尖峰</th></tr>
+  <tr><th colspan="2">${config.offPeakName||'離峰'}</th><th colspan="2">${config.peakName||'尖峰'}</th><th colspan="2">${config.offPeakName||'離峰'}</th><th colspan="2">${config.peakName||'尖峰'}</th></tr>
   <tr><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th></tr>
   ${segs.map((s,i)=>`<tr>
     <td class="rtl">${segLabel(i)||s.name}</td><td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
@@ -3421,6 +3429,7 @@ function exportReport(){
     totalLength:config.totalLength, date:config.date,
     surveyor:config.surveyor, weather:config.weather,
     offPeakLabel:config.offPeakLabel, peakLabel:config.peakLabel,
+    offPeakName:config.offPeakName, peakName:config.peakName,
     segments:config.segments, nodes:config.nodes
   }
   const eTrips  = JSON.parse(JSON.stringify(allTrips))
@@ -3577,14 +3586,14 @@ function exportReport(){
 '  var roadT=RC.reduce(function(s,c){return s+colT[c];},0),intT=IC.reduce(function(s,c){return s+colT[c];},0);\n' +
 '  var st=new Date(trip.startTime),et=new Date(trip.endTime);\n' +
 '  var startN=(nodes[0]&&nodes[0].name)||"起點",endN=(nodes[nodes.length-1]&&nodes[nodes.length-1].name)||"終點";\n' +
-'  var PL={peak:"尖峰",off_peak:"離峰"},DL={bound:"去程",return:"回程"},WL={sunny:"晴",cloudy:"陰",rainy:"雨"};\n' +
+'  var PL={peak:CFG.peakName||"尖峰",off_peak:CFG.offPeakName||"離峰"},DL={bound:"去程",return:"回程"},WL={sunny:"晴",cloudy:"陰",rainy:"雨"};\n' +
 '  var aoa=[];\n' +
 // Row 1: title
 '  aoa.push(["SGS","主次要幹道行駛時間及延滯調查表","","","","","","","","","","","","","","","","","","","日期：",CFG.date||""]);\n' +
 '  aoa.push(["","站名：",CFG.routeName||"","","","","","","","","","","","","","","","","","","天氣：",WL[CFG.weather]||""]);\n' +
 '  aoa.push(["","旅次編號：","","","","","","","","","","","","","","","","","","","",""]);\n' +
 '  aoa.push(["","方向：",(dir==="bound"?"■":"□")+" 去    "+(dir==="return"?"■":"□")+" 回","","","","","","","","","","","","","","","","","","調查員：",CFG.surveyor||""]);\n' +
-'  aoa.push(["","時間：",(pt==="off_peak"?"■":"□")+" 離峰（"+CFG.offPeakLabel+"）  "+(pt==="peak"?"■":"□")+" 尖峰（"+CFG.peakLabel+"）","","","","","","","","","","","","","","","","","","",""]);\n' +
+'  aoa.push(["","時間：",(pt==="off_peak"?"■":"□")+" "+(CFG.offPeakName||"離峰")+"（"+CFG.offPeakLabel+"）  "+(pt==="peak"?"■":"□")+" "+(CFG.peakName||"尖峰")+"（"+CFG.peakLabel+"）","","","","","","","","","","","","","","","","","","",""]);\n' +
 // Summary header
 '  aoa.push(["起點","終點","距離(m)","起點時","分","秒","終點時","分","秒","旅行時間(秒)","交叉口延滯(秒)","路段延滯(秒)","行駛時間(秒)","旅行速率(km/h)","","行駛速率(km/h)",""]);\n' +
 '  var _stStr=st.toLocaleTimeString("zh-TW",{timeZone:"Asia/Taipei",hour12:false,hour:"2-digit",minute:"2-digit",second:"2-digit"}).split(":").map(function(v){return v.padStart(2,"0");});\n' +
@@ -3616,13 +3625,13 @@ function exportReport(){
 '  var trips=KEYS.map(function(k){return TRIPS[k]||null;});\n' +
 '  var segs=CFG.segments;\n' +
 '  function pK(k){if(k.indexOf("off_peak")===0)return["off_peak",k.replace("off_peak_","")];return["peak",k.replace("peak_","")];}\n' +
-'  var PL={peak:"尖峰",off_peak:"離峰"},DL={bound:"去程",return:"回程"},WL={sunny:"晴",cloudy:"陰",rainy:"雨"};\n' +
+'  var PL={peak:CFG.peakName||"尖峰",off_peak:CFG.offPeakName||"離峰"},DL={bound:"去程",return:"回程"},WL={sunny:"晴",cloudy:"陰",rainy:"雨"};\n' +
 '  var aoa=[];\n' +
 '  aoa.push(["旅行時間調查統計彙總表"]);\n' +
 '  aoa.push(["路線："+CFG.routeName,"","起迄："+CFG.routeFromTo]);\n' +
 '  aoa.push(["日期："+CFG.date,"","調查員："+CFG.surveyor,"天氣："+(WL[CFG.weather]||"")]);\n' +
 '  aoa.push([]);\n' +
-'  aoa.push(["","離峰去程","離峰回程","尖峰去程","尖峰回程"]);\n' +
+'  aoa.push(["",(CFG.offPeakName||"離峰")+"去程",(CFG.offPeakName||"離峰")+"回程",(CFG.peakName||"尖峰")+"去程",(CFG.peakName||"尖峰")+"回程"]);\n' +
 '  aoa.push(["旅行速率(km/h)"].concat(trips.map(function(t){return t?xSpd(CFG.totalLength,t.travelS):"—";})));\n' +
 '  aoa.push(["行駛速率(km/h)"].concat(trips.map(function(t){return t?xSpd(CFG.totalLength,t.runS):"—";})));\n' +
 '  aoa.push(["旅行時間(秒)"].concat(trips.map(function(t){return t?t.travelS:"—";})));\n' +
@@ -3631,12 +3640,12 @@ function exportReport(){
 '  aoa.push(["交叉口延滯(秒)"].concat(trips.map(function(t){return t?t.intTotalS:"—";})));\n' +
 '  aoa.push(["總延滯(秒)"].concat(trips.map(function(t){return t?t.totalDelayS:"—";})));\n' +
 '  aoa.push([]);\n' +
-'  aoa.push(["各路段旅行時間(秒)","離峰去程","離峰回程","尖峰去程","尖峰回程"]);\n' +
+'  aoa.push(["各路段旅行時間(秒)",(CFG.offPeakName||"離峰")+"去程",(CFG.offPeakName||"離峰")+"回程",(CFG.peakName||"尖峰")+"去程",(CFG.peakName||"尖峰")+"回程"]);\n' +
 '  segs.forEach(function(s,i){\n' +
 '    aoa.push([s.name].concat(trips.map(function(t){return t&&t.segTimes&&t.segTimes[i]?t.segTimes[i].travelS:"—";})));\n' +
 '  });\n' +
 '  aoa.push([]);\n' +
-'  aoa.push(["各路段行駛時間(秒)","離峰去程","離峰回程","尖峰去程","尖峰回程"]);\n' +
+'  aoa.push(["各路段行駛時間(秒)",(CFG.offPeakName||"離峰")+"去程",(CFG.offPeakName||"離峰")+"回程",(CFG.peakName||"尖峰")+"去程",(CFG.peakName||"尖峰")+"回程"]);\n' +
 '  segs.forEach(function(s,i){\n' +
 '    aoa.push([s.name].concat(trips.map(function(t){return t&&t.segTimes&&t.segTimes[i]?t.segTimes[i].runS:"—";})));\n' +
 '  });\n' +
@@ -3647,7 +3656,7 @@ function exportReport(){
 'function dlExcel(){\n' +
 '  try{\n' +
 '    var wb=XLSX.utils.book_new();\n' +
-'    var PL={peak:"尖峰",off_peak:"離峰"},DL={bound:"去程",return:"回程"};\n' +
+'    var PL={peak:CFG.peakName||"尖峰",off_peak:CFG.offPeakName||"離峰"},DL={bound:"去程",return:"回程"};\n' +
 '    function pK(k){if(k.indexOf("off_peak")===0)return["off_peak",k.replace("off_peak_","")];return["peak",k.replace("peak_","")];}\n' +
 '    KEYS.forEach(function(k){\n' +
 '      var trip=TRIPS[k]; if(!trip) return;\n' +
@@ -3736,7 +3745,7 @@ function downloadSGSPdf(){
 //  CSV EXPORT
 // ════════════════════════════════════
 function downloadCsv(){
-  const PL={off_peak:'離峰',peak:'尖峰'}, DL={bound:'去程',return:'回程'}
+  const PL={off_peak:config.offPeakName||'離峰',peak:config.peakName||'尖峰'}, DL={bound:'去程',return:'回程'}
   const rows=[['旅次','總旅行時間(秒)','行駛時間(秒)','路段延滯(秒)','交叉口延滯(秒)','總旅行速率(km/h)','總行駛速率(km/h)','出發時刻','到達時刻']]
   COMBO_KEYS.forEach(k=>{
     const t=allTrips[k]; if(!t) return
