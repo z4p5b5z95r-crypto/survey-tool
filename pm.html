@@ -2441,13 +2441,19 @@ async function saveTask(silent) {
   let existingTask=currentTaskId?savedTasks.find(t=>t.id===currentTaskId):null
   const id=existingTask?existingTask.id:Date.now().toString(36)
   currentTaskId=id
+  // 這條路線要歸屬哪個專案：優先採用 savedTasks 目前記錄的最新歸屬（例如編輯畫面開著的期間，
+  // 有人在列表頁用「搬移」把這條路線移到別的專案了），避免存檔時用編輯畫面剛開啟當下記住的
+  // _currentProjectId 把剛才的搬移結果蓋回去；只有全新路線或找不到有效歸屬時才用 _currentProjectId
+  let effectiveProjectId=(existingTask && existingTask.projectId && savedProjects.some(p=>p.id===existingTask.projectId))
+    ? existingTask.projectId : _currentProjectId
   // 每條路線一定要歸屬一個專案；沒有的話（理論上不該發生，安全網）就地新建一個同名專案
-  if(!_currentProjectId || !savedProjects.some(p=>p.id===_currentProjectId)){
+  if(!effectiveProjectId || !savedProjects.some(p=>p.id===effectiveProjectId)){
     const proj={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:null,name:cfg.rn||'未命名專案',savedAt:new Date().toLocaleDateString('zh-TW'),creator:getCurrentUser()||'未知'}
     savedProjects.push(proj);localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
-    _currentProjectId=proj.id
+    effectiveProjectId=proj.id
   }
-  const taskObj={id,cloudId:existingTask?.cloudId||null,projectId:_currentProjectId,cfg,savedAt:new Date().toLocaleDateString('zh-TW'),creator:getCurrentUser()||'未知'}
+  _currentProjectId=effectiveProjectId
+  const taskObj={id,cloudId:existingTask?.cloudId||null,projectId:effectiveProjectId,cfg,savedAt:new Date().toLocaleDateString('zh-TW'),creator:getCurrentUser()||'未知'}
   if(existingTask){const idx=savedTasks.findIndex(t=>t.id===id);savedTasks[idx]=taskObj}
   else{savedTasks.unshift(taskObj);if(savedTasks.length>30)savedTasks.pop()}
   localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
@@ -2582,10 +2588,17 @@ async function loadTask(id) {
 }
 
 async function deleteTask(id) {
-  if(!confirm('刪除此專案？\n\n此操作可在 3 天內由管理員於垃圾桶還原。'))return
+  if(!confirm('刪除此路線？\n\n此操作可在 3 天內由管理員於垃圾桶還原。'))return
   const task=savedTasks.find(t=>t.id===id)
+  // 如果這條路線已經同步過雲端，一定要雲端刪除成功才能刪本機；
+  // 不然雲端還留著舊資料，下次登入 syncFromCloud() 重新拉取時，剛刪掉的路線又會跑回來
   if(task&&task.cloudId&&gsUrl&&getSessionToken()){
-    try{await cloudPost({action:'deleteRoute',id:task.cloudId,deletedBy:getCurrentUser()||'pm'})}catch(e){toast('⚠️ 雲端刪除失敗：'+e.message)}
+    try{
+      await cloudPost({action:'deleteRoute',id:task.cloudId,deletedBy:getCurrentUser()||'pm'})
+    }catch(e){
+      toast('❌ 雲端刪除失敗，尚未刪除：'+e.message+'（請檢查網路後再試一次）')
+      return
+    }
   }
   if(currentTaskId===id){currentTaskId=null;showListView()}
   savedTasks=savedTasks.filter(t=>t.id!==id)
@@ -2692,17 +2705,26 @@ async function syncFromCloud() {
       // owner filter：只同步屬於自己的路線
       const isMine=!r.owner||r.owner===me
       if(!isMine) continue
-      // 雲端專案 id → 本機專案 id；沒對應到的話（例如舊資料沒有 projectId）就地新建一個同名專案
-      let localProjectId=r.projectId?projectMap[r.projectId]:null
-      if(!localProjectId){
-        const proj={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:r.projectId||null,name:r.routeName||'未命名專案',savedAt:r.createdAt?.slice(0,10)||'雲端',creator:me}
-        savedProjects.push(proj);localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
-        localProjectId=proj.id
-        if(r.projectId) projectMap[r.projectId]=proj.id
-      }
       const existIdx=savedTasks.findIndex(t=>t.cloudId===r.id)
+      // 路線的專案歸屬：本機已經有這條路線、且目前歸屬的專案還存在的話，一律以本機為準，
+      // 不要被雲端的 projectId 蓋掉 —— 「搬移」/「刪除專案」的雲端同步是非同步的，如果重新整理/重新登入時
+      // 剛好搬移還沒同步完，雲端讀到的會是搬移前的舊 projectId，若照單全收會讓路線「跑回去」舊專案或
+      // 復活一個剛被刪除的空專案，這正是使用者回報「已刪除/移動的東西重新登入又跑掉」的成因。
+      let localProjectId=null
+      if(existIdx>=0 && savedTasks[existIdx].projectId && savedProjects.some(p=>p.id===savedTasks[existIdx].projectId)){
+        localProjectId=savedTasks[existIdx].projectId
+      }else{
+        // 全新路線（本機從沒見過）或本機歸屬已失效，才需要靠雲端的 projectId 對照／新建專案
+        localProjectId=r.projectId?projectMap[r.projectId]:null
+        if(!localProjectId){
+          const proj={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:r.projectId||null,name:r.routeName||'未命名專案',savedAt:r.createdAt?.slice(0,10)||'雲端',creator:me}
+          savedProjects.push(proj);localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
+          localProjectId=proj.id
+          if(r.projectId) projectMap[r.projectId]=proj.id
+        }
+      }
       if(existIdx>=0){
-        // 路線已在本機：用雲端資料更新
+        // 路線已在本機：用雲端資料更新（但 projectId 依上面邏輯，以本機既有歸屬為準）
         const loc=savedTasks[existIdx]
         if(loc.creator!==me){loc.creator=me;changed++}
         if(loc.projectId!==localProjectId){loc.projectId=localProjectId;changed++}
@@ -2850,8 +2872,14 @@ async function deleteProject(pid){
   const routeCount=savedTasks.filter(t=>t.projectId===pid).length
   if(routeCount>0){toast(`⚠️ 這個專案底下還有 ${routeCount} 條路線，請先刪除或搬移路線後再刪除專案`);return}
   if(!confirm(`刪除專案「${proj.name}」？`))return
+  // 跟刪路線一樣：雲端一定要刪成功才能刪本機，不然下次登入同步時，沒真的刪掉的專案又會跑回來
   if(proj.cloudId&&gsUrl&&getSessionToken()){
-    try{await cloudPost({action:'deleteProject',id:proj.cloudId,deletedBy:getCurrentUser()||'pm'})}catch(e){toast('⚠️ 雲端刪除失敗：'+e.message)}
+    try{
+      await cloudPost({action:'deleteProject',id:proj.cloudId,deletedBy:getCurrentUser()||'pm'})
+    }catch(e){
+      toast('❌ 雲端刪除失敗，尚未刪除：'+e.message+'（請檢查網路後再試一次）')
+      return
+    }
   }
   savedProjects=savedProjects.filter(p=>p.id!==pid)
   localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
