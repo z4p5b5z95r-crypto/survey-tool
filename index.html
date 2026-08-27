@@ -130,10 +130,16 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .scroll-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
 .card{background:white;border-radius:14px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
 .card-title{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
-.pr-item{display:block;width:100%;text-align:left;background:white;border:1.5px solid #e2e8f0;border-radius:14px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.07);cursor:pointer;font-family:inherit}
-.pr-item:active{background:#f8fafc}
+.pr-proj-badge{display:inline-flex;align-items:center;gap:5px;margin-top:9px;background:rgba(59,130,246,.16);color:#93c5fd;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px}
+.pr-proj-badge .pr-count{color:#64748b;font-weight:600}
+.pr-hint{display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;margin:2px 2px 4px;font-weight:600}
+.pr-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:white;border:1.5px solid #e2e8f0;border-radius:16px;padding:13px 15px;box-shadow:0 1px 3px rgba(0,0,0,.07);cursor:pointer;font-family:inherit;transition:transform .1s,background .1s}
+.pr-item:active{background:#f8fafc;transform:scale(.98)}
+.pr-item-icon{flex-shrink:0;width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#60a5fa,#2563eb);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:white;box-shadow:0 2px 6px rgba(37,99,235,.35)}
+.pr-item-body{flex:1;min-width:0}
 .pr-item-name{font-size:15px;font-weight:800;color:#0f172a;margin-bottom:3px}
-.pr-item-sub{font-size:12.5px;color:#94a3b8}
+.pr-item-sub{font-size:12.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr-item-arrow{flex-shrink:0;color:#cbd5e1}
 .field{margin-bottom:10px}
 .field:last-child{margin-bottom:0}
 .row2{display:flex;gap:8px}
@@ -395,7 +401,11 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 <!-- ══ Screen: 專案 QR 掃描後先選路線 ══ -->
 <div id="screen-project-routes" class="screen">
   <div class="page-header">
-    <div class="page-header-body"><h2 id="pr-title">📁 選擇路線</h2><p>掃到的是專案 QR，這個專案底下有多條路線，請先選擇要調查哪一條</p></div>
+    <div class="page-header-body">
+      <h2 id="pr-title">🗂️ 請選擇任務路線</h2>
+      <p>點一下你要出發調查的路線，就可以開始囉 🚦</p>
+      <div class="pr-proj-badge" id="pr-proj-name"></div>
+    </div>
   </div>
   <div class="scroll-body">
     <div id="pr-list" style="display:flex;flex-direction:column;gap:10px"></div>
@@ -413,6 +423,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
         <p id="si-fromto"></p>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;padding-top:2px">
+        <button class="btn-q-sq" id="btn-back-routes" style="display:none" onclick="backToRoutePicker()" title="返回選擇路線"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
         <button class="btn-hist-rec" onclick="openHistModal()">📋 記錄</button>
         <button class="btn-q-sq" id="btn-help-q" onclick="openHelpMenu(event)">?</button>
       </div>
@@ -1763,6 +1774,8 @@ function showSigninScreen(){
     <div class="seg-row"><div class="seg-dot"></div>
     <span style="flex:1;color:#1e293b;font-weight:600">${s.name}</span>
     <span style="color:#94a3b8;font-size:11px">${s.length}m</span></div>`).join('')
+  const backBtn=$('btn-back-routes')
+  if(backBtn) backBtn.style.display=_cameFromProjectPicker?'flex':'none'
   showScreen('screen-signin')
   loadSavedSurveyor()   // auto-fill today's last-used name & weather
   buildDateSelect()     // build date dropdown
@@ -3869,6 +3882,7 @@ async function loadCloudRouteAndProceed(routeId, gsParam, kParam){
 }
 
 // 專案 QR（?pid=）：先下載專案底下的路線清單，讓現場人員選一條要調查的路線
+let _cameFromProjectPicker = false   // 這次是不是掃專案QR進來的（決定簽到頁要不要顯示「返回選路線」按鈕）
 async function showProjectRoutePicker(pid, gsParam, kParam){
   showScreen('screen-loading')
   setLoadPct(10)
@@ -3880,24 +3894,36 @@ async function showProjectRoutePicker(pid, gsParam, kParam){
       cloudFetchProjectRoutes(pid, gsParam, kParam)
     ])
     setLoadPct(100)
-    document.getElementById('pr-title').textContent = '📁 ' + (proj?.name || '選擇路線')
+    const projBadge = document.getElementById('pr-proj-name')
+    if(projBadge) projBadge.innerHTML = `📁 ${proj?.name||'專案'} <span class="pr-count">・${routes.length} 條路線</span>`
     const box = document.getElementById('pr-list')
     if(!routes.length){
       box.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8">這個專案還沒有任何路線，請聯絡PM新增路線後再掃一次</div>'
     }else{
-      box.innerHTML = routes.map(r => `
+      box.innerHTML = routes.map((r,i) => `
         <button class="pr-item" onclick="loadCloudRouteAndProceed('${r.id}','${gsParam}','${kParam}')">
-          <div class="pr-item-name">${r.routeName||'未命名路線'}</div>
-          <div class="pr-item-sub">${r.routeFromTo||''}</div>
+          <div class="pr-item-icon">${i+1}</div>
+          <div class="pr-item-body">
+            <div class="pr-item-name">${r.routeName||'未命名路線'}</div>
+            <div class="pr-item-sub">📍 ${r.routeFromTo||'未設定起訖點'}</div>
+          </div>
+          <svg class="pr-item-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
         </button>
       `).join('')
     }
+    _cameFromProjectPicker = true
     showScreen('screen-project-routes')
   }catch(e){
     document.getElementById('loading-msg').textContent='❌ 載入失敗'
     document.getElementById('loading-sub').textContent=e.message
     setLoadPct(0)
   }
+}
+
+// 從任務路線頁按「返回」，回到剛剛選過的路線清單（清單畫面內容還在，不用重新下載）
+function backToRoutePicker(){
+  if(!_cameFromProjectPicker) return
+  showScreen('screen-project-routes')
 }
 
 window.addEventListener('load', async () => {
