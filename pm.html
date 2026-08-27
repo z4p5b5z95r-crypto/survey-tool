@@ -616,7 +616,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
         <div class="acc-wrap">
 
           <!-- ① 路線資訊 -->
-          <div class="acc-sec open" id="acc-route">
+          <div class="acc-sec" id="acc-route">
             <div class="acc-hd" onclick="toggleAcc('acc-route')">
               <span class="acc-hd-icon">📋</span>
               <span class="acc-hd-label">路線資訊</span>
@@ -667,7 +667,6 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
             <div class="acc-hd" onclick="toggleAcc('acc-segs')">
               <span class="acc-hd-icon">🛣</span>
               <span class="acc-hd-label">路段資訊（車道、路寬、路長）</span>
-              <span class="acc-hd-badge" style="background:#f0fdf4;color:#16a34a">自動計算</span>
               <svg class="acc-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
             <div class="acc-bd">
@@ -999,8 +998,6 @@ function showEditView(title) {
   document.getElementById('tb-save').style.display = ''
   document.getElementById('ev-title').textContent = title || '未命名路線'
   updateCrumb(title || '新建專案')
-  // auto-expand nodes if we have some
-  if (nodes.length > 0) openAcc('acc-nodes')
 }
 
 function updateEvTitle() {
@@ -1026,6 +1023,12 @@ function toggleAcc(id) {
 }
 function openAcc(id) {
   document.getElementById(id).classList.add('open')
+}
+// 進入編輯畫面（新建或載入既有專案）時，五個欄位全部收合，避免殘留上一次展開的狀態
+function collapseAllAcc() {
+  ;['acc-route','acc-time','acc-nodes','acc-segs','acc-qr'].forEach(id=>{
+    document.getElementById(id)?.classList.remove('open')
+  })
 }
 
 // ════════════════════════════════════════════════════════
@@ -2308,9 +2311,7 @@ function newTask() {
   clearMidHandles();nodes=[];segData=[];stopMeasure()
   renderNodeList();renderSegTable()
   showEditView('新建專案')
-  // open route info section, collapse others
-  document.getElementById('acc-route').classList.add('open')
-  document.getElementById('acc-nodes').classList.remove('open')
+  collapseAllAcc()   // 五個欄位全部先最小化
   setTimeout(()=>document.getElementById('rn').focus(),200)
 }
 
@@ -2336,6 +2337,7 @@ async function loadTask(id) {
   if(nodes.length>=2)map.fitBounds(L.polyline(nodes.map(n=>[n.lat,n.lng])).getBounds(),{padding:[40,40]})
   _dirty=false
   showEditView(cfg.rn||'未命名路線')
+  collapseAllAcc()   // 五個欄位全部先最小化
   toast('✅ 任務已載入')
 }
 
