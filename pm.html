@@ -158,6 +158,19 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .no-projects-icon{font-size:44px;margin-bottom:14px;display:block}
 .no-projects p{font-size:14px;line-height:1.6}
 .no-projects b{color:#64748b}
+/* project group（專案分組） */
+.proj-group{background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;margin-bottom:12px;overflow:hidden}
+.proj-group-hd{display:flex;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;user-select:none}
+.proj-group-name{font-size:14.5px;font-weight:800;color:#0f172a;flex:1;line-height:1.3}
+.proj-group-count{font-size:11px;color:#94a3b8;font-weight:700;white-space:nowrap}
+.proj-group-arrow{transition:transform .15s;color:#94a3b8;flex-shrink:0}
+.proj-group.open .proj-group-arrow{transform:rotate(180deg)}
+.proj-group-actions{display:flex;gap:6px;padding:0 14px 12px}
+.proj-group-body{display:none;padding:0 10px 10px}
+.proj-group.open .proj-group-body{display:block}
+.pc-btn.proj{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
+.pc-btn.projadd{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
+.pc-btn.projdel{background:#fee2e2;color:#dc2626;border-color:#fecaca}
 
 /* ══ EDIT VIEW ══ */
 #view-edit{display:none;flex-direction:column;height:100%}
@@ -609,7 +622,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
         <div class="lv-header">
           <div class="lv-header-top">
             <span class="lv-title">專案列表</span>
-            <button class="btn-new" onclick="newTask()">＋ 新建專案</button>
+            <button class="btn-new" onclick="newProject()">＋ 新建專案</button>
           </div>
           <div class="lv-search">
             <span style="font-size:14px;color:#94a3b8">🔍</span>
@@ -626,7 +639,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
             專案列表
           </button>
-          <span class="ev-header-title" id="ev-title">新建專案</span>
+          <span class="ev-header-title" id="ev-title">新建路線</span>
         </div>
 
         <div class="step-bar" id="step-bar"></div>
@@ -1038,13 +1051,13 @@ function showEditView(title) {
   document.getElementById('map-toolbar').style.display = 'flex'
   document.getElementById('tb-save').style.display = ''
   document.getElementById('ev-title').textContent = title || '未命名路線'
-  updateCrumb(title || '新建專案')
+  updateCrumb(title || '新建路線')
 }
 
 function updateEvTitle() {
   const v = document.getElementById('rn').value.trim()
-  document.getElementById('ev-title').textContent = v || '新建專案'
-  updateCrumb(v || '新建專案')
+  document.getElementById('ev-title').textContent = v || '新建路線'
+  updateCrumb(v || '新建路線')
 }
 
 function updateCrumb(cur) {
@@ -1294,7 +1307,27 @@ let _segDisplayMap=[] // maps display-row index → [segData indices] (ghost nod
 let _polyDrawMode=false, _polyDrawNodeIdx=-1, _polyDrawPts=[], _polyDrawPreview=null, _polyDrawDotMarkers=[]
 let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], measureTooltipMarker=null
 let savedTasks = JSON.parse(localStorage.getItem('pm_tasks') || '[]')
+let savedProjects = JSON.parse(localStorage.getItem('pm_projects') || '[]')
 let currentTaskId = null
+let _currentProjectId = null   // 目前正在編輯的路線屬於哪個專案（本機 id）
+
+// 舊資料遷移：每條路線都要歸屬一個專案。第一次載入時，把還沒有 projectId 的路線
+// 各自包成一個同名的專案（PM 之後可以自己手動把路線搬到同一個專案下合併）
+function migrateTasksToProjects() {
+  let changed = false
+  savedTasks.forEach(t => {
+    if (t.projectId && savedProjects.some(p => p.id === t.projectId)) return
+    const proj = { id: 'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), cloudId: null, name: t.cfg?.rn || '未命名專案', savedAt: t.savedAt || '', creator: t.creator || '未知' }
+    savedProjects.push(proj)
+    t.projectId = proj.id
+    changed = true
+  })
+  if (changed) {
+    localStorage.setItem('pm_projects', JSON.stringify(savedProjects))
+    localStorage.setItem('pm_tasks', JSON.stringify(savedTasks))
+  }
+}
+migrateTasksToProjects()
 
 // ════════════════════════════════════════════════════════
 //  CLOUD API
@@ -2378,8 +2411,20 @@ async function downloadQR() {
 //  SAVE / LOAD / DELETE TASKS
 // ════════════════════════════════════════════════════════
 // 共用：把一個 cfg 物件包成 saveRoute 要送出的 payload（saveTask 及清單頁 QR 自動上傳都用這個，避免兩邊邏輯兜不起來）
-function buildRoutePayload(cfg, cloudId, owner) {
-  return {action:'saveRoute',id:cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,roundCount:cfg.rc||3,offPeakLabel:cfg.op,peakLabel:cfg.pk,offPeakName:cfg.opn||'離峰',peakName:cfg.pkn||'尖峰',owner:owner||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
+function buildRoutePayload(cfg, cloudId, owner, projectCloudId) {
+  return {action:'saveRoute',id:cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,roundCount:cfg.rc||3,offPeakLabel:cfg.op,peakLabel:cfg.pk,offPeakName:cfg.opn||'離峰',peakName:cfg.pkn||'尖峰',projectId:projectCloudId||'',owner:owner||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
+}
+// 把本機專案 id 解析成雲端專案 id；若專案還沒同步過雲端，先同步一次
+async function ensureProjectCloudSynced(proj) {
+  if(!proj) return null
+  if(!(gsUrl&&getSessionToken())) return proj.cloudId||null
+  if(proj.cloudId) return proj.cloudId
+  try{
+    const result=await cloudPost({action:'saveProject',name:proj.name,owner:proj.creator||getCurrentUser()||''})
+    proj.cloudId=result.id
+    localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
+  }catch(e){ toast('⚠️ 專案同步雲端失敗：'+e.message) }
+  return proj.cloudId||null
 }
 async function saveTask(silent) {
   const cfg=buildConfig()
@@ -2388,7 +2433,13 @@ async function saveTask(silent) {
   let existingTask=currentTaskId?savedTasks.find(t=>t.id===currentTaskId):null
   const id=existingTask?existingTask.id:Date.now().toString(36)
   currentTaskId=id
-  const taskObj={id,cloudId:existingTask?.cloudId||null,cfg,savedAt:new Date().toLocaleDateString('zh-TW'),creator:getCurrentUser()||'未知'}
+  // 每條路線一定要歸屬一個專案；沒有的話（理論上不該發生，安全網）就地新建一個同名專案
+  if(!_currentProjectId || !savedProjects.some(p=>p.id===_currentProjectId)){
+    const proj={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:null,name:cfg.rn||'未命名專案',savedAt:new Date().toLocaleDateString('zh-TW'),creator:getCurrentUser()||'未知'}
+    savedProjects.push(proj);localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
+    _currentProjectId=proj.id
+  }
+  const taskObj={id,cloudId:existingTask?.cloudId||null,projectId:_currentProjectId,cfg,savedAt:new Date().toLocaleDateString('zh-TW'),creator:getCurrentUser()||'未知'}
   if(existingTask){const idx=savedTasks.findIndex(t=>t.id===id);savedTasks[idx]=taskObj}
   else{savedTasks.unshift(taskObj);if(savedTasks.length>30)savedTasks.pop()}
   localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
@@ -2399,7 +2450,9 @@ async function saveTask(silent) {
     if(!silent) toast('⏳ 同步至雲端...')
     updateCloudDot('uploading')
     try{
-      const payload=buildRoutePayload(cfg, taskObj.cloudId, getCurrentUser())
+      const proj=savedProjects.find(p=>p.id===_currentProjectId)
+      const projectCloudId=await ensureProjectCloudSynced(proj)
+      const payload=buildRoutePayload(cfg, taskObj.cloudId, getCurrentUser(), projectCloudId)
       const result=await cloudPost(payload)
       const taskIdx=savedTasks.findIndex(t=>t.id===id)
       if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
@@ -2437,19 +2490,9 @@ async function uploadTask(id) {
   if (!gsUrl || !getSessionToken()) { toast('雲端未設定'); return }
   toast('⏳ 上傳中...')
   try {
-    const cfg = task.cfg
-    const payload = {
-      action: 'saveRoute',
-      routeName:    cfg.rn,
-      routeFromTo:  cfg.ft,
-      totalLength:  cfg.tl,
-      roundCount:   cfg.rc||3,
-      offPeakLabel: cfg.op,
-      peakLabel:    cfg.pk,
-      owner:        task.creator || getCurrentUser() || '',
-      nodes:    cfg.nd.map(n => ({ name:n.n, exitName:n.n2||'', lat:n.a, lng:n.o, radius:n.r, polygon:n.pg||null, lineAngle:n.la??null, lineLength:n.ll||20, ghost:n.gh||false })),
-      segments: cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})
-    }
+    const proj=savedProjects.find(p=>p.id===task.projectId)
+    const projectCloudId=await ensureProjectCloudSynced(proj)
+    const payload = buildRoutePayload(task.cfg, task.cloudId, task.creator||getCurrentUser(), projectCloudId)
     const result = await cloudPost(payload)
     const idx = savedTasks.findIndex(t => t.id === id)
     if (idx >= 0) { savedTasks[idx].cloudId = result.id; localStorage.setItem('pm_tasks', JSON.stringify(savedTasks)) }
@@ -2462,11 +2505,13 @@ async function uploadTask(id) {
   }
 }
 
-function newTask() {
+function newTask(projectId) {
   // 只有在「目前正在編輯、且有未儲存變更」時才需要提醒會被清掉；
-  // 從專案列表頁按「新建專案」（還沒開啟任何專案）不用跳這個確認
-  if(_inEditView && _dirty && !confirm('清除目前設定，開始新建專案？'))return
+  // 從專案列表頁按「新建路線」（還沒開啟任何路線）不用跳這個確認
+  if(_inEditView && _dirty && !confirm('清除目前設定，開始新建路線？'))return
   currentTaskId=null
+  _currentProjectId=projectId||null
+  if(_currentProjectId)_openProjectIds.add(_currentProjectId)
   document.getElementById('rn').value=''
   document.getElementById('ft').value=''
   document.getElementById('tl').value=''
@@ -2483,7 +2528,7 @@ function newTask() {
   clearMidHandles();nodes=[];segData=[];stopMeasure()
   _segsConfirmedSig=null   // 新專案，路段資訊要重新確認
   renderNodeList();renderSegTable()
-  showEditView('新建專案')
+  showEditView('新建路線')
   collapseAllAcc()   // 五個欄位全部先最小化
   setTimeout(()=>document.getElementById('rn').focus(),200)
 }
@@ -2491,6 +2536,8 @@ function newTask() {
 async function loadTask(id) {
   const task=savedTasks.find(t=>t.id===id);if(!task)return
   currentTaskId=id
+  _currentProjectId=task.projectId||null
+  if(_currentProjectId)_openProjectIds.add(_currentProjectId)
   const cfg=task.cfg
   document.getElementById('rn').value=cfg.rn||''
   document.getElementById('ft').value=cfg.ft||''
@@ -2597,12 +2644,33 @@ async function showListQR(taskId){
 // ════════════════════════════════════════════════════════
 //  SYNC FROM CLOUD
 // ════════════════════════════════════════════════════════
+// 把雲端專案同步回本機，回傳「雲端專案 id → 本機專案 id」的對照表
+async function syncProjectsFromCloud(me) {
+  const map={}
+  try{
+    const projects=await cloudGet({action:'getProjects'})
+    let changed=false
+    for(const p of projects){
+      const isMine=!p.owner||p.owner===me
+      if(!isMine) continue
+      let loc=savedProjects.find(x=>x.cloudId===p.id)
+      if(!loc){
+        loc={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:p.id,name:p.name||'未命名專案',savedAt:p.createdAt?.slice(0,10)||'雲端',creator:me}
+        savedProjects.push(loc);changed=true
+      }else if(loc.name!==p.name){loc.name=p.name||loc.name;changed=true}
+      map[p.id]=loc.id
+    }
+    if(changed) localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
+  }catch(e){/* 專案同步失敗不影響路線同步，靜默即可 */}
+  return map
+}
 async function syncFromCloud() {
   const _tok = getSessionToken()
   if(!gsUrl||!_tok)return
   updateCloudDot('syncing')
   const me=getCurrentUser()||'未知'
   try{
+    const projectMap=await syncProjectsFromCloud(me)
     const routes=await cloudGet({action:'getRoutes'})
     updateCloudDot('ok')
     let changed=0
@@ -2616,16 +2684,25 @@ async function syncFromCloud() {
       // owner filter：只同步屬於自己的路線
       const isMine=!r.owner||r.owner===me
       if(!isMine) continue
+      // 雲端專案 id → 本機專案 id；沒對應到的話（例如舊資料沒有 projectId）就地新建一個同名專案
+      let localProjectId=r.projectId?projectMap[r.projectId]:null
+      if(!localProjectId){
+        const proj={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:r.projectId||null,name:r.routeName||'未命名專案',savedAt:r.createdAt?.slice(0,10)||'雲端',creator:me}
+        savedProjects.push(proj);localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
+        localProjectId=proj.id
+        if(r.projectId) projectMap[r.projectId]=proj.id
+      }
       const existIdx=savedTasks.findIndex(t=>t.cloudId===r.id)
       if(existIdx>=0){
         // 路線已在本機：用雲端資料更新
         const loc=savedTasks[existIdx]
         if(loc.creator!==me){loc.creator=me;changed++}
+        if(loc.projectId!==localProjectId){loc.projectId=localProjectId;changed++}
         const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
         if(JSON.stringify(loc.cfg)!==JSON.stringify(newCfg)){loc.cfg=newCfg;changed++}
         continue
       }
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,projectId:localProjectId,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
       changed++
     }
     // 移除本機有 cloudId 但雲端「我的路線」已不存在的項目（刪除同步 + 清除誤匯入的他人路線）
@@ -2640,8 +2717,14 @@ async function syncFromCloud() {
 }
 
 // ════════════════════════════════════════════════════════
-//  RENDER PROJECTS — only show current user's tasks
+//  RENDER PROJECTS — 一個專案可以有多條路線，共用一個 QR；
+//  現場掃專案 QR 後先選路線，才進到原本的監測流程
 // ════════════════════════════════════════════════════════
+let _openProjectIds=new Set()   // 記住哪些專案分組目前是展開的
+function toggleProjectGroup(pid){
+  if(_openProjectIds.has(pid)) _openProjectIds.delete(pid); else _openProjectIds.add(pid)
+  renderProjects(document.getElementById('project-search')?.value.trim()||'')
+}
 function renderProjects(filter='') {
   const me=getCurrentUser()||''
   const wrap=document.getElementById('projects-wrap')
@@ -2651,41 +2734,148 @@ function renderProjects(filter='') {
   if(!list.length){
     wrap.innerHTML=`<div class="no-projects">
       <span class="no-projects-icon">${filter?'🔍':'🗺'}</span>
-      <p>${filter?'沒有符合的專案':'還沒有任何專案<br><b>按右上角「＋ 新建專案」開始</b>'}</p>
+      <p>${filter?'沒有符合的路線':'還沒有任何專案<br><b>按右上角「＋ 新建專案」開始</b>'}</p>
     </div>`
     return
   }
-  wrap.innerHTML=list.map(t=>{
-    const isEdit=t.id===currentTaskId&&_inEditView
-    const metaParts=[]
-    if(t.cfg.ft) metaParts.push(`<span>📍 ${t.cfg.ft}</span>`)
-    if(t.creator&&t.creator!=='未知') metaParts.push(`<span>👤 ${t.creator}</span>`)
-    const metaHtml=metaParts.map((s,i)=>i<metaParts.length-1?s+`<span class="pc-dot">·</span>`:s).join('')
-    return`<div class="pc${isEdit?' editing':''}">
-      <div class="pc-top">
-        <div class="pc-name">${t.cfg.rn||'未命名路線'}</div>
-        <div class="pc-chips">
-          ${isEdit?'<span class="pc-chip editing-chip">▶ 編輯中</span>':''}
-          ${t.cloudId?'<span class="pc-chip cloud">☁ 雲端</span>':'<span class="pc-chip local">本地</span>'}
+  // 依 projectId 分組（搜尋時若某專案內只有部分路線符合，仍只顯示符合的路線）
+  const groups={}, order=[]
+  list.forEach(t=>{
+    const pid=t.projectId||'_none'
+    if(!groups[pid]){groups[pid]=[];order.push(pid)}
+    groups[pid].push(t)
+  })
+  wrap.innerHTML=order.map(pid=>{
+    const proj=savedProjects.find(p=>p.id===pid)
+    const projName=proj?.name||'未分類路線'
+    const routes=groups[pid]
+    const isOpen=filter?true:_openProjectIds.has(pid)
+    const routesHtml=routes.map(t=>{
+      const isEdit=t.id===currentTaskId&&_inEditView
+      const metaParts=[]
+      if(t.cfg.ft) metaParts.push(`<span>📍 ${t.cfg.ft}</span>`)
+      if(t.creator&&t.creator!=='未知') metaParts.push(`<span>👤 ${t.creator}</span>`)
+      const metaHtml=metaParts.map((s,i)=>i<metaParts.length-1?s+`<span class="pc-dot">·</span>`:s).join('')
+      return`<div class="pc${isEdit?' editing':''}">
+        <div class="pc-top">
+          <div class="pc-name">${t.cfg.rn||'未命名路線'}</div>
+          <div class="pc-chips">
+            ${isEdit?'<span class="pc-chip editing-chip">▶ 編輯中</span>':''}
+            ${t.cloudId?'<span class="pc-chip cloud">☁ 雲端</span>':'<span class="pc-chip local">本地</span>'}
+          </div>
         </div>
+        <div class="pc-meta">${metaHtml}</div>
+        <div class="pc-actions">
+          <div class="pc-actions-l">
+            ${isEdit
+              ?`<span class="pc-active-tag">▶ 編輯中</span>`
+              :`<button class="pc-btn edit" onclick="loadTask('${t.id}')">✏️ 編輯</button>`}
+            ${t.cloudId
+              ?`<button class="pc-btn rec" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}','${(t.cfg.opn||'離峰').replace(/'/g,"\\'")}','${(t.cfg.pkn||'尖峰').replace(/'/g,"\\'")}')">📋 報告</button>`
+              :(gsUrl&&getSessionToken())?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
+          </div>
+          <div class="pc-actions-r">
+            <button class="pc-btn icon del" title="刪除" onclick="deleteTask('${t.id}')">🗑</button>
+          </div>
+        </div>
+      </div>`
+    }).join('')
+    return`<div class="proj-group${isOpen?' open':''}">
+      <div class="proj-group-hd" onclick="toggleProjectGroup('${pid}')">
+        <span class="proj-group-name">📁 ${projName}</span>
+        <span class="proj-group-count">${routes.length} 條路線</span>
+        <svg class="proj-group-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
-      <div class="pc-meta">${metaHtml}</div>
-      <div class="pc-actions">
-        <div class="pc-actions-l">
-          ${isEdit
-            ?`<span class="pc-active-tag">▶ 編輯中</span>`
-            :`<button class="pc-btn edit" onclick="loadTask('${t.id}')">✏️ 編輯</button>`}
-          <button class="pc-btn qr" onclick="showListQR('${t.id}')">🔲 QR</button>
-          ${t.cloudId
-            ?`<button class="pc-btn rec" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}','${(t.cfg.opn||'離峰').replace(/'/g,"\\'")}','${(t.cfg.pkn||'尖峰').replace(/'/g,"\\'")}')">📋 報告</button>`
-            :(gsUrl&&getSessionToken())?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
-        </div>
-        <div class="pc-actions-r">
-          <button class="pc-btn icon del" title="刪除" onclick="deleteTask('${t.id}')">🗑</button>
-        </div>
+      <div class="proj-group-actions">
+        <button class="pc-btn proj" onclick="event.stopPropagation();showProjectQR('${pid}')">🔲 專案 QR</button>
+        <button class="pc-btn projadd" onclick="event.stopPropagation();newTask('${pid}')">＋ 新增路線</button>
+        <button class="pc-btn projdel" onclick="event.stopPropagation();deleteProject('${pid}')">🗑 刪除專案</button>
       </div>
+      <div class="proj-group-body">${routesHtml}</div>
     </div>`
   }).join('')
+}
+
+// 新建專案：先取名，再直接進入路線編輯畫面（該路線會歸屬這個新專案）
+function newProject(){
+  if(_inEditView && _dirty && !confirm('清除目前設定，開始新建專案？'))return
+  const name=prompt('專案名稱：')
+  if(name===null) return   // 取消
+  const proj={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:null,name:name.trim()||'未命名專案',savedAt:new Date().toLocaleDateString('zh-TW'),creator:getCurrentUser()||'未知'}
+  savedProjects.push(proj)
+  localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
+  _openProjectIds.add(proj.id)
+  newTask(proj.id)
+}
+
+// 刪除專案：底下還有路線的話先提醒（避免路線變成孤兒資料）
+async function deleteProject(pid){
+  const proj=savedProjects.find(p=>p.id===pid)
+  if(!proj){toast('找不到專案');return}
+  const routeCount=savedTasks.filter(t=>t.projectId===pid).length
+  if(routeCount>0){toast(`⚠️ 這個專案底下還有 ${routeCount} 條路線，請先刪除或搬移路線後再刪除專案`);return}
+  if(!confirm(`刪除專案「${proj.name}」？`))return
+  if(proj.cloudId&&gsUrl&&getSessionToken()){
+    try{await cloudPost({action:'deleteProject',id:proj.cloudId,deletedBy:getCurrentUser()||'pm'})}catch(e){toast('⚠️ 雲端刪除失敗：'+e.message)}
+  }
+  savedProjects=savedProjects.filter(p=>p.id!==pid)
+  localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
+  renderProjects()
+}
+
+// 專案層級 QR：一個專案（可能有多條路線）共用一個 QR，現場掃了先選路線。
+// 這一定要走雲端（離線模式若塞進所有路線的完整資料，QR 一定太密掃不動），沒有雲端連線就明確告知。
+async function showProjectQR(pid){
+  const proj=savedProjects.find(p=>p.id===pid)
+  if(!proj){toast('找不到專案');return}
+  if(!(gsUrl&&getSessionToken())){toast('❌ 專案 QR 需要雲端連線，請先設定雲端網址並登入');return}
+  if(!getGsKey()){toast('⚠️ 找不到雲端金鑰，請登出後重新登入一次即可修復（右上角帳號選單）');return}
+  const routes=savedTasks.filter(t=>t.projectId===pid)
+  if(!routes.length){toast('這個專案還沒有任何路線');return}
+  toast('⏳ 正在確認雲端同步狀態...')
+  const projectCloudId=await ensureProjectCloudSynced(proj)
+  if(!projectCloudId){toast('❌ 專案同步雲端失敗，無法產生 QR');return}
+  // 確保底下每條路線都已同步、且歸屬正確的雲端專案 id
+  for(const t of routes){
+    if(!t.cloudId){
+      try{
+        const result=await cloudPost(buildRoutePayload(t.cfg,t.cloudId,t.creator,projectCloudId))
+        const idx=savedTasks.findIndex(x=>x.id===t.id)
+        if(idx>=0)savedTasks[idx].cloudId=result.id
+      }catch(e){toast('⚠️ 路線「'+(t.cfg.rn||'')+'」同步雲端失敗：'+e.message)}
+    }
+  }
+  localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
+  const appBase=(document.getElementById('app-url')?.value||'').trim().replace(/\/$/,'')||location.href.replace(/\/[^\/]*$/,'')
+  const url=`${appBase}/?pid=${encodeURIComponent(projectCloudId)}&gs=${encodeURIComponent(gsUrl)}&k=${encodeURIComponent(getGsKey())}`
+  const shortUrl=url.length>55?url.slice(0,55)+'…':url
+  const overlay=document.createElement('div')
+  overlay.id='list-qr-overlay'
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px'
+  overlay.innerHTML=`
+    <div style="background:white;border-radius:20px;padding:24px 22px 20px;width:100%;max-width:320px;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div style="font-size:15px;font-weight:800;color:#0f172a;flex:1;padding-right:8px;line-height:1.3">📁 ${proj.name}（${routes.length} 條路線）</div>
+        <button id="lqr-close" style="background:#f1f5f9;border:none;border-radius:9px;width:30px;height:30px;font-size:14px;cursor:pointer;color:#64748b;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
+      </div>
+      <div id="list-qr-box" style="display:flex;justify-content:center;align-items:center;padding:16px;background:#f8fafc;border-radius:14px;border:1px solid #e2e8f0;margin-bottom:12px;min-height:200px"></div>
+      <div style="font-size:10.5px;color:#94a3b8;text-align:center;margin-bottom:14px;word-break:break-all;line-height:1.5">${shortUrl}</div>
+      <div style="display:flex;gap:8px">
+        <button id="lqr-copy" style="flex:1;padding:11px;background:#eff6ff;color:#1d4ed8;border:none;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔗 複製連結</button>
+        <button id="lqr-dl" style="flex:1;padding:11px;background:#f0fdf4;color:#16a34a;border:none;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⬇ 下載 QR</button>
+      </div>
+    </div>`
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()})
+  overlay.querySelector('#lqr-close').addEventListener('click',()=>overlay.remove())
+  overlay.querySelector('#lqr-copy').addEventListener('click',()=>{
+    navigator.clipboard.writeText(url).then(()=>toast('✅ 連結已複製')).catch(()=>prompt('複製連結：',url))
+  })
+  overlay.querySelector('#lqr-dl').addEventListener('click',()=>{
+    const c=document.querySelector('#list-qr-box canvas'); if(!c)return
+    const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download=`QR_${proj.name}.png`;a.click()
+  })
+  document.body.appendChild(overlay)
+  setTimeout(()=>{ renderQR(document.getElementById('list-qr-box'), url, 200) },30)
 }
 
 function filterProjects() {

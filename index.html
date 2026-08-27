@@ -130,6 +130,10 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .scroll-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
 .card{background:white;border-radius:14px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
 .card-title{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.pr-item{display:block;width:100%;text-align:left;background:white;border:1.5px solid #e2e8f0;border-radius:14px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.07);cursor:pointer;font-family:inherit}
+.pr-item:active{background:#f8fafc}
+.pr-item-name{font-size:15px;font-weight:800;color:#0f172a;margin-bottom:3px}
+.pr-item-sub{font-size:12.5px;color:#94a3b8}
 .field{margin-bottom:10px}
 .field:last-child{margin-bottom:0}
 .row2{display:flex;gap:8px}
@@ -386,6 +390,16 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
   </div>
   <div id="loading-msg" style="color:#f1f5f9;font-size:20px;font-weight:700;letter-spacing:.5px">任務下載中</div>
   <div id="loading-sub" style="color:#64748b;font-size:13px;text-align:center;max-width:220px;line-height:1.6"></div>
+</div>
+
+<!-- ══ Screen: 專案 QR 掃描後先選路線 ══ -->
+<div id="screen-project-routes" class="screen">
+  <div class="page-header">
+    <div class="page-header-body"><h2 id="pr-title">📁 選擇路線</h2><p>掃到的是專案 QR，這個專案底下有多條路線，請先選擇要調查哪一條</p></div>
+  </div>
+  <div class="scroll-body">
+    <div id="pr-list" style="display:flex;flex-direction:column;gap:10px"></div>
+  </div>
 </div>
 
 <!-- ══ Screen -1: Sign-in ══ -->
@@ -1056,6 +1070,20 @@ function applyConfig(cfg){
 // ════════════════════════════════════
 // Apps Script 剛部署新版本時，第一次呼叫常有「冷啟動」延遲（可能超過15秒）。
 // 逾時拉長到45秒，並在逾時/網路錯誤時自動重試一次，避免現場人員一開頁就看到「任務下載失敗」。
+async function cloudFetchProject(pid, gsUrl, apiKey){
+  const p=new URLSearchParams({action:'getProject',pid,key:apiKey,t:Date.now()})
+  const res=await fetch(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(45000),cache:'no-store'})
+  const json=await res.json()
+  if(!json.ok) throw new Error(json.error||'cloud error')
+  return json.data
+}
+async function cloudFetchProjectRoutes(pid, gsUrl, apiKey){
+  const p=new URLSearchParams({action:'getProjectRoutes',pid,key:apiKey,t:Date.now()})
+  const res=await fetch(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(45000),cache:'no-store'})
+  const json=await res.json()
+  if(!json.ok) throw new Error(json.error||'cloud error')
+  return json.data
+}
 async function cloudFetchRoute(id, gsUrl, apiKey, _retried){
   const p=new URLSearchParams({action:'getRoute',id,key:apiKey,t:Date.now()})
   try{
@@ -3808,42 +3836,83 @@ function setLoadPct(pct){
   }
 }
 
+// 下載指定路線並接續原本的流程（畫面：下載中 → 計算路徑中 → 簽到畫面）
+// 單一路線 QR（?id=）跟專案 QR 選定路線後，都是走這一段
+async function loadCloudRouteAndProceed(routeId, gsParam, kParam){
+  cloudRouteId   = routeId
+  cloudScriptUrl = gsParam
+  cloudApiKey    = kParam
+  qrKey = 'cloud_' + routeId   // localStorage namespace
+
+  showScreen('screen-loading')  // uses classList — correct way
+  setLoadPct(5)
+
+  try{
+    document.getElementById('loading-msg').textContent='任務下載中'
+    document.getElementById('loading-sub').textContent=''
+    setTimeout(()=>setLoadPct(40), 300)  // animate car forward while fetching
+    const routeData = await cloudFetchRoute(routeId, gsParam, kParam)
+    applyConfig(routeData)
+    setLoadPct(55)
+    document.getElementById('loading-msg').textContent='計算道路路徑中'
+    document.getElementById('loading-sub').textContent=''
+    await prefetchRoutes()
+    setLoadPct(100)
+    await new Promise(r=>setTimeout(r,700))  // let car reach 🏁
+    showSigninScreen()
+    flushOfflineQueue()
+  }catch(e){
+    document.getElementById('loading-msg').textContent='❌ 載入失敗'
+    document.getElementById('loading-sub').textContent=e.message
+    setLoadPct(0)
+  }
+}
+
+// 專案 QR（?pid=）：先下載專案底下的路線清單，讓現場人員選一條要調查的路線
+async function showProjectRoutePicker(pid, gsParam, kParam){
+  showScreen('screen-loading')
+  setLoadPct(10)
+  document.getElementById('loading-msg').textContent='專案資料下載中'
+  document.getElementById('loading-sub').textContent=''
+  try{
+    const [proj, routes] = await Promise.all([
+      cloudFetchProject(pid, gsParam, kParam).catch(()=>null),
+      cloudFetchProjectRoutes(pid, gsParam, kParam)
+    ])
+    setLoadPct(100)
+    document.getElementById('pr-title').textContent = '📁 ' + (proj?.name || '選擇路線')
+    const box = document.getElementById('pr-list')
+    if(!routes.length){
+      box.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8">這個專案還沒有任何路線，請聯絡PM新增路線後再掃一次</div>'
+    }else{
+      box.innerHTML = routes.map(r => `
+        <button class="pr-item" onclick="loadCloudRouteAndProceed('${r.id}','${gsParam}','${kParam}')">
+          <div class="pr-item-name">${r.routeName||'未命名路線'}</div>
+          <div class="pr-item-sub">${r.routeFromTo||''}</div>
+        </button>
+      `).join('')
+    }
+    showScreen('screen-project-routes')
+  }catch(e){
+    document.getElementById('loading-msg').textContent='❌ 載入失敗'
+    document.getElementById('loading-sub').textContent=e.message
+    setLoadPct(0)
+  }
+}
+
 window.addEventListener('load', async () => {
   const params=new URLSearchParams(location.search)
   const idParam = params.get('id')
+  const pidParam = params.get('pid')
   const gsParam = params.get('gs')
   const kParam  = params.get('k')
 
-  if(idParam && gsParam && kParam){
-    // ── Cloud route ──
-    cloudRouteId   = idParam
-    cloudScriptUrl = gsParam
-    cloudApiKey    = kParam
-    qrKey = 'cloud_' + idParam   // localStorage namespace
-
-    showScreen('screen-loading')  // uses classList — correct way
-    setLoadPct(5)
-
-    try{
-      document.getElementById('loading-msg').textContent='任務下載中'
-      document.getElementById('loading-sub').textContent=''
-      setTimeout(()=>setLoadPct(40), 300)  // animate car forward while fetching
-      const routeData = await cloudFetchRoute(idParam, gsParam, kParam)
-      applyConfig(routeData)
-      setLoadPct(55)
-      document.getElementById('loading-msg').textContent='計算道路路徑中'
-      document.getElementById('loading-sub').textContent=''
-      await prefetchRoutes()
-      setLoadPct(100)
-      await new Promise(r=>setTimeout(r,700))  // let car reach 🏁
-      showSigninScreen()
-      flushOfflineQueue()
-    }catch(e){
-      document.getElementById('loading-msg').textContent='❌ 載入失敗'
-      document.getElementById('loading-sub').textContent=e.message
-      setLoadPct(0)
-    }
-
+  if(pidParam && gsParam && kParam){
+    // ── 專案 QR：先選路線 ──
+    await showProjectRoutePicker(pidParam, gsParam, kParam)
+  }else if(idParam && gsParam && kParam){
+    // ── 單一路線 QR ──
+    await loadCloudRouteAndProceed(idParam, gsParam, kParam)
   }else if(loadFromHash()){
     // ── Offline ?c= encoded route ──
     await prefetchRoutes()
