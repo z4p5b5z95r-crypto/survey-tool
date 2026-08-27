@@ -1088,7 +1088,10 @@ function applyConfig(cfg){
       for(let j=0;j<chain.length;j++){
         const ll=chain[j].seg.latlngs
         if(ll?.length>=2) allLl.push(...(j===0?ll:ll.slice(1)))
-        else if(j<chain.length-1&&chain[j].gn&&!chain[j].gn._ghost) allLl.push([chain[j].gn.lat,chain[j].gn.lng])
+        // 這個中繼點的道路貼合座標還沒算好時，至少把它自己的座標放進去當轉折點；
+        // 之前這裡排除了鬼節點（!chain[j].gn._ghost），導致剛加的鬼節點如果還沒存過 latlngs 快取，
+        // 整個轉折點會直接消失、路線變成兩端硬連直線，跟畫面上的路完全對不起來
+        else if(j<chain.length-1&&chain[j].gn) allLl.push([chain[j].gn.lat,chain[j].gn.lng])
       }
       if(allLl.length>=2) merged.latlngs=allLl
       newS.push(merged)
