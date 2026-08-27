@@ -2108,7 +2108,7 @@ function disableNoSleep() {
 
 function startGPS(){
   if(watchId||!navigator.geolocation)return
-  watchId=navigator.geolocation.watchPosition(onPos,onGPSErr,{enableHighAccuracy:true,timeout:10000,maximumAge:1500})
+  watchId=navigator.geolocation.watchPosition(onPos,onGPSErr,{enableHighAccuracy:true,timeout:10000,maximumAge:800})
 }
 function onPos(p){
   const{latitude:rl,longitude:ro,accuracy,speed}=p.coords
@@ -2383,7 +2383,7 @@ function getApproachDist(){
 // ════════════════════════════════════
 let navVoiceEnabled = (localStorage.getItem('nav_voice_enabled') ?? '1') === '1'
 let _navAnnouncedTier = 0   // 0=尚未提示 1=已提示遠距離 2=已提示近距離（換下個節點時重置）
-const NAV_FAR_M = 150, NAV_NEAR_M = 30
+const NAV_NEAR_M = 30
 ;(function(){ const b=document.getElementById('nav-banner-mute'); if(b) b.textContent = navVoiceEnabled?'🔊':'🔇' })()
 function toggleNavVoice(){
   navVoiceEnabled = !navVoiceEnabled
@@ -2392,15 +2392,41 @@ function toggleNavVoice(){
   if(btn) btn.textContent = navVoiceEnabled ? '🔊' : '🔇'
   if(!navVoiceEnabled){ try{window.speechSynthesis&&window.speechSynthesis.cancel()}catch(e){} }
 }
+// iOS Safari 對語音合成也有類似 AudioContext 的「解鎖」限制：第一次 speak() 如果不是在使用者手勢當下觸發，
+// 之後在 GPS callback 裡呼叫常常會被靜音吃掉。跟 unlockAudio() 一樣，在 startSurvey()（使用者按下開始鍵）當下先播一次無聲的
+function unlockNavVoice(){
+  try{
+    if(!('speechSynthesis' in window)) return
+    window.speechSynthesis.getVoices()
+    const u=new SpeechSynthesisUtterance(' ')
+    u.volume=0
+    u.lang='zh-TW'
+    window.speechSynthesis.speak(u)
+  }catch(e){}
+}
 function speakNav(text){
   if(!navVoiceEnabled) return
   try{
     if(!('speechSynthesis' in window)) return
+    if(window.speechSynthesis.paused) window.speechSynthesis.resume()
     window.speechSynthesis.cancel()
-    const u=new SpeechSynthesisUtterance(text)
-    u.lang='zh-TW'; u.rate=1.05
-    window.speechSynthesis.speak(u)
+    // WebKit 有個已知 bug：cancel() 之後立刻 speak() 常常直接被吃掉不出聲，延遲一點點呼叫比較穩
+    setTimeout(()=>{
+      try{
+        const u=new SpeechSynthesisUtterance(text)
+        u.lang='zh-TW'; u.rate=1.05
+        window.speechSynthesis.speak(u)
+      }catch(e){}
+    },60)
   }catch(e){}
+}
+// 提前提示的距離門檻：速度愈快，愈早提醒，給使用者足夠反應時間（沿用節點感應線同一套速度分級邏輯）
+function getNavFarDist(){
+  const kmh=_lastSpeed*3.6
+  if(kmh>50) return 300
+  if(kmh>30) return 220
+  if(kmh>15) return 180
+  return 150
 }
 // 轉彎角度分類：進入節點的方位角 vs 離開節點的方位角，差值決定左轉/右轉/直行/迴轉
 function classifyTurn(angle){
@@ -2443,7 +2469,7 @@ function updateNavBanner(lat,lng,nextNode,dist){
   if(dist<=NAV_NEAR_M && _navAnnouncedTier<2){
     _navAnnouncedTier=2
     speakNav(turn.label)
-  }else if(dist<=NAV_FAR_M && _navAnnouncedTier<1){
+  }else if(dist<=getNavFarDist() && _navAnnouncedTier<1){
     _navAnnouncedTier=1
     speakNav(`前方${Math.round(dist/10)*10}公尺，${turn.label}`)
   }
@@ -2784,6 +2810,7 @@ function startSurvey(){
   {const nb=$('nav-banner'); if(nb) nb.style.display='none'; _syncSurveyTopOffsets()}   // 等第一次 GPS 定位算出方向後才顯示
   totalPausedMs=0
   unlockAudio()          // unlock AudioContext while we still have the user gesture
+  unlockNavVoice()       // 同理解鎖語音合成，不然導航語音在 GPS callback 裡常常會被 iOS 靜音
   startAudioKeepAlive()  // silent loop keeps iOS from suspending the context
   acquireWakeLock()
   enableNoSleep()        // video-loop trick to prevent iOS screen auto-sleep
