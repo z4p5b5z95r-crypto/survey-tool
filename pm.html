@@ -361,14 +361,18 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .sv-row-date{font-size:13px;font-weight:700;color:#1e293b}
 .sv-row-meta{font-size:11px;color:#64748b;margin-top:2px}
 .sv-btn{padding:5px 10px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;border:1.5px solid;white-space:nowrap}
-.step-bar{display:flex;align-items:center;gap:2px;padding:10px 14px;border-bottom:1px solid #f1f5f9;overflow-x:auto;flex-shrink:0;-webkit-overflow-scrolling:touch}
-.step-item{display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;border:1.5px solid #e2e8f0;background:white;cursor:pointer;font-size:12px;font-weight:600;color:#64748b;white-space:nowrap;flex-shrink:0;transition:all .15s;font-family:inherit}
+.step-bar{display:flex;align-items:center;gap:1px;padding:7px 8px;border-bottom:1px solid #f1f5f9;flex-shrink:0;overflow:hidden}
+.step-item{display:flex;align-items:center;justify-content:center;gap:3px;padding:4px 2px;border-radius:12px;border:1.5px solid #e2e8f0;background:white;cursor:pointer;font-size:10px;font-weight:600;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;transition:all .15s;font-family:inherit}
 .step-item.done{border-color:#bbf7d0;background:#f0fdf4;color:#16a34a}
 .step-item.active{border-color:#2563eb;background:#eff6ff;color:#1d4ed8;box-shadow:0 0 0 1px #2563eb}
-.step-num{width:16px;height:16px;border-radius:50%;background:#e2e8f0;color:#64748b;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step-num{width:13px;height:13px;border-radius:50%;background:#e2e8f0;color:#64748b;font-size:8px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .step-item.done .step-num{background:#16a34a;color:white}
 .step-item.active .step-num{background:#2563eb;color:white}
-.step-connector{width:10px;height:1.5px;background:#e2e8f0;flex-shrink:0}
+.step-connector{width:5px;height:1px;background:#e2e8f0;flex-shrink:0}
+.seg-confirm-banner{border-radius:10px;padding:10px 12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;line-height:1.5}
+.seg-confirm-banner.pending{background:#fffbeb;border:1.5px solid #fde68a;color:#92400e}
+.seg-confirm-banner.confirmed{background:#f0fdf4;border:1.5px solid #bbf7d0;color:#16a34a}
+.seg-confirm-btn{padding:7px 14px;border-radius:8px;border:none;background:#f59e0b;color:white;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0}
 .rc-btn-row{display:flex;gap:8px}
 .rc-btn{flex:1;padding:10px 6px;border:1.5px solid #e2e8f0;border-radius:10px;background:white;color:#475569;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
 .rc-btn.sel{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}
@@ -654,7 +658,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
                 <div class="field"><label>尖峰時間</label><input id="pk" value="17:00~19:00" oninput="renderStepBar()"/></div>
               </div>
               <div class="field">
-                <label>調查次數設定</label>
+                <label>調查次數設定（預設3次，可自行選擇調查次數）</label>
                 <div class="rc-btn-row" id="rc-btn-row"></div>
                 <input type="hidden" id="rc" value="3"/>
               </div>
@@ -705,6 +709,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
                 </div>
                 <p style="font-size:11px;color:#94a3b8;margin-top:4px">預設會用上面各路段長度自動加總，也可以自己手動輸入調整</p>
               </div>
+              <div id="seg-confirm-banner" style="margin-top:12px"></div>
             </div>
           </div>
 
@@ -1046,12 +1051,17 @@ function updateCrumb(cur) {
   }
 }
 
+// 手風琴：一次只能展開一個欄位，展開新的會自動收合其他的
 function toggleAcc(id) {
-  document.getElementById(id).classList.toggle('open')
+  const el=document.getElementById(id)
+  const wasOpen=el.classList.contains('open')
+  ;['acc-route','acc-time','acc-nodes','acc-segs','acc-qr'].forEach(i=>document.getElementById(i)?.classList.remove('open'))
+  if(!wasOpen) el.classList.add('open')
   renderStepBar()
 }
 function openAcc(id) {
-  document.getElementById(id).classList.add('open')
+  ;['acc-route','acc-time','acc-nodes','acc-segs','acc-qr'].forEach(i=>document.getElementById(i)?.classList.remove('open'))
+  document.getElementById(id)?.classList.add('open')
   renderStepBar()
 }
 // 進入編輯畫面（新建或載入既有專案）時，五個欄位全部收合，避免殘留上一次展開的狀態
@@ -1062,12 +1072,36 @@ function collapseAllAcc() {
   renderStepBar()
 }
 
+// ── 路段資訊需要 PM 手動確認過車道/路寬/長度才算完成 ──
+// 節點一變動（新增/刪除/移動），簽章就對不上了，要求重新確認，不能讓它自動打勾
+let _segsConfirmedSig=null
+function _nodeSig(){ return JSON.stringify(nodes.map(n=>[n.lat,n.lng])) }
+function _segsConfirmed(){ return _segsConfirmedSig!==null && _segsConfirmedSig===_nodeSig() }
+function confirmSegInfo(){
+  _segsConfirmedSig=_nodeSig()
+  renderSegConfirmBanner()
+  renderStepBar()
+  toast('✅ 路段資訊已確認')
+}
+function renderSegConfirmBanner(){
+  const box=document.getElementById('seg-confirm-banner'); if(!box) return
+  if(!segData.length){ box.innerHTML=''; return }
+  if(_segsConfirmed()){
+    box.innerHTML=`<div class="seg-confirm-banner confirmed">✅ 已確認車道／路寬／長度沒問題</div>`
+  }else{
+    box.innerHTML=`<div class="seg-confirm-banner pending">
+      <span>⚠️ 請確認上面每個路段的車道數、路寬、長度是否正確（可直接在表格內修改）</span>
+      <button type="button" class="seg-confirm-btn" onclick="confirmSegInfo()">✓ 確認無誤</button>
+    </div>`
+  }
+}
+
 // ── 頂部步驟條：①路線 ②時間 ③節點 ④路段 ⑤QR，不強制順序，但用完成度＋目前位置提醒 PM 別漏填 ──
 const STEP_DEFS=[
   {id:'acc-route', label:'路線', num:1, check:()=>document.getElementById('rn').value.trim()&&document.getElementById('ft').value.trim()},
   {id:'acc-time',  label:'時間', num:2, check:()=>document.getElementById('op').value.trim()&&document.getElementById('pk').value.trim()},
   {id:'acc-nodes', label:'節點', num:3, check:()=>nodes.length>=2},
-  {id:'acc-segs',  label:'路段', num:4, check:()=>segData.length>0&&(parseInt(document.getElementById('tl').value)||0)>0},
+  {id:'acc-segs',  label:'路段', num:4, check:()=>segData.length>0&&(parseInt(document.getElementById('tl').value)||0)>0&&_segsConfirmed()},
   {id:'acc-qr',    label:'QR',  num:5, check:()=>!!document.querySelector('#qr-box-acc canvas')},
 ]
 function renderStepBar() {
@@ -2175,6 +2209,7 @@ function renderSegTable() {
       <td style="white-space:nowrap"><input class="seg-input" style="width:50px" type="number" value="${mergedLength}" onchange="${onLen}"/>${badge}</td>
     </tr>`
   }).join('')
+  renderSegConfirmBanner()
   renderStepBar()
 }
 
@@ -2284,9 +2319,19 @@ function renderQR(containerEl, url, size=220) {
 let lastURL=''
 function generateQR() {
   const url=buildURL();if(!url)return
-  lastURL=url
-  renderQR(document.getElementById('qr-box-acc'), url, 220)
-  toast('✅ QR Code 已產生')
+  const box=document.getElementById('qr-box-acc')
+  try{
+    renderQR(box, url, 220)
+    lastURL=url
+    toast('✅ QR Code 已產生')
+  }catch(e){
+    console.error('[QR] 產生失敗', e)
+    box.innerHTML='<span class="qr-placeholder" style="color:#dc2626">⚠️ QR 產生失敗</span>'
+    const tooLong=/overflow|too long|code length/i.test(e.message||'')
+    toast(tooLong
+      ? '❌ 路線資料太大，QR 塞不下——請先「☁ 上傳」到雲端後再產生（雲端網址短很多）'
+      : '❌ QR 產生失敗：'+(e.message||e))
+  }
   renderStepBar()
 }
 function copyLink() { const url=buildURL();if(!url)return; navigator.clipboard.writeText(url).then(()=>toast('✅ 連結已複製')).catch(()=>prompt('複製連結：',url)) }
@@ -2389,6 +2434,7 @@ function newTask() {
   radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   clearMidHandles();nodes=[];segData=[];stopMeasure()
+  _segsConfirmedSig=null   // 新專案，路段資訊要重新確認
   renderNodeList();renderSegTable()
   showEditView('新建專案')
   collapseAllAcc()   // 五個欄位全部先最小化
@@ -2415,6 +2461,8 @@ async function loadTask(id) {
   _loadingTask=true
   if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||20,n.gh||false)}
   _loadingTask=false
+  // 載入的是已存在的路線，節點都是既有資料（不是剛自動產生的），視為已確認過
+  _segsConfirmedSig=_nodeSig()
   renderSegTable()
   if(nodes.length>=2)map.fitBounds(L.polyline(nodes.map(n=>[n.lat,n.lng])).getBounds(),{padding:[40,40]})
   // 存的全長如果剛好等於路段長度加總，代表原本就是自動算的，之後繼續自動更新；
