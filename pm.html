@@ -369,6 +369,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .step-item.done .step-num{background:#16a34a;color:white}
 .step-item.active .step-num{background:#2563eb;color:white}
 .step-connector{width:5px;height:1px;background:#e2e8f0;flex-shrink:0}
+.step-connector.done{background:#86efac}
 .seg-confirm-banner{border-radius:10px;padding:10px 12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;line-height:1.5}
 .seg-confirm-banner.pending{background:#fffbeb;border:1.5px solid #fde68a;color:#92400e}
 .seg-confirm-banner.confirmed{background:#f0fdf4;border:1.5px solid #bbf7d0;color:#16a34a}
@@ -876,8 +877,10 @@ function hashPwdLegacy(p) { return btoa(encodeURIComponent(p)) }
 function getCurrentUser()     { return localStorage.getItem('pm_user') || null }
 function getSessionToken()    { return localStorage.getItem('pm_session_token') || null }
 function getSessionExpires()  { return localStorage.getItem('pm_session_expires') || null }
-// API key 存 sessionStorage（分頁關閉即清除，比 localStorage 更安全）
-function getGsKey()           { return sessionStorage.getItem('pm_gs_key') || '' }
+// API key 存 localStorage（原本存 sessionStorage，但分頁關閉重開後 session token 仍有效、
+// apiKey 卻不見了，導致「已登入」狀態下 QR 誤判成離線模式、把整包路線資料塞進網址而讓 QR 產生失敗；
+// session token 本來就存在 localStorage，這裡改成一致的存放位置才不會兩者狀態不同步）
+function getGsKey()           { return localStorage.getItem('pm_gs_key') || '' }
 function isSessionValid() {
   const tok = getSessionToken()
   const exp = getSessionExpires()
@@ -889,11 +892,11 @@ function setSession(name, token, expiresAt, apiKey) {
   localStorage.setItem('pm_user',             name)
   localStorage.setItem('pm_session_token',    token)
   localStorage.setItem('pm_session_expires',  expiresAt)
-  if (apiKey) sessionStorage.setItem('pm_gs_key', apiKey)
+  if (apiKey) localStorage.setItem('pm_gs_key', apiKey)
 }
 function clearSession() {
-  ['pm_user','pm_session_token','pm_session_expires'].forEach(k => localStorage.removeItem(k))
-  sessionStorage.removeItem('pm_gs_key')
+  ['pm_user','pm_session_token','pm_session_expires','pm_gs_key'].forEach(k => localStorage.removeItem(k))
+  sessionStorage.removeItem('pm_gs_key')   // 清掉舊版本可能留下的殘留
 }
 
 function switchLoginTab(tab) {
@@ -1090,7 +1093,7 @@ function renderSegConfirmBanner(){
     box.innerHTML=`<div class="seg-confirm-banner confirmed">✅ 已確認車道／路寬／長度沒問題</div>`
   }else{
     box.innerHTML=`<div class="seg-confirm-banner pending">
-      <span>⚠️ 請確認上面每個路段的車道數、路寬、長度是否正確（可直接在表格內修改）</span>
+      <span>⚠️ 車道、路寬為預設值，請自行設定後儲存（可直接在表格內修改，長度可自動加總也可手動調整）</span>
       <button type="button" class="seg-confirm-btn" onclick="confirmSegInfo()">✓ 確認無誤</button>
     </div>`
   }
@@ -1107,10 +1110,13 @@ const STEP_DEFS=[
 function renderStepBar() {
   const bar=document.getElementById('step-bar'); if(!bar) return
   const activeId=STEP_DEFS.find(s=>document.getElementById(s.id)?.classList.contains('open'))?.id
+  let prevDone=true   // 依序才能亮燈：前面沒完成，後面就算欄位本身有填也不算完成（例如離/尖峰時間有預設值，但路線資訊沒填時不該先亮綠燈）
   bar.innerHTML=STEP_DEFS.map((s,i)=>{
-    let done=false; try{ done=!!s.check() }catch(e){}
+    let selfDone=false; try{ selfDone=!!s.check() }catch(e){}
+    const done=prevDone&&selfDone
+    prevDone=done
     const cls='step-item'+(done?' done':'')+(s.id===activeId?' active':'')
-    const conn=i<STEP_DEFS.length-1?'<span class="step-connector"></span>':''
+    const conn=i<STEP_DEFS.length-1?`<span class="step-connector${done?' done':''}"></span>`:''
     return `<button type="button" class="${cls}" onclick="jumpToStep('${s.id}')"><span class="step-num">${done?'✓':s.num}</span>${s.label}</button>${conn}`
   }).join('')
 }
