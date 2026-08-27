@@ -171,6 +171,12 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .pc-btn.proj{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
 .pc-btn.projadd{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
 .pc-btn.projdel{background:#fee2e2;color:#dc2626;border-color:#fecaca}
+.pc-btn.mv{background:#fff7ed;color:#c2410c;border-color:#fed7aa}
+/* 搬移路線到其他專案的選單 */
+.mv-proj-item{display:block;width:100%;text-align:left;padding:11px 14px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:11px;font-size:13.5px;font-weight:600;color:#0f172a;cursor:pointer;font-family:inherit;margin-bottom:6px}
+.mv-proj-item:hover{background:#f1f5f9}
+.mv-proj-item.cur{border-color:#93c5fd;background:#eff6ff;color:#1d4ed8}
+.mv-proj-item.new{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
 
 /* ══ EDIT VIEW ══ */
 #view-edit{display:none;flex-direction:column;height:100%}
@@ -2773,6 +2779,7 @@ function renderProjects(filter='') {
             ${t.cloudId
               ?`<button class="pc-btn rec" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}','${(t.cfg.opn||'離峰').replace(/'/g,"\\'")}','${(t.cfg.pkn||'尖峰').replace(/'/g,"\\'")}')">📋 報告</button>`
               :(gsUrl&&getSessionToken())?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
+            <button class="pc-btn mv" onclick="moveRouteToProject('${t.id}')">📁 搬移</button>
           </div>
           <div class="pc-actions-r">
             <button class="pc-btn icon del" title="刪除" onclick="deleteTask('${t.id}')">🗑</button>
@@ -2821,6 +2828,57 @@ async function deleteProject(pid){
   savedProjects=savedProjects.filter(p=>p.id!==pid)
   localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
   renderProjects()
+}
+
+// 把一條既有路線搬移到別的專案（或新建一個專案再搬過去）——用來把原本各自獨立的路線合併成同一個群組
+function moveRouteToProject(taskId){
+  const t=savedTasks.find(x=>x.id===taskId); if(!t){toast('找不到路線');return}
+  const me=getCurrentUser()||''
+  const myProjects=savedProjects.filter(p=>p.creator===me)
+  document.getElementById('move-proj-overlay')?.remove()
+  const overlay=document.createElement('div')
+  overlay.id='move-proj-overlay'
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px'
+  const rows=myProjects.map(p=>{
+    const isCur=p.id===t.projectId
+    return `<button class="mv-proj-item${isCur?' cur':''}" ${isCur?'disabled':''} onclick="doMoveRoute('${taskId}','${p.id}')">${isCur?'✓ ':'📁 '}${p.name}${isCur?'（目前所在）':''}</button>`
+  }).join('')
+  overlay.innerHTML=`
+    <div style="background:white;border-radius:20px;padding:20px;width:100%;max-width:340px;max-height:80vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+      <div style="font-size:15px;font-weight:800;color:#0f172a;margin-bottom:4px">搬移「${t.cfg.rn||'未命名路線'}」到...</div>
+      <div style="font-size:12px;color:#94a3b8;margin-bottom:14px">選擇要放入的專案，或建立新專案</div>
+      <button class="mv-proj-item new" onclick="doMoveRouteNewProject('${taskId}')">＋ 建立新專案並搬移過去</button>
+      <div style="height:8px"></div>
+      ${rows||'<div style="padding:12px;text-align:center;color:#94a3b8;font-size:13px">目前沒有其他專案</div>'}
+      <button style="margin-top:6px;width:100%;padding:10px;background:#f1f5f9;border:none;border-radius:10px;font-size:13px;font-weight:700;color:#64748b;cursor:pointer;font-family:inherit" onclick="document.getElementById('move-proj-overlay').remove()">取消</button>
+    </div>`
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()})
+  document.body.appendChild(overlay)
+}
+async function doMoveRouteNewProject(taskId){
+  const name=prompt('新專案名稱：')
+  if(name===null) return
+  const proj={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:null,name:name.trim()||'未命名專案',savedAt:new Date().toLocaleDateString('zh-TW'),creator:getCurrentUser()||'未知'}
+  savedProjects.push(proj)
+  localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
+  await doMoveRoute(taskId, proj.id)
+}
+async function doMoveRoute(taskId, targetProjectId){
+  document.getElementById('move-proj-overlay')?.remove()
+  const t=savedTasks.find(x=>x.id===taskId); if(!t)return
+  t.projectId=targetProjectId
+  localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
+  _openProjectIds.add(targetProjectId)
+  renderProjects()
+  toast('✅ 已搬移')
+  // 這條路線先前若已經同步過雲端，補傳一次讓雲端也記住新的專案歸屬
+  if(t.cloudId&&gsUrl&&getSessionToken()){
+    try{
+      const proj=savedProjects.find(p=>p.id===targetProjectId)
+      const projectCloudId=await ensureProjectCloudSynced(proj)
+      await cloudPost(buildRoutePayload(t.cfg, t.cloudId, t.creator, projectCloudId))
+    }catch(e){toast('⚠️ 雲端同步搬移結果失敗：'+e.message)}
+  }
 }
 
 // 專案層級 QR：一個專案（可能有多條路線）共用一個 QR，現場掃了先選路線。
