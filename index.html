@@ -1466,6 +1466,24 @@ function initSigninMap(){
 //  PROJECT ROUTE PICKER MAP（掃專案 QR 後：一次畫出底下所有路線＋編號，點線或點編號直接進入該路線調查）
 // ════════════════════════════════════
 const PR_MAP_COLORS=['#2563eb','#ea580c','#0d9488','#dc2626','#7c3aed','#0891b2','#ca8a04','#db2777']
+// PM 建路線時每段已經算過一次道路貼合座標並存進 segments[i].latlngs（或簡寫 ll），這裡直接重用，
+// 不必再對 OSRM 額外發請求，也不會像直接連節點那樣穿過房子、畫成一條條斜線
+function buildRoutePolylineFromCache(nodes, segments){
+  const lls=[]
+  for(let i=0;i<nodes.length-1;i++){
+    const n1=nodes[i], n2=nodes[i+1]
+    const seg=(segments||[])[i]
+    const cached=seg&&(seg.latlngs||seg.ll)
+    if(cached&&cached.length>=2){
+      if(lls.length===0) lls.push(cached[0])
+      lls.push(...cached.slice(1))
+    }else{
+      if(lls.length===0) lls.push([n1.lat,n1.lng])
+      lls.push([n2.lat,n2.lng])
+    }
+  }
+  return lls
+}
 function renderProjectRoutesMap(routes, gsParam, kParam){
   const box=document.getElementById('map-project-routes'); if(!box) return
   if(mapProjectRoutes){ try{mapProjectRoutes.remove()}catch(e){} mapProjectRoutes=null }
@@ -1477,7 +1495,7 @@ function renderProjectRoutesMap(routes, gsParam, kParam){
     const nodes=r.nodes||[]
     if(nodes.length<2) return
     const color=PR_MAP_COLORS[i%PR_MAP_COLORS.length]
-    const lls=nodes.map(n=>[n.lat,n.lng])
+    const lls=buildRoutePolylineFromCache(nodes, r.segments)
     const poly=L.polyline(lls,{color,weight:5,opacity:.85}).addTo(mapProjectRoutes)
     poly.on('click',()=>loadCloudRouteAndProceed(r.id,gsParam,kParam))
     lls.forEach(p=>bounds.push(p))
