@@ -2322,8 +2322,28 @@ function renderQR(containerEl, url, size=220) {
   containerEl.appendChild(canvas)
 }
 
+// 產生 QR 前，若這個任務還沒有雲端 ID（例如剛建立、還沒按過儲存），
+// 先自動存一次到雲端，確保 QR 走「雲端短網址」而不是把整包路線資料塞進網址的離線模式。
+// 只有在完全沒有雲端連線（沒有設定 GAS 網址或尚未登入）時才會真的退回離線模式。
+async function ensureCloudLinked(quiet) {
+  const task=currentTaskId?savedTasks.find(t=>t.id===currentTaskId):null
+  const cloudReady=gsUrl&&getSessionToken()
+  // 常見狀況：session token 還有效（帳號顯示已登入），但雲端金鑰已遺失（例如舊版本存在 sessionStorage、
+  // 分頁關閉後就不見了）——這種情況必須重新登入才能拿到新金鑰，直接自動上傳也沒用，先明確提示。
+  if(cloudReady&&!getGsKey()){
+    if(!quiet) toast('⚠️ 找不到雲端金鑰，請登出後重新登入一次即可修復（右上角帳號選單）')
+    return
+  }
+  const alreadyLinked=task&&task.cloudId&&gsUrl&&getGsKey()
+  if(!cloudReady||alreadyLinked) return
+  if(!quiet) toast('⏳ 尚未上傳雲端，正在自動上傳以產生短網址...')
+  const ok=await saveTask(true)
+  if(!ok&&!quiet) toast('⚠️ 雲端上傳失敗，將以離線模式產生（資料量較大，掃描可能不穩定）')
+}
+
 let lastURL=''
-function generateQR() {
+async function generateQR() {
+  await ensureCloudLinked()
   const url=buildURL();if(!url)return
   const box=document.getElementById('qr-box-acc')
   try{
@@ -2335,14 +2355,14 @@ function generateQR() {
     box.innerHTML='<span class="qr-placeholder" style="color:#dc2626">⚠️ QR 產生失敗</span>'
     const tooLong=/overflow|too long|code length/i.test(e.message||'')
     toast(tooLong
-      ? '❌ 路線資料太大，QR 塞不下——請先「☁ 上傳」到雲端後再產生（雲端網址短很多）'
+      ? '❌ 路線資料太大，QR 塞不下——請確認已登入雲端帳號並重新產生（雲端網址短很多）'
       : '❌ QR 產生失敗：'+(e.message||e))
   }
   renderStepBar()
 }
-function copyLink() { const url=buildURL();if(!url)return; navigator.clipboard.writeText(url).then(()=>toast('✅ 連結已複製')).catch(()=>prompt('複製連結：',url)) }
-function downloadQR() {
-  if(!lastURL){generateQR();return}
+async function copyLink() { await ensureCloudLinked(); const url=buildURL();if(!url)return; navigator.clipboard.writeText(url).then(()=>toast('✅ 連結已複製')).catch(()=>prompt('複製連結：',url)) }
+async function downloadQR() {
+  if(!lastURL){await generateQR()}
   const canvas=document.querySelector('#qr-box-acc canvas');if(!canvas){toast('請先產生 QR Code');return}
   const a=document.createElement('a');a.href=canvas.toDataURL('image/png');a.download=`QR_${document.getElementById('rn').value||'survey'}.png`;a.click()
 }
@@ -2350,10 +2370,10 @@ function downloadQR() {
 // ════════════════════════════════════════════════════════
 //  SAVE / LOAD / DELETE TASKS
 // ════════════════════════════════════════════════════════
-async function saveTask() {
+async function saveTask(silent) {
   const cfg=buildConfig()
-  if(!cfg.rn){toast('請先填寫路線名稱');return}
-  if(nodes.length<2){toast('請至少放置 2 個節點');return}
+  if(!cfg.rn){toast('請先填寫路線名稱');return false}
+  if(nodes.length<2){toast('請至少放置 2 個節點');return false}
   let existingTask=currentTaskId?savedTasks.find(t=>t.id===currentTaskId):null
   const id=existingTask?existingTask.id:Date.now().toString(36)
   currentTaskId=id
@@ -2365,7 +2385,7 @@ async function saveTask() {
   document.getElementById('ev-title').textContent=cfg.rn
   updateCrumb(cfg.rn)
   if(gsUrl&&getSessionToken()){
-    toast('⏳ 同步至雲端...')
+    if(!silent) toast('⏳ 同步至雲端...')
     updateCloudDot('uploading')
     try{
       const payload={action:'saveRoute',id:taskObj.cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,roundCount:cfg.rc||3,offPeakLabel:cfg.op,peakLabel:cfg.pk,owner:getCurrentUser()||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
@@ -2373,9 +2393,17 @@ async function saveTask() {
       const taskIdx=savedTasks.findIndex(t=>t.id===id)
       if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
       updateCloudDot('ok')
-      toast('✅ 任務已儲存並同步至雲端')
-    }catch(e){updateCloudDot('err','同步失敗');toast('⚠️ 已儲存本地，雲端同步失敗：'+e.message)}
-  }else{toast('✅ 任務已儲存')}
+      if(!silent) toast('✅ 任務已儲存並同步至雲端')
+      return true
+    }catch(e){
+      updateCloudDot('err','同步失敗')
+      if(!silent) toast('⚠️ 已儲存本地，雲端同步失敗：'+e.message)
+      return false
+    }
+  }else{
+    if(!silent) toast('✅ 任務已儲存')
+    return false
+  }
 }
 
 // 側欄底部儲存按鈕 — 帶 loading 狀態
