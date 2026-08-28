@@ -1334,8 +1334,22 @@ let _segDisplayMap=[] // maps display-row index → [segData indices] (ghost nod
 // ── Polygon draw state ──
 let _polyDrawMode=false, _polyDrawNodeIdx=-1, _polyDrawPts=[], _polyDrawPreview=null, _polyDrawDotMarkers=[]
 let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], measureTooltipMarker=null
-let savedTasks = JSON.parse(localStorage.getItem('pm_tasks') || '[]')
-let savedProjects = JSON.parse(localStorage.getItem('pm_projects') || '[]')
+// Google 試算表會把「123」「321」這種看起來像數字的內容自動存成數字型別，
+// 讀回來就不是字串了。前端很多地方把這些欄位當字串用（.replace()、.includes()…），
+// 一碰到數字就整段程式中斷、專案列表變成空白。這裡統一強制轉成字串。
+function S(v){ return (v===null||v===undefined)?'':String(v) }
+function normalizeCfg(c){
+  if(!c||typeof c!=='object') return c
+  // 只轉換「本來就存在」的欄位，不要順手補上空白欄位——
+  // 否則 syncFromCloud 用 JSON.stringify 比對新舊設定時會每次都判定成有變動。
+  ;['rn','ft','op','pk','opn','pkn'].forEach(k=>{ if(k in c) c[k]=S(c[k]) })
+  if(Array.isArray(c.nd)) c.nd.forEach(n=>{ if(n){ if('n' in n) n.n=S(n.n); if('n2' in n) n.n2=S(n.n2) } })
+  if(Array.isArray(c.sg)) c.sg.forEach(s=>{ if(s&&'n' in s){ s.n=S(s.n) } })
+  return c
+}
+function normalizeTask(t){ if(t){ t.cfg=normalizeCfg(t.cfg); if('creator' in t) t.creator=S(t.creator) } return t }
+let savedTasks = JSON.parse(localStorage.getItem('pm_tasks') || '[]').map(normalizeTask)
+let savedProjects = JSON.parse(localStorage.getItem('pm_projects') || '[]').map(p=>{ if(p) p.name=S(p.name); return p })
 let currentTaskId = null
 let _currentProjectId = null   // 目前正在編輯的路線屬於哪個專案（本機 id）
 
@@ -2711,9 +2725,9 @@ async function syncProjectsFromCloud(me) {
       if(!isMine) continue
       let loc=savedProjects.find(x=>x.cloudId===p.id)
       if(!loc){
-        loc={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:p.id,name:p.name||'未命名專案',savedAt:p.createdAt?.slice(0,10)||'雲端',creator:me}
+        loc={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:p.id,name:S(p.name)||'未命名專案',savedAt:S(p.createdAt).slice(0,10)||'雲端',creator:me}
         savedProjects.push(loc);changed=true
-      }else if(loc.name!==p.name){loc.name=p.name||loc.name;changed=true}
+      }else if(loc.name!==S(p.name)){loc.name=S(p.name)||loc.name;changed=true}
       map[p.id]=loc.id
     }
     if(changed) localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
@@ -2763,11 +2777,11 @@ async function syncFromCloud() {
         const loc=savedTasks[existIdx]
         if(loc.creator!==me){loc.creator=me;changed++}
         if(loc.projectId!==localProjectId){loc.projectId=localProjectId;changed++}
-        const newCfg={v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}
+        const newCfg=normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})})
         if(JSON.stringify(loc.cfg)!==JSON.stringify(newCfg)){loc.cfg=newCfg;changed++}
         continue
       }
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,projectId:localProjectId,creator:me,cfg:{v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})},savedAt:r.createdAt?.slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,projectId:localProjectId,creator:me,cfg:normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}),savedAt:S(r.createdAt).slice(0,10)||'雲端'})
       changed++
     }
     // 移除本機有 cloudId 但雲端「我的路線」已不存在的項目（刪除同步 + 清除誤匯入的他人路線）
