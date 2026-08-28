@@ -434,9 +434,6 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
       <div>
         <div class="route-badge">旅行時間調查</div>
         <span style="display:inline-block;vertical-align:middle;margin-left:4px;margin-bottom:5px;font-size:9px;font-weight:800;letter-spacing:.5px;color:#92400e;background:#fde68a;border-radius:6px;padding:2px 6px">BETA</span>
-        <!-- 暫時的部署版本標記：純粹用來肉眼確認手機上跑的是不是最新檔案，跟鬼節點問題無關，
-             之後確認部署沒問題可以直接刪掉這個 span -->
-        <span style="display:inline-block;vertical-align:middle;margin-left:4px;margin-bottom:5px;font-size:9px;font-weight:700;letter-spacing:.5px;color:#475569;background:#e2e8f0;border-radius:6px;padding:2px 6px">build-ghostfix-3</span>
         <h2 id="si-route-name">載入任務中...</h2>
         <p id="si-fromto"></p>
       </div>
@@ -1008,30 +1005,50 @@ function computeNodeDirections(ordered){
 // ════════════════════════════════════
 //  OSRM ROUTE PRE-FETCH
 // ════════════════════════════════════
+// 算出「原始的某一小段」（可能是 真節點→鬼節點、鬼節點→鬼節點、鬼節點→真節點）該長什麼樣。
+// 優先順序跟 PM 端存檔時的意義一致：
+//  1) 有存好的貼路座標(latlngs) → 直接用。這份座標本身就已經包含了 PM 手動拖曳調整過的路徑形狀，
+//     所以「除了鬼節點以外，PM 還手動移動過路線」的情況也會完整保留下來。
+//  2) 沒存到 → 帶著這一小段自己的途經點(waypoints，也就是 PM 拖出來的形狀控制點)重新問 OSRM，
+//     這樣至少會貼著路走，而且會照 PM 拖的方向繞。
+//  3) OSRM 也失敗 → 照節點與途經點折線連，絕不無視中間的點硬拉一條直線。
+async function _fetchRawSegmentLatlngs(n1,n2,seg){
+  const wpList=(seg?.waypoints||[]).filter(w=>w&&w.lat!=null&&w.lng!=null)
+  const fallback=[[n1.lat,n1.lng],...wpList.map(w=>[w.lat,w.lng]),[n2.lat,n2.lng]]
+  if(seg?.latlngs?.length>=2) return seg.latlngs
+  if(seg?.mode==='straight') return fallback
+  const wps=wpList.map(w=>`${w.lng},${w.lat}`).join(';')
+  const coords=wps?`${n1.lng},${n1.lat};${wps};${n2.lng},${n2.lat}`:`${n1.lng},${n1.lat};${n2.lng},${n2.lat}`
+  try{
+    const profile=(seg?.mode==='driving')?'driving':'foot'
+    const url=`https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson`
+    const res=await fetch(url,{signal:AbortSignal.timeout(8000)})
+    const data=await res.json()
+    if(data.code==='Ok') return data.routes[0].geometry.coordinates.map(c=>[c[1],c[0]])
+  }catch{}
+  return fallback
+}
+// routePolylines[i] = 第 i 段「真節點→真節點」的完整形狀（中間的鬼節點都被走過）。
+// 重點：形狀是照【原始節點清單】一小段一小段接出來的，跟選擇路線地圖同一套走法，
+// 不再拿「起點→終點」去問 OSRM（那樣 OSRM 會自己挑一條它認為最短的路，
+// 完全無視中間的鬼節點和 PM 手動拖出來的路徑，這就是之前路線會跑掉的原因）。
 async function prefetchRoutes(){
-  if(!config.nodes||config.nodes.length<2){routePolylines=[];return}
   routePolylines=[]
-  for(let i=0;i<config.nodes.length-1;i++){
-    const n1=config.nodes[i],n2=config.nodes[i+1]
-    // 這段的途經點（含 stripGhosts 保留下來的鬼節點位置）——不管走哪個分支都必須經過它們，
-    // 否則鬼節點指定的繞路就會被忽略，畫出來的路線跟 PM 設定的不一樣。
-    const wpList=(config.segments[i]?.waypoints||[]).filter(w=>w&&w.lat!=null&&w.lng!=null)
-    if(config.segments[i]?.mode==='straight'){
-      routePolylines.push([[n1.lat,n1.lng],...wpList.map(w=>[w.lat,w.lng]),[n2.lat,n2.lng]])
-      continue
+  const rn=config._rawNodes||config.nodes||[]
+  const rs=config._rawSegments||config.segments||[]
+  if(rn.length<2) return
+  const realIdx=rn.map((n,i)=>n._ghost?-1:i).filter(i=>i>=0)
+  if(realIdx.length<2) return
+  for(let k=0;k<realIdx.length-1;k++){
+    const from=realIdx[k],to=realIdx[k+1]
+    const lls=[]
+    for(let j=from;j<to;j++){
+      const part=await _fetchRawSegmentLatlngs(rn[j],rn[j+1],rs[j])
+      if(!part||part.length<2) continue
+      if(lls.length===0) lls.push(part[0])
+      lls.push(...part.slice(1))
     }
-    if(config.segments[i]?.latlngs?.length>=2){routePolylines.push(config.segments[i].latlngs);continue}
-    const wps=wpList.map(w=>`${w.lng},${w.lat}`).join(';')
-    const coords=wps?`${n1.lng},${n1.lat};${wps};${n2.lng},${n2.lat}`:`${n1.lng},${n1.lat};${n2.lng},${n2.lat}`
-    try{
-      const profile=(config.segments[i]?.mode==='driving')?'driving':'foot'
-      const url=`https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson`
-      const res=await fetch(url,{signal:AbortSignal.timeout(8000)})
-      const data=await res.json()
-      if(data.code==='Ok'){routePolylines.push(data.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]));continue}
-    }catch{}
-    // OSRM 掛掉時的最後保底：至少照著途經點折線走，不要無視鬼節點直接拉一條直線
-    routePolylines.push([[n1.lat,n1.lng],...wpList.map(w=>[w.lat,w.lng]),[n2.lat,n2.lng]])
+    routePolylines.push(lls.length>=2?lls:[[rn[from].lat,rn[from].lng],[rn[to].lat,rn[to].lng]])
   }
 }
 
@@ -1123,6 +1140,12 @@ function applyConfig(cfg){
     }
     return {nodes:newN,segments:newS}
   }
+  // 保留「還沒拿掉鬼節點」的原始資料。
+  // 選擇路線地圖(buildRoutePolylineFromCache)畫得對，就是因為它用的是這份原始資料，
+  // 一個節點一個節點照順序連；下面 prefetchRoutes() 改成用同一份資料、同一套邏輯，
+  // 兩張圖才會保證長得一樣。
+  config._rawNodes=rawNodes
+  config._rawSegments=rawSegs
   const cleaned=stripGhosts(rawNodes,rawSegs)
   config.nodes=cleaned.nodes
   config.segments=cleaned.segments
