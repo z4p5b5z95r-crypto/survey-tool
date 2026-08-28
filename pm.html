@@ -175,7 +175,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .pc-btn.projdel{background:#fee2e2;color:#dc2626;border-color:#fecaca}
 .pc-btn.mv{background:#fff7ed;color:#c2410c;border-color:#fed7aa}
 .pc-btn.icon.more{font-size:15px;font-weight:800;letter-spacing:1px;line-height:1}
-/* 路線卡片「⋯」更多選單：搬移／刪除這兩個比較少用的操作收在這裡 */
+/* 路線卡片「⋯」更多選單：複製／搬移這兩個比較少用的操作收在這裡（刪除已改為卡片上直接顯示） */
 .pc-more-menu{background:white;border:1.5px solid #e2e8f0;border-radius:11px;padding:6px;margin:2px 0 10px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;flex-direction:column;gap:2px}
 .pc-more-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:9px 10px;background:none;border:none;border-radius:8px;font-size:13px;font-weight:600;color:#334155;cursor:pointer;font-family:inherit}
 .pc-more-item:hover{background:#f8fafc}
@@ -2629,11 +2629,10 @@ async function loadTask(id) {
   toast('✅ 任務已載入')
 }
 
-// 刪除確認＋選填刪除原因合併成一個對話框：按「取消」＝不刪除；按「確定」（可留白）＝刪除並把原因存進垃圾桶紀錄
-// 回傳 null 代表使用者取消；否則回傳 trim 過的原因字串（可能是空字串）
+// 刪除確認：只跳一個確認視窗，不再要求填寫刪除原因。
+// 回傳 null 代表使用者取消；回傳空字串代表確認刪除（後端的刪除原因欄位就留空）。
 function askDeleteNote(confirmMsg){
-  const note = prompt(confirmMsg + '\n\n可填寫刪除原因（選填，會顯示在垃圾桶內）：', '')
-  return note===null ? null : note.trim()
+  return confirm(confirmMsg) ? '' : null
 }
 
 async function deleteTask(id) {
@@ -2868,6 +2867,7 @@ function renderProjects(filter='') {
               :(gsUrl&&getSessionToken())?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
           </div>
           <div class="pc-actions-r">
+            <button class="pc-btn icon del" title="刪除路線" onclick="deleteTask('${t.id}')">🗑</button>
             <button class="pc-btn icon more" title="更多操作" onclick="toggleRouteMoreMenu('${t.id}',this)">⋯</button>
           </div>
         </div>
@@ -2951,11 +2951,45 @@ function toggleRouteMoreMenu(taskId, btnEl){
   menu.className='pc-more-menu'
   menu.dataset.taskId=taskId
   menu.innerHTML=`
+    <button class="pc-more-item" onclick="document.getElementById('pc-more-menu')?.remove();duplicateRoute('${taskId}')">📄 複製路線</button>
     <button class="pc-more-item" onclick="document.getElementById('pc-more-menu')?.remove();moveRouteToProject('${taskId}')">📂 搬移至其他專案</button>
-    <button class="pc-more-item danger" onclick="document.getElementById('pc-more-menu')?.remove();deleteTask('${taskId}')">🗑 刪除路線</button>
   `
   const card=btnEl.closest('.pc')
   if(card) card.parentNode.insertBefore(menu, card.nextSibling)
+}
+
+// 複製一條既有路線：拿它當範本快速做出新路線（例如同一條路只改幾個節點、或做去回程不同版本）。
+// 複製出來的是全新的本機路線，還沒上雲端（沒有 cloudId），所以不會動到原路線的雲端資料與既有監測記錄；
+// 使用者編輯完按儲存時才會建立自己的雲端路線。
+function duplicateRoute(taskId){
+  const t=savedTasks.find(x=>x.id===taskId)
+  if(!t){toast('找不到路線');return}
+  // 深拷貝設定，避免新舊兩條路線共用同一份節點/路段物件（改一邊會連動另一邊）
+  let cfg
+  try{ cfg=JSON.parse(JSON.stringify(t.cfg||{})) }
+  catch(e){ toast('❌ 複製失敗：路線資料異常'); return }
+  const baseName=S(cfg.rn)||'未命名路線'
+  // 同一個專案內重複複製時自動遞增，避免出現一堆同名的「xxx（複製）」
+  const siblings=savedTasks.filter(x=>x.projectId===t.projectId).map(x=>S(x.cfg?.rn))
+  let newName=`${baseName}（複製）`
+  let n=2
+  while(siblings.includes(newName)){ newName=`${baseName}（複製${n}）`; n++ }
+  cfg.rn=newName
+  const copy={
+    id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+    cloudId:null,                 // 全新路線，尚未上傳雲端
+    projectId:t.projectId||null,  // 留在同一個專案底下
+    creator:getCurrentUser()||'',
+    cfg,
+    savedAt:new Date().toISOString().slice(0,10)
+  }
+  // 插在原路線後面，複製完一眼就看得到
+  const idx=savedTasks.findIndex(x=>x.id===taskId)
+  savedTasks.splice(idx>=0?idx+1:savedTasks.length,0,copy)
+  localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
+  if(t.projectId) _openProjectIds.add(t.projectId)   // 確保複製出來的那條看得到
+  renderProjects(document.getElementById('project-search')?.value.trim()||'')
+  toast(`✅ 已複製為「${newName}」`)
 }
 
 // 把一條既有路線搬移到別的專案（或新建一個專案再搬過去）——用來把原本各自獨立的路線合併成同一個群組
