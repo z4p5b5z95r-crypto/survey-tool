@@ -860,6 +860,43 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 
 <script>
 // ════════════════════════════════════════════════════════
+//  錯誤顯示：把「畫面一片空白、什麼提示都沒有」變成看得見的訊息。
+//  JS 一旦在載入過程中出錯，後面的程式全部不會執行（專案列表空白、地圖畫不出來就是這樣來的），
+//  但預設什麼都不會顯示，只能開開發者工具才看得到。這裡把錯誤直接印在畫面最上方。
+// ════════════════════════════════════════════════════════
+;(function(){
+  function showFatal(msg){
+    try{
+      var box=document.getElementById('__fatal_err')
+      if(!box){
+        box=document.createElement('div')
+        box.id='__fatal_err'
+        box.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#7f1d1d;color:#fff;font:12px/1.5 ui-monospace,monospace;padding:10px 34px 10px 12px;white-space:pre-wrap;word-break:break-all;max-height:45vh;overflow:auto;box-shadow:0 2px 12px rgba(0,0,0,.4)'
+        var x=document.createElement('button')
+        x.textContent='✕'
+        x.style.cssText='position:absolute;top:6px;right:8px;background:transparent;border:none;color:#fff;font-size:15px;cursor:pointer'
+        x.onclick=function(){box.remove()}
+        box.appendChild(x)
+        var t=document.createElement('div')
+        t.id='__fatal_err_txt'
+        box.appendChild(t)
+        ;(document.body||document.documentElement).appendChild(box)
+      }
+      var t2=document.getElementById('__fatal_err_txt')
+      if(t2) t2.textContent+=(t2.textContent?'\n\n':'')+msg
+    }catch(e){}
+  }
+  window.addEventListener('error',function(e){
+    showFatal('❌ 程式錯誤：'+(e.message||'')+'\n位置：'+(e.filename||'').split('/').pop()+' 第 '+(e.lineno||'?')+' 行')
+  })
+  window.addEventListener('unhandledrejection',function(e){
+    var r=e.reason
+    showFatal('❌ 非同步錯誤：'+((r&&(r.message||r.toString()))||'未知'))
+  })
+  window.__showFatal=showFatal
+})()
+
+// ════════════════════════════════════════════════════════
 //  ⚙️  雲端設定（管理員填入；使用者無需設定）
 //  若要直接寫死，填入以下兩個常數；否則沿用 localStorage。
 // ════════════════════════════════════════════════════════
@@ -2741,7 +2778,13 @@ async function syncFromCloud() {
     localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
     renderProjects()
     if(changed>0) toast(`☁️ 雲端同步完成`)
-  }catch(e){updateCloudDot('err','同步失敗');if(_lbl)_lbl.textContent='ERR:'+e.message.slice(0,30)}
+  }catch(e){
+    updateCloudDot('err','同步失敗')
+    if(_lbl)_lbl.textContent='ERR:'+e.message.slice(0,30)
+    // 之前這個錯誤只寫在一個很小的角落標籤上、又會被截斷，等於看不到真正原因。
+    // 雲端拉不到資料時專案列表會是空的，所以直接把完整錯誤秀出來。
+    if(window.__showFatal) window.__showFatal('❌ 雲端同步失敗：'+(e.message||e))
+  }
 }
 
 // ════════════════════════════════════════════════════════
