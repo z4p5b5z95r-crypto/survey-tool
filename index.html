@@ -434,6 +434,9 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
       <div>
         <div class="route-badge">旅行時間調查</div>
         <span style="display:inline-block;vertical-align:middle;margin-left:4px;margin-bottom:5px;font-size:9px;font-weight:800;letter-spacing:.5px;color:#92400e;background:#fde68a;border-radius:6px;padding:2px 6px">BETA</span>
+        <!-- 暫時的部署版本標記：純粹用來肉眼確認手機上跑的是不是最新檔案，跟鬼節點問題無關，
+             之後確認部署沒問題可以直接刪掉這個 span -->
+        <span style="display:inline-block;vertical-align:middle;margin-left:4px;margin-bottom:5px;font-size:9px;font-weight:700;letter-spacing:.5px;color:#475569;background:#e2e8f0;border-radius:6px;padding:2px 6px">build-ghostfix-3</span>
         <h2 id="si-route-name">載入任務中...</h2>
         <p id="si-fromto"></p>
       </div>
@@ -1010,9 +1013,15 @@ async function prefetchRoutes(){
   routePolylines=[]
   for(let i=0;i<config.nodes.length-1;i++){
     const n1=config.nodes[i],n2=config.nodes[i+1]
-    if(config.segments[i]?.mode==='straight'){routePolylines.push([[n1.lat,n1.lng],[n2.lat,n2.lng]]);continue}
+    // 這段的途經點（含 stripGhosts 保留下來的鬼節點位置）——不管走哪個分支都必須經過它們，
+    // 否則鬼節點指定的繞路就會被忽略，畫出來的路線跟 PM 設定的不一樣。
+    const wpList=(config.segments[i]?.waypoints||[]).filter(w=>w&&w.lat!=null&&w.lng!=null)
+    if(config.segments[i]?.mode==='straight'){
+      routePolylines.push([[n1.lat,n1.lng],...wpList.map(w=>[w.lat,w.lng]),[n2.lat,n2.lng]])
+      continue
+    }
     if(config.segments[i]?.latlngs?.length>=2){routePolylines.push(config.segments[i].latlngs);continue}
-    const wps=(config.segments[i]?.waypoints||[]).map(w=>`${w.lng},${w.lat}`).join(';')
+    const wps=wpList.map(w=>`${w.lng},${w.lat}`).join(';')
     const coords=wps?`${n1.lng},${n1.lat};${wps};${n2.lng},${n2.lat}`:`${n1.lng},${n1.lat};${n2.lng},${n2.lat}`
     try{
       const profile=(config.segments[i]?.mode==='driving')?'driving':'foot'
@@ -1021,7 +1030,8 @@ async function prefetchRoutes(){
       const data=await res.json()
       if(data.code==='Ok'){routePolylines.push(data.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]));continue}
     }catch{}
-    routePolylines.push([[n1.lat,n1.lng],[n2.lat,n2.lng]])
+    // OSRM 掛掉時的最後保底：至少照著途經點折線走，不要無視鬼節點直接拉一條直線
+    routePolylines.push([[n1.lat,n1.lng],...wpList.map(w=>[w.lat,w.lng]),[n2.lat,n2.lng]])
   }
 }
 
@@ -1089,15 +1099,26 @@ function applyConfig(cfg){
       const firstSeg=chain[0]&&chain[0].seg
       const merged={name:firstSeg?.name||'',lanes:firstSeg?.lanes||2,width:firstSeg?.width||8,
         mode:firstSeg?.mode||'foot',length:chain.reduce((s,c)=>s+(c.seg?.length||0),0),waypoints:[],latlngs:null}
-      // Merge latlngs：每一段一定至少貼出「起點→這段終點」的原始座標當保底，
-      // 有道路貼合快取(latlngs)就用快取取代這段的形狀（跟專案地圖 buildRoutePolylineFromCache 的保底邏輯一致）。
-      const allLl=[[rn[from].lat,rn[from].lng]]
+      // ★ 關鍵：把被拿掉的鬼節點座標保留成這段的「途經點」(waypoints)。
+      // 這是整個問題真正的核心——鬼節點的存在意義就是強迫路線繞經某個位置，
+      // 但之前 merged.waypoints 被寫死成空陣列，鬼節點的位置在這裡就徹底消失了。
+      // 後面 prefetchRoutes() 拿不到快取時會直接對 OSRM 要「起點→終點」的路，
+      // OSRM 當然照它自己認為的最短路走，完全不知道要繞經鬼節點 → 這就是「路線跑掉」。
+      // 專案選擇地圖不受影響，是因為它照原始 nodes 一個一個連，根本不經過這段合併邏輯。
       for(let j=0;j<chain.length;j++){
-        const ll=chain[j].seg?.latlngs
-        if(ll?.length>=2) allLl.push(...ll.slice(1))
-        else allLl.push([chain[j].gn.lat,chain[j].gn.lng])
+        (chain[j].seg?.waypoints||[]).forEach(w=>merged.waypoints.push({lat:w.lat,lng:w.lng}))
+        if(j<chain.length-1) merged.waypoints.push({lat:chain[j].gn.lat,lng:chain[j].gn.lng})
       }
-      if(allLl.length>=2) merged.latlngs=allLl
+      // 只有在「每一小段都有道路貼合快取」時才合併成完整形狀直接用；
+      // 只要有任何一段缺快取，就寧可留 null，讓 prefetchRoutes() 帶著上面的 waypoints
+      // 重新向 OSRM 要一條真正貼路、且確實繞經鬼節點的路徑，
+      // 而不是自己硬湊一條穿過房子的折線。
+      const allCached=chain.every(c=>c.seg?.latlngs?.length>=2)
+      if(allCached){
+        const allLl=[[rn[from].lat,rn[from].lng]]
+        chain.forEach(c=>allLl.push(...c.seg.latlngs.slice(1)))
+        if(allLl.length>=2) merged.latlngs=allLl
+      }
       newS.push(merged)
     }
     return {nodes:newN,segments:newS}
