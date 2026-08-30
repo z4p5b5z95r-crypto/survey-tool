@@ -173,6 +173,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .pc-btn.proj{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
 .pc-btn.projadd{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
 .pc-btn.projdel{background:#fee2e2;color:#dc2626;border-color:#fecaca}
+.pc-btn.projpdf{background:#fff7ed;color:#c2410c;border-color:#fed7aa}
 .pc-btn.mv{background:#fff7ed;color:#c2410c;border-color:#fed7aa}
 .pc-btn.icon.more{font-size:15px;font-weight:800;letter-spacing:1px;line-height:1}
 /* 路線卡片「⋯」更多選單：複製／搬移這兩個比較少用的操作收在這裡（刪除已改為卡片上直接顯示） */
@@ -2957,6 +2958,7 @@ function renderProjects(filter='') {
       </div>
       <div class="proj-group-actions">
         <button class="pc-btn proj" onclick="event.stopPropagation();showProjectQR('${pid}')">🔲 專案 QR</button>
+        <button class="pc-btn projpdf" onclick="event.stopPropagation();batchProjectPdf('${pid}')">📄 批次報告</button>
         <button class="pc-btn projadd" onclick="event.stopPropagation();newTask('${pid}')">＋ 新增路線</button>
         <button class="pc-btn projdel" onclick="event.stopPropagation();deleteProject('${pid}')">🗑 刪除專案</button>
       </div>
@@ -3118,6 +3120,27 @@ async function doMoveRoute(taskId, targetProjectId){
       localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
     }catch(e){toast('⚠️ 雲端同步搬移結果失敗：'+e.message)}
   }
+}
+
+// 批次下載：一次產生這個專案底下所有路線、指定日期的 SGS 平均報告，合併成一份可存成 PDF。
+async function batchProjectPdf(pid){
+  const proj=savedProjects.find(p=>p.id===pid)
+  if(!proj){toast('找不到專案');return}
+  if(!(gsUrl&&getSessionToken())){toast('❌ 批次報告需要雲端連線，請先登入');return}
+  const projectCloudId=await ensureProjectCloudSynced(proj)
+  if(!projectCloudId){toast('❌ 專案尚未同步雲端，無法產生報告');return}
+
+  const today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'})
+  const date=prompt(`要產生哪一天的報告？\n\n格式 YYYY-MM-DD，留空代表不限日期（全部資料平均）`, today)
+  if(date===null) return
+  const d=date.trim()
+  if(d && !/^\d{4}-\d{2}-\d{2}$/.test(d)){ toast('❌ 日期格式需為 YYYY-MM-DD'); return }
+
+  const tok=crypto.randomUUID()
+  localStorage.setItem('sr_tok_'+tok, JSON.stringify({gs:gsUrl, sessionToken:getSessionToken()}))
+  setTimeout(()=>localStorage.removeItem('sr_tok_'+tok), 60000)
+  toast('⏳ 正在產生批次報告，請稍候…')
+  window.open(`survey-report.html?pid=${encodeURIComponent(projectCloudId)}&tok=${encodeURIComponent(tok)}&date=${encodeURIComponent(d)}`,'_blank')
 }
 
 // 專案層級 QR：一個專案（可能有多條路線）共用一個 QR，現場掃了先選路線。
