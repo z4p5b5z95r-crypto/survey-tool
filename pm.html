@@ -2273,7 +2273,8 @@ function renderSegTable() {
     }
     const endNode=nodes[endIdx]
     const pi=mergedIndices[0]
-    const autoName=`${startNode.exitName||startNode.name}→${endNode.name}`
+    // 路段名稱一律用破折號「—」；舊資料存的箭頭「→」在各處顯示時也會轉成破折號
+    const autoName=`${startNode.exitName||startNode.name}—${endNode.name}`
     if(!segData[pi]._nameCustom) segData[pi].name=autoName
     const mergedLength=mergedIndices.reduce((a,idx)=>a+(segData[idx].length||0),0)
     displayRows.push({autoName,indices:mergedIndices,pi,mergedLength,
@@ -2791,6 +2792,9 @@ async function syncFromCloud() {
     localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
     renderProjects()
     if(changed>0) toast(`☁️ 雲端同步完成`)
+    // 專案功能是後來才加的：早期上傳的路線，雲端的 projectId 是空的或跟本機歸屬對不上，
+    // 會害「掃專案 QR」「選擇專案」這些以專案為單位的入口抓不到任何路線。這裡自動補寫回去。
+    repairCloudProjectIds(routes)
   }catch(e){
     updateCloudDot('err','同步失敗')
     if(_lbl)_lbl.textContent='ERR:'+e.message.slice(0,30)
@@ -2798,6 +2802,36 @@ async function syncFromCloud() {
     // 雲端拉不到資料時專案列表會是空的，所以直接把完整錯誤秀出來。
     if(window.__showFatal) window.__showFatal('❌ 雲端同步失敗：'+(e.message||e))
   }
+}
+
+// 把本機的專案歸屬補寫回雲端。
+// 只在「本機知道這條路線屬於哪個專案，但雲端記的不一樣」時才送出，
+// 用的是輕量的 updateRouteProject（只改一個欄位），不會整包路線重傳。
+async function repairCloudProjectIds(cloudRoutes){
+  if(!(gsUrl&&getSessionToken())) return
+  const me=getCurrentUser()||''
+  const cloudById={}
+  ;(cloudRoutes||[]).forEach(r=>{ if(!r.deletedAt) cloudById[String(r.id)]=r })
+  let fixed=0
+  for(const t of savedTasks){
+    if(!t.cloudId) continue
+    if(t.creator && t.creator!==me) continue
+    const proj=savedProjects.find(p=>p.id===t.projectId)
+    if(!proj) continue
+    const cloud=cloudById[String(t.cloudId)]
+    if(!cloud) continue
+    let projectCloudId=proj.cloudId
+    if(!projectCloudId){
+      projectCloudId=await ensureProjectCloudSynced(proj)
+      if(!projectCloudId) continue
+    }
+    if(String(cloud.projectId||'')===String(projectCloudId)) continue   // 已經一致，不用重送
+    try{
+      await cloudPost({action:'updateRouteProject', id:t.cloudId, projectId:projectCloudId})
+      fixed++
+    }catch(e){ /* 單條失敗不影響其他，下次登入會再試 */ }
+  }
+  if(fixed>0) toast(`🔧 已修正 ${fixed} 條路線的專案歸屬`)
 }
 
 // ════════════════════════════════════════════════════════
@@ -3063,6 +3097,12 @@ async function showProjectQR(pid){
         const idx=savedTasks.findIndex(x=>x.id===t.id)
         if(idx>=0)savedTasks[idx].cloudId=result.id
       }catch(e){toast('⚠️ 路線「'+(t.cfg.rn||'')+'」同步雲端失敗：'+e.message)}
+    }else{
+      // 已經上傳過的路線也要補寫專案歸屬——早期上傳的路線雲端 projectId 是空的，
+      // 之前這裡只處理沒上傳過的，導致掃了 QR 卻顯示「這個專案還沒有任何路線」
+      try{
+        await cloudPost({action:'updateRouteProject', id:t.cloudId, projectId:projectCloudId})
+      }catch(e){ /* 補寫失敗不阻擋 QR 產生，登入同步時還會再試一次 */ }
     }
   }
   localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
