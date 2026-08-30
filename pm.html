@@ -1342,6 +1342,12 @@ let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], mea
 // 讀回來就不是字串了。前端很多地方把這些欄位當字串用（.replace()、.includes()…），
 // 一碰到數字就整段程式中斷、專案列表變成空白。這裡統一強制轉成字串。
 function S(v){ return (v===null||v===undefined)?'':String(v) }
+// 路段名稱一律顯示成「起點 ～ 終點」。舊資料存的是「—」或「→」，這裡在顯示時統一轉換。
+// 只有前後都有文字時才算分隔符號——單獨一個「—」是「沒有資料」的佔位符，不能被換掉。
+function segDisp(n){
+  const s = S(n)
+  return s.replace(/\s*[→—～]\s*/g, (m, off) => (off>0 && off+m.length<s.length) ? ' ～ ' : m)
+}
 function normalizeCfg(c){
   if(!c||typeof c!=='object') return c
   // 只轉換「本來就存在」的欄位，不要順手補上空白欄位——
@@ -2288,7 +2294,9 @@ function renderSegTable() {
   }
   tbody.innerHTML=displayRows.map(row=>{
     const{pi,indices,mergedLength,mergedLanes,mergedWidth,autoName}=row
-    const defName=segData[pi]._nameCustom?segData[pi].name:autoName
+    // 舊路線存的名稱可能還是「A—B」或「A→B」，這裡一併顯示成「A ～ B」，
+    // 使用者按下儲存時就會把新格式寫回去
+    const defName=segDisp(segData[pi]._nameCustom?segData[pi].name:autoName)
     const isMerged=indices.length>1
     const badge=isMerged
       ?'<span class="dist-manual" title="含假節點，距離已合併">合併</span>'
@@ -2302,7 +2310,7 @@ function renderSegTable() {
       ?`(function(nv){var idxs=${JSON.stringify(indices)};var tot=idxs.reduce(function(a,x){return a+(segData[x].length||0)},0)||1;var rem=nv;idxs.forEach(function(x,k){if(k<idxs.length-1){var v=Math.round((segData[x].length/tot)*nv);segData[x].length=v;rem-=v;segData[x]._auto=false}else{segData[x].length=rem;segData[x]._auto=false}});updateTotalLength()})(+this.value||0)`
       :`segData[${pi}].length=+this.value||0;segData[${pi}]._auto=false;updateTotalLength()`
     return`<tr>
-      <td><input class="seg-input" style="text-align:left;min-width:90px" value="${defName}" onchange="segData[${pi}].name=this.value;segData[${pi}]._nameCustom=true"/></td>
+      <td><input class="seg-input" style="text-align:left;min-width:90px" value="${defName}" onchange="this.value=segDisp(this.value);segData[${pi}].name=this.value;segData[${pi}]._nameCustom=true"/></td>
       <td><input class="seg-input" style="width:36px" type="number" value="${mergedLanes}" min="1" max="10" onchange="${onLanes}"/></td>
       <td><input class="seg-input" style="width:40px" type="number" value="${mergedWidth}" onchange="${onWidth}"/></td>
       <td style="white-space:nowrap"><input class="seg-input" style="width:50px" type="number" value="${mergedLength}" onchange="${onLen}"/>${badge}</td>
@@ -2336,7 +2344,7 @@ function syncSegDataFromDOM() {
     if(!indices)return
     const pi=indices[0]
     if(!segData[pi])return
-    segData[pi].name=ins[0].value
+    segData[pi].name=segDisp(ins[0].value)   // 存回去時也統一成「～」格式
     const lanes=parseInt(ins[1].value)||2
     const width=parseInt(ins[2].value)||8
     // Apply lanes/width to all constituent indices (ghost nodes keep same value)
