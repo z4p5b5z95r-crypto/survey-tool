@@ -124,7 +124,7 @@ input,select,textarea{font-size:max(16px,1em)!important}
 #screen-setup{background:#f1f5f9}
 .page-header{background:#1e293b;color:white;flex-shrink:0}
 .page-header-nav{display:flex;align-items:center;padding:6px 8px 0}
-.page-header-body{padding:2px 16px 12px}
+.page-header-body{padding:10px 16px 14px}
 .page-header h2{font-size:18px;font-weight:800}
 .page-header p{font-size:12px;color:#94a3b8;margin-top:2px}
 .scroll-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
@@ -134,9 +134,9 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .pr-hd{display:flex;align-items:center;gap:9px}
 .pr-hd-icon{font-size:17px;line-height:1;flex-shrink:0}
 .pr-hd-name{font-size:16px;font-weight:800;color:#fff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pr-stats{display:flex;gap:6px;margin-top:8px}
-/* 數字與文字排同一行，整條只佔一行高度 */
-.pr-stat{flex:1;border-radius:8px;padding:5px 6px;display:flex;align-items:baseline;justify-content:center;gap:5px}
+.pr-stats{display:flex;gap:6px;margin-top:10px}
+/* 數字與文字排同一行；上下留多一點呼吸空間，色塊比較好按也比較好看 */
+.pr-stat{flex:1;border-radius:10px;padding:9px 6px;display:flex;align-items:baseline;justify-content:center;gap:5px}
 .pr-stat-n{font-size:14px;font-weight:800;line-height:1.2}
 .pr-stat-l{font-size:11px;line-height:1.2}
 .pr-stat.done{background:#0F6E56}
@@ -145,9 +145,11 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .pr-stat.part{background:#854F0B}
 .pr-stat.part .pr-stat-n{color:#FAEEDA}
 .pr-stat.part .pr-stat-l{color:#FAC775}
-.pr-stat.todo{background:#1e293b}
-.pr-stat.todo .pr-stat-n{color:#cbd5e1}
-.pr-stat.todo .pr-stat-l{color:#64748b}
+/* 「未開始」原本用接近底色的深灰，在深色背景上幾乎看不出框；
+   改成明顯亮一階的灰底＋淺色文字，三格才會一樣清楚 */
+.pr-stat.todo{background:#475569}
+.pr-stat.todo .pr-stat-n{color:#f8fafc}
+.pr-stat.todo .pr-stat-l{color:#cbd5e1}
 .pr-hint{display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;margin:2px 2px 4px;font-weight:600}
 /* 路線卡片：左側一條狀態色帶（綠=完成、橘=進行中、灰=未開始），右側文字說明狀態 */
 .pr-item{display:flex;align-items:stretch;width:100%;text-align:left;background:white;border:none;border-radius:14px;padding:0;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.07);cursor:pointer;font-family:inherit;transition:transform .1s,background .1s}
