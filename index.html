@@ -174,13 +174,11 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .pr-stat.todo .pr-stat-n{color:#f8fafc}
 .pr-stat.todo .pr-stat-l{color:#cbd5e1}
 .pr-hint{display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;margin:2px 2px 4px;font-weight:600}
-/* 路線卡片：左側一條狀態色帶（綠=完成、橘=進行中、灰=未開始），右側文字說明狀態 */
+/* 路線卡片：左側色帶用該路線在地圖上的顏色（方便對照地圖），右側文字說明今日狀態 */
 .pr-item{display:flex;align-items:stretch;width:100%;text-align:left;background:white;border:none;border-radius:14px;padding:0;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.07);cursor:pointer;font-family:inherit;transition:transform .1s,background .1s}
 .pr-item:active{transform:scale(.98)}
 .pr-item:active .pr-item-inner{background:#f8fafc}
-.pr-bar{width:4px;flex-shrink:0;background:#cbd5e1}
-.pr-bar.done{background:#0f766e}
-.pr-bar.part{background:#f59e0b}
+.pr-bar{width:5px;flex-shrink:0;background:#cbd5e1}
 .pr-item-inner{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:11px 13px}
 .pr-item-body{flex:1;min-width:0}
 .pr-item-name{font-size:15px;font-weight:800;color:#0f172a}
@@ -4266,7 +4264,7 @@ async function showProjectRoutePicker(pid, gsParam, kParam){
     }else{
       box.innerHTML = routes.map((r,i) => `
         <button class="pr-item" onclick="loadCloudRouteAndProceed('${r.id}','${gsParam}','${kParam}')">
-          <span class="pr-bar" id="pr-bar-${i}"></span>
+          <span class="pr-bar" id="pr-bar-${i}" style="background:${PR_MAP_COLORS[i%PR_MAP_COLORS.length]}"></span>
           <span class="pr-item-inner">
             <span class="pr-item-body">
               <span class="pr-item-name">${i+1}. ${r.routeName||'未命名路線'}</span>
@@ -4407,8 +4405,8 @@ function applyTodayProgress(routes, list){
   routes.forEach((r,i)=>{
     const p = byId[String(r.id)]
     const st = routeStateOf(p ? p.roundStates : null)
-    const bar = document.getElementById(`pr-bar-${i}`)
-    if(bar) bar.className = 'pr-bar '+st.cls
+    // 左側色帶固定用該路線在地圖上的顏色，方便跟地圖對照；
+    // 完成狀態改由右側文字的顏色表示，這裡不覆蓋色帶
     const el = document.getElementById(`pr-state-${i}`)
     if(el){ el.className = 'pr-item-state '+st.cls; el.textContent = st.txt }
     if(st.cls==='done') nDone++
