@@ -167,8 +167,11 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .proj-group-count{font-size:11px;color:#94a3b8;font-weight:700;white-space:nowrap}
 .proj-group-arrow{transition:transform .15s;color:#94a3b8;flex-shrink:0}
 .proj-group.open .proj-group-arrow{transform:rotate(180deg)}
-/* 四顆按鈕在窄畫面放不下，允許換行，刪除專案才不會被擠出視線外 */
-.proj-group-actions{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 12px}
+/* 四顆按鈕等寬排成一列，不換行；文字縮短、左右內距收窄，窄螢幕也放得下 */
+.proj-group-actions{display:flex;gap:6px;padding:0 14px 12px}
+.proj-group-actions .pc-btn{flex:1;min-width:0;padding:7px 2px;gap:3px;font-size:11.5px;justify-content:center;white-space:nowrap;overflow:hidden}
+/* 批次報告字最長，多分一點寬度給它 */
+.proj-group-actions .pc-btn.projpdf{flex:1.35}
 .proj-group-body{display:none}
 .proj-group.open .proj-group-body{display:block}
 .pc-btn.proj{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
@@ -2961,10 +2964,10 @@ function renderProjects(filter='') {
         <svg class="proj-group-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="proj-group-actions">
-        <button class="pc-btn proj" onclick="event.stopPropagation();showProjectQR('${pid}')">🔲 專案 QR</button>
-        <button class="pc-btn projpdf" onclick="event.stopPropagation();batchProjectPdf('${pid}')">📄 批次報告</button>
-        <button class="pc-btn projadd" onclick="event.stopPropagation();newTask('${pid}')">＋ 新增路線</button>
-        <button class="pc-btn projdel" onclick="event.stopPropagation();deleteProject('${pid}')">🗑 刪除專案</button>
+        <button class="pc-btn proj" title="專案 QR" onclick="event.stopPropagation();showProjectQR('${pid}')">🔲 QR</button>
+        <button class="pc-btn projpdf" title="批次報告" onclick="event.stopPropagation();batchProjectPdf('${pid}')">📄 批次報告</button>
+        <button class="pc-btn projadd" title="新增路線" onclick="event.stopPropagation();newTask('${pid}')">＋ 路線</button>
+        <button class="pc-btn projdel" title="刪除專案" onclick="event.stopPropagation();deleteProject('${pid}')">🗑 刪除</button>
       </div>
       <div class="proj-group-body">${routesHtml}</div>
     </div>`
