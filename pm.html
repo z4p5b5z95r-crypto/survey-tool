@@ -2965,7 +2965,7 @@ function renderProjects(filter='') {
       </div>
       <div class="proj-group-actions">
         <button class="pc-btn proj" title="專案 QR" onclick="event.stopPropagation();showProjectQR('${pid}')">🔲 QR</button>
-        <button class="pc-btn projpdf" title="批次報告" onclick="event.stopPropagation();batchProjectPdf('${pid}')">📄 批次報告</button>
+        <button class="pc-btn projpdf" title="專案報告" onclick="event.stopPropagation();batchProjectPdf('${pid}')">📊 專案報告</button>
         <button class="pc-btn projadd" title="新增路線" onclick="event.stopPropagation();newTask('${pid}')">＋ 路線</button>
         <button class="pc-btn projdel" title="刪除專案" onclick="event.stopPropagation();deleteProject('${pid}')">🗑 刪除</button>
       </div>
@@ -3147,7 +3147,8 @@ async function batchProjectPdf(pid){
 
   showBatchDatePicker(proj.name||'專案', projectCloudId, dates)
 }
-// 選日期的視窗：每一列顯示日期、當天有幾條路線、幾筆紀錄
+// 選日期的視窗：每一列顯示日期、當天有幾條路線、幾筆紀錄。
+// 選完進入專案報告頁，可在頁內切換路線與日期，也能一次批次下載當日全部平均報告。
 function showBatchDatePicker(projName, projectCloudId, dates){
   document.getElementById('batch-date-overlay')?.remove()
   const ov=document.createElement('div')
@@ -3155,10 +3156,10 @@ function showBatchDatePicker(projName, projectCloudId, dates){
   ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px'
   ov.innerHTML=`
     <div style="background:white;border-radius:18px;padding:20px 18px 16px;width:100%;max-width:380px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.3)">
-      <div style="font-size:16px;font-weight:800;color:#0f172a">📄 批次產生 SGS 報告</div>
+      <div style="font-size:16px;font-weight:800;color:#0f172a">📊 專案調查報告</div>
       <div style="font-size:12.5px;color:#64748b;margin-top:4px">${projName.replace(/</g,'&lt;')}</div>
       <div style="font-size:12px;color:#475569;background:#f8fafc;border-radius:10px;padding:9px 11px;margin:12px 0 10px;line-height:1.7">
-        報告內容為該日各路線的平均值，每條路線包含：<br>
+        選日期後進入報告頁，可切換該日各條路線的報告，也能一次批次下載當日全部路線的平均報告（四張表）：<br>
         ・延滯統計表<br>
         ・延滯統計表(續)<br>
         ・各路段平均旅行時間及平均行駛時間統計表<br>
@@ -3182,7 +3183,7 @@ function startBatchPdf(projectCloudId, date){
   const tok=crypto.randomUUID()
   localStorage.setItem('sr_tok_'+tok, JSON.stringify({gs:gsUrl, sessionToken:getSessionToken()}))
   setTimeout(()=>localStorage.removeItem('sr_tok_'+tok), 60000)
-  toast('⏳ 正在產生批次報告，請稍候…')
+  toast('⏳ 開啟專案報告…')
   window.open(`survey-report.html?pid=${encodeURIComponent(projectCloudId)}&tok=${encodeURIComponent(tok)}&date=${encodeURIComponent(date)}`,'_blank')
 }
 

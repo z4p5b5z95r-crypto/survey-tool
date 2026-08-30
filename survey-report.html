@@ -42,11 +42,29 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color
 @keyframes bar-sweep{0%{left:-55%}100%{left:100%}}
 
 /* ── Page header ── */
-.page-header{background:#1e293b;color:white;padding:16px 20px 0;position:sticky;top:0;z-index:100}
+.page-header{background:linear-gradient(135deg,#1e293b,#0f172a);color:white;padding:16px 20px 0;position:sticky;top:0;z-index:100}
 .rpt-title{font-size:11px;font-weight:700;color:#60a5fa;letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px}
 .page-header h1{font-size:20px;font-weight:800;margin-bottom:3px}
 .page-header .sub{font-size:11px;color:#94a3b8;margin-bottom:14px;line-height:1.6}
 .tab-bar{display:flex;gap:2px}
+/* ── 專案報告模式：頭部資訊靠左、日期與批次下載靠右 ── */
+.ph-row{display:flex;align-items:flex-start;gap:12px}
+.ph-back{flex-shrink:0;background:none;border:none;color:#94a3b8;font-size:20px;line-height:1;cursor:pointer;padding:2px 4px 0}
+.ph-back:hover{color:#e2e8f0}
+.ph-main{flex:1;min-width:0}
+.ph-tools{display:flex;flex-direction:column;gap:7px;align-items:flex-end;flex-shrink:0}
+.ph-sel{background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:8px;padding:6px 10px;font-size:12px;font-family:inherit;cursor:pointer}
+.ph-dl{background:#c2410c;color:#fff;border:none;border-radius:8px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
+.ph-dl:hover{filter:brightness(1.08)}
+.ph-dl:disabled{background:#475569;cursor:default}
+/* 路線分頁列（白底，接在深色頭下方） */
+.route-tabs{background:#fff;border-bottom:1px solid #e2e8f0;padding:0 20px;display:flex;gap:2px;overflow-x:auto;position:sticky;top:0;z-index:99}
+.route-tab{background:none;border:none;padding:9px 14px;font-size:12.5px;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;font-family:inherit;display:flex;align-items:center;gap:6px}
+.route-tab:hover{color:#334155}
+.route-tab.on{color:#0f172a;font-weight:800;border-bottom-color:#2563eb}
+.route-tab .rdot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.route-tab .rst{font-size:10.5px;color:#94a3b8;font-weight:600}
+.route-tab.on .rst{color:#64748b}
 .tab-btn{padding:11px 20px;font-size:13px;font-weight:700;border:none;background:transparent;color:#64748b;cursor:pointer;border-radius:8px 8px 0 0;transition:.15s;border-bottom:3px solid transparent}
 .tab-btn.active{background:#f1f5f9;color:#1e293b;border-bottom-color:#3b82f6}
 .rf-btn{position:relative;overflow:hidden;padding:6px 14px 8px;font-size:12px;font-weight:700;border:1.5px solid #475569;background:transparent;color:#cbd5e1;border-radius:20px;cursor:pointer;transition:.15s}
@@ -318,9 +336,19 @@ td:first-child{text-align:left;font-weight:500}
 
 <div id="app" style="display:none">
   <div class="page-header">
-    <div class="rpt-title">📊 調查報告</div>
-    <h1 id="hdr-title">—</h1>
-    <div class="sub" id="hdr-sub">—</div>
+    <div class="ph-row">
+      <button class="ph-back" id="ph-back" style="display:none" onclick="history.back()" title="返回">‹</button>
+      <div class="ph-main">
+        <div class="rpt-title" id="hdr-proj">📊 調查報告</div>
+        <h1 id="hdr-title">—</h1>
+        <div class="sub" id="hdr-sub">—</div>
+      </div>
+      <!-- 專案模式才會出現：切換日期＋一次下載當日全部路線的平均報告 -->
+      <div class="ph-tools" id="ph-tools" style="display:none">
+        <select class="ph-sel" id="ph-date" onchange="onReportDateChange(this.value)"></select>
+        <button class="ph-dl" id="ph-batch" onclick="batchDownloadCurrentDate()">📄 批次下載當日平均報告</button>
+      </div>
+    </div>
     <div id="round-filter-row" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap"></div>
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="stats" onclick="switchTab('stats')">📊 統計表</button>
@@ -328,6 +356,8 @@ td:first-child{text-align:left;font-weight:500}
       <button class="tab-btn" data-tab="dl" onclick="switchTab('dl')">📥 下載報告</button>
     </div>
   </div>
+  <!-- 專案模式：路線分頁 -->
+  <div class="route-tabs" id="route-tabs" style="display:none"></div>
 
   <!-- STATS -->
   <div id="panel-stats" class="panel active">
@@ -485,6 +515,93 @@ function _ldTick(){
 // ════════════════ SECURITY HELPERS ════════════════
 const he = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
 
+// ════════════════ 專案報告模式：一次瀏覽整個專案、可切換日期與路線 ════════════════
+const RT_COLORS=['#2563eb','#ea580c','#0d9488','#dc2626','#7c3aed','#0891b2','#ca8a04','#db2777']
+let _pm = null   // {gs, sessionToken, pid, projName, routes:[], dates:[], date:'', routeId:''}
+
+function renderRouteTabs(){
+  const box=document.getElementById('route-tabs')
+  if(!box||!_pm) return
+  box.style.display='flex'
+  box.innerHTML=_pm.routes.map((r,i)=>{
+    const on = String(r.id)===String(_pm.routeId)
+    const st = _pm.stateById?.[String(r.id)]
+    return `<button class="route-tab${on?' on':''}" onclick="switchReportRoute('${String(r.id).replace(/'/g,"\\'")}')">
+      <span class="rdot" style="background:${RT_COLORS[i%RT_COLORS.length]}"></span>
+      <span>${he(r.routeName||'未命名路線')}</span>
+      ${st?`<span class="rst">${he(st)}</span>`:''}
+    </button>`
+  }).join('')
+}
+function renderDateOptions(){
+  const sel=document.getElementById('ph-date')
+  if(!sel||!_pm) return
+  sel.innerHTML=_pm.dates.map(d=>
+    `<option value="${he(d.date)}"${d.date===_pm.date?' selected':''}>📅 ${he(d.date)}（${d.routes} 條・${d.surveys} 筆）</option>`
+  ).join('')
+}
+async function switchReportRoute(routeId){
+  if(!_pm) return
+  _pm.routeId=routeId
+  renderRouteTabs()
+  showDlOverlay('載入路線資料…')
+  try{
+    await _loadRouteIntoGlobals(_pm.gs, _pm.sessionToken, routeId, _pm.date)
+    renderPage()
+  }catch(e){ alert('載入失敗：'+e.message) }
+  hideDlOverlay()
+}
+async function onReportDateChange(date){
+  if(!_pm) return
+  _pm.date=date
+  await switchReportRoute(_pm.routeId)
+}
+function batchDownloadCurrentDate(){
+  if(!_pm) return
+  const btn=document.getElementById('ph-batch')
+  if(btn){ btn.disabled=true; btn.textContent='產生中…' }
+  // 同一份憑證再開一個批次分頁；批次頁自己會把報告畫在該分頁裡
+  const tok=crypto.randomUUID()
+  localStorage.setItem('sr_tok_'+tok, JSON.stringify({gs:_pm.gs, sessionToken:_pm.sessionToken}))
+  setTimeout(()=>localStorage.removeItem('sr_tok_'+tok), 60000)
+  window.open(`survey-report.html?pid=${encodeURIComponent(_pm.pid)}&tok=${encodeURIComponent(tok)}&date=${encodeURIComponent(_pm.date)}&batch=1`,'_blank')
+  setTimeout(()=>{ if(btn){ btn.disabled=false; btn.textContent='📄 批次下載當日平均報告' } }, 1500)
+}
+async function initProjectReport(gs, sessionToken, pid, wantDate){
+  ld('載入專案資料…')
+  const [routesRes, datesRes, projRes] = await Promise.all([
+    cloudGet(gs, sessionToken, {action:'getProjectRoutes', pid}),
+    cloudGet(gs, sessionToken, {action:'getProjectDates', pid}).catch(()=>({ok:true,data:[]})),
+    cloudGet(gs, sessionToken, {action:'getProject', id:pid}).catch(()=>({ok:true,data:null}))
+  ])
+  if(!routesRes.ok) throw new Error(routesRes.error||'讀取專案路線失敗')
+  const routes=routesRes.data||[]
+  if(!routes.length) throw new Error('這個專案還沒有任何路線')
+  const dates=(datesRes.data||[])
+  _pm={ gs, sessionToken, pid,
+        projName:(projRes.data&&projRes.data.name)||'專案',
+        routes, dates,
+        date: wantDate || (dates[0]?dates[0].date:''),
+        routeId: routes[0].id, stateById:{} }
+
+  // 每條路線在所選日期的完成狀態，標在分頁上
+  try{
+    const prog=await cloudGet(gs, sessionToken, {action:'getProjectProgress', pid, date:_pm.date})
+    ;(prog.data||[]).forEach(p=>{
+      const s=Array.isArray(p.roundStates)?p.roundStates:[]
+      const done=s.filter(x=>x==='done').length
+      _pm.stateById[String(p.routeId)] = s.length ? `${done}/${s.length}` : ''
+    })
+  }catch(e){}
+
+  document.getElementById('ph-tools').style.display='flex'
+  document.getElementById('ph-back').style.display='block'
+  renderDateOptions()
+  renderRouteTabs()
+  await _loadRouteIntoGlobals(gs, sessionToken, _pm.routeId, _pm.date)
+  renderPage()
+}
+
 // ════════════════ 批次：一次產生整個專案所有路線的 SGS 平均報告 ════════════════
 // 把每條路線的資料輪流載入到全域變數，沿用單一路線那套繪製邏輯產生「平均」頁面，
 // 最後合併成一份文件一次列印，這樣存成 PDF 就是一個檔案。
@@ -560,6 +677,26 @@ window.addEventListener('load', async () => {
   const tok = p.get('tok')
   const batchPid = p.get('pid')      // 有 pid 就是「整個專案批次產生」模式
   _filterDate = p.get('date') || ''
+
+  // ── 專案報告模式：可切換日期與路線瀏覽，右上可批次下載 ──
+  if(batchPid && tok && p.get('batch')!=='1'){
+    let gs, sessionToken
+    try{
+      const raw = localStorage.getItem('sr_tok_' + tok)
+      if(!raw) throw new Error('憑證已過期或無效，請從主頁重新開啟')
+      localStorage.removeItem('sr_tok_' + tok)
+      ;({ gs, sessionToken } = JSON.parse(raw))
+      if(!gs||!sessionToken) throw new Error('憑證格式錯誤')
+    }catch(e){ showError(e.message); return }
+    try{
+      await initProjectReport(gs, sessionToken, batchPid, _filterDate)
+      setLoadProgress(100)
+      await new Promise(r=>setTimeout(r, 300))
+      document.getElementById('loading-screen').style.display='none'
+      document.getElementById('app').style.display='block'
+    }catch(e){ showError(e.message) }
+    return
+  }
 
   // ── 批次模式：不進主畫面，直接產生合併報告 ──
   if(batchPid && tok){
@@ -810,6 +947,8 @@ function fmt(v){ return (v==null||v===''||isNaN(v)) ? '—' : v }
 function renderPage(){
   document.title = route.routeName + ' — 調查報告'
   document.getElementById('hdr-title').textContent = route.routeName
+  // 專案模式：小標改顯示專案名稱，讓人知道現在在哪個專案底下
+  { const hp=document.getElementById('hdr-proj'); if(hp) hp.textContent = _pm ? _pm.projName : '📊 調查報告' }
   const dateRange = _filterDate || (surveys.length ? surveys.map(s=>s.date).filter(Boolean).join('、') : '—')
   const weathers = [...new Set(surveys.map(s=>s.weather).filter(Boolean))].join('/')
   document.getElementById('hdr-sub').textContent =
