@@ -135,9 +135,10 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .pr-hd-icon{font-size:17px;line-height:1;flex-shrink:0}
 .pr-hd-name{font-size:16px;font-weight:800;color:#fff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pr-stats{display:flex;gap:6px;margin-top:8px}
-.pr-stat{flex:1;border-radius:9px;padding:3px 4px;text-align:center}
-.pr-stat-n{font-size:14px;font-weight:800;line-height:1.15}
-.pr-stat-l{font-size:10px;line-height:1.3}
+/* 數字與文字排同一行，整條只佔一行高度 */
+.pr-stat{flex:1;border-radius:8px;padding:5px 6px;display:flex;align-items:baseline;justify-content:center;gap:5px}
+.pr-stat-n{font-size:14px;font-weight:800;line-height:1.2}
+.pr-stat-l{font-size:11px;line-height:1.2}
 .pr-stat.done{background:#0F6E56}
 .pr-stat.done .pr-stat-n{color:#E1F5EE}
 .pr-stat.done .pr-stat-l{color:#9FE1CB}
@@ -148,24 +149,22 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .pr-stat.todo .pr-stat-n{color:#cbd5e1}
 .pr-stat.todo .pr-stat-l{color:#64748b}
 .pr-hint{display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;margin:2px 2px 4px;font-weight:600}
-.pr-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:white;border:1.5px solid #e2e8f0;border-radius:16px;padding:13px 15px;box-shadow:0 1px 3px rgba(0,0,0,.07);cursor:pointer;font-family:inherit;transition:transform .1s,background .1s}
-.pr-item:active{background:#f8fafc;transform:scale(.98)}
-.pr-item-icon{flex-shrink:0;width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#60a5fa,#2563eb);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:white;box-shadow:0 2px 6px rgba(37,99,235,.35)}
+/* 路線卡片：左側一條狀態色帶（綠=完成、橘=進行中、灰=未開始），右側文字說明狀態 */
+.pr-item{display:flex;align-items:stretch;width:100%;text-align:left;background:white;border:none;border-radius:14px;padding:0;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.07);cursor:pointer;font-family:inherit;transition:transform .1s,background .1s}
+.pr-item:active{transform:scale(.98)}
+.pr-item:active .pr-item-inner{background:#f8fafc}
+.pr-bar{width:4px;flex-shrink:0;background:#cbd5e1}
+.pr-bar.done{background:#0f766e}
+.pr-bar.part{background:#f59e0b}
+.pr-item-inner{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:11px 13px}
 .pr-item-body{flex:1;min-width:0}
-.pr-item-name{font-size:15px;font-weight:800;color:#0f172a;margin-bottom:3px}
-.pr-item-sub{font-size:12.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr-item-name{font-size:15px;font-weight:800;color:#0f172a}
+.pr-item-sub{font-size:12px;color:#94a3b8;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr-item-state{font-size:11.5px;font-weight:700;flex-shrink:0;white-space:nowrap;color:#94a3b8}
+.pr-item-state.done{color:#0f766e}
+.pr-item-state.part{color:#b45309}
+.pr-item-state.load{color:#cbd5e1;font-weight:600}
 .pr-item-arrow{flex-shrink:0;color:#cbd5e1}
-/* 今日調查進度：一個回合一顆圓點（實心=完成、半實心=進行中、空心=尚未） */
-.pr-prog{display:flex;align-items:center;gap:6px;margin-top:5px}
-.pr-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;box-sizing:border-box}
-.pr-dot.done{background:#0f766e}
-.pr-dot.part{background:#f59e0b}
-.pr-dot.todo{border:1.5px solid #cbd5e1}
-.pr-prog-txt{font-size:12px;margin-left:2px;white-space:nowrap}
-.pr-prog-txt.done{color:#0f766e;font-weight:700}
-.pr-prog-txt.part{color:#b45309;font-weight:700}
-.pr-prog-txt.todo{color:#64748b}
-.pr-prog-txt.load{color:#cbd5e1}
 .field{margin-bottom:10px}
 .field:last-child{margin-bottom:0}
 .row2{display:flex;gap:8px}
@@ -439,9 +438,9 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
         <span class="pr-hd-name" id="pr-proj-name">載入中…</span>
       </div>
       <div class="pr-stats" id="pr-stats" style="display:none">
-        <div class="pr-stat done"><div class="pr-stat-n" id="pr-n-done">0</div><div class="pr-stat-l">已完成</div></div>
-        <div class="pr-stat part"><div class="pr-stat-n" id="pr-n-part">0</div><div class="pr-stat-l">進行中</div></div>
-        <div class="pr-stat todo"><div class="pr-stat-n" id="pr-n-todo">0</div><div class="pr-stat-l">未開始</div></div>
+        <div class="pr-stat done"><span class="pr-stat-n" id="pr-n-done">0</span><span class="pr-stat-l">已完成</span></div>
+        <div class="pr-stat part"><span class="pr-stat-n" id="pr-n-part">0</span><span class="pr-stat-l">進行中</span></div>
+        <div class="pr-stat todo"><span class="pr-stat-n" id="pr-n-todo">0</span><span class="pr-stat-l">未開始</span></div>
       </div>
     </div>
   </div>
@@ -4200,13 +4199,15 @@ async function showProjectRoutePicker(pid, gsParam, kParam){
     }else{
       box.innerHTML = routes.map((r,i) => `
         <button class="pr-item" onclick="loadCloudRouteAndProceed('${r.id}','${gsParam}','${kParam}')">
-          <div class="pr-item-icon">${i+1}</div>
-          <div class="pr-item-body">
-            <div class="pr-item-name">${r.routeName||'未命名路線'}</div>
-            <div class="pr-item-sub">📍 ${r.routeFromTo||'未設定起訖點'}</div>
-            <div class="pr-prog" id="pr-prog-${i}"><span class="pr-prog-txt load">今日進度查詢中…</span></div>
-          </div>
-          <svg class="pr-item-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          <span class="pr-bar" id="pr-bar-${i}"></span>
+          <span class="pr-item-inner">
+            <span class="pr-item-body">
+              <span class="pr-item-name">${i+1}. ${r.routeName||'未命名路線'}</span>
+              <span class="pr-item-sub">${segDisp(r.routeFromTo||'未設定起訖點')}</span>
+            </span>
+            <span class="pr-item-state load" id="pr-state-${i}">查詢中…</span>
+            <svg class="pr-item-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          </span>
         </button>
       `).join('')
     }
@@ -4273,19 +4274,20 @@ function maybeShowDailyReminder(pid){
   if(btn) btn.onclick=()=>closeDailyReminder(pid)
 }
 
-// 把「今天這條路線做到第幾次」畫成一排圓點：一顆＝一次調查（一次內含四趟：離峰去回、尖峰去回）。
-// 實心=該次四趟都做完、橘色=做到一半、空心=還沒開始
-function buildProgressHTML(roundStates){
+// 一條路線今天的整體狀態。一次調查＝四趟（離峰去回、尖峰去回）都完成。
+// 回傳左側色帶要用的樣式，以及右側要顯示的文字。
+function routeStateOf(roundStates){
   const states = Array.isArray(roundStates) ? roundStates : []
-  if(!states.length) return ''
-  const done = states.filter(s=>s==='done').length
-  const left = states.length - done
-  let cls, txt
-  if(left===0){ cls='done'; txt='今天已完成' }
-  else if(done>0||states.some(s=>s==='part')){ cls='part'; txt=`今天還有 ${left} 次` }
-  else { cls='todo'; txt='今天尚未調查' }
-  const dots = states.map(s=>`<span class="pr-dot ${s}"></span>`).join('')
-  return `${dots}<span class="pr-prog-txt ${cls}">${txt}</span>`
+  if(!states.length) return {cls:'todo', txt:'尚未調查'}
+  const total = states.length
+  const done  = states.filter(s=>s==='done').length
+  const left  = total - done
+  if(left===0) return {cls:'done', txt:`已完成 ${done}/${total}`}
+  // 有任何一次動過（做完或做一半）就算執行中。
+  // 特別是「某一次只跑了離峰、尖峰還沒跑」這種情況，那一次還沒完成，
+  // 一定要顯示成執行中並標出還差幾次，不能讓人誤以為整條都做完了。
+  if(done>0 || states.some(s=>s==='part')) return {cls:'part', txt:`執行中 ${done}/${total}`}
+  return {cls:'todo', txt:`尚未調查 0/${total}`}
 }
 // 後備方案：後端還沒更新（沒有 getProjectProgress 這個端點）時，
 // 改用現場端本來就能呼叫的 getHistory 逐條路線查紀錄，自己在前端算出同樣的結果。
@@ -4332,7 +4334,7 @@ async function renderTodayProgress(pid, routes, gsParam, kParam){
   }
   if(!list || !list.length){
     // 真的查不到就把「查詢中」字樣拿掉，不要一直卡在載入文字上誤導現場人員
-    routes.forEach((r,i)=>{ const el=document.getElementById(`pr-prog-${i}`); if(el) el.innerHTML='' })
+    routes.forEach((r,i)=>{ const el=document.getElementById(`pr-state-${i}`); if(el) el.textContent='' })
     return
   }
   const byId = {}
@@ -4341,12 +4343,13 @@ async function renderTodayProgress(pid, routes, gsParam, kParam){
   let nDone=0, nPart=0, nTodo=0
   routes.forEach((r,i)=>{
     const p = byId[String(r.id)]
-    const el = document.getElementById(`pr-prog-${i}`)
-    if(el) el.innerHTML = p ? buildProgressHTML(p.roundStates) : ''
-    const st = (p && Array.isArray(p.roundStates)) ? p.roundStates : null
-    if(!st || !st.length){ nTodo++ ; return }
-    if(st.every(s=>s==='done')) nDone++
-    else if(st.some(s=>s==='done'||s==='part')) nPart++
+    const st = routeStateOf(p ? p.roundStates : null)
+    const bar = document.getElementById(`pr-bar-${i}`)
+    if(bar) bar.className = 'pr-bar '+st.cls
+    const el = document.getElementById(`pr-state-${i}`)
+    if(el){ el.className = 'pr-item-state '+st.cls; el.textContent = st.txt }
+    if(st.cls==='done') nDone++
+    else if(st.cls==='part') nPart++
     else nTodo++
   })
   const box=document.getElementById('pr-stats')
