@@ -363,6 +363,16 @@ td:first-child{text-align:left;font-weight:500}
       <button class="dl-btn green" onclick="downloadSGS()">📥 下載 Excel (.xlsx)</button>
       <button class="dl-btn orange" onclick="downloadSGSPdf()">🖨️ 下載 SGS 公版報告 PDF</button>
       <div class="dl-note" style="margin-top:20px">
+        <b>SGS 公版報告 PDF 包含：</b><br>
+        平均值的部分（四張表）：<br>
+        ・延滯統計表<br>
+        ・延滯統計表(續)<br>
+        ・各路段平均旅行時間及平均行駛時間統計表<br>
+        ・各路段平均旅行速率及平均行駛速率統計表（公里/時）<br>
+        後面接每一趟旅次的「主次要幹道行駛時間及延滯調查表」明細。<br>
+        <span style="color:#92400e">從 PM 後台按「📄 批次報告」時，只會產生上述四張平均表，不含每趟明細。</span>
+      </div>
+      <div class="dl-note" style="margin-top:12px">
         <b>SGS Excel 包含：</b><br>
         ・行駛速率統計表（各路段旅行時間 / 行駛時間 / 速率）<br>
         ・延滯統計表（交叉口延滯 / 路段延滯 / 比例）<br>
@@ -530,18 +540,17 @@ async function runBatchSgsPdf(gs, sessionToken, pid, date){
     ? `<div style="padding:10px 14px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;margin:10px;font-size:12px;color:#92400e">
          以下路線在此日期沒有資料，未納入：${he(skipped.join('、'))}
        </div>` : ''
-  const doc = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"/>
-<title>SGS報告 ${he(date||'')}</title>
-<style>${css}</style></head><body>
-<button class="pdf-btn" onclick="window.print()">🖨 列印 / 儲存 PDF</button>
-${note}
-${blocks.join('\n')}
-</body></html>`
-  const w = window.open('','_blank')
-  if(!w) throw new Error('請先允許彈出視窗，再試一次')
-  w.document.write(doc)
-  w.document.close()
-  setTimeout(()=>w.print(), 900)
+  // 直接把報告畫在目前這個分頁裡，不再開新視窗。
+  // 批次要等好幾個請求才畫得出來，那時已經離開使用者點擊的當下，
+  // 瀏覽器會把 window.open 當成彈出廣告擋掉，這就是先前「請先允許彈出視窗」的原因。
+  document.title = `SGS報告 ${date||''}`
+  const st = document.createElement('style')
+  st.textContent = css
+  document.head.appendChild(st)
+  document.body.innerHTML =
+    `<button class="pdf-btn" onclick="window.print()">🖨 列印 / 儲存 PDF</button>${note}${blocks.join('\n')}`
+  document.body.style.background = '#fff'
+  setTimeout(()=>{ try{ window.print() }catch(e){} }, 600)
 }
 
 // ════════════════ INIT ════════════════
@@ -564,7 +573,6 @@ window.addEventListener('load', async () => {
     }catch(e){ showError(e.message); return }
     try{
       await runBatchSgsPdf(gs, sessionToken, batchPid, _filterDate)
-      ld('✅ 報告已開啟，可直接列印或存成 PDF')
     }catch(e){ showError(e.message) }
     return
   }
