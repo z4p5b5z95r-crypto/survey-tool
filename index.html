@@ -3015,7 +3015,7 @@ function getNodeNames(){
     return ns.map(n=>n.name||'節點')
   }
   const segs=config.segments
-  const names=['起點',...segs.map(s=>{const p=String(s.name||'').split(/[-—→至]/);return p[1]||p[0]})]
+  const names=['起點',...segs.map(s=>{const p=String(s.name||'').split(/[-—～→至]/).map(x=>x.trim());return p[1]||p[0]})]
   return isReturn?[...names].reverse():names
 }
 function buildNodeUI(){
@@ -3317,9 +3317,12 @@ function buildTripsPayload(tripKey){
 function getTrip(pt,dir){return allTrips[`${pt}_${dir}`]||null}
 function spd(len,secs){return(len>0&&secs>0)?Math.round(len/secs*3.6):'—'}
 
-// 路段名稱顯示用：畫面與報告一律用破折號「—」，不用箭頭「→」。
-// 只在輸出的那一刻轉換，資料本身維持箭頭——路段名稱的切字串、回程反轉等邏輯都是靠箭頭判斷的。
-function segDisp(n){ return (n==null?'':String(n)).replace(/→/g,'—') }
+// 路段名稱顯示成「起點 ～ 終點」。
+// 只有前後都有文字時才視為分隔符號——單獨一個「—」是「沒有資料」的佔位符，不能被換成「～」。
+function segDisp(n){
+  const s = (n==null?'':String(n))
+  return s.replace(/\s*[→—～]\s*/g, (m, off) => (off>0 && off+m.length<s.length) ? ' ～ ' : m)
+}
 
 // Segment label: uses node[i].exitName (departure road) if set, else node[i].name
 // e.g. node4 arrives as "縣政南路" but LEAVES as "縣政六街" → segment 4→5 = "縣政六街→縣政五街"
@@ -3328,7 +3331,7 @@ function segLabel(i){
   if(!nd||i<0||i>=nd.length-1) return config.segments?.[i]?.name||''
   const from=nd[i].exitName||nd[i].name
   const to=nd[i+1].name
-  return `${from}—${to}`
+  return `${from} ～ ${to}`
 }
 
 function buildReport(){

@@ -2277,8 +2277,8 @@ function renderSegTable() {
     }
     const endNode=nodes[endIdx]
     const pi=mergedIndices[0]
-    // 路段名稱一律用破折號「—」；舊資料存的箭頭「→」在各處顯示時也會轉成破折號
-    const autoName=`${startNode.exitName||startNode.name}—${endNode.name}`
+    // 路段名稱一律用「起點 ～ 終點」；舊資料存的「—」「→」在各處顯示時也會轉成「～」
+    const autoName=`${startNode.exitName||startNode.name} ～ ${endNode.name}`
     if(!segData[pi]._nameCustom) segData[pi].name=autoName
     const mergedLength=mergedIndices.reduce((a,idx)=>a+(segData[idx].length||0),0)
     displayRows.push({autoName,indices:mergedIndices,pi,mergedLength,

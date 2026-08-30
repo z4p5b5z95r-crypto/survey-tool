@@ -402,9 +402,14 @@ const COMBO_LABEL = new Proxy({}, {get:(_,key)=>COMBO_LABEL_(key)})   // route �
 // 路段名稱顯示用：畫面與匯出的報告一律用破折號「—」，不用箭頭「→」。
 // 只在「輸出的那一刻」轉換，資料本身仍維持箭頭——因為合併假節點、回程反轉路段名稱那些邏輯
 // 都是靠箭頭去切字串的，直接改掉存檔格式會把那些判斷弄壞。
-function segDisp(n){ return (n==null?'':String(n)).replace(/→/g,'—') }
-// 路段名稱的分隔符號：新資料用「—」，舊資料是「→」，切字串時兩種都要吃
-const SEG_SEP = /[→—]/
+// 路段名稱顯示成「起點 ～ 終點」。
+// 只有前後都有文字時才視為分隔符號——單獨一個「—」是「沒有資料」的佔位符，不能被換成「～」。
+function segDisp(n){
+  const s = (n==null?'':String(n))
+  return s.replace(/\s*[→—～]\s*/g, (m, off) => (off>0 && off+m.length<s.length) ? ' ～ ' : m)
+}
+// 路段名稱的分隔符號：新資料用「～」，舊資料可能是「—」或「→」，切字串時三種都要吃
+const SEG_SEP = /[→—～]/
 const TRACK_COLOR = {
   off_peak_bound:'#2563eb',
   off_peak_return:'#60a5fa',
@@ -807,7 +812,7 @@ function _mergeGhostSegs(){
       const startName=(rawSegs[i].name||'').split(SEG_SEP)[0].trim()
       const lastSeg=rawSegs[i+idxs.length-1]
       const endName=(lastSeg.name||'').split(SEG_SEP).pop().trim()
-      merged.name=startName+'—'+endName
+      merged.name=startName+' ～ '+endName
       merged.length=idxs.reduce((a,j)=>a+(rawSegs[j]?.length||0),0)
     }
     out.push(merged); i+=idxs.length
@@ -983,7 +988,7 @@ function renderComboRecords(combo){
     const spdFn = (d,s) => (d>0&&s>0)?(d/s*3.6).toFixed(1):''
     const pct = (v,t) => t>0?(v/t*100).toFixed(2)+'%':'0.00%'
     // 回程路段名稱反轉：「A→B」→「B→A」 或 「A-B」→「B-A」
-    const flipSeg = n => { if(!n||!isReturn) return n||'—'; const a=n.search(SEG_SEP); if(a>=0) return n.slice(a+1)+'—'+n.slice(0,a); const h=n.indexOf('-'); return h>=0?n.slice(h+1)+'-'+n.slice(0,h):n }
+    const flipSeg = n => { if(!n||!isReturn) return n||'—'; const a=n.search(SEG_SEP); if(a>=0) return n.slice(a+1).trim()+' ～ '+n.slice(0,a).trim(); const h=n.indexOf('-'); return h>=0?n.slice(h+1).trim()+' ～ '+n.slice(0,h).trim():n }
     const RC=ROAD_DELAYS.map(d=>d.cause), IC=INT_DELAYS.map(d=>d.cause)
     // nodeTimestamps 永遠按行程順序排列（去/回皆同），直接用 [i, i+1]
     const segD=segOrder.map((_,i)=>{
@@ -1576,7 +1581,7 @@ function buildTripSheet(trip, survey, combo){
   const segs     = route.segments || []
   const segOrder = isReturn ? [...segs].reverse() : segs
   const times    = trip.segTimes || []
-  const flipSegXls = n => { if(!n||!isReturn) return n||''; const a=n.search(SEG_SEP); if(a>=0) return n.slice(a+1)+'—'+n.slice(0,a); const h=n.indexOf('-'); return h>=0?n.slice(h+1)+'-'+n.slice(0,h):n }
+  const flipSegXls = n => { if(!n||!isReturn) return n||''; const a=n.search(SEG_SEP); if(a>=0) return n.slice(a+1).trim()+' ～ '+n.slice(0,a).trim(); const h=n.indexOf('-'); return h>=0?n.slice(h+1).trim()+' ～ '+n.slice(0,h).trim():n }
 
   const st = trip.startTime ? new Date(trip.startTime) : null
   const et = trip.endTime   ? new Date(trip.endTime)   : null
@@ -1848,7 +1853,7 @@ function downloadSGSPdf(){
         const startName=(rawSegs[i].name||'').split(SEG_SEP)[0]?.trim()||''
         const lastSeg=rawSegs[i+idxs.length-1]
         const endName=(lastSeg.name||'').split(SEG_SEP).pop()?.trim()||''
-        merged.name=startName+'—'+endName
+        merged.name=startName+' ～ '+endName
         merged.length=idxs.reduce((a,j)=>a+(rawSegs[j]?.length||0),0)
       }
       out.push(merged); i+=idxs.length
@@ -2182,7 +2187,7 @@ ${rows}</table>`
     const isReturn = trip.direction==='return'
     const isPeak   = trip.peakType==='peak'
     const segOrd   = isReturn ? [...rawSegs].reverse() : rawSegs
-    const _flipSeg = n => { if(!n||!isReturn) return n||''; const a=n.search(SEG_SEP); if(a>=0) return n.slice(a+1)+'—'+n.slice(0,a); const h=n.indexOf('-'); return h>=0?n.slice(h+1)+'-'+n.slice(0,h):n }
+    const _flipSeg = n => { if(!n||!isReturn) return n||''; const a=n.search(SEG_SEP); if(a>=0) return n.slice(a+1).trim()+' ～ '+n.slice(0,a).trim(); const h=n.indexOf('-'); return h>=0?n.slice(h+1).trim()+' ～ '+n.slice(0,h).trim():n }
     const nodeTs   = trip.nodeTimestamps||[]
     const times    = trip.segTimes||[]
     const rd = trip.roadDelays||{}, id = trip.intDelays||{}
