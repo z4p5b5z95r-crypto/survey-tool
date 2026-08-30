@@ -2524,7 +2524,7 @@ async function saveTask(silent) {
       const payload=buildRoutePayload(cfg, taskObj.cloudId, getCurrentUser(), projectCloudId)
       const result=await cloudPost(payload)
       const taskIdx=savedTasks.findIndex(t=>t.id===id)
-      if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
+      if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;savedTasks[taskIdx].cloudProjectId=projectCloudId;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
       updateCloudDot('ok')
       if(!silent) toast('✅ 任務已儲存並同步至雲端')
       return true
@@ -2865,10 +2865,14 @@ async function repairCloudProjectIds(cloudRoutes, cloudProjects){
     try{
       if(needProject) await cloudPost({action:'updateRouteProject', id:t.cloudId, projectId:projectCloudId})
       if(needOwner)   await cloudPost({action:'updateRouteOwner',   id:t.cloudId, owner:me})
+      t.cloudProjectId=projectCloudId
       fixed++
     }catch(e){ /* 單條失敗不影響其他，下次登入會再試 */ }
   }
-  if(fixed>0) toast(`🔧 已修正 ${fixed} 筆專案／路線的負責人與歸屬`)
+  if(fixed>0){
+    localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
+    toast(`🔧 已修正 ${fixed} 筆專案／路線的負責人與歸屬`)
+  }
 }
 
 // ════════════════════════════════════════════════════════
@@ -3110,6 +3114,8 @@ async function doMoveRoute(taskId, targetProjectId){
       const proj=savedProjects.find(p=>p.id===targetProjectId)
       const projectCloudId=await ensureProjectCloudSynced(proj)
       await cloudPost(buildRoutePayload(t.cfg, t.cloudId, t.creator, projectCloudId))
+      t.cloudProjectId=projectCloudId
+      localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
     }catch(e){toast('⚠️ 雲端同步搬移結果失敗：'+e.message)}
   }
 }
@@ -3123,24 +3129,30 @@ async function showProjectQR(pid){
   if(!getGsKey()){toast('⚠️ 找不到雲端金鑰，請登出後重新登入一次即可修復（右上角帳號選單）');return}
   const routes=savedTasks.filter(t=>t.projectId===pid)
   if(!routes.length){toast('這個專案還沒有任何路線');return}
-  toast('⏳ 正在確認雲端同步狀態...')
   const projectCloudId=await ensureProjectCloudSynced(proj)
   if(!projectCloudId){toast('❌ 專案同步雲端失敗，無法產生 QR');return}
-  // 確保底下每條路線都已同步、且歸屬正確的雲端專案 id
-  for(const t of routes){
-    if(!t.cloudId){
+
+  // 只處理「真的還沒同步好」的路線，而且全部同時送出。
+  // 之前是不分青紅皂白，每條路線都依序打一次後端（6 條就是 6 趟來回，
+  // 而且每次開 QR 都重打一遍），路線一多就明顯變慢。
+  // 同步成功後在本機記下 cloudProjectId，下次開同一個專案的 QR 就完全不用連線。
+  const needSync=routes.filter(t=>!t.cloudId||String(t.cloudProjectId||'')!==String(projectCloudId))
+  if(needSync.length){
+    toast(`⏳ 正在同步 ${needSync.length} 條路線...`)
+    await Promise.all(needSync.map(async t=>{
       try{
-        const result=await cloudPost(buildRoutePayload(t.cfg,t.cloudId,t.creator,projectCloudId))
-        const idx=savedTasks.findIndex(x=>x.id===t.id)
-        if(idx>=0)savedTasks[idx].cloudId=result.id
-      }catch(e){toast('⚠️ 路線「'+(t.cfg.rn||'')+'」同步雲端失敗：'+e.message)}
-    }else{
-      // 已經上傳過的路線也要補寫專案歸屬——早期上傳的路線雲端 projectId 是空的，
-      // 之前這裡只處理沒上傳過的，導致掃了 QR 卻顯示「這個專案還沒有任何路線」
-      try{
-        await cloudPost({action:'updateRouteProject', id:t.cloudId, projectId:projectCloudId})
-      }catch(e){ /* 補寫失敗不阻擋 QR 產生，登入同步時還會再試一次 */ }
-    }
+        if(!t.cloudId){
+          const result=await cloudPost(buildRoutePayload(t.cfg,t.cloudId,t.creator,projectCloudId))
+          const idx=savedTasks.findIndex(x=>x.id===t.id)
+          if(idx>=0){ savedTasks[idx].cloudId=result.id; savedTasks[idx].cloudProjectId=projectCloudId }
+        }else{
+          // 已上傳過的路線只補寫專案歸屬即可，不必整包重傳
+          await cloudPost({action:'updateRouteProject', id:t.cloudId, projectId:projectCloudId})
+          const idx=savedTasks.findIndex(x=>x.id===t.id)
+          if(idx>=0) savedTasks[idx].cloudProjectId=projectCloudId
+        }
+      }catch(e){ toast('⚠️ 路線「'+(t.cfg.rn||'')+'」同步雲端失敗：'+e.message) }
+    }))
   }
   localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
   const appBase=(document.getElementById('app-url')?.value||'').trim().replace(/\/$/,'')||location.href.replace(/\/[^\/]*$/,'')
