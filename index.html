@@ -1908,7 +1908,7 @@ function showSigninScreen(){
   $('si-segs').textContent=config.segments.length+' 段'
   $('si-seg-preview').innerHTML=config.segments.map((s,i)=>`
     <div class="seg-row"><div class="seg-dot"></div>
-    <span style="flex:1;color:#1e293b;font-weight:600">${s.name}</span>
+    <span style="flex:1;color:#1e293b;font-weight:600">${segDisp(s.name)}</span>
     <span style="color:#94a3b8;font-size:11px">${s.length}m</span></div>`).join('')
   const backBtn=$('btn-back-routes')
   if(backBtn) backBtn.style.display=_cameFromProjectPicker?'flex':'none'
@@ -1991,7 +1991,7 @@ function delSeg(i){manualSegs.splice(i,1);renderManualSegList()}
 function renderManualSegList(){
   $('seg-list').innerHTML=manualSegs.map((s,i)=>`
     <div class="seg-item"><div class="seg-info">
-      <div class="seg-name">${i+1}. ${s.name}</div>
+      <div class="seg-name">${i+1}. ${segDisp(s.name)}</div>
       <div class="seg-meta">${s.lanes}車道 · ${s.width}m · ${s.length}m</div>
     </div><button class="seg-del" onclick="delSeg(${i})">✕</button></div>`).join('')
 }
@@ -2623,6 +2623,8 @@ function playApproachBeep(){
   }catch(e){}
 }
 
+// 節點提示音大約 0.46 秒（終點三聲、一般兩聲）；語音提示等它響完再開口，避免兩個聲音疊在一起
+const NODE_BEEP_MS = 520
 function playNodeBeep(isFinal){
   try{
     // Reuse the unlocked AudioContext created on user gesture in startSurvey()
@@ -2661,6 +2663,9 @@ function recordNode(auto){
       elapsedSec++
       $('status-timer').textContent=fmtSec(elapsedSec)
     },1000)
+    // 通過第一個節點＝開始計時，語音告知駕駛，讓他不用低頭看畫面。
+    // 延遲一點點再講，讓節點確認的提示音先響完，兩個聲音不會疊在一起。
+    setTimeout(()=>speakNav('開始調查，開始計時'), NODE_BEEP_MS)
   }
 
   // Haptic + sound feedback
@@ -2686,6 +2691,8 @@ function recordNode(auto){
     const navBanner=$('nav-banner'); if(navBanner) navBanner.style.display='none'; _syncSurveyTopOffsets()
     updateNextNodeCard()
     showToast(`🏁 已抵達終點！節點 ${justRecorded}／${names.length}`,true)
+    // 通過最後一個節點＝停止計時，語音告知駕駛可以找地方停車處理後續
+    setTimeout(()=>speakNav('已抵達終點，調查結束，計時停止'), NODE_BEEP_MS)
     // Ask to end survey after a short delay so toast is visible first
     setTimeout(()=>promptEndSurvey(),800)
   }else{
@@ -2988,7 +2995,7 @@ function getNodeNames(){
     return ns.map(n=>n.name||'節點')
   }
   const segs=config.segments
-  const names=['起點',...segs.map(s=>{const p=s.name.split(/[-→至]/);return p[1]||p[0]})]
+  const names=['起點',...segs.map(s=>{const p=String(s.name||'').split(/[-—→至]/);return p[1]||p[0]})]
   return isReturn?[...names].reverse():names
 }
 function buildNodeUI(){
@@ -3290,6 +3297,10 @@ function buildTripsPayload(tripKey){
 function getTrip(pt,dir){return allTrips[`${pt}_${dir}`]||null}
 function spd(len,secs){return(len>0&&secs>0)?Math.round(len/secs*3.6):'—'}
 
+// 路段名稱顯示用：畫面與報告一律用破折號「—」，不用箭頭「→」。
+// 只在輸出的那一刻轉換，資料本身維持箭頭——路段名稱的切字串、回程反轉等邏輯都是靠箭頭判斷的。
+function segDisp(n){ return (n==null?'':String(n)).replace(/→/g,'—') }
+
 // Segment label: uses node[i].exitName (departure road) if set, else node[i].name
 // e.g. node4 arrives as "縣政南路" but LEAVES as "縣政六街" → segment 4→5 = "縣政六街→縣政五街"
 function segLabel(i){
@@ -3297,7 +3308,7 @@ function segLabel(i){
   if(!nd||i<0||i>=nd.length-1) return config.segments?.[i]?.name||''
   const from=nd[i].exitName||nd[i].name
   const to=nd[i+1].name
-  return `${from}→${to}`
+  return `${from}—${to}`
 }
 
 function buildReport(){
@@ -3386,7 +3397,7 @@ function buildOneOfficialForm(trip,pt,dir){
   const segRows = segs.map((seg,i)=>{
     const sd=segD[i], st_=segT[i]||{}, ar=arrT[i]
     return `<tr>
-      <td colspan="2" class="sgs-seg">${segLabel(i)||seg.name}</td>
+      <td colspan="2" class="sgs-seg">${segDisp(segLabel(i)||seg.name)}</td>
       <td class="sgs-t-time">${ar.h}</td><td class="sgs-t-time">${ar.m}</td><td class="sgs-t-time">${ar.s}</td>
       <td>${dl(sd.congestion)}</td><td>${dl(sd.bus_stop)}</td><td>${dl(sd.taxi_stop)}</td>
       <td>${dl(sd.parking)}</td><td>${dl(sd.ped_cross)}</td><td>${dl(sd.road_other)}</td>
@@ -3640,7 +3651,7 @@ function buildTable2(){
   <tr><th colspan="2">${config.offPeakName||'離峰'}</th><th colspan="2">${config.peakName||'尖峰'}</th><th colspan="2">${config.offPeakName||'離峰'}</th><th colspan="2">${config.peakName||'尖峰'}</th></tr>
   <tr><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th></tr>
   ${segs.map((s,i)=>`<tr>
-    <td class="rtl">${segLabel(i)||s.name}</td><td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
+    <td class="rtl">${segDisp(segLabel(i)||s.name)}</td><td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
     ${trips.map(t=>`<td>${t&&t.segTimes[i]?t.segTimes[i].travelS:'—'}</td>`).join('')}
     ${trips.map(t=>`<td>${t&&t.segTimes[i]?t.segTimes[i].runS:'—'}</td>`).join('')}
   </tr>`).join('')}
@@ -3658,7 +3669,7 @@ function buildTable3(){
   <tr><th colspan="2">${config.offPeakName||'離峰'}</th><th colspan="2">${config.peakName||'尖峰'}</th><th colspan="2">${config.offPeakName||'離峰'}</th><th colspan="2">${config.peakName||'尖峰'}</th></tr>
   <tr><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th><th>去程</th><th>回程</th></tr>
   ${segs.map((s,i)=>`<tr>
-    <td class="rtl">${segLabel(i)||s.name}</td><td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
+    <td class="rtl">${segDisp(segLabel(i)||s.name)}</td><td>${s.lanes}</td><td>${s.width}</td><td>${s.length}</td>
     ${trips.map(t=>`<td>${t&&t.segTimes[i]?spd(s.length,t.segTimes[i].travelS):'—'}</td>`).join('')}
     ${trips.map(t=>`<td>${t&&t.segTimes[i]?spd(s.length,t.segTimes[i].runS):'—'}</td>`).join('')}
   </tr>`).join('')}
