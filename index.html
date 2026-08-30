@@ -4212,12 +4212,51 @@ function buildProgressHTML(roundStates){
   const dots = states.map(s=>`<span class="pr-dot ${s}"></span>`).join('')
   return `${dots}<span class="pr-prog-txt ${cls}">${txt}</span>`
 }
+// 後備方案：後端還沒更新（沒有 getProjectProgress 這個端點）時，
+// 改用現場端本來就能呼叫的 getHistory 逐條路線查紀錄，自己在前端算出同樣的結果。
+// getHistory 回傳的 trips 是以「離峰去程/離峰回程/尖峰去程/尖峰回程」為鍵的物件。
+// 各路線平行查詢，不會因為路線多就一直等。
+const NEEDED_COMBOS=['off_peak_bound','off_peak_return','peak_bound','peak_return']
+async function cloudFetchProgressFallback(routes, gsUrl, apiKey){
+  const day=todayStr()
+  return Promise.all(routes.map(async r=>{
+    try{
+      const p=new URLSearchParams({action:'getHistory',routeId:r.id,key:apiKey,t:Date.now()})
+      const res=await fetch(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(20000),cache:'no-store'})
+      const json=await res.json()
+      if(!json.ok) throw new Error(json.error||'cloud error')
+      const plan=Math.min(5,Math.max(1,parseInt(r.roundCount)||3))
+      const byRound={}
+      ;(json.data||[]).forEach(sv=>{
+        if(String(sv.date||'').slice(0,10)!==day) return
+        const n=Math.min(5,Math.max(1,parseInt(sv.round)||1))
+        if(!byRound[n]) byRound[n]={}
+        Object.keys(sv.trips||{}).forEach(key=>{
+          if(NEEDED_COMBOS.includes(key)) byRound[n][key]=true
+        })
+      })
+      const roundStates=[]
+      for(let n=1;n<=plan;n++){
+        const got=byRound[n]||{}
+        const done=NEEDED_COMBOS.filter(k=>got[k]).length
+        roundStates.push(done===0?'todo':(done>=NEEDED_COMBOS.length?'done':'part'))
+      }
+      return {routeId:r.id, roundCount:plan, roundStates}
+    }catch(e){ return null }
+  })).then(list=>list.filter(Boolean))
+}
 async function renderTodayProgress(pid, routes, gsParam, kParam){
   let list
   try{
     list = await cloudFetchProjectProgress(pid, gsParam, kParam)
   }catch(e){
-    // 查不到就把「查詢中」字樣拿掉，不要一直卡在載入文字上誤導現場人員
+    // 主要端點失敗（多半是後端還沒重新部署）→ 換後備方式再試一次
+    try{
+      list = await cloudFetchProgressFallback(routes, gsParam, kParam)
+    }catch(e2){ list = null }
+  }
+  if(!list || !list.length){
+    // 真的查不到就把「查詢中」字樣拿掉，不要一直卡在載入文字上誤導現場人員
     routes.forEach((r,i)=>{ const el=document.getElementById(`pr-prog-${i}`); if(el) el.innerHTML='' })
     return
   }
