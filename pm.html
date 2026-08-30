@@ -437,8 +437,9 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .admin-table tr:last-child td{border-bottom:none}
 .admin-table tr:hover td{background:#f8fafc}
 /* 專案分組標題列：路線清單依專案分群，一眼看出每個專案有哪些路線、負責人是誰 */
-.admin-table tr.adm-grp td{background:#eef2ff;color:#312e81;font-size:13px;padding:9px 14px;border-bottom:1px solid #e0e7ff}
-.admin-table tr.adm-grp:hover td{background:#eef2ff}
+.admin-table tr.adm-grp td{background:#eef2ff;color:#312e81;font-size:13px;padding:9px 14px;border-bottom:1px solid #e0e7ff;cursor:pointer}
+.admin-table tr.adm-grp:hover td{background:#e0e7ff}
+.adm-grp-caret{display:inline-block;width:14px;color:#6366f1;font-size:11px}
 .adm-btn{display:inline-flex;align-items:center;padding:4px 10px;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:4px;transition:opacity .12s;white-space:nowrap}
 .adm-btn:hover{opacity:.8}
 .adm-btn.reset{background:#e0e7ff;color:#3730a3}
@@ -3515,45 +3516,121 @@ async function loadAdminRoutes() {
     // 有專案的排前面，「尚未歸入專案」永遠放最後
     groups.sort((a,b) => (a.key==='_none') - (b.key==='_none') || a.name.localeCompare(b.name,'zh-Hant'))
 
-    const rowFor = (r) => {
+    // 路線列：負責人以專案為單位，這裡不再逐條設定。
+    // 只有「尚未歸入專案」的零散路線沒有專案可掛，才保留單條的帳號選單。
+    const rowFor = (r, gKey) => {
       const safeId   = String(r.id).replace(/'/g,"\\'")
       const safeName = S(r.routeName).replace(/'/g,"\\'")
-      const ownerSel = `<select class="adm-owner-sel" onchange="adminChangeRouteOwner('${safeId}', this)">
-        <option value="">— 未指定 —</option>
-        ${users.map(u => `<option value="${u.name}"${r.owner===u.name?' selected':''}>${u.name}</option>`).join('')}
+      const ownerCell = gKey==='_none'
+        ? `<select class="adm-owner-sel" onchange="adminChangeRouteOwner('${safeId}', this)">
+             <option value="">— 未指定 —</option>
+             ${users.map(u => `<option value="${u.name}"${r.owner===u.name?' selected':''}>${u.name}</option>`).join('')}
+           </select>`
+        : `<span style="color:#94a3b8;font-size:12px">同專案</span>`
+      // 搬移到別的專案：換專案等於換負責人，後端會一併把這條路線的負責人改成新專案的負責人
+      const curPid = String(r.projectId||'')
+      const moveSel = `<select class="adm-owner-sel" onchange="adminMoveRoute('${safeId}', this)">
+        ${(projects||[]).map(p => `<option value="${String(p.id)}"${curPid===String(p.id)?' selected':''}>${S(p.name)}</option>`).join('')}
+        <option value=""${!curPid?' selected':''}>— 尚未歸入專案 —</option>
       </select>`
-      return `<tr>
-        <td style="padding-left:26px"><strong>${S(r.routeName) || '—'}</strong></td>
+      return `<tr class="adm-rt" data-grp="${gKey}">
+        <td style="padding-left:34px"><strong>${S(r.routeName) || '—'}</strong></td>
         <td style="color:#64748b;font-size:12px">${S(r.routeFromTo) || '—'}</td>
         <td style="text-align:center;color:#475569">${(r.nodes || []).length}</td>
-        <td>${ownerSel}</td>
+        <td>${ownerCell}</td>
+        <td>${moveSel}</td>
         <td style="color:#94a3b8;font-size:12px">${r.createdAt ? String(r.createdAt).slice(0,10) : '—'}</td>
         <td><button class="adm-btn del" onclick="adminDeleteRoute('${safeId}','${safeName}')">🗑 刪除</button></td>
       </tr>`
     }
-    const groupHeader = (g) => `<tr class="adm-grp">
-      <td colspan="6">
-        📁 <strong>${g.name}</strong>
-        <span style="color:#64748b;font-weight:400;font-size:12px">・${g.routes.length} 條路線</span>
-        ${g.key!=='_none'
-          ? `<span style="color:${g.owner?'#64748b':'#dc2626'};font-weight:400;font-size:12px">・負責人：${g.owner||'未指定'}</span>`
-          : ''}
-      </td>
-    </tr>`
+    // 分組標題：可收合，負責人在這裡設定，底下所有路線一起套用
+    const groupHeader = (g) => {
+      const pid = g.key!=='_none' && projById[g.key] ? String(g.key).replace(/'/g,"\\'") : ''
+      const ownerCtl = pid
+        ? `<select class="adm-owner-sel" onclick="event.stopPropagation()" onchange="adminChangeProjectOwner('${pid}', this)">
+             <option value="">— 未指定 —</option>
+             ${users.map(u => `<option value="${u.name}"${g.owner===u.name?' selected':''}>${u.name}</option>`).join('')}
+           </select>`
+        : `<span style="color:#94a3b8;font-size:12px">逐條指定</span>`
+      return `<tr class="adm-grp" data-key="${g.key}" onclick="adminToggleGroup('${String(g.key).replace(/'/g,"\\'")}')">
+        <td colspan="3">
+          <span class="adm-grp-caret" id="adm-caret-${g.key}">▸</span>
+          📁 <strong>${g.name}</strong>
+          <span style="color:#64748b;font-weight:400;font-size:12px">・${g.routes.length} 條路線</span>
+        </td>
+        <td>${ownerCtl}</td>
+        <td colspan="3"></td>
+      </tr>`
+    }
 
     el.innerHTML = `<table class="admin-table">
       <thead><tr>
         <th>路線名稱</th><th>起迄</th>
         <th style="text-align:center">節點數</th>
         <th>所屬帳號</th>
+        <th>所屬專案</th>
         <th>建立時間</th>
         <th style="width:90px">操作</th>
       </tr></thead>
-      <tbody>${groups.map(g => groupHeader(g) + g.routes.map(rowFor).join('')).join('')}</tbody>
+      <tbody>${groups.map(g => groupHeader(g) + g.routes.map(r=>rowFor(r,g.key)).join('')).join('')}</tbody>
     </table>`
+    // 預設全部收合，點分組標題才展開
+    el.querySelectorAll('tr.adm-rt').forEach(tr => { tr.style.display='none' })
   } catch(e) {
     adminCloudErr()
     el.innerHTML = `<div style="color:#dc2626;padding:16px">載入失敗：${e.message}</div>`
+  }
+}
+
+// 展開／收合某個專案底下的路線
+function adminToggleGroup(key){
+  const caret=document.getElementById('adm-caret-'+key)
+  const rows=document.querySelectorAll(`tr.adm-rt[data-grp="${key}"]`)
+  if(!rows.length) return
+  const willOpen = rows[0].style.display==='none'
+  rows.forEach(tr=>{ tr.style.display = willOpen ? '' : 'none' })
+  if(caret) caret.textContent = willOpen ? '▾' : '▸'
+}
+
+// 把單一路線搬到別的專案。換專案＝換負責人，所以一併把負責人改成新專案的負責人，
+// 避免出現「路線掛在 A 專案、負責人卻是 B」這種對不起來的狀態。
+async function adminMoveRoute(id, sel) {
+  const projectId = sel.value
+  const orig = sel.dataset.orig ?? ''
+  sel.disabled = true
+  try {
+    await cloudPost({ action: 'updateRouteProject', id, projectId })
+    if (projectId) {
+      const projects = await cloudGet({ action: 'getProjects' }).catch(()=>[])
+      const p = (projects||[]).find(x => String(x.id) === String(projectId))
+      if (p && S(p.owner)) await cloudPost({ action: 'updateRouteOwner', id, owner: S(p.owner) })
+    }
+    toast('✅ 已搬移路線')
+    loadAdminRoutes()
+  } catch(e) {
+    sel.value = orig
+    toast('❌ ' + e.message)
+  } finally {
+    sel.disabled = false
+  }
+}
+
+// 設定專案負責人：底下所有路線的負責人會一起改成同一個人
+async function adminChangeProjectOwner(projectId, sel) {
+  const owner = sel.value
+  const orig  = sel.dataset.orig ?? ''
+  sel.disabled = true
+  try {
+    const res = await cloudPost({ action: 'updateProjectOwner', projectId, owner })
+    sel.dataset.orig = owner
+    const n = (res && res.routesUpdated) || 0
+    toast(owner ? `✅ 已指派給 ${owner}（含底下 ${n} 條路線）` : `✅ 已清除負責人（含底下 ${n} 條路線）`)
+    loadAdminRoutes()
+  } catch(e) {
+    sel.value = orig
+    toast('❌ ' + e.message)
+  } finally {
+    sel.disabled = false
   }
 }
 
