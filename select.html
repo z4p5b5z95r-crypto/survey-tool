@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
-<title>選擇調查案件</title>
+<title>選擇調查專案</title>
 <link rel="apple-touch-icon" sizes="512x512" href="icon.png"/>
 <link rel="icon" type="image/png" href="icon.png"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
@@ -137,7 +137,7 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0f172a;min-h
 <div id="app">
   <div class="hdr">
     <div class="hdr-icon">🚗</div>
-    <h1>選擇調查案件 <span style="display:inline-block;vertical-align:middle;font-size:10px;font-weight:800;letter-spacing:.5px;color:#92400e;background:#fde68a;border-radius:6px;padding:2px 7px">BETA</span></h1>
+    <h1>選擇調查專案 <span style="display:inline-block;vertical-align:middle;font-size:10px;font-weight:800;letter-spacing:.5px;color:#92400e;background:#fde68a;border-radius:6px;padding:2px 7px">BETA</span></h1>
     <p>無 QR Code 入口</p>
   </div>
 
@@ -150,7 +150,7 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0f172a;min-h
     <div class="step-line" id="line1"></div>
     <div class="step" id="step2">
       <div class="step-num" id="step2-num">2</div>
-      <div>選案件</div>
+      <div>選專案</div>
     </div>
     <div class="step-line" id="line2"></div>
     <div class="step" id="step3">
@@ -174,7 +174,7 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0f172a;min-h
     <!-- Step 2: Project select (顯示在下方) -->
     <div id="panel-proj" style="display:none">
       <div class="section-card">
-        <h2 id="proj-title">📁 選擇案件</h2>
+        <h2 id="proj-title">📁 選擇專案</h2>
         <div class="proj-list" id="proj-list"></div>
       </div>
     </div>
@@ -183,7 +183,7 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0f172a;min-h
   <!-- Bottom action bar -->
   <div class="action-bar">
     <button class="start-btn" id="start-btn" disabled onclick="startSurvey()">
-      選擇案件後開始 →
+      選擇專案後開始 →
     </button>
   </div>
 </div>
@@ -199,8 +199,10 @@ const INDEX_URL = urlP.get('index') || './index.html'
 // ════════════════ STATE ════════════════
 let allUsers = []
 let allRoutes = []
+let allProjects = []
 let selectedEng = null
-let selectedRoute = null
+let selectedProject = null   // 選到的專案 → 進 index.html 的專案選路線畫面
+let selectedRoute = null     // 沒有歸到任何專案的零散路線，才會直接選單一路線
 
 // ════════════════ CLOUD ════════════════
 async function cloudGet(params){
@@ -239,9 +241,13 @@ window.addEventListener('load', async ()=>{
     allUsers = (usersRes.data || []).filter(u=>u.name && u.name!=='admin' && u.status!=='停用' && u.status!=='隱藏')
     setLoadProgress(55)
 
-    document.getElementById('ld-msg').textContent='載入案件資料...'
-    const routesRes = await cloudGet({action:'getRoutes'})
-    allRoutes = routesRes.data || []
+    document.getElementById('ld-msg').textContent='載入專案資料...'
+    const [routesRes, projectsRes] = await Promise.all([
+      cloudGet({action:'getRoutes'}),
+      cloudGet({action:'getProjects'}).catch(()=>({data:[]}))
+    ])
+    allRoutes   = routesRes.data || []
+    allProjects = projectsRes.data || []
     setLoadProgress(100)
 
     await new Promise(r=>setTimeout(r,450))
@@ -271,13 +277,14 @@ function renderEngDropdown(){
   }
   sel.innerHTML='<option value="">— 請選擇工程師 —</option>'
     + allUsers.map(u=>{
-        const cnt=getRoutesForUser(u.name).length
-        return `<option value="${escQ(u.name)}">${u.name}（${cnt} 個案件）</option>`
+        const cnt=getProjectsForUser(u.name).length + getLooseRoutesForUser(u.name).length
+        return `<option value="${escQ(u.name)}">${u.name}（${cnt} 個專案）</option>`
       }).join('')
 }
 
 function onEngChange(name){
   selectedEng=name||null
+  selectedProject=null
   selectedRoute=null
   resetStartBtn()
   if(!name){
@@ -292,59 +299,104 @@ function onEngChange(name){
 function getRoutesForUser(name){
   return allRoutes.filter(r=>r.owner===name)
 }
+// 這位工程師名下的路線分佈在哪些專案（以路線的 projectId 反查，比用專案 owner 可靠）
+function getProjectsForUser(name){
+  const ids={}
+  getRoutesForUser(name).forEach(r=>{ if(r.projectId) ids[String(r.projectId)]=true })
+  return allProjects.filter(p=>ids[String(p.id)])
+}
+// 還沒歸到任何專案的零散路線——仍要讓工程師點得到，否則舊資料會消失
+function getLooseRoutesForUser(name){
+  return getRoutesForUser(name).filter(r=>!r.projectId)
+}
+function routeCountInProject(name, projectId){
+  return getRoutesForUser(name).filter(r=>String(r.projectId)===String(projectId)).length
+}
 
 // ════════════════ STEP 2 — PROJECTS ════════════════
 function showProjList(name){
   const panel=document.getElementById('panel-proj')
   panel.style.display='block'
-  document.getElementById('proj-title').textContent='📁 '+name+' 的案件'
+  document.getElementById('proj-title').textContent='📁 '+name+' 的專案'
 
-  const routes=getRoutesForUser(name)
+  const projects=getProjectsForUser(name)
+  const loose=getLooseRoutesForUser(name)
   const el=document.getElementById('proj-list')
 
-  if(!routes.length){
+  if(!projects.length && !loose.length){
     el.innerHTML=`<div class="empty">
       <div class="empty-icon">📭</div>
-      <p>${name} 目前沒有指派的案件</p>
+      <p>${name} 目前沒有指派的專案</p>
     </div>`
     return
   }
 
-  el.innerHTML=routes.map(r=>`
-    <button class="proj-btn" id="proj-${r.id}" onclick="selectRoute('${r.id}')">
-      <div class="proj-name">${r.routeName||r.id}</div>
+  let html = projects.map(p=>`
+    <button class="proj-btn" id="pj-${p.id}" onclick="selectProject('${escQ(String(p.id))}')">
+      <div class="proj-name">📁 ${p.name||p.id}</div>
       <div class="proj-meta">
-        <span class="proj-tag">${r.routeFromTo||'—'}</span>
-        ${r.totalLength?`<span>${r.totalLength}m</span>`:''}
-        ${r.date?`<span>${r.date}</span>`:''}
+        <span class="proj-tag">${routeCountInProject(name,p.id)} 條路線</span>
       </div>
     </button>
   `).join('')
+
+  if(loose.length){
+    html += `<div style="font-size:12px;color:#94a3b8;margin:14px 0 6px">尚未歸入專案的路線</div>`
+      + loose.map(r=>`
+        <button class="proj-btn" id="proj-${r.id}" onclick="selectRoute('${escQ(String(r.id))}')">
+          <div class="proj-name">${r.routeName||r.id}</div>
+          <div class="proj-meta">
+            <span class="proj-tag">${r.routeFromTo||'—'}</span>
+            ${r.totalLength?`<span>${r.totalLength}m</span>`:''}
+          </div>
+        </button>
+      `).join('')
+  }
+  el.innerHTML=html
 }
 
-function selectRoute(id){
-  selectedRoute=allRoutes.find(r=>r.id===id)
+function _clearSelection(){
   document.querySelectorAll('.proj-btn').forEach(b=>b.classList.remove('selected'))
+}
+function selectProject(id){
+  selectedProject=allProjects.find(p=>String(p.id)===String(id))
+  selectedRoute=null
+  _clearSelection()
+  const btn=document.getElementById('pj-'+id)
+  if(btn) btn.classList.add('selected')
+
+  const startBtn=document.getElementById('start-btn')
+  startBtn.disabled=false
+  startBtn.textContent='🚀 開始調查 — '+((selectedProject&&selectedProject.name)||id)
+  setStep(3)
+}
+function selectRoute(id){
+  selectedRoute=allRoutes.find(r=>String(r.id)===String(id))
+  selectedProject=null
+  _clearSelection()
   const btn=document.getElementById('proj-'+id)
   if(btn) btn.classList.add('selected')
 
   const startBtn=document.getElementById('start-btn')
   startBtn.disabled=false
-  startBtn.textContent='🚀 開始調查 — '+((selectedRoute?.routeName)||id)
+  startBtn.textContent='🚀 開始調查 — '+((selectedRoute&&selectedRoute.routeName)||id)
   setStep(3)
 }
 
 function resetStartBtn(){
   const b=document.getElementById('start-btn')
   b.disabled=true
-  b.textContent='選擇案件後開始 →'
+  b.textContent='選擇專案後開始 →'
 }
 
 // ════════════════ START SURVEY ════════════════
+// 選專案 → 帶 pid 進現場 App，會出現「請選擇任務路線」畫面（含路線地圖與今日進度）
+// 選零散路線 → 維持原本帶 id 直接進該路線
 function startSurvey(){
-  if(!selectedRoute) return
   const url=new URL(INDEX_URL, location.href)
-  url.searchParams.set('id', selectedRoute.id)
+  if(selectedProject)      url.searchParams.set('pid', selectedProject.id)
+  else if(selectedRoute)   url.searchParams.set('id',  selectedRoute.id)
+  else return
   url.searchParams.set('gs', GS_URL)
   url.searchParams.set('k',  GS_KEY)
   location.href=url.toString()
