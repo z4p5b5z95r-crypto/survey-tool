@@ -41,17 +41,17 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color
 .dl-progress-bar{position:absolute;height:100%;width:55%;border-radius:10px;background:linear-gradient(90deg,transparent,#3b82f6 35%,#93c5fd 50%,#3b82f6 65%,transparent);animation:bar-sweep 1.6s ease-in-out infinite}
 @keyframes bar-sweep{0%{left:-55%}100%{left:100%}}
 
-/* ── Page header：深色只留一條專案列 ── */
-.page-header{background:#0f172a;color:white;padding:11px 20px;position:sticky;top:0;z-index:100}
-.ph-row{display:flex;align-items:center;gap:10px}
-.ph-back{flex-shrink:0;background:none;border:none;color:#64748b;font-size:19px;line-height:1;cursor:pointer;padding:0 4px}
-.ph-back:hover{color:#e2e8f0}
+/* ── Page header：深色只留一條，專案名（左）／調查日期（中）／批次下載（右） ── */
+.page-header{background:#0f172a;color:white;padding:13px 20px;position:sticky;top:0;z-index:100}
+.ph-row{display:flex;align-items:center;gap:14px}
 .ph-main{flex:1;min-width:0;display:flex;align-items:baseline;gap:9px;overflow:hidden}
-.ph-proj{font-size:12.5px;font-weight:700;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
-.ph-crumb{font-size:11.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph-proj{font-size:16px;font-weight:800;color:#fff;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.ph-crumb{font-size:12px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ph-crumb:not(:empty)::before{content:'/';color:#475569;margin-right:8px}
 .ph-meta{font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ph-tools{display:flex;gap:8px;align-items:center;flex-shrink:0}
+.ph-datelbl{font-size:11px;color:#64748b}
+.ph-right{flex:1;display:flex;justify-content:flex-end;min-width:0}
 .ph-sel{background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:7px;padding:6px 10px;font-size:11.5px;font-family:inherit;cursor:pointer}
 .ph-dl{background:#fff;color:#0f172a;border:1px solid rgba(255,255,255,.25);border-radius:7px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
 .ph-dl:hover{background:#e2e8f0}
@@ -67,15 +67,13 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color
 .route-tab.on .rdot{display:none}
 .route-tab.on .rst{color:#fff;background:rgba(255,255,255,.22);border-radius:999px;padding:1px 6px}
 .route-tab.on .rld{color:rgba(255,255,255,.7)}
-/* 統計表／調查紀錄／下載報告 */
-.nav-bar{background:#fafbfc;border-bottom:1px solid #e8edf3;padding:0 20px}
+/* 統計表／調查紀錄／下載報告 ｜ 調查次數（同一列，中間一條分隔線） */
+.nav-bar{background:#fafbfc;border-bottom:1px solid #e8edf3;padding:0 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.nav-sep{width:1px;height:20px;background:#e2e8f0;flex-shrink:0}
 .tab-bar{display:flex;gap:4px}
 .tab-btn{padding:11px 16px;font-size:12.5px;font-weight:700;border:none;background:transparent;color:#64748b;cursor:pointer;transition:.15s;border-bottom:2px solid transparent;font-family:inherit}
 .tab-btn:hover{color:#334155}
 .tab-btn.active{color:#0f172a;border-bottom-color:#2563eb}
-/* 調查次數 */
-.round-bar{background:#fafbfc;border-bottom:1px solid #e8edf3;padding:9px 20px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-.round-bar .rb-label{font-size:11px;color:#94a3b8;margin-right:2px}
 .rf-btn{position:relative;overflow:hidden;padding:5px 13px 7px;font-size:11.5px;font-weight:700;border:1px solid #dbe2ea;background:#fff;color:#475569;border-radius:8px;cursor:pointer;transition:.15s;font-family:inherit}
 .rf-btn:hover{border-color:#94a3b8}
 .rf-btn.active{background:#0f172a;border-color:#0f172a;color:#fff}
@@ -345,10 +343,9 @@ td:first-child{text-align:left;font-weight:500}
 </div>
 
 <div id="app" style="display:none">
-  <!-- ① 深色列：專案／日期／批次下載 -->
+  <!-- ① 深色列：專案名（左）／調查日期（中）／批次下載（右） -->
   <div class="page-header">
     <div class="ph-row">
-      <button class="ph-back" id="ph-back" style="display:none" onclick="history.back()" title="返回">‹</button>
       <div class="ph-main">
         <span class="ph-proj" id="hdr-proj">📊 調查報告</span>
         <span class="ph-crumb" id="hdr-title"></span>
@@ -356,25 +353,25 @@ td:first-child{text-align:left;font-weight:500}
       </div>
       <!-- 專案模式才會出現：切換日期＋一次下載當日全部路線的平均報告 -->
       <div class="ph-tools" id="ph-tools" style="display:none">
+        <span class="ph-datelbl">調查日期</span>
         <select class="ph-sel" id="ph-date" onchange="onReportDateChange(this.value)"></select>
+      </div>
+      <div class="ph-right" id="ph-right" style="display:none">
         <button class="ph-dl" id="ph-batch" onclick="batchDownloadCurrentDate()">📄 批次下載當日平均報告</button>
       </div>
     </div>
   </div>
   <!-- ② 路線選擇 -->
   <div class="route-tabs" id="route-tabs" style="display:none"></div>
-  <!-- ③ 統計表／調查紀錄／下載報告 -->
+  <!-- ③ 統計表／調查紀錄 ｜ 調查次數（同一列） -->
   <div class="nav-bar">
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="stats" onclick="switchTab('stats')">📊 統計表</button>
       <button class="tab-btn" data-tab="trips" onclick="switchTab('trips')">📋 調查紀錄</button>
       <button class="tab-btn" data-tab="dl" onclick="switchTab('dl')">📥 下載報告</button>
     </div>
-  </div>
-  <!-- ④ 調查次數 -->
-  <div class="round-bar" id="round-bar" style="display:none">
-    <span class="rb-label">調查次數</span>
-    <div id="round-filter-row" style="display:flex;gap:7px;flex-wrap:wrap"></div>
+    <span class="nav-sep" id="nav-sep" style="display:none"></span>
+    <div id="round-filter-row" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></div>
   </div>
 
   <!-- STATS -->
@@ -664,7 +661,7 @@ async function initProjectReport(gs, sessionToken, pid, wantDate){
   }catch(e){}
 
   document.getElementById('ph-tools').style.display='flex'
-  document.getElementById('ph-back').style.display='block'
+  document.getElementById('ph-right').style.display='flex'
   renderDateOptions()
   renderRouteTabs()
   // 先把使用者要看的第一條路線載進來，其餘在背景繼續抓，
@@ -942,15 +939,15 @@ function roundProgress(n){
 function renderRoundFilter(){
   const el = document.getElementById('round-filter-row')
   if(!el) return
-  const bar = document.getElementById('round-bar')
+  const sep = document.getElementById('nav-sep')
   const rounds = availableRounds()
   if(rounds.length<=1){
     el.innerHTML=''
-    if(bar) bar.style.display='none'
+    if(sep) sep.style.display='none'
     const note=document.getElementById('dl-scope-note'); if(note) note.textContent=''
     return
   }
-  if(bar) bar.style.display='flex'
+  if(sep) sep.style.display='block'
   const extra = new Set(extraRoundsBeyondPlan())
   // 按鈕下緣一條進度線：整條綠＝已完成、部分橘＝調查中、整條灰＝尚未調查
   const roundBtn=(n)=>{
