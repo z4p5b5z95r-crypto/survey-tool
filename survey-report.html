@@ -580,10 +580,61 @@ async function onReportDateChange(date){
   // 路線與調查資料已在快取裡，換日期只要重新套篩選即可，不必再連線
   await switchReportRoute(_pm.routeId)
 }
+// ── 批次下載：先讓 PM 勾選要哪幾張表 ──
+const SGS_SECTIONS=[
+  {k:'delaySec', label:'延滯統計表（秒）'},
+  {k:'delayPct', label:'延滯統計表(續)（百分比）'},
+  {k:'segTime',  label:'各路段平均旅行時間及平均行駛時間統計表'},
+  {k:'segSpd',   label:'各路段平均旅行速率及平均行駛速率統計表（公里/時）'},
+  {k:'trips',    label:'每趟旅次明細（主次要幹道行駛時間及延滯調查表）'}
+]
+const SGS_DEFAULT={delaySec:false, delayPct:true, segTime:true, segSpd:true, trips:false}
+function _loadSgsSections(){
+  try{
+    const v=JSON.parse(localStorage.getItem('sgs_sections')||'null')
+    if(v&&typeof v==='object') return Object.assign({}, SGS_DEFAULT, v)
+  }catch(e){}
+  return Object.assign({}, SGS_DEFAULT)
+}
+function batchDownloadCurrentDate(){
+  if(!_pm) return
+  const sel=_loadSgsSections()
+  document.getElementById('sgs-pick-overlay')?.remove()
+  const ov=document.createElement('div')
+  ov.id='sgs-pick-overlay'
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px'
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:16px;padding:20px;width:100%;max-width:460px;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+      <div style="font-size:16px;font-weight:800;color:#0f172a">📄 批次下載當日平均報告</div>
+      <div style="font-size:12.5px;color:#64748b;margin-top:4px">${he(_pm.date||'全部日期')}　共 ${_pm.routes.length} 條路線</div>
+      <div style="font-size:12px;color:#94a3b8;margin:14px 0 8px">選擇要納入的報表</div>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        ${SGS_SECTIONS.map(s=>`
+          <label style="display:flex;align-items:flex-start;gap:9px;padding:9px 10px;border-radius:9px;cursor:pointer;font-size:12.5px;color:#334155;line-height:1.5"
+                 onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='none'">
+            <input type="checkbox" class="sgs-ck" data-k="${s.k}" ${sel[s.k]?'checked':''} style="margin-top:2px;width:15px;height:15px;accent-color:#2563eb;cursor:pointer">
+            <span>${he(s.label)}</span>
+          </label>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button onclick="document.getElementById('sgs-pick-overlay').remove()"
+          style="flex:1;padding:11px;background:#f1f5f9;color:#475569;border:none;border-radius:10px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit">取消</button>
+        <button onclick="startBatchDownload()"
+          style="flex:1.4;padding:11px;background:#0f172a;color:#fff;border:none;border-radius:10px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit">開始產生</button>
+      </div>
+    </div>`
+  document.body.appendChild(ov)
+}
 // 目前這一頁已經把所有路線的資料抓進 _rdata，所以批次報告可以直接就地產生。
 // 視窗必須在點擊當下就開，晚一步會被瀏覽器當成彈出廣告擋掉。
-async function batchDownloadCurrentDate(){
+async function startBatchDownload(){
   if(!_pm) return
+  const sections={}
+  document.querySelectorAll('#sgs-pick-overlay .sgs-ck').forEach(c=>{ sections[c.dataset.k]=c.checked })
+  if(!Object.values(sections).some(Boolean)){ alert('請至少勾選一張報表'); return }
+  try{ localStorage.setItem('sgs_sections', JSON.stringify(sections)) }catch(e){}
+  document.getElementById('sgs-pick-overlay')?.remove()
+
   const btn=document.getElementById('ph-batch')
   const w=window.open('','_blank')
   if(!w){ alert('請允許此網站開啟新視窗，才能產生批次報告'); return }
@@ -599,8 +650,8 @@ async function batchDownloadCurrentDate(){
       try{
         await _loadRouteIntoGlobals(_pm.gs, _pm.sessionToken, r.id, _pm.date)
         if(!surveys.length){ skipped.push(r.routeName||r.id); continue }
-        const res=downloadSGSPdf(true)
-        if(!res){ skipped.push(r.routeName||r.id); continue }
+        const res=downloadSGSPdf({sections})
+        if(!res||!res.avgPages.length){ skipped.push(r.routeName||r.id); continue }
         css=res.css
         blocks.push(res.avgPages.join('\n'))
       }catch(e){ skipped.push((r.routeName||r.id)+'（'+e.message+'）') }
@@ -2848,8 +2899,21 @@ ${segRows}${emptyRows}
     buildDelayPage('pct'),
     `<div class="pg">${buildSegTimePage()}${buildSegSpdPage()}</div>`
   ]
-  // 批次模式：只回傳這條路線的平均報告頁與樣式，由呼叫端合併成一份文件
-  if(returnOnly) return {css: CSS, avgPages}
+  // 批次模式：只回傳這條路線的報告頁與樣式，由呼叫端合併成一份文件。
+  // 傳入 {sections:{...}} 就只產出勾選的表；沒傳就是四張平均表全給。
+  if(returnOnly){
+    const sec = (returnOnly && typeof returnOnly==='object') ? returnOnly.sections : null
+    if(!sec) return {css: CSS, avgPages}
+    const out=[]
+    if(sec.delaySec) out.push(buildDelayPage('sec'))
+    if(sec.delayPct) out.push(buildDelayPage('pct'))
+    const segBlocks=[]
+    if(sec.segTime) segBlocks.push(buildSegTimePage())
+    if(sec.segSpd)  segBlocks.push(buildSegSpdPage())
+    if(segBlocks.length) out.push(`<div class="pg">${segBlocks.join('')}</div>`)
+    if(sec.trips) surveys.forEach((sv,si)=>{ (sv.trips||[]).forEach(trip=>out.push(buildTripPage(sv,si,trip))) })
+    return {css: CSS, avgPages: out}
+  }
 
   let pages = avgPages.slice()
   surveys.forEach((sv,si)=>{
