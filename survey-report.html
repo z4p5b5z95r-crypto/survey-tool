@@ -126,6 +126,11 @@ td{padding:7px 10px;border:1px solid #e2e8f0;text-align:center}
 tr:nth-child(even) td{background:#fafafa}
 td:first-child{text-align:left;font-weight:500}
 .total-row td{background:#eff6ff!important;font-weight:700;color:#1e40af}
+/* 延滯統計摘要：明細列縮排轉灰、小計列貼齊加粗，小計後墊一條淡灰帶分群（只影響網頁，不影響 PDF） */
+#tbl-delay .dt-detail td{color:#94a3b8}
+#tbl-delay .dt-detail td:first-child{padding-left:30px}
+#tbl-delay .dt-sub td{font-weight:700;color:#0f172a;border-top:1.5px solid #94a3b8}
+#tbl-delay .dt-gap td{height:12px;padding:0;background:#f1f5f9;border-bottom:1px solid #e2e8f0}
 .highlight{color:#1e40af;font-weight:700}
 
 /* ── 調查紀錄 combo selector ── */
@@ -1281,6 +1286,15 @@ function renderDelayTable(){
   const dPct  = (t,v) => dBase(t)>0 ? ((v/dBase(t))*100).toFixed(1) : null
   const sec = (label,pick) => r(label+' (秒)', trips.map(pick))
   const grp = (title) => `<tr><td colspan="5" style="background:#fef9c3;font-weight:700;padding:6px 8px">${title}</td></tr>`
+  // 明細列往右縮排並轉灰、小計列貼齊左緣加粗，小計後再墊一條淡灰帶，
+  // 這樣「路段延滯」與「交叉口延滯」兩群一眼就分得開。（只影響網頁，PDF 不動）
+  const det = (label, vals) =>
+    `<tr class="dt-detail"><td>${label}</td>${vals.map(v=>`<td>${fmt(v)}</td>`).join('')}</tr>`
+  const detSec = (label,pick) => det(label+' (秒)', trips.map(pick))
+  const sub = (label, vals) =>
+    `<tr class="dt-sub"><td>${label}</td>${vals.map(v=>`<td>${fmt(v)}</td>`).join('')}</tr>`
+  const subSec = (label,pick) => sub(label+' (秒)', trips.map(pick))
+  const gap = () => `<tr class="dt-gap"><td colspan="5"></td></tr>`
 
   html += r('平均總旅行速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.travelS)))
   html += r('平均總行駛速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.runS)))
@@ -1294,10 +1308,12 @@ function renderDelayTable(){
 
   // ── ② 延滯明細的秒數 ──
   html += grp('總延滯時間（秒）')
-  ROAD_DELAYS.forEach(d=>{ html += sec(d.label, t=>t?.roadDelays?.[d.cause]||0) })
-  html += sec('路段延滯小計', t=>t?.roadTotalS)
-  INT_DELAYS.forEach(d=>{ html += sec(d.label, t=>t?.intDelays?.[d.cause]||0) })
-  html += sec('交叉口延滯小計', t=>t?.intTotalS)
+  ROAD_DELAYS.forEach(d=>{ html += detSec(d.label, t=>t?.roadDelays?.[d.cause]||0) })
+  html += subSec('路段延滯小計', t=>t?.roadTotalS)
+  html += gap()
+  INT_DELAYS.forEach(d=>{ html += detSec(d.label, t=>t?.intDelays?.[d.cause]||0) })
+  html += subSec('交叉口延滯小計', t=>t?.intTotalS)
+  html += gap()
   html += `<tr class="total-row"><td><b>延滯合計 (秒)</b></td>${trips.map(t=>`<td class="highlight">${fmt(dBase(t)||null)}</td>`).join('')}</tr>`
 
   // ── ③ 百分比統計 ──
@@ -1307,10 +1323,12 @@ function renderDelayTable(){
   html += r('交叉口延滯 (%)', trips.map(t=>pctTravel(t,'intTotalS')))
 
   html += grp('總延滯時間百分比（分母：延滯合計）')
-  ROAD_DELAYS.forEach(d=>{ html += r(d.label+' (%)', trips.map(t=>dPct(t, t?.roadDelays?.[d.cause]||0))) })
-  html += r('路段延滯小計 (%)', trips.map(t=>dPct(t, t?.roadTotalS||0)))
-  INT_DELAYS.forEach(d=>{ html += r(d.label+' (%)', trips.map(t=>dPct(t, t?.intDelays?.[d.cause]||0))) })
-  html += r('交叉口延滯小計 (%)', trips.map(t=>dPct(t, t?.intTotalS||0)))
+  ROAD_DELAYS.forEach(d=>{ html += det(d.label+' (%)', trips.map(t=>dPct(t, t?.roadDelays?.[d.cause]||0))) })
+  html += sub('路段延滯小計 (%)', trips.map(t=>dPct(t, t?.roadTotalS||0)))
+  html += gap()
+  INT_DELAYS.forEach(d=>{ html += det(d.label+' (%)', trips.map(t=>dPct(t, t?.intDelays?.[d.cause]||0))) })
+  html += sub('交叉口延滯小計 (%)', trips.map(t=>dPct(t, t?.intTotalS||0)))
+  html += gap()
   html += `<tr class="total-row"><td><b>延滯合計 (%)</b></td>${trips.map(t=>`<td class="highlight">${fmt(dPct(t, dBase(t)))}</td>`).join('')}</tr>`
   document.getElementById('tbl-delay').innerHTML = html
 }
