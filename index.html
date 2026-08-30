@@ -130,8 +130,23 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .scroll-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
 .card{background:white;border-radius:14px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
 .card-title{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
-.pr-proj-badge{display:inline-flex;align-items:center;gap:5px;margin-top:9px;background:rgba(59,130,246,.16);color:#93c5fd;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px}
-.pr-proj-badge .pr-count{color:#64748b;font-weight:600}
+/* 專案標題列：一行專案名 + 今日進度三色計數（完成／進行中／未開始） */
+.pr-hd{display:flex;align-items:center;gap:9px}
+.pr-hd-icon{font-size:17px;line-height:1;flex-shrink:0}
+.pr-hd-name{font-size:16px;font-weight:800;color:#fff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pr-stats{display:flex;gap:6px;margin-top:8px}
+.pr-stat{flex:1;border-radius:9px;padding:3px 4px;text-align:center}
+.pr-stat-n{font-size:14px;font-weight:800;line-height:1.15}
+.pr-stat-l{font-size:10px;line-height:1.3}
+.pr-stat.done{background:#0F6E56}
+.pr-stat.done .pr-stat-n{color:#E1F5EE}
+.pr-stat.done .pr-stat-l{color:#9FE1CB}
+.pr-stat.part{background:#854F0B}
+.pr-stat.part .pr-stat-n{color:#FAEEDA}
+.pr-stat.part .pr-stat-l{color:#FAC775}
+.pr-stat.todo{background:#1e293b}
+.pr-stat.todo .pr-stat-n{color:#cbd5e1}
+.pr-stat.todo .pr-stat-l{color:#64748b}
 .pr-hint{display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;margin:2px 2px 4px;font-weight:600}
 .pr-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:white;border:1.5px solid #e2e8f0;border-radius:16px;padding:13px 15px;box-shadow:0 1px 3px rgba(0,0,0,.07);cursor:pointer;font-family:inherit;transition:transform .1s,background .1s}
 .pr-item:active{background:#f8fafc;transform:scale(.98)}
@@ -419,9 +434,15 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 <div id="screen-project-routes" class="screen">
   <div class="page-header">
     <div class="page-header-body">
-      <h2 id="pr-title">🗂️ 請選擇任務路線</h2>
-      <p>點一下你要出發調查的路線，就可以開始囉 🚦</p>
-      <div class="pr-proj-badge" id="pr-proj-name"></div>
+      <div class="pr-hd">
+        <span class="pr-hd-icon">🗂️</span>
+        <span class="pr-hd-name" id="pr-proj-name">載入中…</span>
+      </div>
+      <div class="pr-stats" id="pr-stats" style="display:none">
+        <div class="pr-stat done"><div class="pr-stat-n" id="pr-n-done">0</div><div class="pr-stat-l">已完成</div></div>
+        <div class="pr-stat part"><div class="pr-stat-n" id="pr-n-part">0</div><div class="pr-stat-l">進行中</div></div>
+        <div class="pr-stat todo"><div class="pr-stat-n" id="pr-n-todo">0</div><div class="pr-stat-l">未開始</div></div>
+      </div>
     </div>
   </div>
   <div class="scroll-body">
@@ -4172,7 +4193,7 @@ async function showProjectRoutePicker(pid, gsParam, kParam){
     ])
     setLoadPct(100)
     const projBadge = document.getElementById('pr-proj-name')
-    if(projBadge) projBadge.innerHTML = `📁 ${proj?.name||'專案'} <span class="pr-count">・${routes.length} 條路線</span>`
+    if(projBadge) projBadge.textContent = proj?.name||'專案'
     const box = document.getElementById('pr-list')
     if(!routes.length){
       box.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8">這個專案還沒有任何路線，請聯絡PM新增路線後再掃一次</div>'
@@ -4316,12 +4337,25 @@ async function renderTodayProgress(pid, routes, gsParam, kParam){
   }
   const byId = {}
   ;(list||[]).forEach(p=>{ byId[String(p.routeId)] = p })
+  // 一條路線的整體狀態：所有次數都完成才算完成；有做但沒做完算進行中
+  let nDone=0, nPart=0, nTodo=0
   routes.forEach((r,i)=>{
-    const el = document.getElementById(`pr-prog-${i}`)
-    if(!el) return
     const p = byId[String(r.id)]
-    el.innerHTML = p ? buildProgressHTML(p.roundStates) : ''
+    const el = document.getElementById(`pr-prog-${i}`)
+    if(el) el.innerHTML = p ? buildProgressHTML(p.roundStates) : ''
+    const st = (p && Array.isArray(p.roundStates)) ? p.roundStates : null
+    if(!st || !st.length){ nTodo++ ; return }
+    if(st.every(s=>s==='done')) nDone++
+    else if(st.some(s=>s==='done'||s==='part')) nPart++
+    else nTodo++
   })
+  const box=document.getElementById('pr-stats')
+  if(box){
+    document.getElementById('pr-n-done').textContent = nDone
+    document.getElementById('pr-n-part').textContent = nPart
+    document.getElementById('pr-n-todo').textContent = nTodo
+    box.style.display='flex'
+  }
 }
 
 // 從任務路線頁按「返回」，回到剛剛選過的路線清單（清單畫面內容還在，不用重新下載）
