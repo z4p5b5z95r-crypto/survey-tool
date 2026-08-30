@@ -171,7 +171,6 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .proj-group-actions{display:flex;gap:6px;padding:0 14px 12px}
 .proj-group-actions .pc-btn{flex:1;min-width:0;padding:7px 2px;gap:3px;font-size:11.5px;justify-content:center;white-space:nowrap;overflow:hidden}
 /* 批次報告字最長，多分一點寬度給它 */
-.proj-group-actions .pc-btn.projpdf{flex:1.35}
 .proj-group-body{display:none}
 .proj-group.open .proj-group-body{display:block}
 .pc-btn.proj{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
@@ -2946,7 +2945,7 @@ function renderProjects(filter='') {
               ?`<span class="pc-active-tag">▶ 編輯中</span>`
               :`<button class="pc-btn edit" onclick="loadTask('${t.id}')">✏️ 編輯</button>`}
             ${t.cloudId
-              ?`<button class="pc-btn rec" onclick="openSurveyManager('${t.cloudId}','${(t.cfg.rn||'').replace(/'/g,"\\'")}','${(t.cfg.opn||'離峰').replace(/'/g,"\\'")}','${(t.cfg.pkn||'尖峰').replace(/'/g,"\\'")}')">📋 報告</button>`
+              ? ''
               :(gsUrl&&getSessionToken())?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
           </div>
           <div class="pc-actions-r">
@@ -2965,7 +2964,7 @@ function renderProjects(filter='') {
       </div>
       <div class="proj-group-actions">
         <button class="pc-btn proj" title="專案 QR" onclick="event.stopPropagation();showProjectQR('${pid}')">🔲 QR</button>
-        <button class="pc-btn projpdf" title="專案報告" onclick="event.stopPropagation();batchProjectPdf('${pid}')">📊 專案報告</button>
+        <button class="pc-btn projpdf" title="專案報告" onclick="event.stopPropagation();batchProjectPdf('${pid}')">📊 報告</button>
         <button class="pc-btn projadd" title="新增路線" onclick="event.stopPropagation();newTask('${pid}')">＋ 路線</button>
         <button class="pc-btn projdel" title="刪除專案" onclick="event.stopPropagation();deleteProject('${pid}')">🗑 刪除</button>
       </div>
@@ -3129,62 +3128,32 @@ async function doMoveRoute(taskId, targetProjectId){
   }
 }
 
-// 批次下載：一次產生這個專案底下所有路線、指定日期的 SGS 平均報告，合併成一份可存成 PDF。
+// 專案報告：直接開最近一次的調查報告，不再先問日期。
+// 要看之前的日期，在報告頁右上角的日期選單切換即可。
 async function batchProjectPdf(pid){
   const proj=savedProjects.find(p=>p.id===pid)
   if(!proj){toast('找不到專案');return}
-  if(!(gsUrl&&getSessionToken())){toast('❌ 批次報告需要雲端連線，請先登入');return}
-  const projectCloudId=await ensureProjectCloudSynced(proj)
-  if(!projectCloudId){toast('❌ 專案尚未同步雲端，無法產生報告');return}
-
-  // 直接列出「實際有調查資料」的日期讓 PM 挑，不用自己記格式也不會選到空的日期
-  let dates=[]
+  if(!(gsUrl&&getSessionToken())){toast('❌ 報告需要雲端連線，請先登入');return}
+  // 分頁必須在點擊當下就開，等 await 之後再開會被瀏覽器當成彈出廣告擋掉
+  const w=window.open('','_blank')
+  if(!w){toast('❌ 請允許此網站開啟新視窗');return}
   try{
-    toast('⏳ 查詢有資料的日期…')
-    dates=await cloudGet({action:'getProjectDates', pid:projectCloudId}) || []
-  }catch(e){ toast('❌ 查詢日期失敗：'+e.message); return }
-  if(!dates.length){ toast('這個專案還沒有任何調查資料'); return }
-
-  showBatchDatePicker(proj.name||'專案', projectCloudId, dates)
-}
-// 選日期的視窗：每一列顯示日期、當天有幾條路線、幾筆紀錄。
-// 選完進入專案報告頁，可在頁內切換路線與日期，也能一次批次下載當日全部平均報告。
-function showBatchDatePicker(projName, projectCloudId, dates){
-  document.getElementById('batch-date-overlay')?.remove()
-  const ov=document.createElement('div')
-  ov.id='batch-date-overlay'
-  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px'
-  ov.innerHTML=`
-    <div style="background:white;border-radius:18px;padding:20px 18px 16px;width:100%;max-width:380px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.3)">
-      <div style="font-size:16px;font-weight:800;color:#0f172a">📊 專案調查報告</div>
-      <div style="font-size:12.5px;color:#64748b;margin-top:4px">${projName.replace(/</g,'&lt;')}</div>
-      <div style="font-size:12px;color:#475569;background:#f8fafc;border-radius:10px;padding:9px 11px;margin:12px 0 10px;line-height:1.7">
-        選日期後進入報告頁，可切換該日各條路線的報告，也能一次批次下載當日全部路線的平均報告（四張表）：<br>
-        ・延滯統計表<br>
-        ・延滯統計表(續)<br>
-        ・各路段平均旅行時間及平均行駛時間統計表<br>
-        ・各路段平均旅行速率及平均行駛速率統計表
-      </div>
-      <div style="font-size:12px;color:#64748b;margin-bottom:6px">選擇日期</div>
-      <div style="overflow-y:auto;display:flex;flex-direction:column;gap:6px;flex:1">
-        ${dates.map(d=>`
-          <button class="bd-item" onclick="startBatchPdf('${String(projectCloudId).replace(/'/g,"\\'")}','${String(d.date).replace(/'/g,"\\'")}')">
-            <span style="font-weight:800;color:#0f172a">${d.date}</span>
-            <span style="font-size:11.5px;color:#64748b">${d.routes} 條路線・${d.surveys} 筆紀錄</span>
-          </button>`).join('')}
-      </div>
-      <button onclick="document.getElementById('batch-date-overlay').remove()"
-        style="margin-top:12px;width:100%;padding:11px;background:#f1f5f9;color:#475569;border:none;border-radius:11px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">取消</button>
-    </div>`
-  document.body.appendChild(ov)
-}
-function startBatchPdf(projectCloudId, date){
-  document.getElementById('batch-date-overlay')?.remove()
-  const tok=crypto.randomUUID()
-  localStorage.setItem('sr_tok_'+tok, JSON.stringify({gs:gsUrl, sessionToken:getSessionToken()}))
-  setTimeout(()=>localStorage.removeItem('sr_tok_'+tok), 60000)
-  toast('⏳ 開啟專案報告…')
-  window.open(`survey-report.html?pid=${encodeURIComponent(projectCloudId)}&tok=${encodeURIComponent(tok)}&date=${encodeURIComponent(date)}`,'_blank')
+    w.document.write('<!doctype html><meta charset="utf-8"><title>開啟報告中…</title>'+
+      '<body style="font-family:system-ui,-apple-system,sans-serif;padding:48px;color:#334155;font-size:15px">開啟專案報告中，請稍候…</body>')
+  }catch(e){}
+  try{
+    toast('⏳ 開啟專案報告…')
+    const projectCloudId=await ensureProjectCloudSynced(proj)
+    if(!projectCloudId) throw new Error('專案尚未同步雲端')
+    const tok=crypto.randomUUID()
+    localStorage.setItem('sr_tok_'+tok, JSON.stringify({gs:gsUrl, sessionToken:getSessionToken()}))
+    setTimeout(()=>localStorage.removeItem('sr_tok_'+tok), 60000)
+    // 不帶 date：報告頁會自動載入最近一次有資料的日期
+    w.location.href=`survey-report.html?pid=${encodeURIComponent(projectCloudId)}&tok=${encodeURIComponent(tok)}`
+  }catch(e){
+    try{ w.close() }catch(_){}
+    toast('❌ 開啟報告失敗：'+e.message)
+  }
 }
 
 // 專案層級 QR：一個專案（可能有多條路線）共用一個 QR，現場掃了先選路線。
