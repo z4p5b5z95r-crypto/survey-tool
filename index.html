@@ -134,9 +134,9 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .pr-hd{display:flex;align-items:center;gap:9px}
 .pr-hd-icon{font-size:17px;line-height:1;flex-shrink:0}
 .pr-hd-name{font-size:16px;font-weight:800;color:#fff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pr-stats{display:flex;gap:6px;margin-top:10px}
+.pr-stats{display:flex;gap:6px;margin-top:12px}
 /* 數字與文字排同一行；上下留多一點呼吸空間，色塊比較好按也比較好看 */
-.pr-stat{flex:1;border-radius:10px;padding:9px 6px;display:flex;align-items:baseline;justify-content:center;gap:5px}
+.pr-stat{flex:1;border-radius:12px;padding:13px 6px;display:flex;align-items:baseline;justify-content:center;gap:5px}
 .pr-stat-n{font-size:14px;font-weight:800;line-height:1.2}
 .pr-stat-l{font-size:11px;line-height:1.2}
 .pr-stat.done{background:#0F6E56}
@@ -439,10 +439,12 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
         <span class="pr-hd-icon">🗂️</span>
         <span class="pr-hd-name" id="pr-proj-name">載入中…</span>
       </div>
-      <div class="pr-stats" id="pr-stats" style="display:none">
-        <div class="pr-stat done"><span class="pr-stat-n" id="pr-n-done">0</span><span class="pr-stat-l">已完成</span></div>
-        <div class="pr-stat part"><span class="pr-stat-n" id="pr-n-part">0</span><span class="pr-stat-l">進行中</span></div>
-        <div class="pr-stat todo"><span class="pr-stat-n" id="pr-n-todo">0</span><span class="pr-stat-l">未開始</span></div>
+      <!-- 一開始就把三格畫出來（數字先留白），等進度查回來再填數字，
+           避免畫面先空一塊、統計才突然跳出來造成版面位移 -->
+      <div class="pr-stats" id="pr-stats">
+        <div class="pr-stat done"><span class="pr-stat-n" id="pr-n-done">–</span><span class="pr-stat-l">已完成</span></div>
+        <div class="pr-stat part"><span class="pr-stat-n" id="pr-n-part">–</span><span class="pr-stat-l">進行中</span></div>
+        <div class="pr-stat todo"><span class="pr-stat-n" id="pr-n-todo">–</span><span class="pr-stat-l">未開始</span></div>
       </div>
     </div>
   </div>
@@ -4335,7 +4337,8 @@ async function renderTodayProgress(pid, routes, gsParam, kParam){
     }catch(e2){ list = null }
   }
   if(!list || !list.length){
-    // 真的查不到就把「查詢中」字樣拿掉，不要一直卡在載入文字上誤導現場人員
+    // 真的查不到就把「查詢中」字樣拿掉，不要一直卡在載入文字上誤導現場人員；
+    // 上方三格保留破折號，代表「查不到」而不是「都是 0」
     routes.forEach((r,i)=>{ const el=document.getElementById(`pr-state-${i}`); if(el) el.textContent='' })
     return
   }
@@ -4354,13 +4357,11 @@ async function renderTodayProgress(pid, routes, gsParam, kParam){
     else if(st.cls==='part') nPart++
     else nTodo++
   })
-  const box=document.getElementById('pr-stats')
-  if(box){
-    document.getElementById('pr-n-done').textContent = nDone
-    document.getElementById('pr-n-part').textContent = nPart
-    document.getElementById('pr-n-todo').textContent = nTodo
-    box.style.display='flex'
-  }
+  // 三格一開始就在畫面上，這裡只更新數字，不會造成版面跳動
+  const el = id => document.getElementById(id)
+  if(el('pr-n-done')) el('pr-n-done').textContent = nDone
+  if(el('pr-n-part')) el('pr-n-part').textContent = nPart
+  if(el('pr-n-todo')) el('pr-n-todo').textContent = nTodo
 }
 
 // 從任務路線頁按「返回」，回到剛剛選過的路線清單（清單畫面內容還在，不用重新下載）
