@@ -436,6 +436,9 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .admin-table td{padding:10px 14px;border-bottom:1px solid #f8fafc;font-size:13px;color:#1e293b;vertical-align:middle}
 .admin-table tr:last-child td{border-bottom:none}
 .admin-table tr:hover td{background:#f8fafc}
+/* 專案分組標題列：路線清單依專案分群，一眼看出每個專案有哪些路線、負責人是誰 */
+.admin-table tr.adm-grp td{background:#eef2ff;color:#312e81;font-size:13px;padding:9px 14px;border-bottom:1px solid #e0e7ff}
+.admin-table tr.adm-grp:hover td{background:#eef2ff}
 .adm-btn{display:inline-flex;align-items:center;padding:4px 10px;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:4px;transition:opacity .12s;white-space:nowrap}
 .adm-btn:hover{opacity:.8}
 .adm-btn.reset{background:#e0e7ff;color:#3730a3}
@@ -2715,10 +2718,12 @@ async function showListQR(taskId){
 //  SYNC FROM CLOUD
 // ════════════════════════════════════════════════════════
 // 把雲端專案同步回本機，回傳「雲端專案 id → 本機專案 id」的對照表
+let _lastCloudProjects=[]   // 給 repairCloudProjectIds 比對用，不必再打一次後端
 async function syncProjectsFromCloud(me) {
   const map={}
   try{
     const projects=await cloudGet({action:'getProjects'})
+    _lastCloudProjects=projects||[]
     let changed=false
     for(const p of projects){
       const isMine=!p.owner||p.owner===me
@@ -2794,7 +2799,7 @@ async function syncFromCloud() {
     if(changed>0) toast(`☁️ 雲端同步完成`)
     // 專案功能是後來才加的：早期上傳的路線，雲端的 projectId 是空的或跟本機歸屬對不上，
     // 會害「掃專案 QR」「選擇專案」這些以專案為單位的入口抓不到任何路線。這裡自動補寫回去。
-    repairCloudProjectIds(routes)
+    repairCloudProjectIds(routes, _lastCloudProjects)
   }catch(e){
     updateCloudDot('err','同步失敗')
     if(_lbl)_lbl.textContent='ERR:'+e.message.slice(0,30)
@@ -2807,12 +2812,31 @@ async function syncFromCloud() {
 // 把本機的專案歸屬補寫回雲端。
 // 只在「本機知道這條路線屬於哪個專案，但雲端記的不一樣」時才送出，
 // 用的是輕量的 updateRouteProject（只改一個欄位），不會整包路線重傳。
-async function repairCloudProjectIds(cloudRoutes){
+async function repairCloudProjectIds(cloudRoutes, cloudProjects){
   if(!(gsUrl&&getSessionToken())) return
   const me=getCurrentUser()||''
+  if(!me) return
+  let fixed=0
+
+  // (1) 專案負責人：早期建立的專案雲端 owner 是空的，
+  //     現場端的「選擇專案」是靠 owner 判斷這位工程師能看到哪些專案，空的就會顯示 0 個專案。
+  const cloudProjById={}
+  ;(cloudProjects||[]).forEach(p=>{ cloudProjById[String(p.id)]=p })
+  for(const proj of savedProjects){
+    if(proj.creator!==me) continue
+    if(!proj.cloudId) continue
+    const cp=cloudProjById[String(proj.cloudId)]
+    if(!cp) continue
+    if(String(cp.owner||'')===me) continue   // 已經正確，不重送
+    try{
+      await cloudPost({action:'saveProject', id:proj.cloudId, name:proj.name, owner:me})
+      fixed++
+    }catch(e){ /* 單筆失敗不影響其他，下次登入會再試 */ }
+  }
+
+  // (2) 路線的專案歸屬：專案功能是後來才加的，早期上傳的路線 projectId 是空的
   const cloudById={}
   ;(cloudRoutes||[]).forEach(r=>{ if(!r.deletedAt) cloudById[String(r.id)]=r })
-  let fixed=0
   for(const t of savedTasks){
     if(!t.cloudId) continue
     if(t.creator && t.creator!==me) continue
@@ -2825,13 +2849,17 @@ async function repairCloudProjectIds(cloudRoutes){
       projectCloudId=await ensureProjectCloudSynced(proj)
       if(!projectCloudId) continue
     }
-    if(String(cloud.projectId||'')===String(projectCloudId)) continue   // 已經一致，不用重送
+    const needProject = String(cloud.projectId||'')!==String(projectCloudId)
+    // (3) 路線負責人：一併補上，讓「選擇專案」在專案 owner 之外還有第二種比對方式
+    const needOwner   = String(cloud.owner||'')!==me
+    if(!needProject && !needOwner) continue
     try{
-      await cloudPost({action:'updateRouteProject', id:t.cloudId, projectId:projectCloudId})
+      if(needProject) await cloudPost({action:'updateRouteProject', id:t.cloudId, projectId:projectCloudId})
+      if(needOwner)   await cloudPost({action:'updateRouteOwner',   id:t.cloudId, owner:me})
       fixed++
     }catch(e){ /* 單條失敗不影響其他，下次登入會再試 */ }
   }
-  if(fixed>0) toast(`🔧 已修正 ${fixed} 條路線的專案歸屬`)
+  if(fixed>0) toast(`🔧 已修正 ${fixed} 筆專案／路線的負責人與歸屬`)
 }
 
 // ════════════════════════════════════════════════════════
@@ -3455,15 +3483,64 @@ async function loadAdminRoutes() {
   const el = document.getElementById('admin-routes-table')
   el.innerHTML = '<div class="admin-loading">載入中...</div>'
   try {
-    const [routes, users] = await Promise.all([
+    const [routes, users, projects] = await Promise.all([
       cloudGet({ action: 'getRoutes' }),
-      cloudGet({ action: 'getUsers' })
+      cloudGet({ action: 'getUsers' }),
+      cloudGet({ action: 'getProjects' }).catch(()=>[])
     ])
     adminCloudOk()
     if (!routes.length) { el.innerHTML = '<div class="admin-empty">尚無專案資料</div>'; return }
     // 儲存 users 供 select 使用
     window._adminUsers = users
-    const userOpts = users.map(u => `<option value="${u.name}">${u.name}</option>`).join('')
+
+    // 依專案分組，專案底下再列路線；沒有專案歸屬的另外放在最後一組
+    const projById = {}
+    ;(projects||[]).forEach(p => { projById[String(p.id)] = p })
+    const groups = []      // [{key, name, owner, routes:[]}]
+    const groupIdx = {}
+    routes.forEach(r => {
+      const pid = String(r.projectId||'')
+      const key = pid || '_none'
+      if (groupIdx[key] === undefined) {
+        groupIdx[key] = groups.length
+        groups.push({
+          key,
+          name : pid ? (projById[pid] ? S(projById[pid].name) : '（找不到專案資料）') : '尚未歸入專案',
+          owner: pid && projById[pid] ? S(projById[pid].owner) : '',
+          routes: []
+        })
+      }
+      groups[groupIdx[key]].routes.push(r)
+    })
+    // 有專案的排前面，「尚未歸入專案」永遠放最後
+    groups.sort((a,b) => (a.key==='_none') - (b.key==='_none') || a.name.localeCompare(b.name,'zh-Hant'))
+
+    const rowFor = (r) => {
+      const safeId   = String(r.id).replace(/'/g,"\\'")
+      const safeName = S(r.routeName).replace(/'/g,"\\'")
+      const ownerSel = `<select class="adm-owner-sel" onchange="adminChangeRouteOwner('${safeId}', this)">
+        <option value="">— 未指定 —</option>
+        ${users.map(u => `<option value="${u.name}"${r.owner===u.name?' selected':''}>${u.name}</option>`).join('')}
+      </select>`
+      return `<tr>
+        <td style="padding-left:26px"><strong>${S(r.routeName) || '—'}</strong></td>
+        <td style="color:#64748b;font-size:12px">${S(r.routeFromTo) || '—'}</td>
+        <td style="text-align:center;color:#475569">${(r.nodes || []).length}</td>
+        <td>${ownerSel}</td>
+        <td style="color:#94a3b8;font-size:12px">${r.createdAt ? String(r.createdAt).slice(0,10) : '—'}</td>
+        <td><button class="adm-btn del" onclick="adminDeleteRoute('${safeId}','${safeName}')">🗑 刪除</button></td>
+      </tr>`
+    }
+    const groupHeader = (g) => `<tr class="adm-grp">
+      <td colspan="6">
+        📁 <strong>${g.name}</strong>
+        <span style="color:#64748b;font-weight:400;font-size:12px">・${g.routes.length} 條路線</span>
+        ${g.key!=='_none'
+          ? `<span style="color:${g.owner?'#64748b':'#dc2626'};font-weight:400;font-size:12px">・負責人：${g.owner||'未指定'}</span>`
+          : ''}
+      </td>
+    </tr>`
+
     el.innerHTML = `<table class="admin-table">
       <thead><tr>
         <th>路線名稱</th><th>起迄</th>
@@ -3472,22 +3549,7 @@ async function loadAdminRoutes() {
         <th>建立時間</th>
         <th style="width:90px">操作</th>
       </tr></thead>
-      <tbody>${routes.map(r => {
-        const safeId   = r.id.replace(/'/g,"\\'")
-        const safeName = (r.routeName||'').replace(/'/g,"\\'")
-        const ownerSel = `<select class="adm-owner-sel" onchange="adminChangeRouteOwner('${safeId}', this)">
-          <option value="">— 未指定 —</option>
-          ${users.map(u => `<option value="${u.name}"${r.owner===u.name?' selected':''}>${u.name}</option>`).join('')}
-        </select>`
-        return `<tr>
-          <td><strong>${r.routeName || '—'}</strong></td>
-          <td style="color:#64748b;font-size:12px">${r.routeFromTo || '—'}</td>
-          <td style="text-align:center;color:#475569">${(r.nodes || []).length}</td>
-          <td>${ownerSel}</td>
-          <td style="color:#94a3b8;font-size:12px">${r.createdAt ? String(r.createdAt).slice(0,10) : '—'}</td>
-          <td><button class="adm-btn del" onclick="adminDeleteRoute('${safeId}','${safeName}')">🗑 刪除</button></td>
-        </tr>`
-      }).join('')}</tbody>
+      <tbody>${groups.map(g => groupHeader(g) + g.routes.map(rowFor).join('')).join('')}</tbody>
     </table>`
   } catch(e) {
     adminCloudErr()
