@@ -299,18 +299,37 @@ function onEngChange(name){
 function getRoutesForUser(name){
   return allRoutes.filter(r=>r.owner===name)
 }
-// 這位工程師名下的路線分佈在哪些專案（以路線的 projectId 反查，比用專案 owner 可靠）
+// 一個專案內的路線數（不看路線的 owner）：專案歸屬已經決定範圍了，
+// 而且早期上傳的路線常常沒有寫 owner，用 owner 去數會變成 0 條
+function routesInProject(projectId){
+  return allRoutes.filter(r=>String(r.projectId)===String(projectId))
+}
+function routeCountInProject(name, projectId){
+  return routesInProject(projectId).length
+}
+// 這位工程師看得到哪些專案。
+// 兩種都算：專案本身的負責人是他，或專案底下有他名下的路線——
+// 因為「負責人」這個欄位在專案跟路線兩邊都可能是空的（早期資料），只認一種會整頁空白。
 function getProjectsForUser(name){
-  const ids={}
-  getRoutesForUser(name).forEach(r=>{ if(r.projectId) ids[String(r.projectId)]=true })
-  return allProjects.filter(p=>ids[String(p.id)])
+  const viaRoutes={}
+  getRoutesForUser(name).forEach(r=>{ if(r.projectId) viaRoutes[String(r.projectId)]=true })
+  const owned = allProjects.filter(p=>p.owner===name || viaRoutes[String(p.id)])
+  if(owned.length) return owned
+  // 完全比對不到（專案與路線的負責人都沒填）時，寧可全部列出來讓人選得到，
+  // 也不要顯示「沒有指派的專案」讓現場人員卡住。畫面上會標示這是未設定負責人的情況。
+  return allProjects.slice()
+}
+// 真的有比對到負責人嗎？用來決定要不要顯示「未設定負責人」的提示
+function hasOwnerMatch(name){
+  if(allProjects.some(p=>p.owner===name)) return true
+  return getRoutesForUser(name).some(r=>r.projectId)
 }
 // 還沒歸到任何專案的零散路線——仍要讓工程師點得到，否則舊資料會消失
 function getLooseRoutesForUser(name){
-  return getRoutesForUser(name).filter(r=>!r.projectId)
-}
-function routeCountInProject(name, projectId){
-  return getRoutesForUser(name).filter(r=>String(r.projectId)===String(projectId)).length
+  const mine=getRoutesForUser(name).filter(r=>!r.projectId)
+  if(mine.length) return mine
+  // 同上：沒有任何路線寫了 owner 時，把所有無專案的路線都列出來
+  return hasOwnerMatch(name) ? [] : allRoutes.filter(r=>!r.projectId)
 }
 
 // ════════════════ STEP 2 — PROJECTS ════════════════
@@ -331,7 +350,13 @@ function showProjList(name){
     return
   }
 
-  let html = projects.map(p=>`
+  let html = ''
+  if(!hasOwnerMatch(name)){
+    html += `<div style="font-size:12px;color:#b45309;background:#fef3c7;border-radius:10px;padding:8px 10px;margin-bottom:10px;line-height:1.6">
+      這些專案還沒設定負責人，先顯示全部。請 PM 在管理後台指派後，這裡就只會出現該工程師的專案。
+    </div>`
+  }
+  html += projects.map(p=>`
     <button class="proj-btn" id="pj-${p.id}" onclick="selectProject('${escQ(String(p.id))}')">
       <div class="proj-name">📁 ${p.name||p.id}</div>
       <div class="proj-meta">
