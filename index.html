@@ -442,14 +442,14 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 <div id="screen-signin" class="screen">
   <div class="signin-hero">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-      <div>
-        <div class="route-badge">旅行時間調查</div>
-        <span style="display:inline-block;vertical-align:middle;margin-left:4px;margin-bottom:5px;font-size:9px;font-weight:800;letter-spacing:.5px;color:#92400e;background:#fde68a;border-radius:6px;padding:2px 6px">BETA</span>
+      <!-- 返回鍵放在最左邊，跟一般 App 的返回位置一致 -->
+      <button class="btn-q-sq" id="btn-back-routes" style="display:none;flex-shrink:0;margin-top:2px" onclick="backToRoutePicker()" title="返回選擇路線"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <div style="flex:1;min-width:0">
+        <span style="display:inline-block;vertical-align:middle;margin-bottom:5px;font-size:9px;font-weight:800;letter-spacing:.5px;color:#92400e;background:#fde68a;border-radius:6px;padding:2px 6px">BETA</span>
         <h2 id="si-route-name">載入任務中...</h2>
         <p id="si-fromto"></p>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;padding-top:2px">
-        <button class="btn-q-sq" id="btn-back-routes" style="display:none" onclick="backToRoutePicker()" title="返回選擇路線"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
         <button class="btn-hist-rec" onclick="openHistModal()">📋 記錄</button>
         <button class="btn-q-sq" id="btn-help-q" onclick="openHelpMenu(event)">?</button>
       </div>
@@ -464,7 +464,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
         <div class="signin-card-mini-val" id="si-peak"></div>
       </div>
       <div class="signin-card-mini">
-        <div class="signin-card-mini-label">路段</div>
+        <div class="signin-card-mini-label">總里程</div>
         <div class="signin-card-mini-val" id="si-segs"></div>
       </div>
     </div>
@@ -935,6 +935,12 @@ let setupWeather='', manualSegs=[]
 //  UTILS
 // ════════════════════════════════════
 function fmtSec(s){const m=Math.floor(s/60),r=s%60;return`${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`}
+// 距離顯示：未滿 1 公里用公尺，1 公里以上用公里（小數第一位）
+function fmtDist(m){
+  const v=+m
+  if(!isFinite(v)||v<=0) return '—'
+  return v<1000 ? Math.round(v)+' m' : (v/1000).toFixed(1)+' km'
+}
 function fmtTime(s){if(!s&&s!==0)return'--';const m=Math.floor(s/60),r=s%60;return`${m}分${String(r).padStart(2,'0')}秒`}
 function fmtHMS(d){
   if(!d) return ''
@@ -1925,11 +1931,15 @@ function showSigninScreen(){
   $('si-peak').textContent=config.peakLabel
   $('si-offpeak-lb').textContent=config.offPeakName||'離峰'
   $('si-peak-lb').textContent=config.peakName||'尖峰'
-  $('si-segs').textContent=config.segments.length+' 段'
+  // 總里程：優先用 PM 設定的全長，沒有的話就把各路段長度加起來
+  const _totalM = (+config.totalLength)>0
+    ? +config.totalLength
+    : config.segments.reduce((a,s)=>a+(+s.length||0),0)
+  $('si-segs').textContent=fmtDist(_totalM)
   $('si-seg-preview').innerHTML=config.segments.map((s,i)=>`
     <div class="seg-row"><div class="seg-dot"></div>
     <span style="flex:1;color:#1e293b;font-weight:600">${segDisp(s.name)}</span>
-    <span style="color:#94a3b8;font-size:11px">${s.length}m</span></div>`).join('')
+    <span style="color:#94a3b8;font-size:11px">${fmtDist(s.length)}</span></div>`).join('')
   const backBtn=$('btn-back-routes')
   if(backBtn) backBtn.style.display=_cameFromProjectPicker?'flex':'none'
   showScreen('screen-signin')
@@ -4191,11 +4201,61 @@ async function showProjectRoutePicker(pid, gsParam, kParam){
     setTimeout(()=>renderProjectRoutesMap(routes,gsParam,kParam), 120)
     // 進度另外抓：慢一點或失敗都不該卡住選路線
     renderTodayProgress(pid, routes, gsParam, kParam)
+    // 當天第一次開這個專案時，提醒把手機設定好（勿擾＋解除靜音）
+    setTimeout(()=>maybeShowDailyReminder(pid), 350)
   }catch(e){
     document.getElementById('loading-msg').textContent='❌ 載入失敗'
     document.getElementById('loading-sub').textContent=e.message
     setLoadPct(0)
   }
+}
+
+// ════════════════════════════════════
+//  出發前提醒：當天第一次開啟這個專案時跳一次
+//  （調查全程靠聲音提示節點與轉彎，手機被靜音或被來電打斷都會漏掉）
+// ════════════════════════════════════
+const DAILY_REMINDER_KEY='daily_setup_reminder'
+function dailyReminderShown(pid){
+  try{ return localStorage.getItem(`${DAILY_REMINDER_KEY}_${pid}`)===todayStr() }
+  catch(e){ return false }   // 無痕模式等讀不到 localStorage 時，寧可提醒也不要漏掉
+}
+function markDailyReminderShown(pid){
+  try{ localStorage.setItem(`${DAILY_REMINDER_KEY}_${pid}`, todayStr()) }catch(e){}
+}
+function closeDailyReminder(pid){
+  markDailyReminderShown(pid)
+  const el=document.getElementById('daily-reminder-overlay')
+  if(el) el.remove()
+  // 藉這個使用者手勢順便解鎖聲音與語音，iOS 才會在之後的自動提示出聲
+  try{ unlockAudio() }catch(e){}
+  try{ unlockNavVoice() }catch(e){}
+}
+function maybeShowDailyReminder(pid){
+  if(dailyReminderShown(pid)) return
+  if(document.getElementById('daily-reminder-overlay')) return
+  const ov=document.createElement('div')
+  ov.id='daily-reminder-overlay'
+  ov.style.cssText='position:fixed;inset:0;z-index:4000;background:rgba(15,23,42,.62);display:flex;align-items:center;justify-content:center;padding:20px'
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:18px;padding:20px 18px;width:100%;max-width:320px;box-shadow:0 16px 48px rgba(0,0,0,.35)">
+      <div style="font-size:30px;text-align:center;line-height:1">🚗</div>
+      <div style="font-size:16px;font-weight:800;color:#0f172a;text-align:center;margin:8px 0 4px">出發前確認</div>
+      <div style="font-size:12.5px;color:#64748b;text-align:center;line-height:1.6;margin-bottom:14px">調查過程會用聲音提示節點，請先完成這兩項</div>
+      <div style="display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border-radius:12px;padding:11px 12px;margin-bottom:8px">
+        <span style="font-size:17px;line-height:1.3">🌙</span>
+        <div><div style="font-size:13.5px;font-weight:700;color:#0f172a">開啟勿擾模式</div>
+        <div style="font-size:12px;color:#94a3b8;margin-top:1px">避免來電中斷調查</div></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border-radius:12px;padding:11px 12px;margin-bottom:16px">
+        <span style="font-size:17px;line-height:1.3">🔊</span>
+        <div><div style="font-size:13.5px;font-weight:700;color:#0f172a">關閉靜音、開啟聲音</div>
+        <div style="font-size:12px;color:#94a3b8;margin-top:1px">才聽得到節點與轉彎提示</div></div>
+      </div>
+      <button id="daily-reminder-ok" style="width:100%;padding:13px;background:#2563eb;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">我知道了</button>
+    </div>`
+  document.body.appendChild(ov)
+  const btn=document.getElementById('daily-reminder-ok')
+  if(btn) btn.onclick=()=>closeDailyReminder(pid)
 }
 
 // 把「今天這條路線做到第幾次」畫成一排圓點：一顆＝一次調查（一次內含四趟：離峰去回、尖峰去回）。
