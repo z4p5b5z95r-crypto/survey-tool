@@ -267,7 +267,7 @@ td:first-child{text-align:left;font-weight:500}
     <div class="ld-fd-item" style="animation-delay:6.4s">🛸</div>
     <div class="ld-fd-front"></div>
   </div>
-  <p id="ld-msg">專案資料下載中</p>
+  <p id="ld-msg">調查紀錄下載中...</p>
   <small id="ld-sub"></small>
 </div>
 
@@ -609,7 +609,7 @@ async function _prefetchAllRoutes(){
   }
 }
 async function initProjectReport(gs, sessionToken, pid, wantDate){
-  ld('載入專案資料…')
+  ld('調查紀錄下載中...')
   const [routesRes, datesRes, projRes] = await Promise.all([
     cloudGet(gs, sessionToken, {action:'getProjectRoutes', pid}),
     cloudGet(gs, sessionToken, {action:'getProjectDates', pid}).catch(()=>({ok:true,data:[]})),
@@ -641,7 +641,7 @@ async function initProjectReport(gs, sessionToken, pid, wantDate){
   renderRouteTabs()
   // 先把使用者要看的第一條路線載進來，其餘在背景繼續抓，
   // 這樣一進畫面就有東西看，之後切換路線與批次下載都不用再等。
-  ld('載入第一條路線…')
+  ld('調查紀錄下載中...')
   await _loadRouteIntoGlobals(gs, sessionToken, _pm.routeId, _pm.date)
   renderPage()
   setTimeout(()=>{ _prefetchAllRoutes() }, 0)
