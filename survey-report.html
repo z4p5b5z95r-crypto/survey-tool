@@ -399,6 +399,12 @@ let _tripMapBounds = {}  // mapId -> L.latLngBounds (for re-fitting after invali
 const COMBO_KEYS = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
 function COMBO_LABEL_(key){ const o=(route&&route.offPeakName)||'離峰', p=(route&&route.peakName)||'尖峰'; return {off_peak_bound:o+' 去程',off_peak_return:o+' 回程',peak_bound:p+' 去程',peak_return:p+' 回程'}[key] }
 const COMBO_LABEL = new Proxy({}, {get:(_,key)=>COMBO_LABEL_(key)})   // route 尚未載入時安全 fallback，載入後即時反映 PM 自訂名稱
+// 路段名稱顯示用：畫面與匯出的報告一律用破折號「—」，不用箭頭「→」。
+// 只在「輸出的那一刻」轉換，資料本身仍維持箭頭——因為合併假節點、回程反轉路段名稱那些邏輯
+// 都是靠箭頭去切字串的，直接改掉存檔格式會把那些判斷弄壞。
+function segDisp(n){ return (n==null?'':String(n)).replace(/→/g,'—') }
+// 路段名稱的分隔符號：新資料用「—」，舊資料是「→」，切字串時兩種都要吃
+const SEG_SEP = /[→—]/
 const TRACK_COLOR = {
   off_peak_bound:'#2563eb',
   off_peak_return:'#60a5fa',
@@ -763,7 +769,7 @@ function renderTravelTable(){
       return `<td${title}${mismatch?' style="text-decoration:underline dotted #c2410c;text-underline-offset:3px"':''}>${fmt(v)}</td>`
     }
     html += `<tr>
-      <td>${he(seg.name)}</td><td>${seg.lanes||'—'}</td><td>${seg.width||'—'}</td><td>${seg.length||'—'}</td>
+      <td>${he(segDisp(seg.name))}</td><td>${seg.lanes||'—'}</td><td>${seg.width||'—'}</td><td>${seg.length||'—'}</td>
       ${tv.map(cellHtml).join('')}
       ${rv.map(cellHtml).join('')}
     </tr>`
@@ -787,7 +793,7 @@ function _mergeGhostSegs(){
   const ghostIdxSet = new Set(route.ghostNodeIndices||[])
   nodes.forEach((n,i)=>{ if(n&&(n.ghost||n.gh)) ghostIdxSet.add(i) })
   for(let k=1;k<rawSegs.length;k++){
-    const segStart=(rawSegs[k].name||'').split('→')[0].trim()
+    const segStart=(rawSegs[k].name||'').split(SEG_SEP)[0].trim()
     if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
   }
   if(!ghostIdxSet.size) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
@@ -798,10 +804,10 @@ function _mergeGhostSegs(){
       idxs.push(i+idxs.length)
     const merged=Object.assign({},rawSegs[i],{_origIdx:idxs})
     if(idxs.length>1){
-      const startName=(rawSegs[i].name||'').split('→')[0].trim()
+      const startName=(rawSegs[i].name||'').split(SEG_SEP)[0].trim()
       const lastSeg=rawSegs[i+idxs.length-1]
-      const endName=(lastSeg.name||'').split('→').pop().trim()
-      merged.name=startName+'→'+endName
+      const endName=(lastSeg.name||'').split(SEG_SEP).pop().trim()
+      merged.name=startName+'—'+endName
       merged.length=idxs.reduce((a,j)=>a+(rawSegs[j]?.length||0),0)
     }
     out.push(merged); i+=idxs.length
@@ -841,7 +847,7 @@ function renderSpeedTable(){
     segRun.forEach((v,j)=>{ if(v) totRun[j]+=v })
     totLen+=L
     html += `<tr>
-      <td>${he(seg.name)}</td><td>${L}</td>
+      <td>${he(segDisp(seg.name))}</td><td>${L}</td>
       ${tv.map(v=>`<td>${v}</td>`).join('')}
       ${rv.map(v=>`<td>${v}</td>`).join('')}
     </tr>`
@@ -873,23 +879,34 @@ function renderDelayTable(){
   </tr>`
   html += r('平均總旅行速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.travelS)))
   html += r('平均總行駛速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.runS)))
+  // 順序比照制式表單：行駛時間 → 路段延滯 → 交叉口延滯
+  const pctTravel = (t,key) => t?.travelS>0 ? ((t[key]/t.travelS)*100).toFixed(1) : null
   html += r('行駛時間 (秒)', trips.map(t=>t?.runS))
-  html += r('行駛時間 (%)', trips.map(t=>t?.travelS>0?((t.runS/t.travelS)*100).toFixed(1):null))
-  html += r('交叉口延滯 (秒)', trips.map(t=>t?.intTotalS))
-  html += r('交叉口延滯 (%)', trips.map(t=>t?.travelS>0?((t.intTotalS/t.travelS)*100).toFixed(1):null))
+  html += r('行駛時間 (%)', trips.map(t=>pctTravel(t,'runS')))
   html += r('路段延滯 (秒)', trips.map(t=>t?.roadTotalS))
-  html += r('路段延滯 (%)', trips.map(t=>t?.travelS>0?((t.roadTotalS/t.travelS)*100).toFixed(1):null))
+  html += r('路段延滯 (%)', trips.map(t=>pctTravel(t,'roadTotalS')))
+  html += r('交叉口延滯 (秒)', trips.map(t=>t?.intTotalS))
+  html += r('交叉口延滯 (%)', trips.map(t=>pctTravel(t,'intTotalS')))
   html += `<tr class="total-row"><td><b>合計旅行時間 (秒)</b></td>${trips.map(t=>`<td class="highlight">${fmt(t?.travelS)}</td>`).join('')}</tr>`
 
-  // Int delay breakdown
-  html += `<tr><td colspan="5" style="background:#fef9c3;font-weight:700;padding:6px 8px">交叉口延滯明細</td></tr>`
-  INT_DELAYS.forEach(d=>{
-    html += r(d.label+' (秒)', trips.map(t=>t?.intDelays?.[d.cause]||0))
-  })
+  // 延滯明細：百分比以「該趟延滯總和」為分母（路段＋交叉口），相加為 100%
+  const dBase = t => (t?.roadTotalS||0)+(t?.intTotalS||0)
+  const dPct  = (t,v) => dBase(t)>0 ? ((v/dBase(t))*100).toFixed(1) : null
   html += `<tr><td colspan="5" style="background:#fef9c3;font-weight:700;padding:6px 8px">路段延滯明細</td></tr>`
   ROAD_DELAYS.forEach(d=>{
     html += r(d.label+' (秒)', trips.map(t=>t?.roadDelays?.[d.cause]||0))
+    html += r(d.label+' (%)', trips.map(t=>dPct(t, t?.roadDelays?.[d.cause]||0)))
   })
+  html += r('路段延滯小計 (秒)', trips.map(t=>t?.roadTotalS))
+  html += r('路段延滯小計 (%)', trips.map(t=>dPct(t, t?.roadTotalS||0)))
+  html += `<tr><td colspan="5" style="background:#fef9c3;font-weight:700;padding:6px 8px">交叉口延滯明細</td></tr>`
+  INT_DELAYS.forEach(d=>{
+    html += r(d.label+' (秒)', trips.map(t=>t?.intDelays?.[d.cause]||0))
+    html += r(d.label+' (%)', trips.map(t=>dPct(t, t?.intDelays?.[d.cause]||0)))
+  })
+  html += r('交叉口延滯小計 (秒)', trips.map(t=>t?.intTotalS))
+  html += r('交叉口延滯小計 (%)', trips.map(t=>dPct(t, t?.intTotalS||0)))
+  html += `<tr class="total-row"><td><b>延滯合計 (秒)</b></td>${trips.map(t=>`<td class="highlight">${fmt(dBase(t)||null)}</td>`).join('')}</tr>`
   document.getElementById('tbl-delay').innerHTML = html
 }
 
@@ -966,7 +983,7 @@ function renderComboRecords(combo){
     const spdFn = (d,s) => (d>0&&s>0)?(d/s*3.6).toFixed(1):''
     const pct = (v,t) => t>0?(v/t*100).toFixed(2)+'%':'0.00%'
     // 回程路段名稱反轉：「A→B」→「B→A」 或 「A-B」→「B-A」
-    const flipSeg = n => { if(!n||!isReturn) return n||'—'; const a=n.indexOf('→'); if(a>=0) return n.slice(a+1)+'→'+n.slice(0,a); const h=n.indexOf('-'); return h>=0?n.slice(h+1)+'-'+n.slice(0,h):n }
+    const flipSeg = n => { if(!n||!isReturn) return n||'—'; const a=n.search(SEG_SEP); if(a>=0) return n.slice(a+1)+'—'+n.slice(0,a); const h=n.indexOf('-'); return h>=0?n.slice(h+1)+'-'+n.slice(0,h):n }
     const RC=ROAD_DELAYS.map(d=>d.cause), IC=INT_DELAYS.map(d=>d.cause)
     // nodeTimestamps 永遠按行程順序排列（去/回皆同），直接用 [i, i+1]
     const segD=segOrder.map((_,i)=>{
@@ -1004,7 +1021,7 @@ function renderComboRecords(combo){
         ?`<td><input class="pf-edit-inp" type="number" min="0" max="9999" data-ie="dl-${c}-${i}" value="${sd[c]||0}"></td>`
         :`<td>${dv(sd[c])}</td>`
       return `<tr>
-        <td colspan="2" class="pf-seg">${he(flipSeg(seg.name))}</td>
+        <td colspan="2" class="pf-seg">${he(segDisp(flipSeg(seg.name)))}</td>
         ${tCells}
         ${dCell('congestion')}${dCell('bus_stop')}${dCell('taxi_stop')}
         ${dCell('parking')}${dCell('ped_cross')}${dCell('road_other')}
@@ -1248,7 +1265,7 @@ function initTripMap(mapId, trip, combo){
     const mm=secs!=null?String(Math.floor(secs/60)).padStart(2,'0'):'—'
     const ss=secs!=null?String(secs%60).padStart(2,'0'):'—'
     const mmss=secs!=null?`${mm}:${ss}`:'—'
-    const sName=sd?.name||`路段 ${si+1}`
+    const sName=segDisp(sd?.name)||`路段 ${si+1}`
     const popup=`<div style="font-size:12px;min-width:200px;line-height:1.9">
       <div style="font-weight:700;margin-bottom:5px;color:#1e293b;border-bottom:1px solid #e2e8f0;padding-bottom:4px">${he(sName)}</div>
       <div>🕐 起始時間：<b>${ts0?fmtDTLocal(ts0):'—'}</b></div>
@@ -1445,7 +1462,7 @@ function buildTimeSheet(){
     segRv.forEach((v,j)=>totRv[j]+=v)
     totLen+=seg.length||0
     const tv=segTv.map(v=>v||''), rv=segRv.map(v=>v||'')
-    rows.push([seg.name, seg.lanes||'', seg.width||'', seg.length||0,
+    rows.push([segDisp(seg.name), seg.lanes||'', seg.width||'', seg.length||0,
       tv[0],tv[1],tv[2],tv[3], rv[0],rv[1],rv[2],rv[3]])
   })
   // 合計欄改用「加總上面每個路段的數字」，跟表格內容一致
@@ -1483,7 +1500,7 @@ function buildSpeedSheet(){
     segRv.forEach((v,j)=>totRv[j]+=v)
     totLen+=L
     const tv=segTv.map(v=>spd(L,v)), rv=segRv.map(v=>spd(L,v))
-    rows.push([seg.name, L, tv[0],tv[1],tv[2],tv[3], rv[0],rv[1],rv[2],rv[3]])
+    rows.push([segDisp(seg.name), L, tv[0],tv[1],tv[2],tv[3], rv[0],rv[1],rv[2],rv[3]])
   })
   // 合計欄改用「路段長度總和 ÷ 每個路段時間加總」，跟上面各路段的數字加總一致
   rows.push(['合計',totLen,
@@ -1500,8 +1517,17 @@ function buildDelaySheet(){
   const hdr = [`${off} 去程`,`${off} 回程`,`${pk} 去程`,`${pk} 回程`]
 
   const v=(t,key)=>t?t[key]??'':'—'
+  // 上半部「總旅行時間」：分母為旅行時間
   const pct=(t,key)=>t&&t.travelS>0 ? ((t[key]/t.travelS)*100).toFixed(1)+'%' : '—'
   const d=(t,grp,cause)=>t?(grp==='int'?t.intDelays?.[cause]:t.roadDelays?.[cause])??0:'—'
+  // 下半部「總延滯時間」：分母為該趟延滯總和（路段＋交叉口），各項相加為 100%
+  const dBase=t=>t?((t.roadTotalS||0)+(t.intTotalS||0)):0
+  const dPct=(t,val)=>{ const b=dBase(t); return (t&&b>0)?((val/b)*100).toFixed(1)+'%':'—' }
+  const dPctCause=(t,grp,cause)=>{
+    if(!t) return '—'
+    const val=(grp==='int'?t.intDelays?.[cause]:t.roadDelays?.[cause])||0
+    return dPct(t,val)
+  }
 
   return XLSX.utils.aoa_to_sheet([
     ['延滯統計表'],
@@ -1512,17 +1538,31 @@ function buildDelaySheet(){
     ['平均總行駛速率 (km/h)', ...trips.map(t=>spd(route.totalLength,t?.runS))],
     ['行駛時間 (秒)', ...trips.map(t=>v(t,'runS'))],
     ['行駛時間 (%)', ...trips.map(t=>pct(t,'runS'))],
-    ['交叉口延滯 (秒)', ...trips.map(t=>v(t,'intTotalS'))],
-    ['交叉口延滯 (%)', ...trips.map(t=>pct(t,'intTotalS'))],
     ['路段延滯 (秒)', ...trips.map(t=>v(t,'roadTotalS'))],
     ['路段延滯 (%)', ...trips.map(t=>pct(t,'roadTotalS'))],
+    ['交叉口延滯 (秒)', ...trips.map(t=>v(t,'intTotalS'))],
+    ['交叉口延滯 (%)', ...trips.map(t=>pct(t,'intTotalS'))],
     ['合計旅行時間 (秒)', ...trips.map(t=>v(t,'travelS'))],
-    [],
-    ['交叉口延滯明細 (秒)', ...hdr],
-    ...INT_DELAYS.map(dd=>[ dd.label, ...trips.map(t=>d(t,'int',dd.cause)) ]),
     [],
     ['路段延滯明細 (秒)', ...hdr],
     ...ROAD_DELAYS.map(dd=>[ dd.label, ...trips.map(t=>d(t,'road',dd.cause)) ]),
+    ['小計 (秒)', ...trips.map(t=>v(t,'roadTotalS'))],
+    [],
+    ['交叉口延滯明細 (秒)', ...hdr],
+    ...INT_DELAYS.map(dd=>[ dd.label, ...trips.map(t=>d(t,'int',dd.cause)) ]),
+    ['小計 (秒)', ...trips.map(t=>v(t,'intTotalS'))],
+    ['延滯合計 (秒)', ...trips.map(t=>t?dBase(t):'—')],
+    [],
+    ['延滯統計表(續) — 百分比（分母＝延滯合計）'],
+    [],
+    ['路段延滯明細 (%)', ...hdr],
+    ...ROAD_DELAYS.map(dd=>[ dd.label, ...trips.map(t=>dPctCause(t,'road',dd.cause)) ]),
+    ['小計 (%)', ...trips.map(t=>dPct(t,t?.roadTotalS||0))],
+    [],
+    ['交叉口延滯明細 (%)', ...hdr],
+    ...INT_DELAYS.map(dd=>[ dd.label, ...trips.map(t=>dPctCause(t,'int',dd.cause)) ]),
+    ['小計 (%)', ...trips.map(t=>dPct(t,t?.intTotalS||0))],
+    ['延滯合計 (%)', ...trips.map(t=>dPct(t,dBase(t)))],
   ])
 }
 
@@ -1536,7 +1576,7 @@ function buildTripSheet(trip, survey, combo){
   const segs     = route.segments || []
   const segOrder = isReturn ? [...segs].reverse() : segs
   const times    = trip.segTimes || []
-  const flipSegXls = n => { if(!n||!isReturn) return n||''; const a=n.indexOf('→'); if(a>=0) return n.slice(a+1)+'→'+n.slice(0,a); const h=n.indexOf('-'); return h>=0?n.slice(h+1)+'-'+n.slice(0,h):n }
+  const flipSegXls = n => { if(!n||!isReturn) return n||''; const a=n.search(SEG_SEP); if(a>=0) return n.slice(a+1)+'—'+n.slice(0,a); const h=n.indexOf('-'); return h>=0?n.slice(h+1)+'-'+n.slice(0,h):n }
 
   const st = trip.startTime ? new Date(trip.startTime) : null
   const et = trip.endTime   ? new Date(trip.endTime)   : null
@@ -1580,7 +1620,7 @@ function buildTripSheet(trip, survey, combo){
       const [nH,nM,nS] = hms(nodeTime)
       const segIdx = isReturn ? segs.length - 1 - i : i
       return [
-        flipSegXls(seg.name),'',nH,nM,nS,
+        segDisp(flipSegXls(seg.name)),'',nH,nM,nS,
         0,0,0,0,0,0,
         0,0,0,0,0,0,0,
         times[segIdx]?.travelS??'', seg.length||''
@@ -1790,7 +1830,7 @@ function downloadSGSPdf(){
     // (pm.html renames seg[k-1] to the merged auto-name, so endpoint matching fails;
     //  the ghost node's name survives only as the *start* of the outgoing segment.)
     for(let k=1;k<rawSegs.length;k++){
-      const segStart=(rawSegs[k].name||'').split('→')[0]?.trim()||''
+      const segStart=(rawSegs[k].name||'').split(SEG_SEP)[0]?.trim()||''
       if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
     }
     if(!ghostIdxSet.size) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
@@ -1805,10 +1845,10 @@ function downloadSGSPdf(){
       }
       const merged=Object.assign({},rawSegs[i],{_origIdx:idxs})
       if(idxs.length>1){
-        const startName=(rawSegs[i].name||'').split('→')[0]?.trim()||''
+        const startName=(rawSegs[i].name||'').split(SEG_SEP)[0]?.trim()||''
         const lastSeg=rawSegs[i+idxs.length-1]
-        const endName=(lastSeg.name||'').split('→').pop()?.trim()||''
-        merged.name=startName+'→'+endName
+        const endName=(lastSeg.name||'').split(SEG_SEP).pop()?.trim()||''
+        merged.name=startName+'—'+endName
         merged.length=idxs.reduce((a,j)=>a+(rawSegs[j]?.length||0),0)
       }
       out.push(merged); i+=idxs.length
@@ -1903,13 +1943,17 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
     const title = isSec ? '延滯統計表' : '延滯統計表(續)'
 
     const D4 = (fn) => T4.map(t=>`<td>${_n(fn(t))}</td>`).join('')
+    // 下半部「總延滯時間」的百分比，分母是這一趟的延滯總和（路段＋交叉口），不是旅行時間。
+    // 這樣各項延滯佔比相加才會等於 100%，跟制式表單一致；
+    // 上半部「總旅行時間」則維持以旅行時間為分母（行駛時間＋路段延滯＋交叉口延滯佔全程比例）。
+    const delayBase = t => (t?.roadTotalS||0)+(t?.intTotalS||0)
     const dv = (t, grp, c) => {
       const v = grp==='int' ? (t?.intDelays?.[c]||0) : (t?.roadDelays?.[c]||0)
-      return isSec ? v : _pct(v, t?.travelS, 1)
+      return isSec ? v : _pct(v, delayBase(t), 1)
     }
-    const subRoad = t => isSec ? _n(t?.roadTotalS) : _pct(t?.roadTotalS, t?.travelS, 1)
-    const subInt  = t => isSec ? _n(t?.intTotalS)  : _pct(t?.intTotalS,  t?.travelS, 1)
-    const tot     = t => { const v=(t?.roadTotalS||0)+(t?.intTotalS||0); return isSec?v:_pct(v,t?.travelS,1) }
+    const subRoad = t => isSec ? _n(t?.roadTotalS) : _pct(t?.roadTotalS, delayBase(t), 1)
+    const subInt  = t => isSec ? _n(t?.intTotalS)  : _pct(t?.intTotalS,  delayBase(t), 1)
+    const tot     = t => { const v=delayBase(t); return isSec?v:_pct(v,delayBase(t),1) }
 
     return `<div class="pg">
 <h2 class="pg-title">${title}</h2>
@@ -2078,7 +2122,7 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
         : ''
       rows += `<tr>
         ${firstCol}
-        <td class="sr-sl">${he(seg.name||'')}</td>
+        <td class="sr-sl">${he(segDisp(seg.name))}</td>
         <td>${seg.lanes||''}</td><td>${seg.width||''}</td>
         <td class="sr-len">${seg.length||''}</td>
         ${tv.map(_v).join('')}${rv.map(_v).join('')}
@@ -2115,7 +2159,7 @@ ${rows}</table>`
         : ''
       rows += `<tr>
         ${firstCol}
-        <td class="sr-sl">${he(seg.name||'')}</td>
+        <td class="sr-sl">${he(segDisp(seg.name))}</td>
         <td>${seg.lanes||''}</td><td>${seg.width||''}</td>
         <td class="sr-len">${L||''}</td>
         ${tv.map(_v).join('')}${rv.map(_v).join('')}
@@ -2138,7 +2182,7 @@ ${rows}</table>`
     const isReturn = trip.direction==='return'
     const isPeak   = trip.peakType==='peak'
     const segOrd   = isReturn ? [...rawSegs].reverse() : rawSegs
-    const _flipSeg = n => { if(!n||!isReturn) return n||''; const a=n.indexOf('→'); if(a>=0) return n.slice(a+1)+'→'+n.slice(0,a); const h=n.indexOf('-'); return h>=0?n.slice(h+1)+'-'+n.slice(0,h):n }
+    const _flipSeg = n => { if(!n||!isReturn) return n||''; const a=n.search(SEG_SEP); if(a>=0) return n.slice(a+1)+'—'+n.slice(0,a); const h=n.indexOf('-'); return h>=0?n.slice(h+1)+'-'+n.slice(0,h):n }
     const nodeTs   = trip.nodeTimestamps||[]
     const times    = trip.segTimes||[]
     const rd = trip.roadDelays||{}, id = trip.intDelays||{}
@@ -2181,7 +2225,7 @@ ${rows}</table>`
       const calcRunS = t.travelS != null ? Math.max(0, t.travelS - segDelayTotal) : null
       const _d = v => (v&&v!==0)?v:''
       return `<tr>
-        <td class="ft-la">${_flipSeg(seg.name)||''}</td>
+        <td class="ft-la">${segDisp(_flipSeg(seg.name))}</td>
         <td class="ft-bl">${_n(nH)}</td><td class="ft-bl">${_n(nM)}</td><td class="ft-bl">${_n(nS)}</td>
         ${ROAD_C.map(c=>`<td>${_d(sd[c])}</td>`).join('')}
         ${INT_C.map(c=>`<td>${_d(sd[c])}</td>`).join('')}
