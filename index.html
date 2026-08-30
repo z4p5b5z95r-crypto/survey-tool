@@ -41,30 +41,18 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .ld-fd-tab{position:absolute;left:0;bottom:70px;width:48px;height:13px;background:#d99a2b;border-radius:6px 8px 0 0}
 .ld-fd-front{position:absolute;left:0;bottom:0;width:112px;height:62px;background:linear-gradient(180deg,#f4b942,#e8a52e);border-radius:7px;z-index:6;box-shadow:0 -2px 6px rgba(0,0,0,.18);animation:ldPop .62s ease-in-out infinite}
 .ld-fd-item{position:absolute;left:50%;top:4px;font-size:44px;line-height:1;z-index:4;opacity:0}
-.ld-L{animation:ldDropL 7.5s linear infinite}
-.ld-R{animation:ldDropR 7.5s linear infinite}
-@keyframes ldDropL{
-  0%   {opacity:0;transform:translate(-150px,-150px) scale(.62) rotate(-28deg)}
+.ld-fd-item{animation:ldDrop 7.5s linear infinite}
+/* 從正上方直直落下：速度由慢漸快（重力感），落進資料夾後縮小消失 */
+@keyframes ldDrop{
+  0%   {opacity:0;transform:translate(-50%,-190px) scale(.7) rotate(-10deg)}
   2%   {opacity:1}
-  3.5% {transform:translate(-124px,-124px) scale(.72) rotate(-18deg)}
-  5.6% {transform:translate(-96px,-92px)   scale(.82) rotate(-8deg)}
-  7.7% {transform:translate(-68px,-52px)   scale(.92) rotate(4deg)}
-  9.4% {transform:translate(-44px,-14px)   scale(1)   rotate(14deg)}
-  10.9%{opacity:1;transform:translate(-50%,20px) scale(1) rotate(20deg)}
-  12.2%{opacity:1;transform:translate(-50%,40px) scale(.82) rotate(12deg)}
-  13.7%{opacity:0;transform:translate(-50%,46px) scale(.55)}
-  100% {opacity:0;transform:translate(-50%,46px) scale(.55)}
-}
-@keyframes ldDropR{
-  0%   {opacity:0;transform:translate(90px,-150px) scale(.62) rotate(28deg)}
-  2%   {opacity:1}
-  3.5% {transform:translate(66px,-124px) scale(.72) rotate(18deg)}
-  5.6% {transform:translate(40px,-92px)  scale(.82) rotate(8deg)}
-  7.7% {transform:translate(12px,-52px)  scale(.92) rotate(-4deg)}
-  9.4% {transform:translate(-14px,-14px) scale(1)   rotate(-14deg)}
-  10.9%{opacity:1;transform:translate(-50%,20px) scale(1) rotate(-20deg)}
-  12.2%{opacity:1;transform:translate(-50%,40px) scale(.82) rotate(-12deg)}
-  13.7%{opacity:0;transform:translate(-50%,46px) scale(.55)}
+  4%   {transform:translate(-50%,-150px) scale(.78) rotate(-6deg)}
+  6.5% {transform:translate(-50%,-104px) scale(.86) rotate(-2deg)}
+  8.8% {transform:translate(-50%,-52px)  scale(.94) rotate(3deg)}
+  10.5%{transform:translate(-50%,-6px)   scale(1)   rotate(7deg)}
+  11.8%{opacity:1;transform:translate(-50%,24px) scale(1) rotate(4deg)}
+  13%  {opacity:1;transform:translate(-50%,40px) scale(.82) rotate(0deg)}
+  14.5%{opacity:0;transform:translate(-50%,46px) scale(.55)}
   100% {opacity:0;transform:translate(-50%,46px) scale(.55)}
 }
 @keyframes ldPop{0%,100%{transform:scaleY(1)}45%{transform:scaleY(1.08)}}
@@ -436,34 +424,63 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 </head>
 <body>
 
-<!-- ══ Screen: Cloud Loading ══ -->
-<!-- 資料夾放在畫面約 1/3 高的位置：上方留白給圖示掉落的空間，看起來才像從高處落下 -->
-<div id="screen-loading" class="screen" style="background:#0f172a;align-items:center;justify-content:flex-start;flex-direction:column;gap:28px;padding-top:33vh">
+<!-- ══ Screen: Cloud Loading（選路線 → 開始調查，維持原本的小車＋紅綠燈動畫）══ -->
+<div id="screen-loading" class="screen" style="background:#0f172a;align-items:center;justify-content:center;flex-direction:column;gap:28px">
   <div style="width:min(86vw,320px)">
-    <!-- 資料夾收集動畫：道路上的東西從左上／右上高處拋物線落進資料夾 -->
-    <div style="display:flex;justify-content:center">
-      <div class="ld-folder">
-        <div class="ld-fd-back"></div>
-        <div class="ld-fd-tab"></div>
-        <div class="ld-fd-item ld-L" style="animation-delay:0s">🚦</div>
-        <div class="ld-fd-item ld-R" style="animation-delay:.8s">🚗</div>
-        <div class="ld-fd-item ld-L" style="animation-delay:1.6s">🚧</div>
-        <div class="ld-fd-item ld-R" style="animation-delay:2.4s">🚌</div>
-        <div class="ld-fd-item ld-L" style="animation-delay:3.2s">⛔</div>
-        <div class="ld-fd-item ld-R" style="animation-delay:4s">🐄</div>
-        <div class="ld-fd-item ld-L" style="animation-delay:4.8s">🏍️</div>
-        <div class="ld-fd-item ld-R" style="animation-delay:5.6s">🚑</div>
-        <div class="ld-fd-item ld-L" style="animation-delay:6.4s">🛸</div>
-        <div class="ld-fd-front"></div>
+    <!-- Road + traffic light scene -->
+    <div style="position:relative;height:80px">
+      <!-- Road (full width) -->
+      <div style="position:absolute;bottom:6px;left:0;right:0;height:26px;background:#374151;border-radius:6px">
+        <!-- Dashed center line -->
+        <div style="position:absolute;top:50%;transform:translateY(-50%);left:4px;right:4px;height:3px;
+             background:repeating-linear-gradient(90deg,#fbbf24 0 10px,transparent 10px 20px)"></div>
+      </div>
+      <!-- Car -->
+      <div id="car-icon" style="position:absolute;bottom:22px;font-size:35px;left:2px;transform:scaleX(-1);transition:left 1.2s cubic-bezier(.4,0,.2,1)">🚗</div>
+      <!-- Traffic light at 2/3 position -->
+      <div id="tl-pole" style="position:absolute;left:calc(66% - 1px);bottom:6px;width:3px;height:56px;background:#4b5563;border-radius:2px"></div>
+      <div id="tl-box" style="position:absolute;left:calc(66% - 11px);bottom:44px;width:24px;background:#1e293b;border-radius:5px;padding:3px 5px;display:flex;flex-direction:column;gap:3px;box-shadow:0 2px 8px rgba(0,0,0,.6)">
+        <div id="tl-red"    style="width:14px;height:14px;background:#ef4444;border-radius:50%;box-shadow:0 0 7px #ef4444"></div>
+        <div id="tl-yellow" style="width:14px;height:14px;background:#374151;border-radius:50%"></div>
+        <div id="tl-green"  style="width:14px;height:14px;background:#374151;border-radius:50%"></div>
       </div>
     </div>
     <!-- Progress bar -->
-    <div style="height:5px;background:#1e293b;border-radius:3px;margin-top:18px">
+    <div style="height:5px;background:#1e293b;border-radius:3px;margin-top:4px">
       <div id="load-bar" style="height:100%;width:3%;background:#3b82f6;border-radius:3px;transition:width 1.2s cubic-bezier(.4,0,.2,1)"></div>
     </div>
   </div>
   <div id="loading-msg" style="color:#f1f5f9;font-size:20px;font-weight:700;letter-spacing:.5px">任務下載中</div>
   <div id="loading-sub" style="color:#64748b;font-size:13px;text-align:center;max-width:220px;line-height:1.6"></div>
+</div>
+
+<!-- ══ Screen: 掃專案 QR 的載入畫面（資料夾收集動畫）══ -->
+<!-- 資料夾放在畫面約 1/3 高的位置：上方留白給圖示掉落的空間 -->
+<div id="screen-loading-folder" class="screen" style="background:#0f172a;align-items:center;justify-content:flex-start;flex-direction:column;gap:28px;padding-top:33vh">
+  <div style="width:min(86vw,320px)">
+    <!-- 道路上會遇到的東西從正上方掉進資料夾 -->
+    <div style="display:flex;justify-content:center">
+      <div class="ld-folder">
+        <div class="ld-fd-back"></div>
+        <div class="ld-fd-tab"></div>
+        <div class="ld-fd-item" style="animation-delay:0s">🚦</div>
+        <div class="ld-fd-item" style="animation-delay:.8s">🚗</div>
+        <div class="ld-fd-item" style="animation-delay:1.6s">🚧</div>
+        <div class="ld-fd-item" style="animation-delay:2.4s">🚌</div>
+        <div class="ld-fd-item" style="animation-delay:3.2s">⛔</div>
+        <div class="ld-fd-item" style="animation-delay:4s">🐄</div>
+        <div class="ld-fd-item" style="animation-delay:4.8s">🏍️</div>
+        <div class="ld-fd-item" style="animation-delay:5.6s">🚑</div>
+        <div class="ld-fd-item" style="animation-delay:6.4s">🛸</div>
+        <div class="ld-fd-front"></div>
+      </div>
+    </div>
+    <div style="height:5px;background:#1e293b;border-radius:3px;margin-top:18px">
+      <div id="fld-bar" style="height:100%;width:3%;background:#3b82f6;border-radius:3px;transition:width 1.2s cubic-bezier(.4,0,.2,1)"></div>
+    </div>
+  </div>
+  <div id="fld-msg" style="color:#f1f5f9;font-size:20px;font-weight:700;letter-spacing:.5px">專案資料下載中</div>
+  <div id="fld-sub" style="color:#64748b;font-size:13px;text-align:center;max-width:220px;line-height:1.6"></div>
 </div>
 
 <!-- ══ Screen: 專案 QR 掃描後先選路線 ══ -->
@@ -4157,16 +4174,42 @@ function downloadCsv(){
 // ════════════════════════════════════
 //  INIT
 // ════════════════════════════════════
-// ── 載入進度（資料夾收集動畫版）───────────────────
-// 動畫本身是純 CSS 循環播放，這裡只負責推進度條。
+// ── 載入畫面一：選路線 → 開始調查（小車開到紅綠燈前，綠燈後衝過終點）──
 function setLoadPct(pct){
+  const car=document.getElementById('car-icon')
   const bar=document.getElementById('load-bar')
+  if(!car||!bar) return
+  const containerW=Math.min(window.innerWidth*0.86,320)
+  const carSize=44
+  const lightX=containerW*0.66
+  const stopPos=lightX-carSize-4
+  if(pct>=100){
+    const red=document.getElementById('tl-red'),grn=document.getElementById('tl-green'),ylw=document.getElementById('tl-yellow')
+    if(red){ red.style.background='#374151'; red.style.boxShadow='none' }
+    if(ylw){ ylw.style.background='#fbbf24'; ylw.style.boxShadow='0 0 6px #fbbf24' }
+    bar.style.width='100%'
+    setTimeout(()=>{
+      if(ylw){ ylw.style.background='#374151'; ylw.style.boxShadow='none' }
+      if(grn){ grn.style.background='#22c55e'; grn.style.boxShadow='0 0 9px #22c55e' }
+      car.style.transition='left 1.0s cubic-bezier(.2,0,.6,1)'
+      car.style.left=(containerW-carSize)+'px'
+    },420)
+  } else {
+    const maxPos=Math.max(2, stopPos*Math.min(pct,94)/94)
+    car.style.left=maxPos+'px'
+    bar.style.width=Math.max(3,pct)+'%'
+  }
+}
+// ── 載入畫面二：掃專案 QR → 選路線（資料夾收集動畫）──
+// 動畫是純 CSS 循環播放，這裡只負責推進度條。
+function setFolderLoadPct(pct){
+  const bar=document.getElementById('fld-bar')
   if(!bar) return
   bar.style.width=Math.max(3,Math.min(100,pct))+'%'
 }
-// 載入動畫至少要播到「牛」掉進資料夾才換頁，免得網路快的時候畫面一閃就過去。
-// 牛是第 6 個，延遲 4.0 秒，落地約在 4.0 + 7.5×0.137 ≈ 5.03 秒。
-const LOADING_MIN_MS = 5100
+// 資料夾動畫至少要播到「牛」掉進資料夾才換頁，免得網路快的時候畫面一閃就過去。
+// 牛是第 6 個，延遲 4.0 秒，落地約在 4.0 + 7.5×0.145 ≈ 5.09 秒。
+const LOADING_MIN_MS = 5200
 let _loadingStartedAt = 0
 function markLoadingStart(){ _loadingStartedAt = Date.now() }
 async function waitLoadingAnimation(){
@@ -4183,7 +4226,6 @@ async function loadCloudRouteAndProceed(routeId, gsParam, kParam){
   qrKey = 'cloud_' + routeId   // localStorage namespace
 
   showScreen('screen-loading')  // uses classList — correct way
-  markLoadingStart()
   setLoadPct(5)
 
   try{
@@ -4197,7 +4239,7 @@ async function loadCloudRouteAndProceed(routeId, gsParam, kParam){
     document.getElementById('loading-sub').textContent=''
     await prefetchRoutes()
     setLoadPct(100)
-    await waitLoadingAnimation()   // 至少讓動畫播到牛掉進資料夾
+    await new Promise(r=>setTimeout(r,700))  // let car reach 🏁
     showSigninScreen()
     flushOfflineQueue()
   }catch(e){
@@ -4211,17 +4253,17 @@ async function loadCloudRouteAndProceed(routeId, gsParam, kParam){
 let _cameFromProjectPicker = false   // 這次是不是掃專案QR進來的（決定簽到頁要不要顯示「返回選路線」按鈕）
 let _pickerCtx = null                // 記住這次選路線用到的參數，返回清單時可以重查今日進度
 async function showProjectRoutePicker(pid, gsParam, kParam){
-  showScreen('screen-loading')
+  showScreen('screen-loading-folder')
   markLoadingStart()
-  setLoadPct(10)
-  document.getElementById('loading-msg').textContent='專案資料下載中'
-  document.getElementById('loading-sub').textContent=''
+  setFolderLoadPct(10)
+  document.getElementById('fld-msg').textContent='專案資料下載中'
+  document.getElementById('fld-sub').textContent=''
   try{
     const [proj, routes] = await Promise.all([
       cloudFetchProject(pid, gsParam, kParam).catch(()=>null),
       cloudFetchProjectRoutes(pid, gsParam, kParam)
     ])
-    setLoadPct(100)
+    setFolderLoadPct(100)
     const projBadge = document.getElementById('pr-proj-name')
     if(projBadge) projBadge.textContent = proj?.name||'專案'
     const box = document.getElementById('pr-list')
@@ -4252,9 +4294,9 @@ async function showProjectRoutePicker(pid, gsParam, kParam){
     // 當天第一次開這個專案時，提醒把手機設定好（勿擾＋解除靜音）
     setTimeout(()=>maybeShowDailyReminder(pid), 350)
   }catch(e){
-    document.getElementById('loading-msg').textContent='❌ 載入失敗'
-    document.getElementById('loading-sub').textContent=e.message
-    setLoadPct(0)
+    document.getElementById('fld-msg').textContent='❌ 載入失敗'
+    document.getElementById('fld-sub').textContent=e.message
+    setFolderLoadPct(0)
   }
 }
 
