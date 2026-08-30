@@ -34,14 +34,13 @@ input,select,textarea{font-size:max(16px,1em)!important}
 
 /* ── Sign-in ── */
 #screen-signin{background:#f1f5f9}
-.signin-hero{background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);padding:16px 16px 14px;color:white;flex-shrink:0}
-.signin-hero .route-badge{display:inline-block;background:rgba(255,255,255,.08);border-radius:20px;padding:3px 10px;font-size:10px;color:#64748b;margin-bottom:5px}
-.signin-hero h2{font-size:20px;font-weight:800;margin-bottom:2px}
-.signin-hero p{font-size:12px;color:#94a3b8;margin:0}
-.signin-info{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px}
-.signin-card-mini{background:rgba(255,255,255,.06);border-radius:8px;padding:7px 8px;text-align:center}
-.signin-card-mini-label{font-size:10px;color:#64748b;margin-bottom:2px}
-.signin-card-mini-val{font-size:11px;color:white;font-weight:700;line-height:1.3}
+/* 標題區壓成一行：返回鍵、路線名＋里程、時段全部併在同一列，省掉原本整排卡片的高度 */
+.signin-hero{background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);padding:12px 14px;color:white;flex-shrink:0}
+.signin-hero h2{font-size:17px;font-weight:800;margin:0;line-height:1.25}
+.si-dist{font-size:12px;font-weight:700;color:#5DCAA5;flex-shrink:0}
+.si-times{font-size:11.5px;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;line-height:1.4}
+.si-times .off{color:#85B7EB}
+.si-times .pk{color:#EF9F27}
 .signin-body{flex:1;overflow-y:auto;padding:14px 16px;-webkit-overflow-scrolling:touch}
 .signin-card{background:white;border-radius:14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:12px}
 .signin-card h3{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
@@ -441,31 +440,23 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 <!-- ══ Screen -1: Sign-in ══ -->
 <div id="screen-signin" class="screen">
   <div class="signin-hero">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+    <div style="display:flex;align-items:center;gap:10px">
       <!-- 返回鍵放在最左邊，跟一般 App 的返回位置一致 -->
-      <button class="btn-q-sq" id="btn-back-routes" style="display:none;flex-shrink:0;margin-top:2px" onclick="backToRoutePicker()" title="返回選擇路線"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <button class="btn-q-sq" id="btn-back-routes" style="display:none;flex-shrink:0" onclick="backToRoutePicker()" title="返回選擇路線"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
       <div style="flex:1;min-width:0">
-        <span style="display:inline-block;vertical-align:middle;margin-bottom:5px;font-size:9px;font-weight:800;letter-spacing:.5px;color:#92400e;background:#fde68a;border-radius:6px;padding:2px 6px">BETA</span>
-        <h2 id="si-route-name">載入任務中...</h2>
-        <p id="si-fromto"></p>
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <h2 id="si-route-name">載入任務中...</h2>
+          <span class="si-dist" id="si-segs"></span>
+        </div>
+        <!-- 第二行放兩個時段，離峰藍、尖峰橘，跟下方選調查組合的配色一致 -->
+        <div class="si-times">
+          <span class="off"><span id="si-offpeak-lb">離峰</span> <span id="si-offpeak"></span></span>
+          <span class="pk"><span id="si-peak-lb">尖峰</span> <span id="si-peak"></span></span>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;padding-top:2px">
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <button class="btn-hist-rec" onclick="openHistModal()">📋 記錄</button>
         <button class="btn-q-sq" id="btn-help-q" onclick="openHelpMenu(event)">?</button>
-      </div>
-    </div>
-    <div class="signin-info">
-      <div class="signin-card-mini">
-        <div class="signin-card-mini-label" id="si-offpeak-lb">離峰</div>
-        <div class="signin-card-mini-val" id="si-offpeak"></div>
-      </div>
-      <div class="signin-card-mini">
-        <div class="signin-card-mini-label" id="si-peak-lb">尖峰</div>
-        <div class="signin-card-mini-val" id="si-peak"></div>
-      </div>
-      <div class="signin-card-mini">
-        <div class="signin-card-mini-label">總里程</div>
-        <div class="signin-card-mini-val" id="si-segs"></div>
       </div>
     </div>
   </div>
@@ -474,6 +465,8 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     <!-- 1. Route map preview -->
     <div class="signin-card">
       <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg> 路線地圖</h3>
+      <!-- 起訖點從標題列移到這裡，標題列才壓得下來 -->
+      <div id="si-fromto" style="font-size:12.5px;color:#475569;font-weight:600;margin:-4px 0 8px"></div>
       <div style="position:relative">
         <div id="map-signin"></div>
         <button class="locate-btn" style="bottom:8px;left:8px" onclick="locateMe(mapSignin)" title="定位目前位置"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg></button>
@@ -1926,7 +1919,8 @@ function onCustomDateInput(val){
 
 function showSigninScreen(){
   $('si-route-name').textContent=config.routeName||'旅行時間調查'
-  $('si-fromto').textContent=config.routeFromTo
+  // 起訖點改放在下方「路線地圖」卡片，標題列只留路線名、里程與時段
+  { const ft=$('si-fromto'); if(ft) ft.textContent=segDisp(config.routeFromTo||'') }
   $('si-offpeak').textContent=config.offPeakLabel
   $('si-peak').textContent=config.peakLabel
   $('si-offpeak-lb').textContent=config.offPeakName||'離峰'
