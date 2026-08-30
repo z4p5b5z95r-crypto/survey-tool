@@ -3128,6 +3128,49 @@ async function doMoveRoute(taskId, targetProjectId){
   }
 }
 
+// 新分頁的過場畫面：跟 survey-report.html／現場 App 同一套「資料夾收集」動畫，
+// 這樣從按下報告到報告頁載完都是同一個動畫，中間不會出現「請稍候」的空白頁。
+function reportLoaderHtml(){
+  return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>開啟報告中…</title><style>
+html,body{margin:0;height:100%}
+body{background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:24px;padding-top:48vh;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans-serif}
+.ld-folder{position:relative;width:112px;height:110px;flex-shrink:0}
+.ld-fd-back{position:absolute;left:0;bottom:0;width:112px;height:74px;background:#d99a2b;border-radius:7px 11px 7px 7px}
+.ld-fd-tab{position:absolute;left:0;bottom:70px;width:48px;height:13px;background:#d99a2b;border-radius:6px 8px 0 0}
+.ld-fd-front{position:absolute;left:0;bottom:0;width:112px;height:62px;background:linear-gradient(180deg,#f4b942,#e8a52e);border-radius:7px;z-index:6;box-shadow:0 -2px 6px rgba(0,0,0,.18);animation:ldPop .62s ease-in-out infinite}
+.ld-fd-item{position:absolute;left:50%;top:4px;font-size:44px;line-height:1;z-index:4;opacity:0;animation:ldDrop 7.5s linear infinite}
+@keyframes ldDrop{
+  0%{opacity:0;transform:translate(-50%,-190px) scale(.7) rotate(-10deg)}
+  2%{opacity:1}
+  4%{transform:translate(-50%,-150px) scale(.78) rotate(-6deg)}
+  6.5%{transform:translate(-50%,-104px) scale(.86) rotate(-2deg)}
+  8.8%{transform:translate(-50%,-52px) scale(.94) rotate(3deg)}
+  10.5%{transform:translate(-50%,-6px) scale(1) rotate(7deg)}
+  11.8%{opacity:1;transform:translate(-50%,24px) scale(1) rotate(4deg)}
+  13%{opacity:1;transform:translate(-50%,40px) scale(.82) rotate(0deg)}
+  14.5%{opacity:0;transform:translate(-50%,46px) scale(.55)}
+  100%{opacity:0;transform:translate(-50%,46px) scale(.55)}
+}
+@keyframes ldPop{0%,100%{transform:scaleY(1)}45%{transform:scaleY(1.08)}}
+p{color:#f1f5f9;font-size:20px;font-weight:800;letter-spacing:.5px;margin:0}
+</style></head><body>
+<div class="ld-folder">
+  <div class="ld-fd-back"></div><div class="ld-fd-tab"></div>
+  <div class="ld-fd-item" style="animation-delay:0s">🚦</div>
+  <div class="ld-fd-item" style="animation-delay:.8s">🚗</div>
+  <div class="ld-fd-item" style="animation-delay:1.6s">🚧</div>
+  <div class="ld-fd-item" style="animation-delay:2.4s">🐄</div>
+  <div class="ld-fd-item" style="animation-delay:3.2s">🚌</div>
+  <div class="ld-fd-item" style="animation-delay:4s">⛔</div>
+  <div class="ld-fd-item" style="animation-delay:4.8s">🚕</div>
+  <div class="ld-fd-item" style="animation-delay:5.6s">🚑</div>
+  <div class="ld-fd-item" style="animation-delay:6.4s">🛸</div>
+  <div class="ld-fd-front"></div>
+</div>
+<p>專案資料下載中</p>
+</body></html>`
+}
 // 專案報告：直接開最近一次的調查報告，不再先問日期。
 // 要看之前的日期，在報告頁右上角的日期選單切換即可。
 async function batchProjectPdf(pid){
@@ -3137,10 +3180,8 @@ async function batchProjectPdf(pid){
   // 分頁必須在點擊當下就開，等 await 之後再開會被瀏覽器當成彈出廣告擋掉
   const w=window.open('','_blank')
   if(!w){toast('❌ 請允許此網站開啟新視窗');return}
-  try{
-    w.document.write('<!doctype html><meta charset="utf-8"><title>開啟報告中…</title>'+
-      '<body style="font-family:system-ui,-apple-system,sans-serif;padding:48px;color:#334155;font-size:15px">開啟專案報告中，請稍候…</body>')
-  }catch(e){}
+  // 新分頁先畫上跟報告頁一樣的資料夾動畫，銜接時不會閃過一段純文字
+  try{ w.document.write(reportLoaderHtml()) }catch(e){}
   try{
     toast('⏳ 開啟專案報告…')
     const projectCloudId=await ensureProjectCloudSynced(proj)
