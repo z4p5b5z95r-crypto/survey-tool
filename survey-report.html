@@ -677,13 +677,15 @@ function calcAverages(){
       segTimes: []
     }
     // Average per-segment times
-    const nSegs = route.segments?.length||0
+    // 先把每一趟的路段時間補齊、對齊合併後的路段，再做平均
+    const nSegs = _mergeGhostSegs().length
+    const fixedList = tripsList.map(t=>_segTimesFor(t))
     for(let i=0;i<nSegs;i++){
-      const validT = tripsList.filter(t=>t.segTimes?.[i]?.travelS)
-      const validR = tripsList.filter(t=>t.segTimes?.[i]?.runS)
+      const validT = fixedList.filter(st=>st[i]?.travelS!=null)
+      const validR = fixedList.filter(st=>st[i]?.runS!=null)
       avg.segTimes.push({
-        travelS: validT.length ? Math.round(validT.reduce((a,t)=>a+t.segTimes[i].travelS,0)/validT.length) : null,
-        runS:    validR.length ? Math.round(validR.reduce((a,t)=>a+t.segTimes[i].runS,0)/validR.length) : null,
+        travelS: validT.length ? Math.round(validT.reduce((a,st)=>a+st[i].travelS,0)/validT.length) : null,
+        runS:    validR.length ? Math.round(validR.reduce((a,st)=>a+st[i].runS,0)/validR.length) : null,
         n: validT.length   // 這個路段實際有幾筆(幾回合)資料被平均進去——用來標示樣本數，方便發現「路段被改過、某回合缺資料」的狀況
       })
     }
@@ -723,7 +725,7 @@ function renderPage(){
   const completedCombos = COMBO_KEYS.filter(k=>avgTrips[k]).length
   document.getElementById('stat-cards').innerHTML = `
     <div class="card"><div class="val">${route.totalLength}m</div><div class="lbl">路線全長</div></div>
-    <div class="card"><div class="val">${route.segments?.length||0}</div><div class="lbl">路段數</div></div>
+    <div class="card"><div class="val">${_mergeGhostSegs().length}</div><div class="lbl">路段數</div></div>
     <div class="card"><div class="val">${surveys.length}</div><div class="lbl">調查次數</div></div>
     <div class="card"><div class="val">${totalTrips}</div><div class="lbl">總旅次數</div></div>
     <div class="card"><div class="val">${completedCombos}/4</div><div class="lbl">完成組合</div></div>
@@ -756,12 +758,13 @@ function renderTravelTable(){
 
   const combos=[OB,OR,PB,PR]
   let totTvl=[0,0,0,0], totRun=[0,0,0,0], totLen=0
-  segs.forEach((seg)=>{
-    const idxs=seg._origIdx||[]
-    const tv=combos.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0)||undefined)
-    const rv=combos.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0)||undefined)
-    // 這個(合併後)路段實際被幾筆資料平均進去——用最少的那個原始路段為準
-    const tn=combos.map(t=>idxs.length?Math.min(...idxs.map(j=>t?.segTimes?.[j]?.n??0)):0)
+  // avgTrips 的 segTimes 已經是「合併後路段」的索引，直接用第 si 段即可。
+  // 之前這裡還在照原始路段索引累加，合併過的第一段會重複相加、後面的段則整個取不到值，
+  // 才會出現「第二段全部是 —、合計也少算」的情形。
+  segs.forEach((seg,si)=>{
+    const tv=combos.map(t=>t?.segTimes?.[si]?.travelS||undefined)
+    const rv=combos.map(t=>t?.segTimes?.[si]?.runS||undefined)
+    const tn=combos.map(t=>t?.segTimes?.[si]?.n??0)
     tv.forEach((v,j)=>{ if(v) totTvl[j]+=v })
     rv.forEach((v,j)=>{ if(v) totRun[j]+=v })
     totLen+=seg.length||0
@@ -789,6 +792,78 @@ function renderTravelTable(){
   document.getElementById('tbl-travel').innerHTML = html
 }
 
+// 取得某一趟「對齊合併後路段」的各路段時間。
+// segTimes 是衍生資料，nodeTimestamps 才是現場記錄的原始時刻，所以：
+//  1) 舊資料如果是照「未合併的原始路段」存的，就把同一串的時間加總，對回合併後的路段；
+//  2) 任何一段缺值時，直接用該路段前後兩個節點的時刻重算——
+//     之前少了這一步，只要 segTimes 有一格空的（例如路線後來加了節點、
+//     或存檔當下那一格沒算出來），報告就整段顯示「—」，合計也跟著少算。
+function _segTimesFor(trip){
+  const segs    = _mergeGhostSegs()
+  const rawSegs = route.segments||[]
+  const src     = Array.isArray(trip?.segTimes) ? trip.segTimes : []
+  const nodeTs  = (trip?.nodeTimestamps||[]).map(t=>t?new Date(t):null)
+  const isReturn= trip?.direction==='return'
+  const travelS = +trip?.travelS||0
+  const delayS  = (+trip?.roadTotalS||0)+(+trip?.intTotalS||0)
+  const runRatio= travelS>0 ? Math.max(0,(travelS-delayS))/travelS : 1
+
+  // 舊資料：筆數對得上原始路段（含假節點）→ 依 _origIdx 加總
+  const rawAligned = src.length===rawSegs.length && src.length!==segs.length
+
+  return segs.map((seg,j)=>{
+    let v = null
+    if(rawAligned && Array.isArray(seg._origIdx)){
+      let sum=0, got=false
+      seg._origIdx.forEach(k=>{ const s=src[k]; if(s&&s.travelS!=null){ sum+=s.travelS; got=true } })
+      if(got) v={travelS:sum, runS:Math.round(sum*runRatio)}
+    }else if(src[j] && src[j].travelS!=null){
+      v = src[j]
+    }
+    if(v && v.travelS!=null){
+      return (v.runS!=null) ? v : {travelS:v.travelS, runS:Math.round(v.travelS*runRatio)}
+    }
+    // 缺值 → 用節點時刻重算。nodeTimestamps 是「行進順序」，回程要換算回路線順序。
+    const ci = isReturn ? (segs.length-1-j) : j
+    const t0 = nodeTs[ci], t1 = nodeTs[ci+1]
+    if(t0 && t1 && !isNaN(t0) && !isNaN(t1)){
+      const s = Math.round((t1-t0)/1000)
+      if(s>=0) return {travelS:s, runS:Math.round(s*runRatio)}
+    }
+    return {travelS:null, runS:null}
+  })
+}
+
+// 假節點只是用來讓路線在地圖上繞路的隱形點，不是真正的監測路口。
+// 現場人員看不到、也不會記錄通過時間，所以報告的任何地方都不該出現它們。
+// 這裡集中提供「真實節點清單」，讓各處畫面都用同一份，不會有的地方算進去、有的地方沒算。
+function _realNodes(){
+  const nodes = route.nodes||[]
+  const ghostIdxSet = new Set(route.ghostNodeIndices||[])
+  nodes.forEach((n,i)=>{ if(n&&(n.ghost||n.gh)) ghostIdxSet.add(i) })
+  const rawSegs = route.segments||[]
+  for(let k=1;k<rawSegs.length;k++){
+    const segStart=String(rawSegs[k].name||'').split(SEG_SEP)[0]?.trim()||''
+    if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
+    if(!String(rawSegs[k].name||'').trim()) ghostIdxSet.add(k)
+  }
+  return nodes.filter((n,i)=>!ghostIdxSet.has(i))
+}
+// 合併後的路段名稱若是空的或結尾斷掉（例如「歸仁1路 ～ 」——PM 端產生名稱時
+// 剛好接到沒有名字的假節點造成的），就用前後兩個真實節點的名字補回來。
+function _fixSegNames(segs){
+  const rn = _realNodes()
+  return segs.map((s,i)=>{
+    const cur = String(s.name||'').trim()
+    const broken = !cur || /(^[～—→])|([～—→]\s*$)/.test(cur)
+    if(!broken) return s
+    const a = String(rn[i]?.exitName || rn[i]?.name || '').trim()
+    const b = String(rn[i+1]?.name || '').trim()
+    const fixed = (a && b) ? (a+' ～ '+b) : (a || b || cur)
+    return Object.assign({}, s, {name: fixed})
+  })
+}
+
 // ── Ghost node merge helper ──
 // rawSegs[k] connects nodes[k]→nodes[k+1].
 // If rawSegs[k].name starts with "節點N", nodes[k] is a ghost node → merge with rawSegs[k-1].
@@ -801,7 +876,7 @@ function _mergeGhostSegs(){
     const segStart=(rawSegs[k].name||'').split(SEG_SEP)[0].trim()
     if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
   }
-  if(!ghostIdxSet.size) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
+  if(!ghostIdxSet.size) return _fixSegNames(rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]})))
   const out=[]; let i=0
   while(i<rawSegs.length){
     const idxs=[i]
@@ -820,7 +895,7 @@ function _mergeGhostSegs(){
     }
     out.push(merged); i+=idxs.length
   }
-  return out
+  return _fixSegNames(out)
 }
 
 // ── Speed Table ──
@@ -844,11 +919,10 @@ function renderSpeedTable(){
 
   const combos=[OB,OR,PB,PR]
   let totTvl=[0,0,0,0], totRun=[0,0,0,0], totLen=0
-  segs.forEach((seg)=>{
+  segs.forEach((seg,si)=>{
     const L=seg.length||0
-    const idxs=seg._origIdx||[]
-    const segTvl=combos.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0))
-    const segRun=combos.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0))
+    const segTvl=combos.map(t=>t?.segTimes?.[si]?.travelS||0)
+    const segRun=combos.map(t=>t?.segTimes?.[si]?.runS||0)
     const tv=segTvl.map(v=>spd(L,v))
     const rv=segRun.map(v=>spd(L,v))
     segTvl.forEach((v,j)=>{ if(v) totTvl[j]+=v })
@@ -950,7 +1024,8 @@ function renderComboRecords(combo){
   const [pt, dir] = parseCombo(combo)
   const el = document.getElementById('combo-records')
   const isReturn = dir==='return'
-  const segs = route.segments || []
+  // 用合併過假節點的路段，假節點不是真的監測路口，不該出現在調查紀錄裡
+  const segs = _mergeGhostSegs()
   const segOrder = isReturn ? [...segs].reverse() : segs
 
   // Filter surveys that have this combo
@@ -980,7 +1055,8 @@ function renderComboRecords(combo){
     }
     const [sH,sM,sS]=hms(st), [eH,eM,eS]=hms(et)
     const nodeTs=(trip.nodeTimestamps||[]).map(t=>t?new Date(t):null)
-    const startNode=route.nodes?.[0], endNode=route.nodes?.[route.nodes.length-1]
+    const _rn0=_realNodes()
+    const startNode=_rn0[0], endNode=_rn0[_rn0.length-1]
     const fromNode=isReturn?endNode:startNode
     const toNode=isReturn?startNode:endNode
     const TL=route.totalLength||0
@@ -1012,12 +1088,14 @@ function renderComboRecords(combo){
       ?`<div style="display:flex;gap:8px"><button class="em-save-inline" onclick="saveInlineEdit(${si},'${combo}')">💾 儲存</button><button class="em-cancel-inline" onclick="cancelInlineEdit(${si},'${combo}')">✕ 取消</button></div>`
       :`<button class="em-edit-btn" onclick="startInlineEdit(${si},'${combo}')">✏️ 修改</button>`
 
+    // 補齊過、對齊合併後路段的時間（缺值會用節點時刻重算）
+    const _fixedSegTimes=_segTimesFor(trip)
     const segRows=segOrder.map((seg,i)=>{
       // 「經過時刻」= 到達該路段終點的時間 = nodeTs[i+1]
       const arrTime = nodeTs[i+1] || (i===segOrder.length-1 ? et : null)
       const [fH,fM,fS]=hms(arrTime)
       const segIdx = isReturn ? segs.length-1-i : i
-      const st2=trip.segTimes?.[segIdx]
+      const st2=_fixedSegTimes[segIdx]
       const sd=segD[i]
       const segDelayTotal = Object.values(sd).reduce((a,v)=>a+(v||0),0)
       const calcRunS = st2?.travelS != null ? Math.max(0, st2.travelS - segDelayTotal) : null
@@ -1219,7 +1297,8 @@ function initTripMap(mapId, trip, combo){
   if(_tripMaps[mapId]) return
 
   const trackColor = TRACK_COLOR[combo]||'#2563eb'
-  const nodes = route.nodes||[]
+  // 地圖上的節點標記只畫真實節點；假節點沒有時刻也不是監測點
+  const nodes = _realNodes()
   const startTime = trip.startTime ? new Date(trip.startTime) : null
   const isReturn = trip.direction === 'return'
   // nodeTimestamps are in trip-travel order; for return trips reverse to match route node order
@@ -1262,7 +1341,7 @@ function initTripMap(mapId, trip, combo){
   }
 
   // Segment clickable overlays — invisible thick hit-targets per inter-node segment
-  const routeSegs=route.segments||[]
+  const routeSegs=_mergeGhostSegs()
   for(let si=0;si<nodes.length-1;si++){
     const ts0=nodeTs[si],ts1=nodeTs[si+1]
     const sd=routeSegs[si]
@@ -1462,10 +1541,9 @@ function buildTimeSheet(){
     ['','','','','去程','回程','去程','回程','去程','回程','去程','回程'],
   ]
   let totLen=0, totTv=[0,0,0,0], totRv=[0,0,0,0]
-  segs.forEach(seg=>{
-    const idxs=seg._origIdx||[]
-    const segTv=T4.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0))
-    const segRv=T4.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0))
+  segs.forEach((seg,si)=>{
+    const segTv=T4.map(t=>t?.segTimes?.[si]?.travelS||0)
+    const segRv=T4.map(t=>t?.segTimes?.[si]?.runS||0)
     segTv.forEach((v,j)=>totTv[j]+=v)
     segRv.forEach((v,j)=>totRv[j]+=v)
     totLen+=seg.length||0
@@ -1500,10 +1578,10 @@ function buildSpeedSheet(){
     ['','','去程','回程','去程','回程','去程','回程','去程','回程'],
   ]
   let totLen=0, totTv=[0,0,0,0], totRv=[0,0,0,0]
-  segs.forEach(seg=>{
-    const idxs=seg._origIdx||[], L=seg.length||0
-    const segTv=T4.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0))
-    const segRv=T4.map(t=>idxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0))
+  segs.forEach((seg,si)=>{
+    const L=seg.length||0
+    const segTv=T4.map(t=>t?.segTimes?.[si]?.travelS||0)
+    const segRv=T4.map(t=>t?.segTimes?.[si]?.runS||0)
     segTv.forEach((v,j)=>totTv[j]+=v)
     segRv.forEach((v,j)=>totRv[j]+=v)
     totLen+=L
@@ -1577,11 +1655,12 @@ function buildDelaySheet(){
 function buildTripSheet(trip, survey, combo){
   const isReturn = trip.direction === 'return'
   const isPeak   = trip.peakType  === 'peak'
-  const fromNode = route.nodes[0]
-  const toNode   = route.nodes[route.nodes.length-1]
+  const _rn      = _realNodes()
+  const fromNode = _rn[0]
+  const toNode   = _rn[_rn.length-1]
   const startNode= isReturn ? toNode : fromNode
   const endNode  = isReturn ? fromNode : toNode
-  const segs     = route.segments || []
+  const segs     = _mergeGhostSegs()
   const segOrder = isReturn ? [...segs].reverse() : segs
   const times    = trip.segTimes || []
   const flipSegXls = n => { if(!n||!isReturn) return n||''; const a=n.search(SEG_SEP); if(a>=0) return n.slice(a+1).trim()+' ～ '+n.slice(0,a).trim(); const h=n.indexOf('-'); return h>=0?n.slice(h+1).trim()+' ～ '+n.slice(0,h).trim():n }
@@ -1714,7 +1793,7 @@ function downloadRawTimeline(){
         const peakL=trip.peakType==='peak'?(route.peakName||'尖峰'):(route.offPeakName||'離峰')
         const dirL=trip.direction==='bound'?'去程':'回程'
         const isRet=trip.direction==='return'
-        const nodes=route.nodes||[]
+        const nodes=_realNodes()
         const nodeOrder=isRet?[...nodes].reverse():nodes
         const nTs=trip.nodeTimestamps||[]
         const gps=trip.gpsTrack||[]
@@ -2127,9 +2206,8 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
     let totTv=[0,0,0,0], totRv=[0,0,0,0], totLen=0
     let rows = ''
     segs.forEach((seg,i)=>{
-      const origIdxs=seg._origIdx||[i]
-      const tv=T4.map(t=>origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0))
-      const rv=T4.map(t=>origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0))
+      const tv=T4.map(t=>t?.segTimes?.[i]?.travelS||0)
+      const rv=T4.map(t=>t?.segTimes?.[i]?.runS||0)
       tv.forEach((v,j)=>{ totTv[j]+=v })
       rv.forEach((v,j)=>{ totRv[j]+=v })
       totLen += seg.length||0
@@ -2164,9 +2242,8 @@ ${rows}</table>`
     segs.forEach((seg,i)=>{
       const L = seg.length||0
       totLen += L
-      const origIdxs=seg._origIdx||[i]
-      const segTv=T4.map(t=>origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.travelS||0),0))
-      const segRv=T4.map(t=>origIdxs.reduce((a,j)=>a+(t?.segTimes?.[j]?.runS||0),0))
+      const segTv=T4.map(t=>t?.segTimes?.[i]?.travelS||0)
+      const segRv=T4.map(t=>t?.segTimes?.[i]?.runS||0)
       segTv.forEach((v,j)=>totTv[j]+=v)
       segRv.forEach((v,j)=>totRv[j]+=v)
       const tv=segTv.map(v=>_spd(L,v)), rv=segRv.map(v=>_spd(L,v))
@@ -2205,7 +2282,8 @@ ${rows}</table>`
     const segOrd   = isReturn ? [...segs].reverse() : segs
     const _flipSeg = n => { if(!n||!isReturn) return n||''; const a=n.search(SEG_SEP); if(a>=0) return n.slice(a+1).trim()+' ～ '+n.slice(0,a).trim(); const h=n.indexOf('-'); return h>=0?n.slice(h+1).trim()+' ～ '+n.slice(0,h).trim():n }
     const nodeTs   = trip.nodeTimestamps||[]
-    const times    = trip.segTimes||[]
+    // 用補齊過、且對齊合併後路段的時間（缺值會用節點時刻重算）
+    const times    = _segTimesFor(trip)
     const rd = trip.roadDelays||{}, id = trip.intDelays||{}
     const roadT = trip.roadTotalS||0, intT = trip.intTotalS||0
 
@@ -2243,15 +2321,7 @@ ${rows}</table>`
       // segTimes 正常情況下是照「已拿掉假節點」的路段存的，直接取即可；
       // 但若遇到舊資料是照原始路段存的（筆數對得上 rawSegs），就把該串原始路段的時間加總起來，
       // 免得假節點把一段時間拆成兩半、算出來的速率整個失真。
-      let t = times[segIdx]||{}
-      if(times.length===rawSegs.length && times.length!==segs.length && Array.isArray(seg._origIdx)){
-        const idxs = isReturn
-          ? seg._origIdx.map(k=>rawSegs.length-1-k).sort((a,b)=>a-b)
-          : seg._origIdx
-        let sum=0, got=false
-        idxs.forEach(k=>{ const v=times[k]; if(v&&v.travelS!=null){ sum+=v.travelS; got=true } })
-        t = got ? {travelS:sum} : {}
-      }
+      const t = times[segIdx]||{}
       const sd = segD[i]
       const segDelayTotal = Object.values(sd).reduce((a,v)=>a+(v||0),0)
       const calcRunS = t.travelS != null ? Math.max(0, t.travelS - segDelayTotal) : null
@@ -2499,7 +2569,7 @@ function _rebuildTS(origISO,newHMS,prevISO,survDate){
 }
 
 function _emBuildNodes(trip,sv){
-  const nodes=route.nodes||[]
+  const nodes=_realNodes()
   const isRet=trip.direction==='return'
   const nodeOrder=isRet?[...nodes].reverse():nodes
   const nTs=trip.nodeTimestamps||[]
@@ -2558,7 +2628,7 @@ function _emRmDelay(i){
 
 function saveEdit(){
   const {sv,trip}=_emTarget(); if(!trip)return
-  const nodes=route.nodes||[]
+  const nodes=_realNodes()
   const nNodes=nodes.length
   const survDate=sv?.date||''
 
@@ -2603,7 +2673,7 @@ function saveEdit(){
 
 function _recalcTrip(trip){
   const RC=ROAD_DELAYS.map(d=>d.cause),IC=INT_DELAYS.map(d=>d.cause)
-  const nSegs=route.segments?.length||0
+  const nSegs=_mergeGhostSegs().length
   const st=trip.startTime?new Date(trip.startTime):null
   const et=trip.endTime?new Date(trip.endTime):null
   const nTs=(trip.nodeTimestamps||[]).map(t=>t?new Date(t):null)
@@ -2661,9 +2731,11 @@ function saveInlineEdit(si,combo){
   if(!container)return
   const survDate=sv?.date||''
   const isReturn=dir==='return'
-  const nodes=route.nodes||[]
+  // 一律用「真實節點／合併後路段」，跟畫面上顯示的列數一致，
+  // 否則存回去的時刻會對到錯的節點（假節點根本沒有時刻）
+  const nodes=_realNodes()
   const nNodes=nodes.length
-  const segs=route.segments||[]
+  const segs=_mergeGhostSegs()
   const segOrder=isReturn?[...segs].reverse():segs
   const pad=v=>String(v||0).padStart(2,'0')
   const inpV=name=>(container.querySelector(`[data-ie="${name}"]`)?.value??'')
