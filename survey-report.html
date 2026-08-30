@@ -812,7 +812,10 @@ function _mergeGhostSegs(){
       const startName=(rawSegs[i].name||'').split(SEG_SEP)[0].trim()
       const lastSeg=rawSegs[i+idxs.length-1]
       const endName=(lastSeg.name||'').split(SEG_SEP).pop().trim()
-      merged.name=startName+' ～ '+endName
+      // pm.html 已經把「合併後」的完整名稱寫在這一串的第一段，其餘各段名稱是空的。
+      // 所以只有在頭尾都真的有名字時才重組，否則直接沿用第一段的名稱，
+      // 免得組出「長榮路三段 ～ 」這種後半截不見的名字。
+      merged.name = (startName && endName) ? (startName+' ～ '+endName) : (rawSegs[i].name || startName || endName || '')
       merged.length=idxs.reduce((a,j)=>a+(rawSegs[j]?.length||0),0)
     }
     out.push(merged); i+=idxs.length
@@ -1837,6 +1840,11 @@ function downloadSGSPdf(){
     for(let k=1;k<rawSegs.length;k++){
       const segStart=(rawSegs[k].name||'').split(SEG_SEP)[0]?.trim()||''
       if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
+      // Fallback C：假節點後面那一段的名稱是空的。
+      // pm.html 只會把合併後的名稱寫在該串的第一段，其餘各段名稱留空，
+      // 所以「名稱空白的路段」代表它前面那個節點是假節點。
+      // 舊路線沒有 ghost 旗標也沒有「節點N」命名時，這是唯一還抓得到的特徵。
+      if(!String(rawSegs[k].name||'').trim()) ghostIdxSet.add(k)
     }
     if(!ghostIdxSet.size) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
     // Merge: rawSegs[i] connects nodes[i]→nodes[i+1].
@@ -1853,7 +1861,10 @@ function downloadSGSPdf(){
         const startName=(rawSegs[i].name||'').split(SEG_SEP)[0]?.trim()||''
         const lastSeg=rawSegs[i+idxs.length-1]
         const endName=(lastSeg.name||'').split(SEG_SEP).pop()?.trim()||''
-        merged.name=startName+' ～ '+endName
+        // pm.html 已經把「合併後」的完整名稱寫在這一串的第一段，其餘各段名稱是空的。
+      // 所以只有在頭尾都真的有名字時才重組，否則直接沿用第一段的名稱，
+      // 免得組出「長榮路三段 ～ 」這種後半截不見的名字。
+      merged.name = (startName && endName) ? (startName+' ～ '+endName) : (rawSegs[i].name || startName || endName || '')
         merged.length=idxs.reduce((a,j)=>a+(rawSegs[j]?.length||0),0)
       }
       out.push(merged); i+=idxs.length
@@ -2186,7 +2197,12 @@ ${rows}</table>`
   function buildTripPage(sv, si, trip){
     const isReturn = trip.direction==='return'
     const isPeak   = trip.peakType==='peak'
-    const segOrd   = isReturn ? [...rawSegs].reverse() : rawSegs
+    // 用合併過假節點的 segs，不能用 rawSegs——
+    // 假節點只是用來讓路線繞路的隱形點，不是真正的監測路口，
+    // 之前這裡直接用原始路段，才會在表格裡多出一列沒有名稱的「—」，距離也被拆成兩段。
+    // 現場 App 送上來的 nodeTimestamps／segTimes 本來就是「已經拿掉假節點」的real節點順序，
+    // 所以改用 segs 之後，時間與路段才對得起來。
+    const segOrd   = isReturn ? [...segs].reverse() : segs
     const _flipSeg = n => { if(!n||!isReturn) return n||''; const a=n.search(SEG_SEP); if(a>=0) return n.slice(a+1).trim()+' ～ '+n.slice(0,a).trim(); const h=n.indexOf('-'); return h>=0?n.slice(h+1).trim()+' ～ '+n.slice(0,h).trim():n }
     const nodeTs   = trip.nodeTimestamps||[]
     const times    = trip.segTimes||[]
@@ -2223,8 +2239,19 @@ ${rows}</table>`
     const segRows = segOrd.map((seg,i)=>{
       const arrTs = nodeTs[i+1] || (i===segOrd.length-1 ? trip.endTime : null)
       const [nH,nM,nS] = _hms(arrTs)
-      const segIdx = isReturn ? (rawSegs.length - 1 - i) : i
-      const t = times[segIdx]||{}
+      const segIdx = isReturn ? (segs.length - 1 - i) : i
+      // segTimes 正常情況下是照「已拿掉假節點」的路段存的，直接取即可；
+      // 但若遇到舊資料是照原始路段存的（筆數對得上 rawSegs），就把該串原始路段的時間加總起來，
+      // 免得假節點把一段時間拆成兩半、算出來的速率整個失真。
+      let t = times[segIdx]||{}
+      if(times.length===rawSegs.length && times.length!==segs.length && Array.isArray(seg._origIdx)){
+        const idxs = isReturn
+          ? seg._origIdx.map(k=>rawSegs.length-1-k).sort((a,b)=>a-b)
+          : seg._origIdx
+        let sum=0, got=false
+        idxs.forEach(k=>{ const v=times[k]; if(v&&v.travelS!=null){ sum+=v.travelS; got=true } })
+        t = got ? {travelS:sum} : {}
+      }
       const sd = segD[i]
       const segDelayTotal = Object.values(sd).reduce((a,v)=>a+(v||0),0)
       const calcRunS = t.travelS != null ? Math.max(0, t.travelS - segDelayTotal) : null
