@@ -456,27 +456,22 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 
 <!-- ══ Screen: 掃專案 QR 的載入畫面（資料夾收集動畫）══ -->
 <!-- 資料夾放在畫面約 1/3 高的位置：上方留白給圖示掉落的空間 -->
-<div id="screen-loading-folder" class="screen" style="background:#0f172a;align-items:center;justify-content:flex-start;flex-direction:column;gap:28px;padding-top:56vh">
-  <div style="width:min(86vw,320px)">
-    <!-- 道路上會遇到的東西從正上方掉進資料夾 -->
-    <div style="display:flex;justify-content:center">
-      <div class="ld-folder">
-        <div class="ld-fd-back"></div>
-        <div class="ld-fd-tab"></div>
-        <div class="ld-fd-item" style="animation-delay:0s">🚦</div>
-        <div class="ld-fd-item" style="animation-delay:.55s">🚗</div>
-        <div class="ld-fd-item" style="animation-delay:1.1s">🚧</div>
-        <div class="ld-fd-item" style="animation-delay:1.65s">🐄</div>
-        <div class="ld-fd-item" style="animation-delay:2.2s">🚌</div>
-        <div class="ld-fd-item" style="animation-delay:2.75s">⛔</div>
-        <div class="ld-fd-item" style="animation-delay:3.3s">🏍️</div>
-        <div class="ld-fd-item" style="animation-delay:3.85s">🚑</div>
-        <div class="ld-fd-item" style="animation-delay:4.4s">🛸</div>
-        <div class="ld-fd-front"></div>
-      </div>
-    </div>
-    <div style="height:5px;background:#1e293b;border-radius:3px;margin-top:18px">
-      <div id="fld-bar" style="height:100%;width:3%;background:#3b82f6;border-radius:3px;transition:width 1.2s cubic-bezier(.4,0,.2,1)"></div>
+<div id="screen-loading-folder" class="screen" style="background:#0f172a;align-items:center;justify-content:flex-start;flex-direction:column;gap:24px;padding-top:48vh">
+  <!-- 道路上會遇到的東西從正上方掉進資料夾 -->
+  <div style="display:flex;justify-content:center">
+    <div class="ld-folder">
+      <div class="ld-fd-back"></div>
+      <div class="ld-fd-tab"></div>
+      <div class="ld-fd-item" style="animation-delay:0s">🚦</div>
+      <div class="ld-fd-item" style="animation-delay:.55s">🚗</div>
+      <div class="ld-fd-item" style="animation-delay:1.1s">🚧</div>
+      <div class="ld-fd-item" style="animation-delay:1.65s">🐄</div>
+      <div class="ld-fd-item" style="animation-delay:2.2s">🚌</div>
+      <div class="ld-fd-item" style="animation-delay:2.75s">⛔</div>
+      <div class="ld-fd-item" style="animation-delay:3.3s">🏍️</div>
+      <div class="ld-fd-item" style="animation-delay:3.85s">🚑</div>
+      <div class="ld-fd-item" style="animation-delay:4.4s">🛸</div>
+      <div class="ld-fd-front"></div>
     </div>
   </div>
   <div id="fld-msg" style="color:#f1f5f9;font-size:20px;font-weight:700;letter-spacing:.5px">專案資料下載中</div>
@@ -4201,12 +4196,8 @@ function setLoadPct(pct){
   }
 }
 // ── 載入畫面二：掃專案 QR → 選路線（資料夾收集動畫）──
-// 動畫是純 CSS 循環播放，這裡只負責推進度條。
-function setFolderLoadPct(pct){
-  const bar=document.getElementById('fld-bar')
-  if(!bar) return
-  bar.style.width=Math.max(3,Math.min(100,pct))+'%'
-}
+// 動畫是純 CSS 循環播放，沒有進度條，這裡保留空實作讓呼叫端不用改。
+function setFolderLoadPct(pct){}
 // 資料夾動畫至少要播到「牛」掉進資料夾才換頁，免得網路快的時候畫面一閃就過去。
 // 牛是第 4 個，延遲 1.65 秒，落地約在 1.65 + 5.2×0.145 ≈ 2.40 秒。
 const LOADING_MIN_MS = 2500
