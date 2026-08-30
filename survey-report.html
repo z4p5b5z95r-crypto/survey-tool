@@ -78,11 +78,17 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color
 .route-tab:hover{border-color:#94a3b8;color:#0f172a}
 .route-tab .rdot{width:7px;height:7px;border-radius:999px;flex-shrink:0}
 .route-tab .rst{font-size:10px;color:#94a3b8;font-weight:700}
-.route-tab .rld{font-size:10px;color:#cbd5e1;font-weight:700}
+/* 資料下載中：缺口圓環轉圈；下載完成：綠色勾勾彈出 */
+.route-tab .rld{width:11px;height:11px;border:2px solid #e2e8f0;border-top-color:#2563eb;border-radius:999px;animation:rtSpin .7s linear infinite;flex-shrink:0}
+@keyframes rtSpin{to{transform:rotate(360deg)}}
+.route-tab .rok{width:13px;height:13px;flex-shrink:0;color:#16a34a}
+.route-tab .rok.pop{animation:rtPop .35s cubic-bezier(.3,1.6,.5,1)}
+@keyframes rtPop{0%{transform:scale(.2);opacity:0}60%{transform:scale(1.18)}100%{transform:scale(1);opacity:1}}
 .route-tab.on{color:#fff;font-weight:800;border-color:transparent}
 .route-tab.on .rdot{display:none}
 .route-tab.on .rst{color:#fff;background:rgba(255,255,255,.22);border-radius:999px;padding:1px 6px}
-.route-tab.on .rld{color:rgba(255,255,255,.7)}
+.route-tab.on .rld{border-color:rgba(255,255,255,.35);border-top-color:#fff}
+.route-tab.on .rok{color:#fff}
 /* 統計表／調查紀錄／下載報告 ｜ 調查次數（同一列，中間一條分隔線） */
 .nav-bar{background:#fafbfc;border-bottom:1px solid #e8edf3;padding:0 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .nav-sep{width:1px;height:20px;background:#e2e8f0;flex-shrink:0}
@@ -444,6 +450,7 @@ const he = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace
 // ════════════════ 專案報告模式：一次瀏覽整個專案、可切換日期與路線 ════════════════
 const RT_COLORS=['#2563eb','#ea580c','#0d9488','#dc2626','#7c3aed','#0891b2','#ca8a04','#db2777']
 let _pm = null   // {gs, sessionToken, pid, projName, routes:[], dates:[], date:'', routeId:''}
+const _pmShown = {}   // routeId -> 已經播過「下載完成」勾勾動畫
 
 function renderRouteTabs(){
   const box=document.getElementById('route-tabs')
@@ -455,11 +462,17 @@ function renderRouteTabs(){
     const st = _pm.stateById?.[String(r.id)]
     const col = RT_COLORS[i%RT_COLORS.length]
     const ready = !!_rdata[String(r.id)]
+    // 剛下載完的那一條才播放勾勾彈出動畫，其餘只是靜靜地打勾
+    const pop = ready && !_pmShown[String(r.id)]
+    if(ready) _pmShown[String(r.id)]=true
+    const mark = ready
+      ? `<svg class="rok${pop?' pop':''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+      : '<span class="rld" title="資料下載中"></span>'
     return `<button class="route-tab${on?' on':''}" style="${on?`background:${col};`:''}" onclick="switchReportRoute('${String(r.id).replace(/'/g,"\\'")}')">
       <span class="rdot" style="background:${col}"></span>
       <span>${he(r.routeName||'未命名路線')}</span>
       ${st?`<span class="rst">${he(st)}</span>`:''}
-      ${ready?'':'<span class="rld" title="資料下載中">⋯</span>'}
+      ${mark}
     </button>`
   }).join('')
   box.scrollLeft=sx
