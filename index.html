@@ -183,10 +183,10 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .pr-item-body{flex:1;min-width:0}
 .pr-item-name{font-size:15px;font-weight:800;color:#0f172a}
 .pr-item-sub{font-size:12px;color:#94a3b8;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pr-item-state{font-size:11.5px;font-weight:700;flex-shrink:0;white-space:nowrap;color:#94a3b8}
-.pr-item-state.done{color:#0f766e}
-.pr-item-state.part{color:#b45309}
-.pr-item-state.load{color:#cbd5e1;font-weight:600}
+/* 每一次調查＝一個圓環，橘色依完成趟數填 1/4、2/4、3/4，四趟做完整圈轉綠 */
+.pr-rings{display:flex;gap:6px;flex-shrink:0;align-items:center}
+.pr-ring{width:18px;height:18px;border-radius:999px;flex-shrink:0;display:grid;place-items:center;background:#e2e8f0}
+.pr-ring::after{content:"";width:9px;height:9px;border-radius:999px;background:#fff}
 .pr-item-arrow{flex-shrink:0;color:#cbd5e1}
 .field{margin-bottom:10px}
 .field:last-child{margin-bottom:0}
@@ -4341,7 +4341,7 @@ async function showProjectRoutePicker(pid, gsParam, kParam){
               <span class="pr-item-name">${i+1}. ${r.routeName||'未命名路線'}</span>
               <span class="pr-item-sub">${segDisp(r.routeFromTo||'未設定起訖點')}</span>
             </span>
-            <span class="pr-item-state load" id="pr-state-${i}">查詢中…</span>
+            <span class="pr-rings" id="pr-state-${i}"></span>
             <svg class="pr-item-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
           </span>
         </button>
@@ -4414,6 +4414,29 @@ function maybeShowDailyReminder(pid){
 
 // 一條路線今天的整體狀態。一次調查＝四趟（離峰去回、尖峰去回）都完成。
 // 回傳左側色帶要用的樣式，以及右側要顯示的文字。
+// 一次調查完整包含 4 趟。圓環用 conic-gradient 依趟數填色：
+// 0 趟＝灰、1~3 趟＝橘色 1/4、2/4、3/4、4 趟＝整圈綠。
+const RING_DONE='#16a34a', RING_PART='#f59e0b', RING_EMPTY='#e2e8f0'
+function ringStyle(done, total){
+  const t = total||4
+  const d = Math.max(0, Math.min(t, +done||0))
+  if(d>=t) return `background:${RING_DONE}`
+  if(d<=0) return `background:${RING_EMPTY}`
+  return `background:conic-gradient(${RING_PART} 0 ${(d/t*100).toFixed(0)}%,${RING_EMPTY} 0)`
+}
+// 舊版後端沒有 roundDone 時，用 roundStates 反推：done→4 趟、part→2 趟（無法得知確切趟數）
+function roundDoneOf(p){
+  if(p && Array.isArray(p.roundDone)) return p.roundDone
+  const st = (p && Array.isArray(p.roundStates)) ? p.roundStates : []
+  return st.map(s=> s==='done' ? 4 : (s==='part' ? 2 : 0))
+}
+function renderRouteRings(p, total){
+  const t = total || (p && p.comboTotal) || 4
+  const arr = roundDoneOf(p)
+  const n = arr.length || (p && p.roundCount) || 0
+  if(!n) return ''
+  return arr.slice(0,n).map(d=>`<span class="pr-ring" style="${ringStyle(d,t)}"></span>`).join('')
+}
 function routeStateOf(roundStates){
   const states = Array.isArray(roundStates) ? roundStates : []
   if(!states.length) return {cls:'todo', txt:'尚未調查'}
@@ -4450,13 +4473,14 @@ async function cloudFetchProgressFallback(routes, gsUrl, apiKey){
           if(NEEDED_COMBOS.includes(key)) byRound[n][key]=true
         })
       })
-      const roundStates=[]
+      const roundStates=[], roundDone=[]
       for(let n=1;n<=plan;n++){
         const got=byRound[n]||{}
         const done=NEEDED_COMBOS.filter(k=>got[k]).length
+        roundDone.push(done)
         roundStates.push(done===0?'todo':(done>=NEEDED_COMBOS.length?'done':'part'))
       }
-      return {routeId:r.id, roundCount:plan, roundStates}
+      return {routeId:r.id, roundCount:plan, roundStates, roundDone, comboTotal:NEEDED_COMBOS.length}
     }catch(e){ return null }
   })).then(list=>list.filter(Boolean))
 }
@@ -4466,7 +4490,7 @@ function applyTodayProgress(routes, list){
   if(!list || !list.length){
     // 真的查不到就把「查詢中」字樣拿掉，不要一直卡在載入文字上誤導現場人員；
     // 上方三格保留破折號，代表「查不到」而不是「都是 0」
-    routes.forEach((r,i)=>{ const el=document.getElementById(`pr-state-${i}`); if(el) el.textContent='' })
+    routes.forEach((r,i)=>{ const el=document.getElementById(`pr-state-${i}`); if(el) el.innerHTML='' })
     return
   }
   const byId = {}
@@ -4479,7 +4503,7 @@ function applyTodayProgress(routes, list){
     // 左側色帶固定用該路線在地圖上的顏色，方便跟地圖對照；
     // 完成狀態改由右側文字的顏色表示，這裡不覆蓋色帶
     const el = document.getElementById(`pr-state-${i}`)
-    if(el){ el.className = 'pr-item-state '+st.cls; el.textContent = st.txt }
+    if(el){ el.className = 'pr-rings'; el.innerHTML = renderRouteRings(p, p && p.comboTotal) }
     if(st.cls==='done') nDone++
     else if(st.cls==='part') nPart++
     else nTodo++
