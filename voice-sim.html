@@ -195,7 +195,7 @@ function speak(text,onDone){
     speechSynthesis.cancel()
     setTimeout(()=>{
       const u=new SpeechSynthesisUtterance(text)
-      u.lang='zh-TW'; u.rate=1.18
+      u.lang='zh-TW'; u.rate=1.10
       if(onDone){
         let fired=false; const go=()=>{if(!fired){fired=true;onDone()}}
         u.onend=go; u.onerror=go; setTimeout(go,700+text.length*160)

@@ -2832,7 +2832,7 @@ function speakNav(text, onDone){
     setTimeout(()=>{
       try{
         const u=new SpeechSynthesisUtterance(text)
-        u.lang='zh-TW'; u.rate=1.18   // 稍微快一點，行車中提示才不會拖太久
+        u.lang='zh-TW'; u.rate=1.10   // 稍微快一點，行車中提示才不會拖太久
         if(onDone){
           let fired=false
           const go=()=>{ if(!fired){ fired=true; onDone() } }
