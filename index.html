@@ -2103,8 +2103,6 @@ function showSigninScreen(){
   buildDateSelect()     // build date dropdown
   setTimeout(initSigninMap, 120)
   loadCloudHistory()    // load history in background for the history list below
-  // 一次把定位、麥克風、聲音、方向感應的授權問完，不要調查到一半才跳系統對話框
-  setTimeout(maybeShowPermGate, 400)
 }
 
 // ════════════════════════════════════
@@ -2137,11 +2135,12 @@ async function allPermsGranted(){
   if(g==='unknown') return true
   return false
 }
+// 只有定位是「沒有就不能調查」；其餘壞掉都只是變得比較難用，資料照樣完整。
 const PERM_ROWS=[
-  {id:'gps',   icon:'📍', name:'定位（GPS）',    need:'必要', desc:'記錄行車軌跡與節點通過時間'},
-  {id:'audio', icon:'🔊', name:'聲音與語音提示', need:'必要', desc:'節點提示音、開始／結束語音播報'},
-  {id:'mic',   icon:'🎤', name:'麥克風',        need:'選配', desc:'停車時可直接說出延滯原因'},
-  {id:'motion',icon:'🧭', name:'方向感應',      need:'選配', desc:'地圖隨車頭轉向，看路更直覺'},
+  {id:'gps',   icon:'📍', name:'定位（GPS）',    need:'必要', desc:'沒有定位就無法記錄軌跡與節點時間'},
+  {id:'audio', icon:'🔊', name:'聲音與語音提示', need:'建議', desc:'沒有聲音仍可調查，但要一直盯著螢幕'},
+  {id:'mic',   icon:'🎤', name:'麥克風',        need:'選配', desc:'停車時可直接說出原因，否則用按鈕'},
+  {id:'motion',icon:'🧭', name:'方向感應',      need:'選配', desc:'地圖隨車頭轉向，關掉只是固定朝北'},
 ]
 function setPermRow(id,state,msg){
   const el=document.getElementById('pg-'+id)
@@ -2168,7 +2167,7 @@ function showPermGate(){
             <span style="font-size:18px;flex-shrink:0;line-height:1.3">${r.icon}</span>
             <div style="flex:1;min-width:0">
               <div style="font-size:13.5px;font-weight:700;color:#0f172a">${r.name}
-                <span style="font-size:10px;font-weight:700;color:${r.need==='必要'?'#ef4444':'#94a3b8'};margin-left:3px">${r.need}</span></div>
+                <span style="font-size:10px;font-weight:700;color:${r.need==='必要'?'#ef4444':(r.need==='建議'?'#d97706':'#94a3b8')};margin-left:3px">${r.need}</span></div>
               <div class="pg-msg" style="font-size:11.5px;color:#94a3b8;line-height:1.5">${r.desc}</div>
             </div>
             <span class="pg-st" style="font-size:15px;flex-shrink:0;line-height:1.3">·</span>
@@ -2737,7 +2736,7 @@ function triggerStopDetection(){
   // 面板彈出不再另外響提示音，直接用語音取代——駕駛聽到就知道要做什麼，
   // 不必先聽一聲嗶再等語音。（延滯開始／結束的提示音維持不變）
   // 提示語「播完」才開始聆聽，否則麥克風會把自己播的聲音收進去。
-  speakNav('請點選或說出停止原因', ()=>{ if(_stopActive) startCauseListening() })
+  speakNav('請說出車輛停止原因', ()=>{ if(_stopActive) startCauseListening() })
 }
 
 // Called when user picks a delay button while stop panel is shown
@@ -2833,13 +2832,13 @@ function speakNav(text, onDone){
     setTimeout(()=>{
       try{
         const u=new SpeechSynthesisUtterance(text)
-        u.lang='zh-TW'; u.rate=1.05
+        u.lang='zh-TW'; u.rate=1.18   // 稍微快一點，行車中提示才不會拖太久
         if(onDone){
           let fired=false
           const go=()=>{ if(!fired){ fired=true; onDone() } }
           u.onend=go; u.onerror=go
           // 保險：某些瀏覽器 onend 不一定會觸發，估個時間強制接手
-          setTimeout(go, 900 + text.length*180)
+          setTimeout(go, 700 + text.length*160)
         }
         window.speechSynthesis.speak(u)
       }catch(e){ if(onDone) onDone() }
@@ -2866,7 +2865,7 @@ const VOICE_CAUSES = [
   {cause:'parking',    group:'road', words:['路邊','違停','臨停'],                anchors:[]},
   {cause:'ped_int',    group:'int',  words:['路口行人','交叉口行人'],              anchors:[]},
   {cause:'ped_cross',  group:'road', words:['行人','穿越','斑馬','過馬路','路人'], anchors:[]},
-  {cause:'left_same',  group:'int',  words:['左轉同','同向','左轉銅'],             anchors:['同','銅']},
+  {cause:'left_same',  group:'int',  words:['左轉同','同向','左轉銅'],             anchors:['同','銅','左轉']},   // 只說「左轉」預設同向
   {cause:'left_opp',   group:'int',  words:['左轉對','對向'],                     anchors:['對']},
   {cause:'right_turn', group:'int',  words:['右轉'],                              anchors:['右']},
   {cause:'cross_veh',  group:'int',  words:['橫越','橫向','切入','插隊'],          anchors:['橫']},
@@ -3536,6 +3535,7 @@ function toggleDelay(d,group,opts){
     toggleDelay(d, group)                    // 換成正確的原因
     if(activeDelay && origStart) activeDelay.startedAt=origStart   // 起算點回到原本停下的時刻
     showToast(`✏️ 已更正為 ${d.icon} ${d.label}`, true)
+    speakNav('修改為'+d.label)   // 手動更正也複誦一次，駕駛不用低頭確認
     return
   }
   if(d.cause!==_voicePick?.cause) _voicePick=null
@@ -3567,7 +3567,11 @@ function toggleDelay(d,group,opts){
     svySheetCollapse()
   }else{
     // ── If another delay is active, stop it first ──
+    // 從一個原因切到另一個原因＝更正，複誦新的原因讓駕駛不用低頭確認。
+    // （12 秒更正時限內的那條路徑在上面自己會講，這裡處理超過時限的情況）
+    const _switching = !!activeDelay && !opts?.deductSeconds
     if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(p)toggleDelay(p,activeDelay.group)}
+    if(_switching) speakNav('修改為'+d.label)
     // ── Start recording this delay ──
     const s=new Date(),sp=lastPos?{...lastPos}:null;let el=0
     const tid=setInterval(()=>{
@@ -4690,7 +4694,8 @@ async function showProjectRoutePicker(pid, gsParam, kParam){
     showScreen('screen-project-routes')
     setTimeout(()=>renderProjectRoutesMap(routes,gsParam,kParam), 120)
     if(!(progress && progress.length)) renderTodayProgress(pid, routes, gsParam, kParam)
-    // 當天第一次開這個專案時，提醒把手機設定好（勿擾＋解除靜音）
+    // 當天第一次開這個專案：提醒手機設定（勿擾＋解除靜音）→ 設備檢測 → 授權，
+    // 一天只跑一次，之後同一天再回到這個畫面都不會再打擾
     setTimeout(()=>maybeShowDailyReminder(pid), 350)
   }catch(e){
     document.getElementById('fld-msg').textContent='❌ 載入失敗'
@@ -4719,8 +4724,16 @@ function closeDailyReminder(pid){
   try{ unlockAudio() }catch(e){}
   try{ unlockNavVoice() }catch(e){}
   // 每天第一次開啟專案：接著直接跑一次設備檢測，
-  // 定位、聲音、麥克風的授權一次問完，不會等到行車中才跳系統對話框
-  setTimeout(()=>{ try{ openDevTest() }catch(e){} }, 260)
+  // 定位、聲音、麥克風的授權一次問完，不會等到行車中才跳系統對話框。
+  // 設備是裝置層級的東西，所以用「全域每日一次」而不是每個專案各一次——
+  // 一天內開第二個專案不會再檢測一遍。
+  setTimeout(()=>{
+    try{ if(!devTestDoneToday()) openDevTest(); else maybeShowPermGate() }catch(e){}
+  }, 260)
+}
+const DEVTEST_DAILY_KEY='devtest_daily'
+function devTestDoneToday(){
+  try{ return localStorage.getItem(DEVTEST_DAILY_KEY)===todayStr() }catch(e){ return false }
 }
 function maybeShowDailyReminder(pid){
   if(dailyReminderShown(pid)) return
@@ -4982,6 +4995,9 @@ function openDevTest(){
 function closeDevTest(){
   devMicCleanup()
   document.getElementById('devtest-modal').classList.remove('open')
+  // 設備檢測若沒把定位問到手（使用者中途關掉、或拒絕了），才補跳一次授權視窗。
+  // 一天只會有這一次，不會每次回到清單都打擾。
+  setTimeout(()=>{ try{ maybeShowPermGate() }catch(e){} }, 200)
 }
 
 // ── 設備測試核心 ──
@@ -5002,14 +5018,19 @@ async function runDeviceChecks(){
   var isSecure=location.protocol==='https:'||location.hostname==='localhost'||location.hostname.startsWith('127.')
   _devResults.push({id:'https',name:'安全連線（HTTPS）',required:true,
     status:isSecure?'pass':'fail',
-    desc:isSecure?'使用安全連線，GPS 授權可正常運作':'非 https 連線，GPS 與動作感應授權將被瀏覽器封鎖'})
+    desc:isSecure?'GPS 授權的前提條件，目前正常'
+                 :'非 https 連線時瀏覽器會直接封鎖 GPS，等於無法監測 — 請用 PM 提供的正式網址開啟'})
   renderDevResults()
 
   // ── 2. 網路連線 ──
   var online=navigator.onLine
-  _devResults.push({id:'net',name:'網路連線',required:true,
-    status:online?'pass':'fail',
-    desc:online?'網路連線正常':'目前離線，任務下載與資料上傳將失敗'})
+  // 路線設定此時已經下載完成，節點判定與計時全部在手機上算，
+  // 上傳失敗也會進離線佇列、恢復連線自動補送 —— 所以行車中斷線不會遺失資料，
+  // 這一項因此列為選配，只是會影響地圖圖磚與即時上傳。
+  _devResults.push({id:'net',name:'網路連線',required:false,
+    status:online?'pass':'warn',
+    desc:online?'連線正常，資料會即時上傳'
+               :'目前離線。監測與計時不受影響，地圖圖磚可能載不出來；\n調查結果會先存在手機裡，恢復連線後自動補送'})
   renderDevResults()
 
   // ── 3. 音效（實際播放 + 讓使用者確認）──
@@ -5087,7 +5108,7 @@ async function runDeviceChecks(){
   // ── 5. 螢幕喚醒鎖（實際 request + release）──
   if(!navigator.wakeLock){
     _devResults.push({id:'wake',name:'螢幕喚醒鎖（防止熄屏）',required:false,
-      status:'warn',desc:'不支援 WakeLock，請至設定手動開啟「螢幕常亮」'})
+      status:'warn',desc:'⚠️ 不支援 WakeLock。螢幕若自動熄滅，GPS 會停止回報而漏記節點時間 — 請到手機「顯示與亮度 → 自動鎖定」改成「永不」'})
   } else {
     var wlSentinel=null
     try{
@@ -5097,7 +5118,7 @@ async function runDeviceChecks(){
         status:'pass',desc:'喚醒鎖測試成功，調查期間螢幕不會自動關閉'})
     }catch(e){
       _devResults.push({id:'wake',name:'螢幕喚醒鎖（防止熄屏）',required:false,
-        status:'warn',desc:'喚醒鎖請求失敗（'+e.message+'），請手動設定螢幕常亮'})
+        status:'warn',desc:'⚠️ 喚醒鎖請求失敗（'+e.message+'）。螢幕熄滅會導致 GPS 停止回報、漏記節點時間 — 請到手機「自動鎖定」改成「永不」'})
     }
   }
   renderDevResults()
@@ -5173,15 +5194,22 @@ function renderDevResults(){
 // ── 麥克風 / 語音辨識測試 ──
 // 讓使用者唸一句含有實際關鍵字的話，同時驗三件事：
 // 麥克風有沒有收到音（音量條）、辨識引擎通不通、關鍵字比得中比不中。
-const DEV_MIC_PHRASE = '前面紅燈，有行人穿越'
+const DEV_MIC_WORDS = ['紅燈','行人','阻塞']
 let _devMicStream=null, _devMicCtx=null, _devMicRaf=null, _devMicRec=null, _devMicTimer=null
 function devMicRowHtml(r){
   if(!VOICE_SR) return ''
   if(r.status==='listening'){
     return '<div style="margin-top:9px">'
       +'<div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:9px;padding:9px 11px;margin-bottom:8px">'
-      +'<div style="font-size:11px;color:#3b82f6;font-weight:700;margin-bottom:3px">請唸出這句話</div>'
-      +'<div style="font-size:16px;font-weight:800;color:#1e3a8a">'+DEV_MIC_PHRASE+'</div></div>'
+      +'<div style="font-size:11px;color:#3b82f6;font-weight:700;margin-bottom:5px">請依序唸出這三個詞</div>'
+      +'<div style="display:flex;gap:7px">'
+      +DEV_MIC_WORDS.map(function(w,i){
+          var got=devMicHas(r._alts||'',i)
+          return '<span style="flex:1;text-align:center;padding:7px 4px;border-radius:8px;font-size:15px;font-weight:800;'
+            +(got?'background:#16a34a;color:#fff':'background:#fff;color:#1e3a8a;border:1px solid #bfdbfe')+'">'
+            +(got?'✓ ':'')+w+'</span>'
+        }).join('')
+      +'</div></div>'
       +'<div style="height:7px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-bottom:8px">'
       +'<div id="devmic-bar" style="height:100%;width:0;background:#22c55e;transition:width .1s"></div></div>'
       +'<div id="devmic-heard" style="min-height:22px;font-size:14px;font-weight:700;color:#0f172a;margin-bottom:8px">聆聽中…</div>'
@@ -5199,7 +5227,7 @@ async function devMicTest(){
   const r=_devResults.find(x=>x.id==='mic'); if(!r||!VOICE_SR) return
   devMicCleanup()
   r.status='listening'; r.heard=''
-  r.desc='對著手機用平常講話的音量唸出上面那句話'
+  r.desc='對著手機用平常講話的音量，依序唸出下面三個詞'
   renderDevResults(); updateDevSummary()
   // 音量條：確認麥克風真的有收到聲音（辨識失敗時可以分辨是沒收到音還是引擎問題）
   try{
@@ -5239,7 +5267,7 @@ async function devMicTest(){
       r.heard=heard+interim
       r._alts=alts+interim
       // 兩個關鍵字都聽到就直接判定通過，不用等使用者按結束
-      if(devMicScore(r._alts)===2) devMicStop()
+      if(devMicScore(r._alts)===DEV_MIC_WORDS.length) devMicStop()
     }
     _devMicRec.onerror=e=>{
       r.status='fail'
@@ -5257,12 +5285,16 @@ async function devMicTest(){
     devMicCleanup(); renderDevResults(); updateDevSummary()
   }
 }
-// 這句測試話裡藏了兩個實際會用到的關鍵字，比對命中幾個
+// 三個詞都是實際會用到的關鍵字，逐一比對命中幾個（含同音容錯）
+const DEV_MIC_ALT = [['紅燈','紅'],['行人','人行'],['阻塞','塞車','塞']]
+function devMicHas(text, i){
+  if(!text) return false
+  return DEV_MIC_ALT[i].some(function(w){ return text.includes(w) })
+}
 function devMicScore(text){
   if(!text) return 0
   let n=0
-  if(text.includes('紅燈')||text.includes('紅')) n++
-  if(text.includes('行人')||text.includes('穿越')) n++
+  for(let i=0;i<DEV_MIC_ALT.length;i++) if(devMicHas(text,i)) n++
   return n
 }
 function devMicStop(){
@@ -5270,12 +5302,12 @@ function devMicStop(){
   devMicCleanup()
   if(!r) return
   const score=devMicScore(r._alts||r.heard)
-  if(score===2){
+  if(score===DEV_MIC_WORDS.length){
     r.status='pass'
     r.desc='語音辨識正常，停車時可直接說出原因（例如「紅燈」「行人」「計程車」）'
-  } else if(score===1 || (r.heard||'').trim()){
+  } else if(score>0 || (r.heard||'').trim()){
     r.status='warn'
-    r.desc='有聽到聲音但關鍵字沒有完全對上。行車中仍可嘗試語音，聽錯時直接按按鈕更正即可'
+    r.desc='只對上 '+score+'/'+DEV_MIC_WORDS.length+' 個詞。行車中仍可嘗試語音，聽錯時直接按按鈕更正即可'
   } else {
     r.status='warn'
     r.desc='沒有辨識到任何內容。請確認麥克風權限與收音環境；停車時改用按鈕選擇原因即可'
@@ -5352,21 +5384,24 @@ function updateDevSummary(){
   // 設備檢測本身就會把定位、聲音、麥克風的授權問完，
   // 所以跑完之後簽到頁不用再跳一次授權視窗
   try{
+    localStorage.setItem(DEVTEST_DAILY_KEY, todayStr())
     var gpsOk=_devResults.some(function(r){return r.id==='gps'&&r.status==='pass'})
     if(gpsOk) localStorage.setItem(PERM_GATE_KEY, todayStr())
   }catch(e){}
+  // 只有「必要」項目失敗才代表不能出發（實際上就是 GPS 與它的前提 HTTPS）；
+  // 聲音、麥克風、喚醒鎖、方向感應壞掉只是變得不好用，調查資料仍然完整。
   var failCount=_devResults.filter(function(r){return r.status==='fail'&&r.required}).length
-  var anyFail=_devResults.filter(function(r){return r.status==='fail'}).length
+  var optFail=_devResults.filter(function(r){return r.status==='fail'&&!r.required}).length
   var warnCount=_devResults.filter(function(r){return r.status==='warn'}).length
   var s=document.getElementById('devtest-summary')
   var f=document.getElementById('devtest-footer')
   f.style.display='block'
-  if(failCount>0||anyFail>0){
+  if(failCount>0){
     s.className='devtest-summary fail'
-    s.textContent='❌ 發現 '+anyFail+' 項問題，請依提示修正後重新測試'
-  } else if(warnCount>0){
+    s.textContent='❌ 必要項目未通過，目前無法進行監測，請依上方提示修正'
+  } else if(optFail+warnCount>0){
     s.className='devtest-summary warn'
-    s.textContent='⚠️ 基本符合需求，'+warnCount+' 項選配功能受限，不影響主要監測'
+    s.textContent='⚠️ 必要項目全部通過，可以出發；另有 '+(optFail+warnCount)+' 項輔助功能受限'
   } else {
     s.className='devtest-summary pass'
     s.textContent='✅ 所有項目通過，裝置完全符合監測需求，可出發！'

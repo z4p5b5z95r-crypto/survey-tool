@@ -150,7 +150,7 @@ const VOICE_CAUSES=[
   {cause:'parking',group:'road',words:['路邊','違停','臨停'],anchors:[]},
   {cause:'ped_int',group:'int',words:['路口行人','交叉口行人'],anchors:[]},
   {cause:'ped_cross',group:'road',words:['行人','穿越','斑馬','過馬路','路人'],anchors:[]},
-  {cause:'left_same',group:'int',words:['左轉同','同向','左轉銅'],anchors:['同','銅']},
+  {cause:'left_same',group:'int',words:['左轉同','同向','左轉銅'],anchors:['同','銅','左轉']},
   {cause:'left_opp',group:'int',words:['左轉對','對向'],anchors:['對']},
   {cause:'right_turn',group:'int',words:['右轉'],anchors:['右']},
   {cause:'cross_veh',group:'int',words:['橫越','橫向','切入','插隊'],anchors:['橫']},
@@ -195,10 +195,10 @@ function speak(text,onDone){
     speechSynthesis.cancel()
     setTimeout(()=>{
       const u=new SpeechSynthesisUtterance(text)
-      u.lang='zh-TW'; u.rate=1.05
+      u.lang='zh-TW'; u.rate=1.18
       if(onDone){
         let fired=false; const go=()=>{if(!fired){fired=true;onDone()}}
-        u.onend=go; u.onerror=go; setTimeout(go,900+text.length*180)
+        u.onend=go; u.onerror=go; setTimeout(go,700+text.length*160)
       }
       speechSynthesis.speak(u)
     },60)
@@ -260,7 +260,7 @@ function simulateStop(){
   $('sheet').style.display='block'
   renderButtons()
   log('偵測到停止，面板彈出')
-  speak('請點選或說出停止原因',()=>{ if(stopActive) startListening() })
+  speak('請說出車輛停止原因',()=>{ if(stopActive) startListening() })
 }
 function renderButtons(){
   const mk=(d,g)=>`<button class="db${activeDelay?.cause===d.cause?' active':''}" onclick="pickCause(${JSON.stringify(d).replace(/"/g,'&quot;')},'${g}')">
@@ -281,6 +281,7 @@ function pickCause(d,group,byVoice){
     $('res').className='res fix'
     $('res').textContent='✏️ 已更正為：'+d.label
     toast('✏️ 已更正為 '+d.label,'#b45309')
+    speak('修改為'+d.label)
     log('12 秒內更正 → 整筆改判給「'+d.label+'」，起算點維持原本停下的時刻')
     finishPick()
     return
