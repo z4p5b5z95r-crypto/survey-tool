@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>調查流程模擬 — 教學展示</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#020617;color:#e2e8f0;line-height:1.6;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans-serif;
+  display:flex;flex-direction:column;align-items:center;padding:16px 12px 26px}
+.top{width:100%;max-width:392px;margin-bottom:10px}
+.top h1{font-size:17px;font-weight:800;margin:0}
+.top p{font-size:12px;color:#64748b;margin:2px 0 0}
+.steps{display:flex;gap:3px;margin-top:9px}
+.steps i{flex:1;height:4px;border-radius:99px;background:#1e293b;font-style:normal}
+.steps i.on{background:#3b82f6}
+.steps i.done{background:#16a34a}
+
+/* 手機外框 */
+.phone{width:100%;max-width:392px;height:660px;background:#0f172a;border:1px solid #1e293b;
+  border-radius:26px;overflow:hidden;position:relative;display:flex;flex-direction:column}
+.scr{position:absolute;inset:0;display:none;flex-direction:column;overflow:hidden}
+.scr.on{display:flex}
+.body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+/* 共用 */
+.hd{background:#0f172a;padding:11px 14px;display:flex;align-items:center;gap:9px;flex-shrink:0;border-bottom:1px solid #1e293b}
+.hd b{font-size:14px;font-weight:800;color:#f1f5f9;flex:1;min-width:0}
+.btn{width:100%;padding:13px;border:none;border-radius:12px;font-size:15px;font-weight:800;
+  cursor:pointer;font-family:inherit;background:#2563eb;color:#fff}
+.btn.g{background:#16a34a}.btn.d{background:#1e293b;color:#94a3b8}
+.btn:disabled{background:#1e293b;color:#475569}
+.card{background:#1e293b;border-radius:14px;padding:13px;margin:0 12px 10px}
+.lb{font-size:10.5px;font-weight:800;color:#64748b;letter-spacing:.5px;margin-bottom:7px}
+
+/* QR */
+.qrbox{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px}
+.qrframe{width:190px;height:190px;border-radius:18px;position:relative;background:#020617;
+  display:flex;align-items:center;justify-content:center;font-size:74px}
+.qrframe::before,.qrframe::after{content:'';position:absolute;width:44px;height:44px;border:3px solid #3b82f6}
+.qrframe::before{top:0;left:0;border-right:none;border-bottom:none;border-radius:14px 0 0 0}
+.qrframe::after{bottom:0;right:0;border-left:none;border-top:none;border-radius:0 0 14px 0}
+.scanline{position:absolute;left:8px;right:8px;height:2px;background:#3b82f6;box-shadow:0 0 10px #3b82f6;
+  animation:scan 2s ease-in-out infinite}
+@keyframes scan{0%,100%{top:14px}50%{bottom:14px;top:auto}}
+
+/* 資料夾動畫 */
+.ldwrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+  padding-top:40%;gap:20px;background:#0f172a}
+.ld-folder{position:relative;width:96px;height:96px}
+.ld-fd-back{position:absolute;left:0;bottom:0;width:96px;height:64px;background:#d99a2b;border-radius:6px 10px 6px 6px}
+.ld-fd-tab{position:absolute;left:0;bottom:60px;width:42px;height:11px;background:#d99a2b;border-radius:5px 7px 0 0}
+.ld-fd-front{position:absolute;left:0;bottom:0;width:96px;height:53px;background:linear-gradient(180deg,#f4b942,#e8a52e);
+  border-radius:6px;z-index:6;animation:ldPop .62s ease-in-out infinite}
+.ld-fd-item{position:absolute;left:50%;top:4px;font-size:38px;line-height:1;z-index:4;opacity:0;
+  animation:ldDrop 8s linear infinite}
+@keyframes ldDrop{0%{opacity:0;transform:translate(-50%,-160px) scale(.7)}2%{opacity:1}
+  8.8%{transform:translate(-50%,-45px) scale(.94)}10.5%{transform:translate(-50%,-6px) scale(1)}
+  13%{opacity:1;transform:translate(-50%,34px) scale(.82)}14.5%{opacity:0;transform:translate(-50%,40px) scale(.55)}
+  100%{opacity:0;transform:translate(-50%,40px) scale(.55)}}
+@keyframes ldPop{0%,100%{transform:scaleY(1)}45%{transform:scaleY(1.08)}}
+
+/* 路線清單 */
+.pj-hd{background:#0f172a;padding:12px 14px}
+.pj-stats{display:flex;gap:7px;margin-top:9px}
+.pj-stats div{flex:1;border-radius:10px;padding:7px;text-align:center}
+.pj-stats b{font-size:16px;font-weight:800;display:block;line-height:1.2}
+.pj-stats span{font-size:10px}
+.rt{display:flex;align-items:stretch;background:#fff;border-radius:12px;margin:0 12px 8px;overflow:hidden;cursor:pointer}
+.rt .bar{width:5px;flex-shrink:0}
+.rt .in{flex:1;min-width:0;display:flex;align-items:center;gap:9px;padding:10px 11px}
+.rt .nm{font-size:14px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rt .sb{font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rings{display:flex;gap:4px;width:57px;justify-content:flex-end;flex-shrink:0}
+.ring{width:13px;height:13px;border-radius:99px;display:grid;place-items:center;background:#e2e8f0}
+.ring::after{content:'';width:6px;height:6px;border-radius:99px;background:#fff}
+
+/* 彈窗 */
+.ov{position:absolute;inset:0;background:rgba(15,23,42,.66);display:none;align-items:center;
+  justify-content:center;padding:14px;z-index:50}
+.ov.on{display:flex}
+.sheet2{background:#fff;color:#0f172a;border-radius:16px;padding:16px 14px;width:100%;max-height:92%;overflow-y:auto}
+.rowi{display:flex;gap:9px;align-items:flex-start;background:#f8fafc;border-radius:10px;padding:9px 10px;margin-bottom:7px}
+.rowi b{font-size:13px;font-weight:800;color:#0f172a;display:block}
+.rowi span{font-size:11.5px;color:#94a3b8}
+
+/* 設備檢測 */
+.dv{display:flex;gap:9px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #f1f5f9}
+.dv .ic{font-size:15px;flex-shrink:0;width:20px;text-align:center}
+.dv .nm{font-size:13px;font-weight:800;color:#0f172a}
+.dv .ds{font-size:11.5px;color:#94a3b8;line-height:1.5}
+.req{font-size:9.5px;font-weight:800;margin-left:3px}
+.mw{display:flex;gap:6px;margin-top:7px}
+.mw span{flex:1;text-align:center;padding:6px 3px;border-radius:7px;font-size:14px;font-weight:800;
+  background:#fff;color:#1e3a8a;border:1px solid #bfdbfe}
+.mw span.got{background:#16a34a;color:#fff;border-color:#16a34a}
+.meter{height:6px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-top:7px}
+.meter i{display:block;height:100%;width:0;background:#22c55e;transition:width .1s}
+
+/* 簽到 */
+.field{margin:0 12px 10px}
+.field label{font-size:11px;color:#64748b;font-weight:800;display:block;margin-bottom:5px}
+.field input{width:100%;padding:11px;border-radius:10px;border:1px solid #334155;background:#0f172a;
+  color:#f1f5f9;font-size:15px;font-family:inherit}
+.chips{display:flex;gap:6px}
+.chips button{flex:1;padding:9px;border-radius:10px;border:1px solid #334155;background:#0f172a;
+  color:#94a3b8;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit}
+.chips button.sel{background:#2563eb;border-color:#2563eb;color:#fff}
+
+/* 監測畫面 */
+.map{position:relative;background:#1e293b;flex:1;min-height:0}
+.map svg{width:100%;height:100%;display:block}
+.spd{position:absolute;top:8px;right:8px;background:rgba(2,6,23,.86);border-radius:11px;padding:4px 10px;text-align:center;min-width:52px}
+.spd b{display:block;font-size:17px;font-weight:800;line-height:1;color:#4ade80}
+.spd i{font-size:9px;color:#64748b;font-style:normal}
+.clk{position:absolute;top:8px;left:8px;background:rgba(2,6,23,.86);border-radius:11px;padding:4px 11px}
+.clk b{font-size:16px;font-weight:800;color:#f1f5f9;font-variant-numeric:tabular-nums}
+.nodes-bar{display:flex;gap:4px;padding:8px 12px;background:#0f172a;flex-shrink:0}
+.nd{flex:1;height:5px;border-radius:99px;background:#334155}
+.nd.done{background:#16a34a}.nd.cur{background:#f59e0b}
+.panel{background:#111f36;border-top:1px solid #1e293b;flex-shrink:0}
+.pnhd{display:flex;align-items:center;gap:8px;padding:8px 13px;background:#7c2d12}
+.pnhd b{color:#fed7aa;font-size:12.5px;font-weight:800;flex:1}
+.vhint{display:none;align-items:center;gap:8px;padding:6px 13px;background:#1e3a5f;color:#bfdbfe;font-size:12px;font-weight:800}
+.vhint.on{display:flex}
+.vdot{width:7px;height:7px;border-radius:99px;background:#f87171;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.cols{display:flex;gap:7px;padding:9px}
+.col{flex:1;min-width:0}
+.col b{font-size:10px;color:#64748b;font-weight:800;display:block;margin-bottom:5px}
+.db{width:100%;display:flex;align-items:center;gap:5px;background:#1e293b;border:1.5px solid #334155;
+  border-radius:8px;padding:7px 8px;margin-bottom:4px;color:#cbd5e1;font-size:11.5px;font-weight:800;
+  cursor:pointer;font-family:inherit;text-align:left}
+.db.active{background:#7f1d1d;border-color:#dc2626;color:#fecaca}
+.db em{margin-left:auto;font-style:normal;font-size:10.5px;color:#f87171;font-variant-numeric:tabular-nums}
+.idle{padding:11px 13px;font-size:12px;color:#64748b;text-align:center}
+
+/* 結果 */
+.sum{display:flex;gap:7px;margin:0 12px 10px}
+.sum div{flex:1;background:#1e293b;border-radius:11px;padding:10px;text-align:center}
+.sum b{display:block;font-size:17px;font-weight:800;color:#60a5fa}
+.sum span{font-size:10px;color:#64748b}
+.dl-row{display:flex;gap:8px;padding:5px 0;border-bottom:1px solid #1e293b;font-size:12.5px}
+
+/* 旁白 */
+.narr{width:100%;max-width:392px;margin-top:12px;background:#0f172a;border:1px solid #1e293b;
+  border-radius:14px;padding:12px 13px}
+.narr .t{font-size:11px;font-weight:800;color:#60a5fa;letter-spacing:.5px;margin-bottom:4px}
+.narr .m{font-size:13px;color:#cbd5e1;min-height:42px}
+.narr .m b{color:#fff}
+.nav{display:flex;gap:8px;margin-top:10px}
+.nav button{flex:1;padding:10px;border-radius:10px;border:none;font-size:13px;font-weight:800;
+  cursor:pointer;font-family:inherit;background:#1e293b;color:#cbd5e1}
+.nav button.p{background:#2563eb;color:#fff;flex:1.6}
+#toast{position:absolute;top:10px;left:50%;transform:translateX(-50%) translateY(-8px);background:#15803d;
+  color:#fff;padding:8px 16px;border-radius:20px;font-size:13.5px;font-weight:800;opacity:0;
+  transition:.25s;pointer-events:none;z-index:80;white-space:nowrap;max-width:92%}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1>🚗 交通調查 App — 完整流程模擬</h1>
+  <p>從掃描 QR 到上傳結果，含全部語音與互動</p>
+  <div class="steps" id="steps"></div>
+</div>
+
+<div class="phone">
+  <div id="toast"></div>
+
+  <!-- ① 掃 QR -->
+  <div class="scr on" id="s-qr">
+    <div class="hd"><b>📷 掃描專案 QR Code</b></div>
+    <div class="qrbox">
+      <div class="qrframe">▩<div class="scanline"></div></div>
+      <div style="font-size:12.5px;color:#64748b;text-align:center">將相機對準 PM 提供的專案 QR Code</div>
+      <button class="btn" style="max-width:220px" onclick="go('load')">模擬掃描成功</button>
+    </div>
+  </div>
+
+  <!-- ② 載入動畫 -->
+  <div class="scr" id="s-load">
+    <div class="ldwrap">
+      <div class="ld-folder">
+        <div class="ld-fd-back"></div><div class="ld-fd-tab"></div>
+        <div class="ld-fd-item" style="animation-delay:0s">🚦</div>
+        <div class="ld-fd-item" style="animation-delay:.8s">🚗</div>
+        <div class="ld-fd-item" style="animation-delay:1.6s">🚧</div>
+        <div class="ld-fd-item" style="animation-delay:2.4s">🐄</div>
+        <div class="ld-fd-item" style="animation-delay:3.2s">🚌</div>
+        <div class="ld-fd-item" style="animation-delay:4s">⛔</div>
+        <div class="ld-fd-item" style="animation-delay:4.8s">🚕</div>
+        <div class="ld-fd-item" style="animation-delay:5.6s">🚑</div>
+        <div class="ld-fd-item" style="animation-delay:6.4s">🛸</div>
+        <div class="ld-fd-item" style="animation-delay:7.2s">🐿️</div>
+        <div class="ld-fd-front"></div>
+      </div>
+      <div style="font-size:18px;font-weight:800;color:#f1f5f9">調查紀錄下載中...</div>
+    </div>
+  </div>
+
+  <!-- ③ 路線清單 -->
+  <div class="scr" id="s-routes">
+    <div class="pj-hd">
+      <div style="display:flex;align-items:center;gap:8px"><span style="font-size:17px">🗂</span>
+        <b style="font-size:14.5px;font-weight:800">115E-094 南科新設園區</b></div>
+      <div class="pj-stats">
+        <div style="background:#14532d"><b style="color:#86efac">0</b><span style="color:#4ade80">已完成</span></div>
+        <div style="background:#78350f"><b style="color:#fcd34d">1</b><span style="color:#fbbf24">進行中</span></div>
+        <div style="background:#475569"><b style="color:#e2e8f0">2</b><span style="color:#cbd5e1">未開始</span></div>
+      </div>
+    </div>
+    <div class="body" style="padding-top:10px" id="rt-list"></div>
+  </div>
+
+  <!-- ④ 簽到 -->
+  <div class="scr" id="s-signin">
+    <div class="hd"><b>✍️ 調查簽到</b></div>
+    <div class="body" style="padding-top:12px">
+      <div class="card" style="background:#1e3a5f">
+        <div style="font-size:15px;font-weight:800;color:#fff">歸仁大道</div>
+        <div style="font-size:11.5px;color:#93c5fd;margin-top:2px">歸仁1路 ～ 長榮路三段　全長 1,704 m　4 個節點</div>
+      </div>
+      <div class="field"><label>調查人員</label><input id="si-name" value="王小明"></div>
+      <div class="field"><label>天氣</label>
+        <div class="chips" id="si-w">
+          <button class="sel" data-w="晴">☀️ 晴</button><button data-w="陰">☁️ 陰</button><button data-w="雨">🌧 雨</button>
+        </div></div>
+      <div class="field"><label>時段與方向</label>
+        <div class="chips"><button class="sel">離峰去程</button><button>離峰回程</button></div>
+        <div class="chips" style="margin-top:6px"><button>尖峰去程</button><button>尖峰回程</button></div>
+      </div>
+      <div style="padding:4px 12px 16px"><button class="btn g" onclick="startDrive()">▶ 開始調查</button></div>
+    </div>
+  </div>
+
+  <!-- ⑤ 監測中 -->
+  <div class="scr" id="s-survey">
+    <div class="map">
+      <svg viewBox="0 0 320 300" id="mapsvg">
+        <rect width="320" height="300" fill="#132033"/>
+        <g stroke="#1e3a5f" stroke-width="16" stroke-linecap="round">
+          <line x1="0" y1="70" x2="320" y2="70"/><line x1="0" y1="230" x2="320" y2="230"/>
+          <line x1="70" y1="0" x2="70" y2="300"/><line x1="250" y1="0" x2="250" y2="300"/>
+        </g>
+        <polyline id="route" fill="none" stroke="#334155" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline id="trail" fill="none" stroke="#3b82f6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        <g id="ndots"></g>
+        <g id="carg"><circle r="11" fill="#f97316" stroke="#fff" stroke-width="2.5"/>
+          <text y="4.5" text-anchor="middle" font-size="12">🚗</text></g>
+      </svg>
+      <div class="clk"><b id="clk">0:00</b></div>
+      <div class="spd"><b id="spd">0</b><i>km/h</i></div>
+    </div>
+    <div class="nodes-bar" id="ndbar"></div>
+    <div class="panel">
+      <div id="pn-idle" class="idle">行駛中 — 系統會自動偵測停止</div>
+      <div id="pn-stop" style="display:none">
+        <div class="pnhd"><span>⚠️</span><b>偵測到停止 — 選擇延滯類型或忽略</b></div>
+        <div class="vhint" id="vhint"><span class="vdot"></span><span>聆聽中，可直接說出原因</span></div>
+        <div class="cols">
+          <div class="col"><b>🛣 路段延滯</b><div id="g-road"></div></div>
+          <div class="col"><b>🚦 交叉口延滯</b><div id="g-int"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑥ 完成 -->
+  <div class="scr" id="s-done">
+    <div class="hd"><b>✅ 調查完成</b></div>
+    <div class="body" style="padding-top:12px">
+      <div class="sum">
+        <div><b id="r-travel">—</b><span>旅行時間</span></div>
+        <div><b id="r-delay">—</b><span>延滯合計</span></div>
+        <div><b id="r-run">—</b><span>行駛時間</span></div>
+      </div>
+      <div class="card"><div class="lb">延滯明細</div><div id="r-list" style="font-size:12.5px;color:#64748b">—</div></div>
+      <div class="card" style="background:#14532d">
+        <div style="font-size:13px;font-weight:800;color:#86efac">☁️ 已自動上傳至雲端</div>
+        <div style="font-size:11.5px;color:#4ade80;margin-top:2px">無需手動操作；離線時會存在手機，恢復連線自動補送</div>
+      </div>
+      <div style="padding:4px 12px 16px"><button class="btn d" onclick="location.reload()">↺ 重新開始模擬</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="narr">
+  <div class="t" id="nr-t">步驟</div>
+  <div class="m" id="nr-m">按下方「開始」進行流程模擬。</div>
+  <div class="nav">
+    <button onclick="prevStep()">‹ 上一步</button>
+    <button class="p" id="nr-go" onclick="nextStep()">開始 ›</button>
+  </div>
+</div>
+
+<script>
+/* ══════════ 共用 ══════════ */
+const $=id=>document.getElementById(id)
+function toast(m,bg){const t=$('toast');t.textContent=m;t.style.background=bg||'#15803d';
+  t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1900)}
+/* 語音：與正式 App 相同的語速與 onend 保險 */
+function speak(text,onDone){
+  try{
+    if(!('speechSynthesis' in window)){onDone&&onDone();return}
+    speechSynthesis.cancel()
+    setTimeout(()=>{
+      const u=new SpeechSynthesisUtterance(text)
+      u.lang='zh-TW'; u.rate=1.18
+      if(onDone){let f=false;const g=()=>{if(!f){f=true;onDone()}}
+        u.onend=g;u.onerror=g;setTimeout(g,700+text.length*160)}
+      speechSynthesis.speak(u)
+    },60)
+  }catch(e){onDone&&onDone()}
+}
+function beep(freq,dur){
+  try{
+    const c=window._ac||(window._ac=new(window.AudioContext||window.webkitAudioContext)())
+    if(c.state==='suspended')c.resume()
+    const o=c.createOscillator(),g=c.createGain()
+    o.connect(g);g.connect(c.destination);o.type='sine';o.frequency.value=freq
+    g.gain.setValueAtTime(.4,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+dur)
+    o.start();o.stop(c.currentTime+dur)
+  }catch(e){}
+}
+const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0')
+
+/* ══════════ 延滯原因（與正式 App 完全一致） ══════════ */
+const ROAD=[{c:'congestion',l:'阻塞',i:'🚧'},{c:'bus_stop',l:'公車停靠',i:'🚌'},
+  {c:'ped_cross',l:'行人穿越',i:'🚶'},{c:'taxi_stop',l:'計程車停靠',i:'🚕'},
+  {c:'parking',l:'路邊停靠',i:'🅿️'},{c:'road_other',l:'其他',i:'❓'}]
+const INT=[{c:'red_light',l:'紅燈',i:'🔴'},{c:'ped_int',l:'行人',i:'🚶'},
+  {c:'cross_veh',l:'橫越車輛',i:'↔️'},{c:'left_same',l:'左轉同向',i:'↰'},
+  {c:'left_opp',l:'左轉對向',i:'↲'},{c:'right_turn',l:'右轉',i:'↱'},{c:'int_other',l:'其他',i:'❓'}]
+const VOICE=[
+ {c:'red_light',g:'int',w:['紅燈','紅綠','號誌'],a:['紅']},
+ {c:'congestion',g:'road',w:['阻塞','塞車','壅塞','車多','排隊','不知道','不知','確定','曉得','清楚','沒注意'],a:['塞']},
+ {c:'bus_stop',g:'road',w:['公車','巴士','客運'],a:[]},
+ {c:'taxi_stop',g:'road',w:['計程','小黃'],a:[]},
+ {c:'parking',g:'road',w:['路邊','違停','臨停'],a:[]},
+ {c:'ped_int',g:'int',w:['路口行人','交叉口行人'],a:[]},
+ {c:'ped_cross',g:'road',w:['行人','穿越','斑馬','過馬路','路人'],a:[]},
+ {c:'left_same',g:'int',w:['左轉同','同向','左轉銅'],a:['同','銅','左轉']},
+ {c:'left_opp',g:'int',w:['左轉對','對向'],a:['對']},
+ {c:'right_turn',g:'int',w:['右轉'],a:['右']},
+ {c:'cross_veh',g:'int',w:['橫越','橫向','切入','插隊'],a:['橫']},
+ {c:'int_other',g:'int',w:['路口其他'],a:[]},
+ {c:'road_other',g:'road',w:['其他','其它'],a:['其']}]
+function matchVoice(t){
+  if(!t)return null
+  for(const c of VOICE)for(const w of c.w)if(t.includes(w))return c
+  for(const c of VOICE)for(const a of c.a)if(t.includes(a))return c
+  return null
+}
+const findD=c=>[...ROAD,...INT].find(x=>x.c===c)
+
+/* ══════════ 旁白腳本 ══════════ */
+const SCRIPT=[
+ {t:'① 掃描專案 QR',m:'調查人員用手機相機掃 PM 提供的 <b>專案 QR Code</b>，不需要帳號密碼、不用安裝任何 App。',
+  go:()=>show('s-qr')},
+ {t:'② 下載專案資料',m:'掃到之後自動下載該專案底下的<b>所有路線設定</b>。資料下載完成前都是這個動畫。',
+  go:()=>{show('s-load');speak('調查紀錄下載中')}},
+ {t:'③ 選擇要調查的路線',m:'列出專案內全部路線。右邊的<b>小圓圈代表當天的進度</b>：一個圓＝一次調查，橘色依完成趟數填 1/4、2/4、3/4，四趟做完整圈轉綠。',
+  go:()=>{show('s-routes');renderRoutes()}},
+ {t:'④ 每日提醒',m:'每天第一次開專案時提醒<b>開勿擾、關靜音</b>——調查全程靠聲音提示，手機靜音會漏掉。',
+  go:()=>{show('s-routes');$('ov-remind').classList.add('on')}},
+ {t:'⑤ 設備檢測與授權',m:'接著自動跑一次設備檢測，把<b>定位、聲音、麥克風</b>的授權一次問完，不會等到行車中才跳系統對話框。<b>只有 GPS 是必要的</b>，其餘壞掉只是變得比較難用。',
+  go:()=>{show('s-routes');$('ov-remind').classList.remove('on');$('ov-dev').classList.add('on');runDevTest()}},
+ {t:'⑥ 麥克風測試',m:'請對著手機唸「<b>紅燈　行人　阻塞</b>」三個詞。這三個都是實際會用到的關鍵字，一次驗證麥克風、辨識引擎、關鍵字比對。',
+  go:()=>{show('s-routes');$('ov-dev').classList.add('on');micTest()}},
+ {t:'⑦ 簽到',m:'填寫調查人員、天氣，選擇這一趟是<b>離峰／尖峰</b>、<b>去程／回程</b>。一次調查包含四趟，四趟都做完才算完成一次。',
+  go:()=>{$('ov-dev').classList.remove('on');show('s-signin')}},
+ {t:'⑧ 開始行駛',m:'按下開始後車輛出發。通過<b>第一個節點</b>時語音播報「調查開始」並開始計時——這時不再有嗶聲，直接用語音。',
+  go:()=>startDrive()},
+ {t:'⑨ 行駛與節點',m:'中間每通過一個節點響<b>兩聲提示音</b>並記錄時間。地圖上藍線是已走過的路徑。',go:null},
+ {t:'⑩ 偵測到停止',m:'車速低於門檻時自動彈出面板並語音詢問「<b>請說出車輛停止原因</b>」。提示語播完才開始收音，避免麥克風收到自己的聲音。',go:null},
+ {t:'⑪ 語音選原因',m:'說「行人」系統會複誦「<b>行人穿越</b>」；聽錯就直接按按鈕，<b>12 秒內</b>更正會整筆改判、並語音回覆「修改為○○」。',go:null},
+ {t:'⑫ 抵達終點',m:'通過<b>最後一個節點</b>語音播報「調查結束」，停止計時。',go:null},
+ {t:'⑬ 完成與上傳',m:'自動計算旅行時間、延滯合計、行駛時間，並<b>自動上傳雲端</b>，不需要手動按上傳。離線時先存手機，恢復連線自動補送。',
+  go:()=>finishDrive()},
+]
+let step=-1
+$('steps').innerHTML=SCRIPT.map(()=>'<i></i>').join('')
+function paintSteps(){
+  [...$('steps').children].forEach((el,i)=>{
+    el.className = i<step?'done':(i===step?'on':'')
+  })
+}
+function setStep(i,skipGo){
+  if(i<0||i>=SCRIPT.length)return
+  step=i
+  const s=SCRIPT[i]
+  $('nr-t').textContent=s.t
+  $('nr-m').innerHTML=s.m
+  $('nr-go').textContent = i>=SCRIPT.length-1 ? '完成' : '下一步 ›'
+  paintSteps()
+  if(s.go && !skipGo) s.go()
+}
+function nextStep(){ if(step<SCRIPT.length-1) setStep(step+1) }
+function prevStep(){ if(step>0) setStep(step-1) }
+function show(id){document.querySelectorAll('.scr').forEach(s=>s.classList.toggle('on',s.id===id))}
+function go(id){show('s-'+id); if(id==='load') setTimeout(()=>setStep(2),1800)}
+
+/* ══════════ 路線清單 ══════════ */
+const RT_COLORS=['#2563eb','#ea580c','#0d9488']
+const ROUTES=[
+ {n:'歸仁大道',s:'歸仁1路-長榮路三段',r:[2,0]},
+ {n:'高發三路',s:'智慧綠能大道二段-大武路一段',r:[4,1,0]},
+ {n:'南157',s:'智慧綠能大道二段-長榮路三段',r:[0,0,0]}]
+function ringStyle(d){
+  if(d>=4)return 'background:#16a34a'
+  if(d<=0)return 'background:#e2e8f0'
+  return `background:conic-gradient(#f59e0b 0 ${d/4*100}%,#e2e8f0 0)`
+}
+function renderRoutes(){
+  $('rt-list').innerHTML=ROUTES.map((r,i)=>`
+    <div class="rt" onclick="setStep(6)">
+      <span class="bar" style="background:${RT_COLORS[i]}"></span>
+      <span class="in">
+        <span style="flex:1;min-width:0"><span class="nm">${i+1}. ${r.n}</span><br><span class="sb">${r.s}</span></span>
+        <span class="rings">${r.r.map(d=>`<span class="ring" style="${ringStyle(d)}"></span>`).join('')}</span>
+        <span style="color:#cbd5e1">›</span>
+      </span>
+    </div>`).join('')
+}
+
+/* ══════════ 設備檢測 ══════════ */
+const DEV=[
+ {id:'https',ic:'🔒',nm:'安全連線（HTTPS）',req:'必要',ds:'GPS 授權的前提條件'},
+ {id:'net',ic:'📶',nm:'網路連線',req:'選配',ds:'斷線不影響監測，資料會先存手機'},
+ {id:'audio',ic:'🔊',nm:'音效與語音',req:'建議',ds:'沒有聲音仍可調查，但要盯著螢幕'},
+ {id:'mic',ic:'🎤',nm:'麥克風與語音辨識',req:'選配',ds:'停車時可直接說出原因'},
+ {id:'gps',ic:'📍',nm:'GPS 定位',req:'必要',ds:'沒有定位就無法記錄軌跡與節點時間'},
+ {id:'wake',ic:'💡',nm:'螢幕喚醒鎖',req:'選配',ds:'螢幕熄滅會讓 GPS 停止回報'}]
+let devState={}
+function reqColor(r){return r==='必要'?'#ef4444':(r==='建議'?'#d97706':'#94a3b8')}
+function renderDev(){
+  $('dev-body').innerHTML=DEV.map(d=>{
+    const st=devState[d.id]||{s:'wait',ds:d.ds}
+    const ic={wait:'⏳',pass:'✅',warn:'⚠️',fail:'❌'}[st.s]
+    return `<div class="dv">
+      <span class="ic">${ic}</span>
+      <div style="flex:1;min-width:0">
+        <div class="nm">${d.ic} ${d.nm}<span class="req" style="color:${reqColor(d.req)}">${d.req}</span></div>
+        <div class="ds">${st.ds}</div>
+        ${d.id==='mic'&&st.s==='listening'?micUiHtml():''}
+      </div></div>`
+  }).join('')
+}
+function micUiHtml(){
+  return `<div class="mw">${MIC_W.map((w,i)=>
+    `<span class="${micHas(micHeard,i)?'got':''}">${micHas(micHeard,i)?'✓ ':''}${w}</span>`).join('')}</div>
+    <div class="meter"><i id="mic-bar"></i></div>`
+}
+async function runDevTest(){
+  devState={}
+  const seq=[
+   ['https','pass','使用安全連線，正常'],
+   ['net','pass','連線正常，資料會即時上傳'],
+   ['audio','pass','已播放測試音並解鎖語音'],
+   ['gps','pass','已授權，目前精度 ±6 公尺'],
+   ['wake','pass','喚醒鎖正常，螢幕不會自動關閉']]
+  renderDev()
+  for(const [id,s,ds] of seq){
+    await new Promise(r=>setTimeout(r,420))
+    devState[id]={s,ds}
+    if(id==='audio'){ beep(880,.14); setTimeout(()=>beep(1100,.18),160) }
+    renderDev()
+  }
+  devState.mic={s:'wait',ds:'按「下一步」進行麥克風測試'}
+  renderDev()
+}
+/* 麥克風測試：唸三個詞 */
+const MIC_W=['紅燈','行人','阻塞']
+const MIC_ALT=[['紅燈','紅'],['行人','人行'],['阻塞','塞車','塞']]
+const micHas=(t,i)=>!!t&&MIC_ALT[i].some(w=>t.includes(w))
+let micHeard='',micRec=null,micStream=null,micRaf=null
+async function micTest(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition
+  micHeard=''
+  if(!SR){devState.mic={s:'warn',ds:'此瀏覽器不支援語音辨識，停車時請用按鈕（不影響調查）'};renderDev();return}
+  devState.mic={s:'listening',ds:'請依序唸出下面三個詞'}
+  renderDev()
+  try{
+    micStream=await navigator.mediaDevices.getUserMedia({audio:true})
+    const c=new(window.AudioContext||window.webkitAudioContext)()
+    const an=c.createAnalyser();an.fftSize=512
+    c.createMediaStreamSource(micStream).connect(an)
+    const buf=new Uint8Array(an.frequencyBinCount)
+    ;(function tick(){an.getByteTimeDomainData(buf)
+      let p=0;for(let i=0;i<buf.length;i++)p=Math.max(p,Math.abs(buf[i]-128))
+      const b=$('mic-bar');if(b)b.style.width=Math.min(100,p/128*260)+'%'
+      micRaf=requestAnimationFrame(tick)})()
+  }catch(e){devState.mic={s:'fail',ds:'麥克風權限被拒絕，停車時請改用按鈕'};renderDev();return}
+  try{
+    micRec=new SR();micRec.lang='zh-TW';micRec.continuous=true;micRec.interimResults=true;micRec.maxAlternatives=3
+    micRec.onresult=ev=>{
+      for(let i=ev.resultIndex;i<ev.results.length;i++)
+        for(let a=0;a<ev.results[i].length;a++) micHeard+=ev.results[i][a].transcript
+      renderDev()
+      if(MIC_ALT.every((_,i)=>micHas(micHeard,i))) micDone()
+    }
+    micRec.onerror=()=>{devState.mic={s:'warn',ds:'辨識服務無法使用，停車時請用按鈕'};micCleanup();renderDev()}
+    micRec.start()
+    setTimeout(()=>{if(devState.mic?.s==='listening')micDone()},15000)
+  }catch(e){devState.mic={s:'warn',ds:'語音辨識無法啟動'};micCleanup();renderDev()}
+}
+function micDone(){
+  const n=MIC_ALT.reduce((a,_,i)=>a+(micHas(micHeard,i)?1:0),0)
+  devState.mic = n===3 ? {s:'pass',ds:'語音辨識正常，停車時可直接說出原因'}
+    : {s:'warn',ds:`只對上 ${n}/3 個詞。仍可使用語音，聽錯時按按鈕更正即可`}
+  micCleanup();renderDev()
+}
+function micCleanup(){
+  if(micRaf)cancelAnimationFrame(micRaf),micRaf=null
+  if(micRec){try{micRec.onresult=null;micRec.abort()}catch(e){}micRec=null}
+  if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null}
+}
+
+/* ══════════ 監測模擬 ══════════ */
+const PATH=[[20,230],[70,230],[70,150],[70,70],[190,70],[250,70],[250,20]]
+const NODES=[0,2,4,6]            // 節點落在 PATH 的哪幾個索引
+const NODE_NAME=['歸仁1路','中山路','文化街','長榮路三段']
+const STOPS=[{at:.30,say:'行人'},{at:.62,say:'紅燈'}]   // 腳本化的停車點
+let drive=null
+function pathLen(p){let L=0;for(let i=1;i<p.length;i++)L+=Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]);return L}
+function ptAt(f){
+  const total=pathLen(PATH);let d=f*total
+  for(let i=1;i<PATH.length;i++){
+    const seg=Math.hypot(PATH[i][0]-PATH[i-1][0],PATH[i][1]-PATH[i-1][1])
+    if(d<=seg){const k=seg?d/seg:0
+      return [PATH[i-1][0]+(PATH[i][0]-PATH[i-1][0])*k, PATH[i-1][1]+(PATH[i][1]-PATH[i-1][1])*k]}
+    d-=seg
+  }
+  return PATH[PATH.length-1]
+}
+function fracOfIdx(i){
+  const total=pathLen(PATH);let d=0
+  for(let k=1;k<=i;k++)d+=Math.hypot(PATH[k][0]-PATH[k-1][0],PATH[k][1]-PATH[k-1][1])
+  return d/total
+}
+function startDrive(){
+  show('s-survey')
+  setStep(7,true)          // 只更新旁白，不要再回頭呼叫自己
+  if(drive){ return }      // 已經在跑就不重建
+  $('route').setAttribute('points',PATH.map(p=>p.join(',')).join(' '))
+  $('ndots').innerHTML=NODES.map((i,k)=>{const p=PATH[i]
+    return `<circle id="nc-${k}" cx="${p[0]}" cy="${p[1]}" r="8" fill="#475569" stroke="#0f172a" stroke-width="2"/>
+    <text x="${p[0]}" y="${p[1]+3.5}" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">${k+1}</text>`}).join('')
+  $('ndbar').innerHTML=NODES.map((_,k)=>`<div class="nd" id="nb-${k}"></div>`).join('')
+  drive={f:0,t:0,paused:false,nodeIdx:0,stopIdx:0,delays:{},active:null,voicePick:null,log:[]}
+  renderCauseBtns()
+  tick()
+}
+function tick(){
+  if(!drive)return
+  if(!drive.paused){
+    drive.f=Math.min(1,drive.f+0.0016)
+    drive.t+=0.06
+    // 節點通過
+    if(drive.nodeIdx<NODES.length && drive.f>=fracOfIdx(NODES[drive.nodeIdx])-0.001){
+      hitNode(drive.nodeIdx); drive.nodeIdx++
+    }
+    // 腳本化停車
+    if(drive.stopIdx<STOPS.length && drive.f>=STOPS[drive.stopIdx].at){
+      triggerStop(STOPS[drive.stopIdx]); drive.stopIdx++
+    }
+  }
+  const [x,y]=ptAt(drive.f)
+  $('carg').setAttribute('transform',`translate(${x},${y})`)
+  $('trail').setAttribute('points',
+    PATH.filter((_,i)=>fracOfIdx(i)<=drive.f).map(p=>p.join(',')).concat([[x,y].join(',')]).join(' '))
+  $('clk').textContent=fmt(drive.t)
+  $('spd').textContent=drive.paused?0:Math.round(38+Math.sin(drive.t)*7)
+  $('spd').style.color=drive.paused?'#f87171':'#4ade80'
+  if(drive.active){
+    const s=Math.round((Date.now()-drive.active.st)/1000)
+    const e=$('t-'+drive.active.c); if(e)e.textContent=fmt(s)
+  }
+  if(drive.f>=1){ if(step<11)setStep(11,true); return }
+  requestAnimationFrame(()=>setTimeout(tick,45))
+}
+function hitNode(k){
+  $('nc-'+k).setAttribute('fill','#16a34a')
+  $('nb-'+k).className='nd done'
+  if(k===0){ speak('調查開始'); toast('▶ 調查開始，計時中') ; if(step<8)setStep(8,true) }
+  else if(k===NODES.length-1){ speak('調查結束'); toast('🏁 已抵達終點') ; setStep(11,true) }
+  else { beep(880,.12); setTimeout(()=>beep(1100,.18),150)
+    toast(`✅ 節點 ${k+1}／${NODES.length}　${NODE_NAME[k]}`) ; if(step<8)setStep(8,true) }
+}
+function renderCauseBtns(){
+  const mk=(d,g)=>`<button class="db${drive?.active?.c===d.c?' active':''}" onclick="pick('${d.c}','${g}')">
+    <span>${d.i}</span><span>${d.l}</span><em id="t-${d.c}"></em></button>`
+  $('g-road').innerHTML=ROAD.map(d=>mk(d,'road')).join('')
+  $('g-int').innerHTML=INT.map(d=>mk(d,'int')).join('')
+}
+function triggerStop(s){
+  drive.paused=true
+  drive.stopAt=Date.now()
+  $('pn-idle').style.display='none'
+  $('pn-stop').style.display='block'
+  if(step<9)setStep(9,true)
+  speak('請說出車輛停止原因',()=>{ if(drive&&drive.paused) listen(s.say) })
+}
+let rec=null
+function listen(hint){
+  $('vhint').classList.add('on')
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition
+  if(!SR){ $('vhint').innerHTML='<span>此瀏覽器不支援語音，請點選按鈕</span>'; return }
+  try{
+    rec=new SR();rec.lang='zh-TW';rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=3
+    let all=''
+    rec.onresult=ev=>{
+      for(let i=ev.resultIndex;i<ev.results.length;i++)
+        for(let a=0;a<ev.results[i].length;a++) all+=ev.results[i][a].transcript
+      const hit=matchVoice(all)
+      if(hit) pick(hit.c,hit.g,true)
+    }
+    rec.onerror=()=>{}
+    rec.start()
+  }catch(e){}
+}
+function stopListen(){$('vhint').classList.remove('on');if(rec){try{rec.onresult=null;rec.abort()}catch(e){}rec=null}}
+function pick(cause,group,byVoice){
+  if(!drive)return
+  const d=findD(cause)
+  // 12 秒內改按其他原因 → 整筆改判
+  const vp=drive.voicePick
+  if(vp && !byVoice && cause!==vp.c && Date.now()-vp.at<12000){
+    drive.delays[vp.c]=Math.max(0,(drive.delays[vp.c]||0)-vp.rec)
+    if(!drive.delays[vp.c])delete drive.delays[vp.c]
+    drive.voicePick=null
+    drive.active={c:cause,g:group,st:vp.st}
+    renderCauseBtns()
+    toast('✏️ 已更正為 '+d.i+' '+d.l,'#b45309')
+    speak('修改為'+d.l)
+    if(step<10)setStep(10,true)
+    return
+  }
+  stopListen()
+  if(drive.active && drive.active.c!==cause){
+    const s=Math.round((Date.now()-drive.active.st)/1000)
+    drive.delays[drive.active.c]=(drive.delays[drive.active.c]||0)+s
+    speak('修改為'+d.l)
+  }
+  drive.active={c:cause,g:group,st:drive.stopAt||Date.now()}
+  drive.voicePick = byVoice ? {c:cause,at:Date.now(),st:drive.active.st,rec:0} : null
+  renderCauseBtns()
+  if(byVoice){ speak(d.l); toast('🎤 '+d.i+' '+d.l) }
+  else toast('⏱ '+d.i+' '+d.l+' 計時中')
+  if(step<10)setStep(10,true)
+  // 5 秒後車輛重新起步，結束這筆延滯
+  clearTimeout(drive.resumeT)
+  drive.resumeT=setTimeout(resumeDrive,5000)
+}
+function resumeDrive(){
+  if(!drive||!drive.paused)return
+  if(drive.active){
+    const s=Math.max(1,Math.round((Date.now()-drive.active.st)/1000))
+    drive.delays[drive.active.c]=(drive.delays[drive.active.c]||0)+s
+    if(drive.voicePick)drive.voicePick.rec=s
+    const d=findD(drive.active.c)
+    toast('▸ '+d.l+' 結束，記錄 '+s+' 秒','#1d4ed8')
+    beep(660,.16)
+    drive.active=null
+  }
+  drive.voicePick=null
+  drive.paused=false
+  stopListen()
+  $('pn-stop').style.display='none'
+  $('pn-idle').style.display='block'
+  renderCauseBtns()
+}
+function finishDrive(){
+  show('s-done')
+  const travel=Math.round(drive?drive.t:0)
+  const delay=Object.values(drive?.delays||{}).reduce((a,b)=>a+b,0)
+  $('r-travel').textContent=fmt(travel)
+  $('r-delay').textContent=fmt(delay)
+  $('r-run').textContent=fmt(Math.max(0,travel-delay))
+  const es=Object.entries(drive?.delays||{})
+  $('r-list').innerHTML = es.length ? es.map(([c,s])=>{
+    const d=findD(c)
+    return `<div class="dl-row"><span>${d.i}</span><span style="flex:1;color:#cbd5e1;font-weight:700">${d.l}</span>
+      <span style="color:#f87171;font-weight:800">${s} 秒</span></div>`}).join('')
+    : '<span style="color:#64748b">這一趟沒有記錄到延滯</span>'
+  speak('調查結果已上傳')
+}
+
+/* ══════════ 彈窗（提醒 / 設備檢測） ══════════ */
+document.querySelector('.phone').insertAdjacentHTML('beforeend',`
+<div class="ov" id="ov-remind"><div class="sheet2">
+  <div style="font-size:26px;text-align:center">🚗</div>
+  <div style="font-size:16px;font-weight:800;text-align:center;margin:6px 0 3px">出發前確認</div>
+  <div style="font-size:12px;color:#64748b;text-align:center;margin-bottom:12px">先完成這兩項設定，接著會自動跑一次設備檢測</div>
+  <div class="rowi"><span style="font-size:16px">🌙</span><div><b>開啟勿擾模式</b><span>避免來電中斷調查</span></div></div>
+  <div class="rowi"><span style="font-size:16px">🔊</span><div><b>關閉靜音、開啟聲音</b><span>才聽得到節點與轉彎提示</span></div></div>
+  <div class="rowi" style="background:#eff6ff"><span style="font-size:16px">🔍</span>
+    <div><b style="color:#1e3a8a">接著進行設備檢測</b><span style="color:#60a5fa">定位、聲音、麥克風一次確認完畢</span></div></div>
+  <button class="btn" onclick="setStep(4)">知道了，開始檢測</button>
+</div></div>
+<div class="ov" id="ov-dev"><div class="sheet2">
+  <div style="font-size:15px;font-weight:800;margin-bottom:2px">🔬 設備檢測</div>
+  <div style="font-size:11.5px;color:#64748b;margin-bottom:8px">只有「必要」項目未通過才不能出發</div>
+  <div id="dev-body"></div>
+  <button class="btn" style="margin-top:12px" onclick="setStep(step===4?5:6)">下一步</button>
+</div></div>`)
+
+renderRoutes()
+</script>
+</body>
+</html>
