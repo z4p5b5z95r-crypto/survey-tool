@@ -2114,12 +2114,6 @@ const PERM_GATE_KEY='perm_gate_done'
 function permGateDoneToday(){
   try{ return localStorage.getItem(PERM_GATE_KEY)===todayStr() }catch(e){ return false }
 }
-async function maybeShowPermGate(){
-  if(document.getElementById('perm-gate')) return
-  // 今天問過、而且定位與麥克風都還是 granted，就不用再打擾
-  if(permGateDoneToday() && await allPermsGranted()) return
-  showPermGate()
-}
 async function queryPerm(name){
   try{
     if(!navigator.permissions?.query) return 'unknown'
@@ -2183,6 +2177,8 @@ function showPermGate(){
 function closePermGate(){
   try{ localStorage.setItem(PERM_GATE_KEY, todayStr()) }catch(e){}
   document.getElementById('perm-gate')?.remove()
+  // 授權完成 → 接著檢測裝置（今天已檢測過就跳過）
+  setTimeout(()=>{ try{ if(!devTestDoneToday()) openDevTest() }catch(e){} }, 220)
 }
 async function runPermGate(){
   const btn=document.getElementById('pg-go')
@@ -2238,7 +2234,7 @@ async function runPermGate(){
 
   if(btn){
     btn.disabled=false
-    btn.textContent='完成，開始簽到'
+    btn.textContent='完成，開始檢測裝置'
     btn.style.background='#16a34a'
     btn.onclick=closePermGate
   }
@@ -2736,7 +2732,7 @@ function triggerStopDetection(){
   // 面板彈出不再另外響提示音，直接用語音取代——駕駛聽到就知道要做什麼，
   // 不必先聽一聲嗶再等語音。（延滯開始／結束的提示音維持不變）
   // 提示語「播完」才開始聆聽，否則麥克風會把自己播的聲音收進去。
-  speakNav('請說出車輛停止原因', ()=>{ if(_stopActive) startCauseListening() })
+  speakNav('請說出車輛停止原因', ()=>{ if(_stopActive) startCauseListening() }, {high:true})
 }
 
 // Called when user picks a delay button while stop panel is shown
@@ -2822,28 +2818,56 @@ function unlockNavVoice(){
     window.speechSynthesis.speak(u)
   }catch(e){}
 }
-function speakNav(text, onDone){
+// 語音播報改成排隊制。
+// 原本每次都先 cancel() 再 speak()，只要兩個提示靠得近——例如「前方200公尺，左轉」
+// 還在講，車子就通過節點要播「調查開始」——後來的那句會把前一句砍掉，
+// 現場聽起來就是「有時沒聲音、有時只講一半、跟畫面對不上」。
+// 現在：一般提示排隊等前一句講完；節點與停止面板這類重要提示標為 high，
+// 會清空佇列立刻插播。兩秒內同一句話不重複播，避免連續觸發洗版。
+let _spQueue=[], _spBusy=false, _spLastText='', _spLastAt=0
+function speakNav(text, onDone, opts){
   if(!navVoiceEnabled){ if(onDone) onDone(); return }
+  if(!('speechSynthesis' in window)){ if(onDone) onDone(); return }
+  const now=Date.now()
+  if(text===_spLastText && now-_spLastAt<2000){ if(onDone) onDone(); return }
+  const item={text,onDone,high:!!(opts&&opts.high)}
+  if(item.high){
+    _spQueue=[]
+    try{ window.speechSynthesis.cancel() }catch(e){}
+    _spBusy=false
+  }else if(_spQueue.length>=2){
+    _spQueue.shift()          // 佇列太長就丟掉最舊的，免得語音一直落後畫面
+  }
+  _spQueue.push(item)
+  _spPump()
+}
+function _spPump(){
+  if(_spBusy) return
+  const it=_spQueue.shift()
+  if(!it) return
+  _spBusy=true
+  _spLastText=it.text; _spLastAt=Date.now()
   try{
-    if(!('speechSynthesis' in window)){ if(onDone) onDone(); return }
     if(window.speechSynthesis.paused) window.speechSynthesis.resume()
-    window.speechSynthesis.cancel()
     // WebKit 有個已知 bug：cancel() 之後立刻 speak() 常常直接被吃掉不出聲，延遲一點點呼叫比較穩
     setTimeout(()=>{
+      let fired=false
+      const done=()=>{
+        if(fired) return
+        fired=true; _spBusy=false
+        try{ if(it.onDone) it.onDone() }catch(e){}
+        _spPump()
+      }
       try{
-        const u=new SpeechSynthesisUtterance(text)
-        u.lang='zh-TW'; u.rate=1.10   // 稍微快一點，行車中提示才不會拖太久
-        if(onDone){
-          let fired=false
-          const go=()=>{ if(!fired){ fired=true; onDone() } }
-          u.onend=go; u.onerror=go
-          // 保險：某些瀏覽器 onend 不一定會觸發，估個時間強制接手
-          setTimeout(go, 700 + text.length*160)
-        }
+        const u=new SpeechSynthesisUtterance(it.text)
+        u.lang='zh-TW'; u.rate=1.10
+        u.onend=done; u.onerror=done
+        // 保險：某些瀏覽器 onend 不一定會觸發，估個時間強制接手
+        setTimeout(done, 700 + it.text.length*160)
         window.speechSynthesis.speak(u)
-      }catch(e){ if(onDone) onDone() }
+      }catch(e){ done() }
     },60)
-  }catch(e){ if(onDone) onDone() }
+  }catch(e){ _spBusy=false; if(it.onDone) it.onDone() }
 }
 
 // ════════════════════════════════════
@@ -2926,7 +2950,7 @@ function applyVoiceCause(c){
   if(!d) return
   svyStopPickDelay(d, c.group, true)
   // 複誦完整名稱，讓駕駛不用低頭就知道系統聽成什麼；聽錯就直接按按鈕更正
-  speakNav(d.label)
+  speakNav(d.label, null, {high:true})
   showToast(`🎤 ${d.icon} ${d.label}`, true)
 }
 // 提前提示的距離門檻：速度愈快，愈早提醒，給使用者足夠反應時間（沿用節點感應線同一套速度分級邏輯）
@@ -3137,8 +3161,8 @@ function recordNode(auto){
   const isFinal=currentNodeIdx>=names.length
   // 第一個與最後一個節點不響提示音，直接用語音取代；
   // 中間的節點維持原本的提示音。
-  if(justRecorded===1)      speakNav('調查開始')
-  else if(isFinal)          speakNav('調查結束')
+  if(justRecorded===1)      speakNav('調查開始',null,{high:true})
+  else if(isFinal)          speakNav('調查結束',null,{high:true})
   else                      playNodeBeep(false)
 
   // ── Last node: stop the clock ──
@@ -3535,7 +3559,7 @@ function toggleDelay(d,group,opts){
     toggleDelay(d, group)                    // 換成正確的原因
     if(activeDelay && origStart) activeDelay.startedAt=origStart   // 起算點回到原本停下的時刻
     showToast(`✏️ 已更正為 ${d.icon} ${d.label}`, true)
-    speakNav('修改為'+d.label)   // 手動更正也複誦一次，駕駛不用低頭確認
+    speakNav('修改為'+d.label, null, {high:true})   // 手動更正也複誦一次，駕駛不用低頭確認
     return
   }
   if(d.cause!==_voicePick?.cause) _voicePick=null
@@ -3571,7 +3595,7 @@ function toggleDelay(d,group,opts){
     // （12 秒更正時限內的那條路徑在上面自己會講，這裡處理超過時限的情況）
     const _switching = !!activeDelay && !opts?.deductSeconds
     if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(p)toggleDelay(p,activeDelay.group)}
-    if(_switching) speakNav('修改為'+d.label)
+    if(_switching) speakNav('修改為'+d.label, null, {high:true})
     // ── Start recording this delay ──
     const s=new Date(),sp=lastPos?{...lastPos}:null;let el=0
     const tid=setInterval(()=>{
@@ -4723,13 +4747,16 @@ function closeDailyReminder(pid){
   // 藉這個使用者手勢順便解鎖聲音與語音，iOS 才會在之後的自動提示出聲
   try{ unlockAudio() }catch(e){}
   try{ unlockNavVoice() }catch(e){}
-  // 每天第一次開啟專案：接著直接跑一次設備檢測，
-  // 定位、聲音、麥克風的授權一次問完，不會等到行車中才跳系統對話框。
-  // 設備是裝置層級的東西，所以用「全域每日一次」而不是每個專案各一次——
-  // 一天內開第二個專案不會再檢測一遍。
-  setTimeout(()=>{
-    try{ if(!devTestDoneToday()) openDevTest(); else maybeShowPermGate() }catch(e){}
-  }, 260)
+  // 每天第一次開啟專案的順序：① 這張提醒 → ② 開通權限 → ③ 設備檢測。
+  // 先授權再檢測，檢測時定位與麥克風才拿得到真實結果，不會一邊檢測一邊跳系統對話框。
+  setTimeout(()=>{ try{ startSetupFlow() }catch(e){} }, 260)
+}
+// 設定流程的下一步：還沒授權就先授權，授權完（或今天已授權過）才進設備檢測。
+// 兩者都是裝置層級的事，所以用「全域每日一次」而不是每個專案各一次——
+// 一天內開第二個專案不會再走一遍。
+async function startSetupFlow(){
+  if(!(permGateDoneToday() && await allPermsGranted())){ showPermGate(); return }
+  if(!devTestDoneToday()) openDevTest()
 }
 const DEVTEST_DAILY_KEY='devtest_daily'
 function devTestDoneToday(){
@@ -4745,7 +4772,7 @@ function maybeShowDailyReminder(pid){
     <div style="background:#fff;border-radius:18px;padding:20px 18px;width:100%;max-width:320px;box-shadow:0 16px 48px rgba(0,0,0,.35)">
       <div style="font-size:30px;text-align:center;line-height:1">🚗</div>
       <div style="font-size:16px;font-weight:800;color:#0f172a;text-align:center;margin:8px 0 4px">出發前確認</div>
-      <div style="font-size:12.5px;color:#64748b;text-align:center;line-height:1.6;margin-bottom:14px">先完成這兩項設定，接著會自動跑一次設備檢測</div>
+      <div style="font-size:12.5px;color:#64748b;text-align:center;line-height:1.6;margin-bottom:14px">先完成這兩項設定，接著開通權限並檢測裝置</div>
       <div style="display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border-radius:12px;padding:11px 12px;margin-bottom:8px">
         <span style="font-size:17px;line-height:1.3">🌙</span>
         <div><div style="font-size:13.5px;font-weight:700;color:#0f172a">開啟勿擾模式</div>
@@ -4757,11 +4784,11 @@ function maybeShowDailyReminder(pid){
         <div style="font-size:12px;color:#94a3b8;margin-top:1px">才聽得到節點與轉彎提示</div></div>
       </div>
       <div style="display:flex;gap:10px;align-items:flex-start;background:#eff6ff;border-radius:12px;padding:11px 12px;margin-bottom:16px">
-        <span style="font-size:17px;line-height:1.3">🔍</span>
-        <div><div style="font-size:13.5px;font-weight:700;color:#1e3a8a">接著進行設備檢測</div>
+        <span style="font-size:17px;line-height:1.3">🔐</span>
+        <div><div style="font-size:13.5px;font-weight:700;color:#1e3a8a">接著開通權限，再檢測裝置</div>
         <div style="font-size:12px;color:#60a5fa;margin-top:1px">定位、聲音、麥克風一次確認完畢</div></div>
       </div>
-      <button id="daily-reminder-ok" style="width:100%;padding:13px;background:#2563eb;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">知道了，開始檢測</button>
+      <button id="daily-reminder-ok" style="width:100%;padding:13px;background:#2563eb;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">知道了，開始設定</button>
     </div>`
   document.body.appendChild(ov)
   const btn=document.getElementById('daily-reminder-ok')
@@ -4995,9 +5022,6 @@ function openDevTest(){
 function closeDevTest(){
   devMicCleanup()
   document.getElementById('devtest-modal').classList.remove('open')
-  // 設備檢測若沒把定位問到手（使用者中途關掉、或拒絕了），才補跳一次授權視窗。
-  // 一天只會有這一次，不會每次回到清單都打擾。
-  setTimeout(()=>{ try{ maybeShowPermGate() }catch(e){} }, 200)
 }
 
 // ── 設備測試核心 ──
