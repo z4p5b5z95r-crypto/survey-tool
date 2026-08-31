@@ -511,6 +511,7 @@ async function switchReportRoute(routeId){
   try{
     await _loadRouteIntoGlobals(_pm.gs, _pm.sessionToken, routeId, _pm.date)
     renderPage()
+    renderRouteTabs()   // 抓好了就把轉圈換成打勾
   }catch(e){ alert('載入失敗：'+e.message) }
   if(!cached) hideDlOverlay()
 }
@@ -672,6 +673,7 @@ async function _prefetchAllRoutes(){
     try{ await _fetchRouteData(_pm.gs, _pm.sessionToken, r.id) }catch(e){}
     renderRouteTabs()
   }
+  renderRouteTabs()   // 收尾再畫一次，確保沒有任何一顆轉圈被留下來
 }
 async function initProjectReport(gs, sessionToken, pid, wantDate){
   ld('調查紀錄下載中...')
@@ -709,6 +711,7 @@ async function initProjectReport(gs, sessionToken, pid, wantDate){
   ld('載入第一條路線…')
   await _loadRouteIntoGlobals(gs, sessionToken, _pm.routeId, _pm.date)
   renderPage()
+  renderRouteTabs()   // 這條剛抓好，轉圈要換成打勾（專案只有一條路線時尤其重要）
   setTimeout(()=>{ _prefetchAllRoutes() }, 0)
 }
 
