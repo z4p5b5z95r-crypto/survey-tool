@@ -5633,16 +5633,31 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     if(!SIM.stopped) return
     clearTimeout(SIM.timer); SIM.stopped=false; hud('▶ 車輛重新起步')
   }
-  navigator.geolocation.watchPosition=function(ok){
-    SIM.cb=ok; emit()
-    if(!SIM.tick) SIM.tick=setInterval(step,500)
-    return 1
+  /* 完全不碰真實 GPS：整個 navigator.geolocation 換成模擬版。
+     同時覆寫實例與整個屬性，避免某些瀏覽器不讓直接改實例上的方法。 */
+  const GEOSTUB={
+    watchPosition(ok){
+      SIM.cb=ok; emit()
+      if(!SIM.tick) SIM.tick=setInterval(step,500)
+      return 1
+    },
+    getCurrentPosition(ok){
+      const p=(SIM.path[Math.min(SIM.i,Math.max(0,SIM.path.length-1))])||FWD[0]||DEF[0].wp[0]
+      setTimeout(()=>ok({coords:{latitude:p[0],longitude:p[1],accuracy:6,speed:0,
+        altitude:10,heading:null,altitudeAccuracy:3},timestamp:Date.now()}),280)
+    },
+    clearWatch(){}
   }
-  navigator.geolocation.getCurrentPosition=function(ok){
-    const p=(SIM.path[Math.min(SIM.i,Math.max(0,SIM.path.length-1))])||FWD[0]||DEF[0].wp[0]
-    setTimeout(()=>ok({coords:{latitude:p[0],longitude:p[1],accuracy:6,speed:0},timestamp:Date.now()}),280)
-  }
-  navigator.geolocation.clearWatch=function(){}
+  try{ Object.assign(navigator.geolocation, GEOSTUB) }catch(e){}
+  try{ Object.defineProperty(navigator,'geolocation',{value:GEOSTUB,configurable:true}) }catch(e){}
+
+  /* 方向感應：iOS 會跳系統授權對話框，展示時不需要，直接回報已授權 */
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission)
+      DeviceOrientationEvent.requestPermission=()=>Promise.resolve('granted')
+    if(typeof DeviceMotionEvent!=='undefined'&&DeviceMotionEvent.requestPermission)
+      DeviceMotionEvent.requestPermission=()=>Promise.resolve('granted')
+  }catch(e){}
 
   /* ── 掛勾正式 App ── */
   window.addEventListener('load',async function(){
@@ -5664,7 +5679,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     wrap('svyDismissStop',()=>{ if(SIM.stopped) resume() })
     wrap('toggleDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,4500) } })
     await INIT
-    hud('模擬模式已就緒 — 依畫面完成提醒與設備檢測')
+    hud('模擬模式已就緒 — GPS 全程模擬，不使用真實定位')
   })
 })()
 </script>
