@@ -2727,6 +2727,7 @@ function triggerStopDetection(){
   // 每筆延滯憑空多算 1.5~2 秒。改用 _stopSince 之後，門檻與 hold 怎麼調都自動對齊。
   _stopEvent={startedAt: _stopSince || Date.now(), pos:lastPos}
   _stopActive=true; _stopSince=null
+  _vrecDead=false; _vrecErr=''      // 新的一次停等，語音重新來過
   svySheetExpand()
   svyShowPanel('stop')
   // 選項 A：不設逾時。面板一直留著，直到駕駛選了原因、按了忽略，
@@ -2892,7 +2893,7 @@ function _spPump(){
 // ════════════════════════════════════
 const VOICE_SR = window.SpeechRecognition || window.webkitSpeechRecognition
 let voicePickEnabled = (localStorage.getItem('voice_pick_enabled') ?? '1') === '1'
-let _vrec=null, _vrecOn=false
+let _vrec=null, _vrecOn=false, _vrecErr='', _vrecDead=false
 // words 只放「多字詞」，anchors 放單字錨點。比對分兩段：先掃完所有原因的多字詞，
 // 都沒中才用單字錨點。這樣長句子（「有人插隊在右邊」）不會被單字搶先誤判。
 // 「行人」與「其他」路段／交叉口都有，預設歸路段，講「路口行人」才算交叉口。
@@ -2918,7 +2919,7 @@ function matchVoiceCause(text){
   return null
 }
 function startCauseListening(){
-  if(!VOICE_SR || !voicePickEnabled || _vrecOn) return
+  if(!VOICE_SR || !voicePickEnabled || _vrecOn || _vrecDead) return
   try{
     _vrec=new VOICE_SR()
     _vrec.lang='zh-TW'
@@ -2937,8 +2938,20 @@ function startCauseListening(){
       const hit=matchVoiceCause(all)
       if(hit) applyVoiceCause(hit)
     }
-    _vrec.onerror=()=>{}           // 沒網路、沒授權都靜默處理，按鈕照樣能用
-    _vrec.onend=()=>{ _vrecOn=false }
+    // 沒網路、沒授權都靜默處理，按鈕照樣能用；但被拒絕就別再重試
+    _vrec.onerror=e=>{
+      _vrecErr = e && e.error || ''
+      if(_vrecErr==='not-allowed'||_vrecErr==='service-not-allowed') _vrecDead=true
+    }
+    _vrec.onend=()=>{
+      _vrecOn=false
+      // 辨識引擎沉默幾秒就會自己結束（iOS 尤其明顯，continuous=true 也擋不住）。
+      // 停止面板現在會一直開著等駕駛選原因，若不自動接回去，
+      // 駕駛稍晚才開口就完全沒反應——這就是「語音輸入失效」的原因。
+      if(_stopActive && voicePickEnabled && !_vrecDead){
+        setTimeout(()=>{ if(_stopActive && !_vrecOn) startCauseListening() }, 300)
+      }
+    }
     _vrec.start()
     _vrecOn=true
     const hint=document.getElementById('svy-voice-hint')
@@ -5789,6 +5802,10 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     wrap('playNodeBeep',(f)=>{ dbg('🔔 節點提示音（'+(f?'終點三聲':'一般兩聲')+'）已呼叫') })
     wrap('playApproachBeep',()=>{ dbg('🔔 接近感應線提示音已呼叫') })
     wrap('triggerStopDetection',()=>{ dbg('🛑 偵測到停止') })
+    // 語音辨識的生命週期：開始／結束／錯誤／命中，全部記下來
+    wrap('startCauseListening',()=>{ dbg('🎤 開始聆聽') })
+    wrap('stopCauseListening',()=>{ dbg('🎤 停止聆聽') })
+    wrap('applyVoiceCause',(c)=>{ dbg('🎤 語音命中 → '+(c&&c.cause)) })
     wrap('svyStopPickDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,9000) } })
     wrap('svyDismissStop',()=>{ if(SIM.stopped) resume() })
     wrap('toggleDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,9000) } })
