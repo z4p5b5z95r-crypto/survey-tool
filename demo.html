@@ -2745,19 +2745,17 @@ function svyStopPickDelay(d, group, byVoice){
   clearTimeout(_stopCdTimer)
   stopCauseListening()
   _stopActive=false
-  // Start the delay via normal toggleDelay, but backdate startedAt using _stopEvent
-  if(activeDelay&&activeDelay.cause===d.cause){
-    // Already active (shouldn't normally happen), just dismiss
-    svyDismissStop(); return
-  }
-  if(activeDelay){
-    const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause)
-    if(p) toggleDelay(p,activeDelay.group)
-  }
-  // Start delay normally
+  // 已經是同一個原因就什麼都不做，免得變成「再按一次＝結束計時」
+  if(activeDelay && activeDelay.cause===d.cause){ markStopPanelPicked(d); return }
+  // 面板要維持開著：這個旗標必須在呼叫 toggleDelay「之前」設好，
+  // 否則 toggleDelay 內部會照一般情況把面板收起來（先前就是漏了這一點）。
+  _stopPanelOpen=true
+  const firstPick = !activeDelay
+  // 有 activeDelay 就是「改選」——交給 toggleDelay 內建的更正邏輯，
+  // 它會保留原本的起算時刻、撤掉前一筆、並語音複誦「修改為○○」。
   toggleDelay(d,group)
-  // Backdate startedAt to the retroactive stop start
-  if(activeDelay&&_stopEvent){
+  // 第一次選才需要把起算點回推到車子真正停下的時刻
+  if(firstPick && activeDelay && _stopEvent){
     activeDelay.startedAt=new Date(_stopEvent.startedAt)
   }
   // 語音選的要記下來：若駕駛發現聽錯、改按別的原因，
@@ -2766,11 +2764,8 @@ function svyStopPickDelay(d, group, byVoice){
     ? {cause:d.cause, group, at:Date.now(), startedAt:activeDelay.startedAt}
     : null
   _stopEvent=null
-  // 面板不收起來——車子還停著，駕駛隨時可能發現選錯（尤其是語音聽錯）。
-  // 一直留到車子重新開動、這筆延滯結束為止（見 toggleDelay 的結束分支）。
-  _stopPanelOpen=true
   markStopPanelPicked(d)
-  if(!byVoice) showToast(`⏱ ${d.icon} ${d.label} 計時中（可隨時改選）`)
+  if(!byVoice && firstPick) showToast(`⏱ ${d.icon} ${d.label} 計時中（可隨時改選）`)
 }
 // 面板留著時，把選中的原因標示出來，並把標題換成「可隨時更改」
 function markStopPanelPicked(d){
@@ -3599,7 +3594,8 @@ function toggleDelay(d,group,opts){
     const fix=_voicePick
     _voicePick=null
     if(wrong && activeDelay && activeDelay.cause===fix.cause){
-      toggleDelay(wrong, fix.group)          // 先正常結束錯的那一筆
+      // keepPanel：這是更正過程中的內部結束，不是「車子開走」，面板要留著
+      toggleDelay(wrong, fix.group, {keepPanel:true})
       undoDelayRecord(fix.cause, fix.group)  // 再把它從紀錄裡整個撤掉
     }
     toggleDelay(d, group)                    // 換成正確的原因
@@ -3634,8 +3630,9 @@ function toggleDelay(d,group,opts){
     clearTimeout(_delayIndTimer)
     _setDelayInd('✓',d.label+' 已結束','('+fmtSec(dur)+')','#4ade80')
     _delayIndTimer=setTimeout(()=>_setDelayInd(null,null,null,null),2000)
-    // 車子重新開動、這筆延滯結束，才把停止面板收回去
-    if(_stopPanelOpen){
+    // 車子重新開動、這筆延滯結束，才把停止面板收回去。
+    // keepPanel 代表這只是更正過程中的內部結束，面板要留著。
+    if(_stopPanelOpen && !opts?.keepPanel){
       _stopPanelOpen=false
       _voicePick=null
       const hdr=document.querySelector('#svy-panel-stop .svy-stop-hdr span:last-of-type')
@@ -3653,7 +3650,8 @@ function toggleDelay(d,group,opts){
     const _sameStop = _stopPanelOpen && _switching
     const _keepStart = _sameStop && activeDelay ? activeDelay.startedAt : null
     const _oldCause = _sameStop && activeDelay ? {cause:activeDelay.cause, group:activeDelay.group} : null
-    if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(p)toggleDelay(p,activeDelay.group)}
+    if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause)
+      if(p) toggleDelay(p,activeDelay.group,{keepPanel:_sameStop})}
     if(_oldCause) undoDelayRecord(_oldCause.cause,_oldCause.group)   // 把剛結束那段撤掉
     if(_switching) speakNav('修改為'+d.label, null, {high:true})
     // ── Start recording this delay ──
@@ -3670,7 +3668,8 @@ function toggleDelay(d,group,opts){
     _setDelayInd(d.icon,d.label,'0:00','#fca5a5')
     playDelayBeep(true)
     if(navigator.vibrate) navigator.vibrate(120)
-    svySheetCollapseWithTimer()  // 縮回但多露出 timer 行
+    // 停止面板開著時不收——車子還停著，駕駛隨時可能改選原因
+    if(!_stopPanelOpen) svySheetCollapseWithTimer()  // 縮回但多露出 timer 行
   }
 }
 
@@ -5793,9 +5792,14 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
         return (n&&p)?Math.round(distM([n.lat,n.lng],p)):-1
       }catch(e){ return -1 }
     }
-    wrap('recordNode',()=>{
+    // 要在 recordNode 執行「之前」讀距離：它內部會把 currentNodeIdx 加一、
+    // 把畫面換成「到下一個節點」的距離，事後才讀會得到毫無意義的數字。
+    const wrapBefore=(name,before)=>{ const f=window[name]
+      if(typeof f!=='function') return
+      window[name]=function(){ try{ before.apply(this,arguments) }catch(e){}; return f.apply(this,arguments) } }
+    wrapBefore('recordNode',()=>{
       const bar=document.getElementById('nnc-dist-num')
-      dbg('▶ 記錄節點：當下距離顯示 '+((bar&&bar.textContent)||'?')+' m')
+      dbg('▶ 記錄節點：觸發當下距節點 '+((bar&&bar.textContent)||'?')+' m')
     })
     wrap('speakNav',(t)=>{ dbg('🔊 語音「'+t+'」') })
     // 提示音有沒有「被呼叫」與有沒有「發出聲音」是兩件事，分開記錄才查得出來
