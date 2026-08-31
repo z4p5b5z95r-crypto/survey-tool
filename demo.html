@@ -780,7 +780,9 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     <div id="svy-panel-stop" style="display:none;flex-direction:column;flex:1;overflow:hidden;min-height:0">
       <div class="svy-stop-hdr">
         <span style="font-size:16px;flex-shrink:0">⚠️</span>
-        <span style="color:#fed7aa;font-size:13px;font-weight:600;flex:1">偵測到停止 — 選擇延滯類型或忽略</span>
+        <span id="svy-stop-title" style="color:#fed7aa;font-size:13px;font-weight:600;flex:1;min-width:0">偵測到停止 — 選擇延滯類型或忽略</span>
+        <span id="svy-stop-timer" style="color:#fff;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;flex-shrink:0">0:00</span>
+        <button id="svy-stop-end" onclick="svyManualEndDelay()" style="display:none;flex-shrink:0;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">■ 停止計時</button>
       </div>
       <!-- 語音聆聽中的提示，只有真的開始收音才出現 -->
       <div id="svy-voice-hint" style="display:none;align-items:center;gap:8px;padding:7px 14px;background:#1e3a5f;color:#bfdbfe;font-size:12.5px;font-weight:600">
@@ -2730,6 +2732,7 @@ function triggerStopDetection(){
   _vrecDead=false; _vrecErr=''      // 新的一次停等，語音重新來過
   svySheetExpand()
   svyShowPanel('stop')
+  startStopTicker()
   // 選項 A：不設逾時。面板一直留著，直到駕駛選了原因、按了忽略，
   // 或車子重新開動（evalStopDetection 裡 >5km/h 持續 3 秒會自動收起）。
   // 舊版 7 秒就自動丟棄，駕駛只要分神或正在看路，那整段紅燈就完全沒進資料。
@@ -2768,9 +2771,31 @@ function svyStopPickDelay(d, group, byVoice){
   if(!byVoice && firstPick) showToast(`⏱ ${d.icon} ${d.label} 計時中（可隨時改選）`)
 }
 // 面板留著時，把選中的原因標示出來，並把標題換成「可隨時更改」
+// 停止面板的計時：從車子停下的那一刻起算，讓駕駛知道已經停多久
+let _stopTick=null
+function startStopTicker(){
+  clearInterval(_stopTick)
+  const from = (_stopEvent && _stopEvent.startedAt) || Date.now()
+  const paint=()=>{
+    const el=document.getElementById('svy-stop-timer'); if(!el) return
+    const base = (activeDelay && activeDelay.startedAt) ? activeDelay.startedAt.getTime() : from
+    el.textContent=fmtSec(Math.max(0,Math.round((Date.now()-base)/1000)))
+  }
+  paint()
+  _stopTick=setInterval(paint,500)
+}
+function stopStopTicker(){ clearInterval(_stopTick); _stopTick=null }
+// 手動結束這一筆延滯（不必等車子重新開動）
+function svyManualEndDelay(){
+  if(!activeDelay) return
+  const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause)
+  if(p) toggleDelay(p,activeDelay.group)   // 走正常結束流程：記錄秒數並收面板
+}
 function markStopPanelPicked(d){
-  const hdr=document.querySelector('#svy-panel-stop .svy-stop-hdr span:last-of-type')
+  const hdr=document.getElementById('svy-stop-title')
   if(hdr) hdr.textContent=`${d.icon} ${d.label} 計時中 — 選錯可直接改選`
+  const btn=document.getElementById('svy-stop-end')
+  if(btn) btn.style.display='block'
   ;[...document.querySelectorAll('#stop-grid-road .btn-dl, #stop-grid-inter .btn-dl')].forEach(b=>{
     b.classList.toggle('picked', b.dataset.cause===d.cause)
   })
@@ -2782,6 +2807,11 @@ function svyDismissStop(byResume){
   stopCauseListening()
   _stopActive=false
   _stopPanelOpen=false
+  stopStopTicker()
+  { const hdr=document.getElementById('svy-stop-title')
+    if(hdr) hdr.textContent='偵測到停止 — 選擇延滯類型或忽略'
+    const eb=document.getElementById('svy-stop-end'); if(eb) eb.style.display='none'
+    ;[...document.querySelectorAll('.btn-dl.picked')].forEach(b=>b.classList.remove('picked')) }
   _stopEvent=null
   _stopResumeSince=null
   svyShowPanel('idle')
@@ -3635,8 +3665,10 @@ function toggleDelay(d,group,opts){
     if(_stopPanelOpen && !opts?.keepPanel){
       _stopPanelOpen=false
       _voicePick=null
-      const hdr=document.querySelector('#svy-panel-stop .svy-stop-hdr span:last-of-type')
+      const hdr=document.getElementById('svy-stop-title')
       if(hdr) hdr.textContent='偵測到停止 — 選擇延滯類型或忽略'
+      const eb=document.getElementById('svy-stop-end'); if(eb) eb.style.display='none'
+      stopStopTicker()
       ;[...document.querySelectorAll('.btn-dl.picked')].forEach(b=>b.classList.remove('picked'))
       svyShowPanel('idle')
     }
@@ -5523,10 +5555,12 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
      ・去程／回程都能模擬（回程自動把路徑反過來走）
      ・車速約 29 km/h，語音講完車子才移動十幾公尺，播報與畫面才對得上
      ═══════════════════════════════════════════════════════════════ -->
-<div id="demo-hud" style="position:fixed;left:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:9997;
-  background:rgba(15,23,42,.9);border:1px solid #334155;border-radius:12px;padding:7px 10px;
+<div id="demo-hud" style="position:fixed;left:10px;top:calc(8px + env(safe-area-inset-top));z-index:9997;
+  background:rgba(15,23,42,.92);border:1px solid #334155;border-radius:12px;padding:7px 10px;
   font-size:11px;color:#94a3b8;font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC',sans-serif;
-  display:flex;align-items:center;gap:8px;backdrop-filter:blur(6px);max-width:calc(100% - 20px);transition:opacity .2s">
+  display:flex;align-items:center;gap:8px;backdrop-filter:blur(6px);max-width:calc(100% - 20px);
+  transition:opacity .2s;touch-action:none;cursor:move;user-select:none;-webkit-user-select:none">
+  <span id="demo-grip" style="color:#475569;font-size:13px;flex-shrink:0;letter-spacing:-2px">⠿</span>
   <span style="background:#1d4ed8;color:#fff;border-radius:6px;padding:2px 6px;font-weight:800;font-size:10px;flex-shrink:0">DEMO</span>
   <span id="demo-msg" style="flex:1;min-width:0">模擬模式準備中…</span>
   <button id="demo-dbg" style="background:#334155;color:#e2e8f0;border:none;border-radius:6px;
@@ -5535,7 +5569,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">隱藏</button>
 </div>
 <div id="demo-dbgbox" style="display:none;position:fixed;left:10px;right:10px;
-  bottom:calc(58px + env(safe-area-inset-bottom));z-index:9998;background:rgba(2,6,23,.94);
+  top:calc(52px + env(safe-area-inset-top));z-index:9996;background:rgba(2,6,23,.94);
   border:1px solid #334155;border-radius:12px;padding:9px 11px;max-height:44vh;overflow:auto;
   font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#94a3b8;line-height:1.5">
   <div id="dbg-live" style="color:#93c5fd;font-weight:700;margin-bottom:6px"></div>
@@ -5552,6 +5586,37 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   const GS='https://demo.local/exec'
   try{ history.replaceState(null,'', location.pathname+'?pid=DEMO&gs='+encodeURIComponent(GS)+'&k=demo') }catch(e){}
   const hud=m=>{ const el=document.getElementById('demo-msg'); if(el) el.textContent=m }
+  // HUD 可以拖到任何位置，避免擋到要展示的畫面
+  ;(function(){
+    const el=document.getElementById('demo-hud')
+    let sx=0,sy=0,ox=0,oy=0,moved=false
+    const start=e=>{
+      if(e.target.tagName==='BUTTON') return
+      const p=e.touches?e.touches[0]:e
+      const r=el.getBoundingClientRect()
+      sx=p.clientX; sy=p.clientY; ox=r.left; oy=r.top; moved=false
+      el.style.right='auto'; el.style.bottom='auto'
+      document.addEventListener('mousemove',move); document.addEventListener('touchmove',move,{passive:false})
+      document.addEventListener('mouseup',end);    document.addEventListener('touchend',end)
+    }
+    const move=e=>{
+      const p=e.touches?e.touches[0]:e
+      const dx=p.clientX-sx, dy=p.clientY-sy
+      if(Math.abs(dx)>3||Math.abs(dy)>3) moved=true
+      el.style.left=Math.max(4,Math.min(window.innerWidth-60, ox+dx))+'px'
+      el.style.top =Math.max(4,Math.min(window.innerHeight-40, oy+dy))+'px'
+      if(e.cancelable) e.preventDefault()
+      // 診斷框跟著跑到 HUD 下方
+      const box=document.getElementById('demo-dbgbox')
+      if(box&&box.style.display!=='none') box.style.top=(parseFloat(el.style.top)+44)+'px'
+    }
+    const end=()=>{
+      document.removeEventListener('mousemove',move); document.removeEventListener('touchmove',move)
+      document.removeEventListener('mouseup',end);    document.removeEventListener('touchend',end)
+    }
+    el.addEventListener('mousedown',start)
+    el.addEventListener('touchstart',start,{passive:true})
+  })()
   document.getElementById('demo-toggle').onclick=function(){
     const b=document.getElementById('demo-hud')
     const hide=b.style.opacity!=='0.12'
