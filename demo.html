@@ -2759,15 +2759,25 @@ function svyStopPickDelay(d, group, byVoice){
   if(activeDelay&&_stopEvent){
     activeDelay.startedAt=new Date(_stopEvent.startedAt)
   }
-  // 語音選的要記下來：若駕駛發現聽錯、在更正時限內改按別的原因，
+  // 語音選的要記下來：若駕駛發現聽錯、改按別的原因，
   // 整段延滯會整筆改判給新的原因，不會被拆成「錯的幾秒 + 對的幾秒」。
   _voicePick = byVoice && activeDelay
     ? {cause:d.cause, group, at:Date.now(), startedAt:activeDelay.startedAt}
     : null
   _stopEvent=null
-  svyShowPanel('idle')
-  svySheetCollapseWithTimer()
-  if(!byVoice) showToast(`⏱ ${d.icon} ${d.label} 計時中（含停等時間）`)
+  // 面板不收起來——車子還停著，駕駛隨時可能發現選錯（尤其是語音聽錯）。
+  // 一直留到車子重新開動、這筆延滯結束為止（見 toggleDelay 的結束分支）。
+  _stopPanelOpen=true
+  markStopPanelPicked(d)
+  if(!byVoice) showToast(`⏱ ${d.icon} ${d.label} 計時中（可隨時改選）`)
+}
+// 面板留著時，把選中的原因標示出來，並把標題換成「可隨時更改」
+function markStopPanelPicked(d){
+  const hdr=document.querySelector('#svy-panel-stop .svy-stop-hdr span:last-of-type')
+  if(hdr) hdr.textContent=`${d.icon} ${d.label} 計時中 — 選錯可直接改選`
+  ;[...document.querySelectorAll('#stop-grid-road .btn-dl, #stop-grid-inter .btn-dl')].forEach(b=>{
+    b.classList.toggle('picked', b.dataset.cause===d.cause)
+  })
 }
 
 // 駕駛按「忽略」，或車子重新開動而始終沒選原因時呼叫——不記錄，收起面板
@@ -2775,6 +2785,7 @@ function svyDismissStop(byResume){
   clearTimeout(_stopCdTimer); _stopCdTimer=null
   stopCauseListening()
   _stopActive=false
+  _stopPanelOpen=false
   _stopEvent=null
   _stopResumeSince=null
   svyShowPanel('idle')
@@ -3091,15 +3102,25 @@ async function playDelayBeep(isStart){
   }catch(e){}
 }
 
-// 必須 async 並且 await resume()。
-// context 還在 suspended 時 currentTime 不會前進，這時排程的聲音會被凍在時間軸上，
-// 等到後面某個動作（例如停止面板播語音、開麥克風）把音訊工作階段喚醒，
-// 才會一次爆出來——現場的症狀就是「過節點沒聲音，停車後突然冒出節點提示音」。
+// 等待 AudioContext 真的醒過來，最多等 1 秒。
+// iOS 在語音合成播報期間常把 Web Audio 的工作階段搶走，這時 resume() 不會立刻生效；
+// 若不等就排程，聲音會被凍在時間軸上，等工作階段恢復才一次爆出來——
+// 現場症狀就是「過節點沒聲音，停車播完語音後突然冒出節點提示音」。
+// 直接放棄又會變成完全沒聲音，所以用短輪詢：醒了就播，1 秒還沒醒才放棄。
+async function waitAudioReady(maxMs){
+  if(!audioCtx||audioCtx.state==='closed') return false
+  const t0=Date.now()
+  while(audioCtx.state!=='running'){
+    try{ await audioCtx.resume() }catch(e){}
+    if(audioCtx.state==='running') break
+    if(Date.now()-t0>(maxMs||1000)) return false
+    await new Promise(r=>setTimeout(r,120))
+  }
+  return audioCtx.state==='running'
+}
 async function playApproachBeep(){
   try{
-    if(!audioCtx||audioCtx.state==='closed') return
-    if(audioCtx.state==='suspended') await audioCtx.resume()
-    if(audioCtx.state!=='running') return   // 還是沒醒就別排程，寧可這次不響
+    if(!(await waitAudioReady(600))) return
     const ctx=audioCtx, t=ctx.currentTime
     // Soft rising two-tone: gentle alert that node is coming up
     const play=(freq,startT,dur,vol)=>{
@@ -3119,10 +3140,9 @@ async function playNodeBeep(isFinal){
   try{
     // Reuse the unlocked AudioContext created on user gesture in startSurvey()
     // Creating a new one here (inside GPS callback) would be suspended on iOS
-    if(!audioCtx||audioCtx.state==='closed') return
-    // 跟 playDelayBeep() 一樣要 await；沒等就排程會被凍住、稍後才一次播出
-    if(audioCtx.state==='suspended') await audioCtx.resume()
-    if(audioCtx.state!=='running') return
+    // 跟 playDelayBeep() 一樣要 await；沒等就排程會被凍住、稍後才一次播出。
+    // 節點提示音比較重要，多等一點（最多 1.2 秒）。
+    if(!(await waitAudioReady(1200))) return
     const ctx=audioCtx
     const play=(freq,startT,dur)=>{
       const o=ctx.createOscillator(),g=ctx.createGain()
@@ -3515,6 +3535,7 @@ function buildStopGrid(gid,types,group){
   const g=document.createElement('div');g.style.cssText='display:flex;flex-direction:column;gap:7px'
   types.forEach(d=>{
     const b=document.createElement('button');b.className='btn-dl'
+    b.dataset.cause=d.cause
     b.innerHTML=`<span class="di">${d.icon}</span><span class="dn">${d.label}</span>`
     b.onclick=()=>svyStopPickDelay(d,group)
     g.appendChild(b)
@@ -3540,6 +3561,7 @@ function _setDelayInd(icon,label,timeStr,color){
 let _delayIndTimer=null
 // 語音選錯的更正時限：在這段時間內改按別的原因，整筆改判，不會留下錯誤的殘段
 const VOICE_FIX_MS = 12000
+let _stopPanelOpen = false   // 停止面板是否還開著（車子還停著，可隨時改選原因）
 let _voicePick = null
 // 把剛剛因為語音而記下的那一筆整個撤銷（秒數退回、紀錄移除），
 // 讓更正後的原因可以從原本的停止時刻重新開始算。
@@ -3558,7 +3580,7 @@ function undoDelayRecord(cause, group){
 function toggleDelay(d,group,opts){
   // ── 語音聽錯的更正：時限內改按其他原因，把整段延滯轉給新原因 ──
   if(_voicePick && !opts?.deductSeconds && d.cause!==_voicePick.cause
-     && Date.now()-_voicePick.at < VOICE_FIX_MS){
+     && (_stopPanelOpen || Date.now()-_voicePick.at < VOICE_FIX_MS)){
     const wrong=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===_voicePick.cause)
     const origStart=_voicePick.startedAt
     const fix=_voicePick
@@ -3599,13 +3621,27 @@ function toggleDelay(d,group,opts){
     clearTimeout(_delayIndTimer)
     _setDelayInd('✓',d.label+' 已結束','('+fmtSec(dur)+')','#4ade80')
     _delayIndTimer=setTimeout(()=>_setDelayInd(null,null,null,null),2000)
+    // 車子重新開動、這筆延滯結束，才把停止面板收回去
+    if(_stopPanelOpen){
+      _stopPanelOpen=false
+      _voicePick=null
+      const hdr=document.querySelector('#svy-panel-stop .svy-stop-hdr span:last-of-type')
+      if(hdr) hdr.textContent='偵測到停止 — 選擇延滯類型或忽略'
+      ;[...document.querySelectorAll('.btn-dl.picked')].forEach(b=>b.classList.remove('picked'))
+      svyShowPanel('idle')
+    }
     svySheetCollapse()
   }else{
     // ── If another delay is active, stop it first ──
     // 從一個原因切到另一個原因＝更正，複誦新的原因讓駕駛不用低頭確認。
-    // （12 秒更正時限內的那條路徑在上面自己會講，這裡處理超過時限的情況）
     const _switching = !!activeDelay && !opts?.deductSeconds
+    // 停止面板還開著（車子還停著）＝這是同一次停等的改選，
+    // 整段時間要算給新的原因，不能拆成「錯的幾秒 + 對的幾秒」。
+    const _sameStop = _stopPanelOpen && _switching
+    const _keepStart = _sameStop && activeDelay ? activeDelay.startedAt : null
+    const _oldCause = _sameStop && activeDelay ? {cause:activeDelay.cause, group:activeDelay.group} : null
     if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(p)toggleDelay(p,activeDelay.group)}
+    if(_oldCause) undoDelayRecord(_oldCause.cause,_oldCause.group)   // 把剛結束那段撤掉
     if(_switching) speakNav('修改為'+d.label, null, {high:true})
     // ── Start recording this delay ──
     const s=new Date(),sp=lastPos?{...lastPos}:null;let el=0
@@ -3614,7 +3650,8 @@ function toggleDelay(d,group,opts){
       const e=$(`dtime-${d.cause}`);if(e)e.textContent=fmtSec(el)
       _setDelayInd(d.icon,d.label,fmtSec(el),'#fca5a5')  // 藍框實時更新
     },1000)
-    activeDelay={cause:d.cause,group,startedAt:s,timerId:tid,startPos:sp}
+    activeDelay={cause:d.cause,group,startedAt:(_keepStart||s),timerId:tid,startPos:sp}
+    if(_stopPanelOpen) markStopPanelPicked(d)
     $(`dbtn-${d.cause}`).classList.add('active')
     clearTimeout(_delayIndTimer)
     _setDelayInd(d.icon,d.label,'0:00','#fca5a5')
@@ -5752,9 +5789,9 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     wrap('playNodeBeep',(f)=>{ dbg('🔔 節點提示音（'+(f?'終點三聲':'一般兩聲')+'）已呼叫') })
     wrap('playApproachBeep',()=>{ dbg('🔔 接近感應線提示音已呼叫') })
     wrap('triggerStopDetection',()=>{ dbg('🛑 偵測到停止') })
-    wrap('svyStopPickDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,4500) } })
+    wrap('svyStopPickDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,9000) } })
     wrap('svyDismissStop',()=>{ if(SIM.stopped) resume() })
-    wrap('toggleDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,4500) } })
+    wrap('toggleDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,9000) } })
     await INIT
     hud('模擬模式已就緒 — GPS 全程模擬，不使用真實定位')
   })
