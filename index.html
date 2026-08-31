@@ -3091,10 +3091,15 @@ async function playDelayBeep(isStart){
   }catch(e){}
 }
 
-function playApproachBeep(){
+// 必須 async 並且 await resume()。
+// context 還在 suspended 時 currentTime 不會前進，這時排程的聲音會被凍在時間軸上，
+// 等到後面某個動作（例如停止面板播語音、開麥克風）把音訊工作階段喚醒，
+// 才會一次爆出來——現場的症狀就是「過節點沒聲音，停車後突然冒出節點提示音」。
+async function playApproachBeep(){
   try{
     if(!audioCtx||audioCtx.state==='closed') return
-    if(audioCtx.state==='suspended') audioCtx.resume()
+    if(audioCtx.state==='suspended') await audioCtx.resume()
+    if(audioCtx.state!=='running') return   // 還是沒醒就別排程，寧可這次不響
     const ctx=audioCtx, t=ctx.currentTime
     // Soft rising two-tone: gentle alert that node is coming up
     const play=(freq,startT,dur,vol)=>{
@@ -3110,12 +3115,14 @@ function playApproachBeep(){
 }
 
 // 中間節點的提示音（兩聲）。第一個與最後一個節點改用語音，不走這裡。
-function playNodeBeep(isFinal){
+async function playNodeBeep(isFinal){
   try{
     // Reuse the unlocked AudioContext created on user gesture in startSurvey()
     // Creating a new one here (inside GPS callback) would be suspended on iOS
     if(!audioCtx||audioCtx.state==='closed') return
-    if(audioCtx.state==='suspended') audioCtx.resume()
+    // 跟 playDelayBeep() 一樣要 await；沒等就排程會被凍住、稍後才一次播出
+    if(audioCtx.state==='suspended') await audioCtx.resume()
+    if(audioCtx.state!=='running') return
     const ctx=audioCtx
     const play=(freq,startT,dur)=>{
       const o=ctx.createOscillator(),g=ctx.createGain()
