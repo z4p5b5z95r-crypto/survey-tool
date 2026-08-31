@@ -187,6 +187,9 @@ input,select,textarea{font-size:max(16px,1em)!important}
 /* 一條路線最多 5 次，寬度固定預留 5 個圓的空間（5×13 + 4×4 = 81px），
    圓靠右對齊。這樣不論路線設幾次，所有卡片的圓都在同一條垂直線上，
    進度載入前後也不會讓路線名稱忽寬忽窄地跳動。 */
+/* 語音聆聽中的呼吸紅點 */
+.vh-dot{width:8px;height:8px;border-radius:999px;background:#f87171;flex-shrink:0;animation:vhPulse 1.2s ease-in-out infinite}
+@keyframes vhPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
 .pr-rings{display:flex;gap:4px;flex-shrink:0;align-items:center;justify-content:flex-end;width:81px}
 .pr-ring{width:13px;height:13px;border-radius:999px;flex-shrink:0;display:grid;place-items:center;background:#e2e8f0}
 .pr-ring::after{content:"";width:6px;height:6px;border-radius:999px;background:#fff}
@@ -774,6 +777,12 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
       <div class="svy-stop-hdr">
         <span style="font-size:16px;flex-shrink:0">⚠️</span>
         <span style="color:#fed7aa;font-size:13px;font-weight:600;flex:1">偵測到停止 — 選擇延滯類型或忽略</span>
+      </div>
+      <!-- 語音聆聽中的提示，只有真的開始收音才出現 -->
+      <div id="svy-voice-hint" style="display:none;align-items:center;gap:8px;padding:7px 14px;background:#1e3a5f;color:#bfdbfe;font-size:12.5px;font-weight:600">
+        <span class="vh-dot"></span>
+        <span style="flex:1">聆聽中，可直接說出原因（例如「行人」「紅燈」）</span>
+        <button onclick="toggleVoicePick()" style="background:rgba(255,255,255,.14);border:none;border-radius:7px;color:#bfdbfe;font-size:11.5px;font-weight:700;padding:4px 9px;cursor:pointer;font-family:inherit;flex-shrink:0">關閉語音</button>
       </div>
       <!-- Same delay columns as idle panel -->
       <div class="delay-columns" style="flex:1;overflow-y:auto;min-height:0">
@@ -2587,12 +2596,14 @@ function triggerStopDetection(){
   clearTimeout(_stopCdTimer); _stopCdTimer=null
   // 面板彈出不再另外響提示音，直接用語音取代——駕駛聽到就知道要做什麼，
   // 不必先聽一聲嗶再等語音。（延滯開始／結束的提示音維持不變）
-  speakNav('請選擇車輛停止原因')
+  // 提示語「播完」才開始聆聽，否則麥克風會把自己播的聲音收進去。
+  speakNav('請點選或說出停止原因', ()=>{ if(_stopActive) startCauseListening() })
 }
 
 // Called when user picks a delay button while stop panel is shown
-function svyStopPickDelay(d, group){
+function svyStopPickDelay(d, group, byVoice){
   clearTimeout(_stopCdTimer)
+  stopCauseListening()
   _stopActive=false
   // Start the delay via normal toggleDelay, but backdate startedAt using _stopEvent
   if(activeDelay&&activeDelay.cause===d.cause){
@@ -2609,15 +2620,21 @@ function svyStopPickDelay(d, group){
   if(activeDelay&&_stopEvent){
     activeDelay.startedAt=new Date(_stopEvent.startedAt)
   }
+  // 語音選的要記下來：若駕駛發現聽錯、在更正時限內改按別的原因，
+  // 整段延滯會整筆改判給新的原因，不會被拆成「錯的幾秒 + 對的幾秒」。
+  _voicePick = byVoice && activeDelay
+    ? {cause:d.cause, group, at:Date.now(), startedAt:activeDelay.startedAt}
+    : null
   _stopEvent=null
   svyShowPanel('idle')
   svySheetCollapseWithTimer()
-  showToast(`⏱ ${d.icon} ${d.label} 計時中（含停等時間）`)
+  if(!byVoice) showToast(`⏱ ${d.icon} ${d.label} 計時中（含停等時間）`)
 }
 
 // 駕駛按「忽略」，或車子重新開動而始終沒選原因時呼叫——不記錄，收起面板
 function svyDismissStop(byResume){
   clearTimeout(_stopCdTimer); _stopCdTimer=null
+  stopCauseListening()
   _stopActive=false
   _stopEvent=null
   _stopResumeSince=null
@@ -2666,10 +2683,10 @@ function unlockNavVoice(){
     window.speechSynthesis.speak(u)
   }catch(e){}
 }
-function speakNav(text){
-  if(!navVoiceEnabled) return
+function speakNav(text, onDone){
+  if(!navVoiceEnabled){ if(onDone) onDone(); return }
   try{
-    if(!('speechSynthesis' in window)) return
+    if(!('speechSynthesis' in window)){ if(onDone) onDone(); return }
     if(window.speechSynthesis.paused) window.speechSynthesis.resume()
     window.speechSynthesis.cancel()
     // WebKit 有個已知 bug：cancel() 之後立刻 speak() 常常直接被吃掉不出聲，延遲一點點呼叫比較穩
@@ -2677,10 +2694,101 @@ function speakNav(text){
       try{
         const u=new SpeechSynthesisUtterance(text)
         u.lang='zh-TW'; u.rate=1.05
+        if(onDone){
+          let fired=false
+          const go=()=>{ if(!fired){ fired=true; onDone() } }
+          u.onend=go; u.onerror=go
+          // 保險：某些瀏覽器 onend 不一定會觸發，估個時間強制接手
+          setTimeout(go, 900 + text.length*180)
+        }
         window.speechSynthesis.speak(u)
-      }catch(e){}
+      }catch(e){ if(onDone) onDone() }
     },60)
-  }catch(e){}
+  }catch(e){ if(onDone) onDone() }
+}
+
+// ════════════════════════════════════
+//  語音選擇停止原因
+//  面板彈出、播完提示語之後開始聆聽；聽到關鍵字就直接套用並複誦完整名稱。
+//  辨識不到、沒網路、瀏覽器不支援都只是靜靜地退回按鈕操作，不打擾駕駛。
+// ════════════════════════════════════
+const VOICE_SR = window.SpeechRecognition || window.webkitSpeechRecognition
+let voicePickEnabled = (localStorage.getItem('voice_pick_enabled') ?? '1') === '1'
+let _vrec=null, _vrecOn=false
+// words 只放「多字詞」，anchors 放單字錨點。比對分兩段：先掃完所有原因的多字詞，
+// 都沒中才用單字錨點。這樣長句子（「有人插隊在右邊」）不會被單字搶先誤判。
+// 「行人」與「其他」路段／交叉口都有，預設歸路段，講「路口行人」才算交叉口。
+const VOICE_CAUSES = [
+  {cause:'red_light',  group:'int',  words:['紅燈','紅綠','號誌'],                anchors:['紅']},
+  {cause:'congestion', group:'road', words:['阻塞','塞車','壅塞','車多','排隊','不知道','不知','確定','曉得','清楚','沒注意','不明'], anchors:['塞']},
+  {cause:'bus_stop',   group:'road', words:['公車','巴士','客運'],                anchors:[]},
+  {cause:'taxi_stop',  group:'road', words:['計程','小黃'],                       anchors:[]},
+  {cause:'parking',    group:'road', words:['路邊','違停','臨停'],                anchors:[]},
+  {cause:'ped_int',    group:'int',  words:['路口行人','交叉口行人'],              anchors:[]},
+  {cause:'ped_cross',  group:'road', words:['行人','穿越','斑馬','過馬路','路人'], anchors:[]},
+  {cause:'left_same',  group:'int',  words:['左轉同','同向','左轉銅'],             anchors:['同','銅']},
+  {cause:'left_opp',   group:'int',  words:['左轉對','對向'],                     anchors:['對']},
+  {cause:'right_turn', group:'int',  words:['右轉'],                              anchors:['右']},
+  {cause:'cross_veh',  group:'int',  words:['橫越','橫向','切入','插隊'],          anchors:['橫']},
+  {cause:'int_other',  group:'int',  words:['路口其他'],                          anchors:[]},
+  {cause:'road_other', group:'road', words:['其他','其它'],                       anchors:['其']},
+]
+function matchVoiceCause(text){
+  if(!text) return null
+  for(const c of VOICE_CAUSES) for(const w of c.words) if(text.includes(w)) return c
+  for(const c of VOICE_CAUSES) for(const a of c.anchors) if(text.includes(a)) return c
+  return null
+}
+function startCauseListening(){
+  if(!VOICE_SR || !voicePickEnabled || _vrecOn) return
+  try{
+    _vrec=new VOICE_SR()
+    _vrec.lang='zh-TW'
+    _vrec.continuous=true
+    _vrec.interimResults=true      // 吃暫定結果，駕駛一開口就能反應，不必等最終結果
+    _vrec.maxAlternatives=3
+    let heard=''
+    _vrec.onresult=ev=>{
+      if(!_stopActive) return
+      let all=heard
+      for(let i=ev.resultIndex;i<ev.results.length;i++){
+        const r=ev.results[i]
+        for(let a=0;a<r.length;a++) all+=r[a].transcript   // 三個候選都拿來比對，同音字更容易命中
+        if(r.isFinal) heard+=r[0].transcript
+      }
+      const hit=matchVoiceCause(all)
+      if(hit) applyVoiceCause(hit)
+    }
+    _vrec.onerror=()=>{}           // 沒網路、沒授權都靜默處理，按鈕照樣能用
+    _vrec.onend=()=>{ _vrecOn=false }
+    _vrec.start()
+    _vrecOn=true
+    const hint=document.getElementById('svy-voice-hint')
+    if(hint) hint.style.display='flex'
+  }catch(e){ _vrecOn=false }
+}
+function toggleVoicePick(){
+  voicePickEnabled=!voicePickEnabled
+  localStorage.setItem('voice_pick_enabled', voicePickEnabled?'1':'0')
+  if(voicePickEnabled){ showToast('🎤 語音選原因已開啟'); if(_stopActive) startCauseListening() }
+  else { stopCauseListening(); showToast('🔇 語音選原因已關閉，改用按鈕') }
+}
+function stopCauseListening(){
+  const hint=document.getElementById('svy-voice-hint')
+  if(hint) hint.style.display='none'
+  if(!_vrec) return
+  try{ _vrec.onresult=null; _vrec.abort() }catch(e){}
+  _vrec=null; _vrecOn=false
+}
+function applyVoiceCause(c){
+  if(!_stopActive) return
+  stopCauseListening()
+  const d=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===c.cause)
+  if(!d) return
+  svyStopPickDelay(d, c.group, true)
+  // 複誦完整名稱，讓駕駛不用低頭就知道系統聽成什麼；聽錯就直接按按鈕更正
+  speakNav(d.label)
+  showToast(`🎤 ${d.icon} ${d.label}`, true)
 }
 // 提前提示的距離門檻：速度愈快，愈早提醒，給使用者足夠反應時間（沿用節點感應線同一套速度分級邏輯）
 function getNavFarDist(){
@@ -3256,7 +3364,41 @@ function _setDelayInd(icon,label,timeStr,color){
   el.textContent=`${icon} ${label}${timeStr?' '+timeStr:''}`
 }
 let _delayIndTimer=null
+// 語音選錯的更正時限：在這段時間內改按別的原因，整筆改判，不會留下錯誤的殘段
+const VOICE_FIX_MS = 12000
+let _voicePick = null
+// 把剛剛因為語音而記下的那一筆整個撤銷（秒數退回、紀錄移除），
+// 讓更正後的原因可以從原本的停止時刻重新開始算。
+function undoDelayRecord(cause, group){
+  for(let i=delayLog.length-1;i>=0;i--){
+    const e=delayLog[i]
+    if(e.cause!==cause||e.group!==group) continue
+    const bucket = group==='road' ? cur.roadDelays : cur.intDelays
+    bucket[cause]=Math.max(0,(bucket[cause]||0)-(e.durationS||0))
+    if(!bucket[cause]) delete bucket[cause]
+    delayLog.splice(i,1)
+    return e
+  }
+  return null
+}
 function toggleDelay(d,group,opts){
+  // ── 語音聽錯的更正：時限內改按其他原因，把整段延滯轉給新原因 ──
+  if(_voicePick && !opts?.deductSeconds && d.cause!==_voicePick.cause
+     && Date.now()-_voicePick.at < VOICE_FIX_MS){
+    const wrong=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===_voicePick.cause)
+    const origStart=_voicePick.startedAt
+    const fix=_voicePick
+    _voicePick=null
+    if(wrong && activeDelay && activeDelay.cause===fix.cause){
+      toggleDelay(wrong, fix.group)          // 先正常結束錯的那一筆
+      undoDelayRecord(fix.cause, fix.group)  // 再把它從紀錄裡整個撤掉
+    }
+    toggleDelay(d, group)                    // 換成正確的原因
+    if(activeDelay && origStart) activeDelay.startedAt=origStart   // 起算點回到原本停下的時刻
+    showToast(`✏️ 已更正為 ${d.icon} ${d.label}`, true)
+    return
+  }
+  if(d.cause!==_voicePick?.cause) _voicePick=null
   if(activeDelay&&activeDelay.cause===d.cause){
     // ── Stop recording this delay ──
     clearInterval(activeDelay.timerId)

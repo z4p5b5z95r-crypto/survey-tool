@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>停車後語音選原因 — 模擬</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#020617;color:#e2e8f0;line-height:1.6;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans-serif;
+  padding:20px 16px 40px;display:flex;flex-direction:column;align-items:center}
+.wrap{width:100%;max-width:420px}
+h1{font-size:19px;font-weight:800;margin:0 0 3px}
+.lead{font-size:12.5px;color:#64748b;margin-bottom:16px}
+.phone{background:#0f172a;border:1px solid #1e293b;border-radius:20px;overflow:hidden;margin-bottom:14px}
+.map{height:130px;background:linear-gradient(160deg,#1e293b,#0f172a);position:relative;
+  display:flex;align-items:center;justify-content:center}
+.map .car{font-size:38px;transition:transform .4s}
+.map .spd{position:absolute;top:10px;right:10px;background:rgba(15,23,42,.85);border-radius:12px;
+  padding:4px 11px;text-align:center;min-width:52px}
+.map .spd b{display:block;font-size:17px;font-weight:800;line-height:1;color:#4ade80}
+.map .spd i{font-size:9px;color:#64748b;font-style:normal}
+.sheet{background:#111f36;border-top:1px solid #1e293b}
+.hdr{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#7c2d12}
+.hdr b{color:#fed7aa;font-size:13px;font-weight:700;flex:1}
+.vhint{display:none;align-items:center;gap:8px;padding:7px 14px;background:#1e3a5f;color:#bfdbfe;font-size:12.5px;font-weight:700}
+.vhint.on{display:flex}
+.dot{width:8px;height:8px;border-radius:99px;background:#f87171;flex-shrink:0;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
+.cols{display:flex;gap:8px;padding:10px}
+.col{flex:1;min-width:0}
+.col-lb{font-size:10.5px;color:#64748b;font-weight:800;margin-bottom:6px;padding-left:2px}
+.db{width:100%;display:flex;align-items:center;gap:6px;background:#1e293b;border:1.5px solid #334155;
+  border-radius:9px;padding:8px 9px;margin-bottom:5px;color:#cbd5e1;font-size:12.5px;font-weight:700;
+  cursor:pointer;font-family:inherit;text-align:left}
+.db:hover{border-color:#475569}
+.db.active{background:#7f1d1d;border-color:#dc2626;color:#fecaca}
+.db .t{margin-left:auto;font-size:11px;color:#f87171;font-variant-numeric:tabular-nums}
+.cancel{width:100%;padding:10px;background:transparent;border:1px solid #334155;border-radius:9px;
+  color:#94a3b8;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;margin:0 0 10px}
+.cancel-row{padding:0 10px}
+.ctl{display:flex;gap:8px;margin-bottom:12px}
+button.big{flex:1;padding:14px;border:none;border-radius:12px;font-size:15px;font-weight:800;
+  cursor:pointer;font-family:inherit}
+.b-go{background:#2563eb;color:#fff}
+.b-go:disabled{background:#1e293b;color:#475569}
+.b-re{background:#334155;color:#e2e8f0}
+.card{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:13px;margin-bottom:12px}
+.card h2{font-size:12px;font-weight:800;color:#93c5fd;margin:0 0 9px;letter-spacing:.5px}
+.rec{background:#020617;border:1px solid #1e293b;border-radius:9px;padding:10px;font-size:15px;
+  font-weight:700;min-height:44px;color:#fff}
+.rec .im{color:#475569;font-weight:400}
+.res{margin-top:9px;padding:11px;border-radius:9px;background:#020617;border:1px solid #1e293b;
+  text-align:center;font-size:14px;font-weight:800;color:#475569}
+.res.hit{background:#14532d;border-color:#16a34a;color:#86efac}
+.res.fix{background:#78350f;border-color:#f59e0b;color:#fcd34d}
+#log{font-size:11.5px;color:#94a3b8;font-family:ui-monospace,Menlo,monospace;white-space:pre-wrap;
+  background:#020617;border-radius:9px;padding:10px;max-height:170px;overflow:auto}
+.tips{font-size:12px;color:#64748b;background:#0f172a;border-left:3px solid #334155;
+  border-radius:0 9px 9px 0;padding:9px 12px}
+.tips b{color:#cbd5e1}
+#toast{position:fixed;top:14px;left:50%;transform:translateX(-50%) translateY(-10px);background:#15803d;
+  color:#fff;padding:10px 20px;border-radius:22px;font-size:15px;font-weight:800;opacity:0;
+  transition:.25s;pointer-events:none;z-index:99;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,.4)}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.warn{background:#78350f;border:1px solid #b45309;color:#fcd34d;border-radius:9px;padding:9px 12px;
+  font-size:12px;margin-bottom:12px;display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>🚗 停車後語音選原因 — 模擬</h1>
+<div class="lead">跟現場 App 完全相同的判斷邏輯，可在電腦上試</div>
+
+<div class="warn" id="warn"></div>
+
+<div class="phone">
+  <div class="map">
+    <div class="car" id="car">🚗</div>
+    <div class="spd"><b id="spd">42</b><i>km/h</i></div>
+  </div>
+  <div class="sheet" id="sheet" style="display:none">
+    <div class="hdr"><span>⚠️</span><b>偵測到停止 — 選擇延滯類型或忽略</b></div>
+    <div class="vhint" id="vhint">
+      <span class="dot"></span>
+      <span style="flex:1">聆聽中，可直接說出原因（例如「行人」「紅燈」）</span>
+    </div>
+    <div class="cols">
+      <div class="col"><div class="col-lb">🛣 路段延滯</div><div id="g-road"></div></div>
+      <div class="col"><div class="col-lb">🚦 交叉口延滯</div><div id="g-int"></div></div>
+    </div>
+    <div class="cancel-row"><button class="cancel" onclick="dismiss()">✕ 忽略（不記錄）</button></div>
+  </div>
+</div>
+
+<div class="ctl">
+  <button class="big b-go" id="btn-stop" onclick="simulateStop()">🛑 模擬車輛停下</button>
+  <button class="big b-re" onclick="reset()">↺ 重設</button>
+</div>
+
+<div class="card">
+  <h2>辨識結果</h2>
+  <div class="rec" id="rec">（尚未開始）</div>
+  <div class="res" id="res">複誦的完整名稱會顯示在這裡</div>
+</div>
+
+<div class="card">
+  <h2>累計延滯秒數</h2>
+  <div id="totals" style="font-size:12.5px;color:#64748b">還沒有任何紀錄</div>
+</div>
+
+<div class="card">
+  <h2>事件紀錄</h2>
+  <div id="log">等待開始…</div>
+</div>
+
+<div class="tips">
+  <b>試試看：</b>說「行人」會複誦「行人穿越」、說「計程車」會複誦「計程車停靠」。<br>
+  複誦後 <b>12 秒內</b>點選其他按鈕，會把整筆改判給新原因（不會拆成兩段）。<br>
+  說「路口行人」才會記成交叉口那個「行人」。
+</div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══ 與 index.html 相同的原因表與比對邏輯 ══
+const ROAD_DELAYS=[
+  {cause:'congestion',label:'阻塞',icon:'🚧'},
+  {cause:'bus_stop',label:'公車停靠',icon:'🚌'},
+  {cause:'ped_cross',label:'行人穿越',icon:'🚶'},
+  {cause:'taxi_stop',label:'計程車停靠',icon:'🚕'},
+  {cause:'parking',label:'路邊停靠',icon:'🅿️'},
+  {cause:'road_other',label:'其他',icon:'❓'}]
+const INT_DELAYS=[
+  {cause:'red_light',label:'紅燈',icon:'🔴'},
+  {cause:'ped_int',label:'行人',icon:'🚶'},
+  {cause:'cross_veh',label:'橫越車輛',icon:'↔️'},
+  {cause:'left_same',label:'左轉同向',icon:'↰'},
+  {cause:'left_opp',label:'左轉對向',icon:'↲'},
+  {cause:'right_turn',label:'右轉',icon:'↱'},
+  {cause:'int_other',label:'其他',icon:'❓'}]
+const VOICE_CAUSES=[
+  {cause:'red_light',group:'int',words:['紅燈','紅綠','號誌'],anchors:['紅']},
+  {cause:'congestion',group:'road',words:['阻塞','塞車','壅塞','車多','排隊','不知道','不知','確定','曉得','清楚','沒注意','不明'],anchors:['塞']},
+  {cause:'bus_stop',group:'road',words:['公車','巴士','客運'],anchors:[]},
+  {cause:'taxi_stop',group:'road',words:['計程','小黃'],anchors:[]},
+  {cause:'parking',group:'road',words:['路邊','違停','臨停'],anchors:[]},
+  {cause:'ped_int',group:'int',words:['路口行人','交叉口行人'],anchors:[]},
+  {cause:'ped_cross',group:'road',words:['行人','穿越','斑馬','過馬路','路人'],anchors:[]},
+  {cause:'left_same',group:'int',words:['左轉同','同向','左轉銅'],anchors:['同','銅']},
+  {cause:'left_opp',group:'int',words:['左轉對','對向'],anchors:['對']},
+  {cause:'right_turn',group:'int',words:['右轉'],anchors:['右']},
+  {cause:'cross_veh',group:'int',words:['橫越','橫向','切入','插隊'],anchors:['橫']},
+  {cause:'int_other',group:'int',words:['路口其他'],anchors:[]},
+  {cause:'road_other',group:'road',words:['其他','其它'],anchors:['其']}]
+function matchVoiceCause(t){
+  if(!t) return null
+  for(const c of VOICE_CAUSES) for(const w of c.words) if(t.includes(w)) return c
+  for(const c of VOICE_CAUSES) for(const a of c.anchors) if(t.includes(a)) return c
+  return null
+}
+const findD=c=>[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===c)
+
+// ══ 狀態 ══
+const VOICE_FIX_MS=12000
+let stopActive=false, activeDelay=null, voicePick=null
+let roadDelays={}, intDelays={}, delayLog=[]
+let rec=null, recOn=false, tickTimer=null
+
+const $=id=>document.getElementById(id)
+let logLines=[]
+function log(m){
+  logLines.push(`[${new Date().toLocaleTimeString('zh-TW',{hour12:false})}] ${m}`)
+  $('log').textContent=logLines.join('\n'); $('log').scrollTop=1e6
+}
+function toast(m,bg){
+  const t=$('toast'); t.textContent=m; t.style.background=bg||'#15803d'
+  t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),1800)
+}
+
+// ══ 環境檢查 ══
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition
+if(!SR){
+  $('warn').style.display='block'
+  $('warn').textContent='⚠️ 這個瀏覽器不支援語音辨識，只能測試按鈕流程（現場 App 也是這樣自動退回按鈕模式）。Chrome / Safari 可正常測試。'
+}
+
+// ══ 語音合成：播完才開始收音 ══
+function speak(text,onDone){
+  try{
+    if(!('speechSynthesis' in window)){ onDone&&onDone(); return }
+    speechSynthesis.cancel()
+    setTimeout(()=>{
+      const u=new SpeechSynthesisUtterance(text)
+      u.lang='zh-TW'; u.rate=1.05
+      if(onDone){
+        let fired=false; const go=()=>{if(!fired){fired=true;onDone()}}
+        u.onend=go; u.onerror=go; setTimeout(go,900+text.length*180)
+      }
+      speechSynthesis.speak(u)
+    },60)
+  }catch(e){ onDone&&onDone() }
+}
+
+// ══ 聆聽 ══
+function startListening(){
+  if(!SR||recOn) return
+  try{
+    rec=new SR(); rec.lang='zh-TW'; rec.continuous=true
+    rec.interimResults=true; rec.maxAlternatives=3
+    let heard=''
+    rec.onstart=()=>log('開始收音')
+    rec.onresult=ev=>{
+      if(!stopActive) return
+      let all=heard, interim=''
+      for(let i=ev.resultIndex;i<ev.results.length;i++){
+        const r=ev.results[i]
+        for(let a=0;a<r.length;a++) all+=r[a].transcript
+        if(r.isFinal){ heard+=r[0].transcript; log('辨識：'+r[0].transcript+' ('+(r[0].confidence||0).toFixed(2)+')') }
+        else interim+=r[0].transcript
+      }
+      $('rec').innerHTML=heard+`<span class="im">${interim}</span>`
+      const hit=matchVoiceCause(all)
+      if(hit) applyVoice(hit)
+    }
+    rec.onerror=e=>log('辨識錯誤：'+e.error)
+    rec.onend=()=>{recOn=false}
+    rec.start(); recOn=true
+    $('vhint').classList.add('on')
+  }catch(e){ log('無法啟動辨識：'+e.message) }
+}
+function stopListening(){
+  $('vhint').classList.remove('on')
+  if(!rec) return
+  try{ rec.onresult=null; rec.abort() }catch(e){}
+  rec=null; recOn=false
+}
+function applyVoice(c){
+  if(!stopActive) return
+  stopListening()
+  const d=findD(c.cause)
+  pickCause(d,c.group,true)
+  speak(d.label)
+  $('res').className='res hit'
+  $('res').textContent='🎤 複誦：'+d.label
+  toast('🎤 '+d.icon+' '+d.label)
+  log('語音命中 → 複誦「'+d.label+'」')
+}
+
+// ══ 流程 ══
+function simulateStop(){
+  reset(true)
+  $('btn-stop').disabled=true
+  $('spd').textContent='0'; $('spd').style.color='#f87171'
+  $('car').style.transform='scale(.88)'
+  stopActive=true
+  $('sheet').style.display='block'
+  renderButtons()
+  log('偵測到停止，面板彈出')
+  speak('請點選或說出停止原因',()=>{ if(stopActive) startListening() })
+}
+function renderButtons(){
+  const mk=(d,g)=>`<button class="db${activeDelay?.cause===d.cause?' active':''}" onclick="pickCause(${JSON.stringify(d).replace(/"/g,'&quot;')},'${g}')">
+    <span>${d.icon}</span><span>${d.label}</span><span class="t" id="t-${d.cause}"></span></button>`
+  $('g-road').innerHTML=ROAD_DELAYS.map(d=>mk(d,'road')).join('')
+  $('g-int').innerHTML=INT_DELAYS.map(d=>mk(d,'int')).join('')
+}
+function pickCause(d,group,byVoice){
+  // ── 語音聽錯的更正：時限內改按別的原因，整筆改判 ──
+  if(voicePick && !byVoice && d.cause!==voicePick.cause && Date.now()-voicePick.at<VOICE_FIX_MS){
+    const wrong=findD(voicePick.cause), orig=voicePick.startedAt, fix=voicePick
+    voicePick=null
+    if(activeDelay&&activeDelay.cause===fix.cause){
+      endDelay()                      // 先正常結束錯的那一筆
+      undoRecord(fix.cause,fix.group) // 再整筆撤掉
+    }
+    startDelay(d,group,orig)
+    $('res').className='res fix'
+    $('res').textContent='✏️ 已更正為：'+d.label
+    toast('✏️ 已更正為 '+d.label,'#b45309')
+    log('12 秒內更正 → 整筆改判給「'+d.label+'」，起算點維持原本停下的時刻')
+    finishPick()
+    return
+  }
+  if(activeDelay) endDelay()
+  startDelay(d,group,byVoice?stopStartedAt:Date.now())
+  voicePick = byVoice ? {cause:d.cause,group,at:Date.now(),startedAt:stopStartedAt} : null
+  if(!byVoice){
+    $('res').className='res hit'
+    $('res').textContent='👆 手動選擇：'+d.label
+    log('手動點選「'+d.label+'」')
+  }
+  finishPick()
+}
+let stopStartedAt=0
+function finishPick(){
+  stopActive=false
+  stopListening()
+  renderButtons()
+  startTick()
+}
+function startDelay(d,group,startedAt){
+  activeDelay={cause:d.cause,group,label:d.label,icon:d.icon,startedAt:startedAt||Date.now()}
+}
+function endDelay(){
+  if(!activeDelay) return
+  const dur=Math.max(0,Math.round((Date.now()-activeDelay.startedAt)/1000))
+  const b=activeDelay.group==='road'?roadDelays:intDelays
+  b[activeDelay.cause]=(b[activeDelay.cause]||0)+dur
+  delayLog.push({...activeDelay,durationS:dur})
+  log('結束「'+activeDelay.label+'」，記錄 '+dur+' 秒')
+  activeDelay=null
+  renderTotals()
+}
+function undoRecord(cause,group){
+  for(let i=delayLog.length-1;i>=0;i--){
+    const e=delayLog[i]
+    if(e.cause!==cause||e.group!==group) continue
+    const b=group==='road'?roadDelays:intDelays
+    b[cause]=Math.max(0,(b[cause]||0)-(e.durationS||0))
+    if(!b[cause]) delete b[cause]
+    delayLog.splice(i,1)
+    log('撤銷「'+e.label+'」那筆 '+e.durationS+' 秒')
+    renderTotals()
+    return
+  }
+}
+function startTick(){
+  clearInterval(tickTimer)
+  tickTimer=setInterval(()=>{
+    if(!activeDelay) return
+    const s=Math.max(0,Math.round((Date.now()-activeDelay.startedAt)/1000))
+    const el=$('t-'+activeDelay.cause)
+    if(el) el.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0')
+  },250)
+}
+function dismiss(){
+  stopActive=false; stopListening()
+  $('sheet').style.display='none'
+  $('btn-stop').disabled=false
+  $('res').className='res'; $('res').textContent='⊘ 已忽略，不記錄'
+  log('按下忽略，不記錄')
+}
+function renderTotals(){
+  const all=[...Object.entries(roadDelays).map(([c,s])=>['road',c,s]),
+             ...Object.entries(intDelays).map(([c,s])=>['int',c,s])]
+  if(!all.length){ $('totals').innerHTML='<span style="color:#64748b">還沒有任何紀錄</span>'; return }
+  $('totals').innerHTML=all.map(([g,c,s])=>{
+    const d=findD(c)
+    return `<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid #1e293b;font-size:13px">
+      <span>${d.icon}</span><span style="flex:1;color:#cbd5e1;font-weight:700">${d.label}</span>
+      <span style="color:#f87171;font-weight:800">${s} 秒</span></div>`
+  }).join('')
+}
+function reset(keepLog){
+  clearInterval(tickTimer)
+  stopActive=false; activeDelay=null; voicePick=null
+  stopListening()
+  if(!keepLog){ roadDelays={}; intDelays={}; delayLog=[]; logLines=[]; $('log').textContent='等待開始…'; renderTotals() }
+  stopStartedAt=Date.now()
+  $('sheet').style.display='none'
+  $('btn-stop').disabled=false
+  $('spd').textContent='42'; $('spd').style.color='#4ade80'
+  $('car').style.transform=''
+  $('rec').textContent='（尚未開始）'
+  $('res').className='res'; $('res').textContent='複誦的完整名稱會顯示在這裡'
+}
+renderTotals()
+</script>
+</body>
+</html>
