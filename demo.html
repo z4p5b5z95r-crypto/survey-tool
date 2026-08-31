@@ -2736,7 +2736,7 @@ function triggerStopDetection(){
   // 面板彈出不再另外響提示音，直接用語音取代——駕駛聽到就知道要做什麼，
   // 不必先聽一聲嗶再等語音。（延滯開始／結束的提示音維持不變）
   // 提示語「播完」才開始聆聽，否則麥克風會把自己播的聲音收進去。
-  speakNav('請說出車輛停止原因', ()=>{ if(_stopActive) startCauseListening() })
+  speakNav('請說出車輛停止原因', ()=>{ if(_stopActive) startCauseListening() }, {high:true})
 }
 
 // Called when user picks a delay button while stop panel is shown
@@ -2822,28 +2822,56 @@ function unlockNavVoice(){
     window.speechSynthesis.speak(u)
   }catch(e){}
 }
-function speakNav(text, onDone){
+// 語音播報改成排隊制。
+// 原本每次都先 cancel() 再 speak()，只要兩個提示靠得近——例如「前方200公尺，左轉」
+// 還在講，車子就通過節點要播「調查開始」——後來的那句會把前一句砍掉，
+// 現場聽起來就是「有時沒聲音、有時只講一半、跟畫面對不上」。
+// 現在：一般提示排隊等前一句講完；節點與停止面板這類重要提示標為 high，
+// 會清空佇列立刻插播。兩秒內同一句話不重複播，避免連續觸發洗版。
+let _spQueue=[], _spBusy=false, _spLastText='', _spLastAt=0
+function speakNav(text, onDone, opts){
   if(!navVoiceEnabled){ if(onDone) onDone(); return }
+  if(!('speechSynthesis' in window)){ if(onDone) onDone(); return }
+  const now=Date.now()
+  if(text===_spLastText && now-_spLastAt<2000){ if(onDone) onDone(); return }
+  const item={text,onDone,high:!!(opts&&opts.high)}
+  if(item.high){
+    _spQueue=[]
+    try{ window.speechSynthesis.cancel() }catch(e){}
+    _spBusy=false
+  }else if(_spQueue.length>=2){
+    _spQueue.shift()          // 佇列太長就丟掉最舊的，免得語音一直落後畫面
+  }
+  _spQueue.push(item)
+  _spPump()
+}
+function _spPump(){
+  if(_spBusy) return
+  const it=_spQueue.shift()
+  if(!it) return
+  _spBusy=true
+  _spLastText=it.text; _spLastAt=Date.now()
   try{
-    if(!('speechSynthesis' in window)){ if(onDone) onDone(); return }
     if(window.speechSynthesis.paused) window.speechSynthesis.resume()
-    window.speechSynthesis.cancel()
     // WebKit 有個已知 bug：cancel() 之後立刻 speak() 常常直接被吃掉不出聲，延遲一點點呼叫比較穩
     setTimeout(()=>{
+      let fired=false
+      const done=()=>{
+        if(fired) return
+        fired=true; _spBusy=false
+        try{ if(it.onDone) it.onDone() }catch(e){}
+        _spPump()
+      }
       try{
-        const u=new SpeechSynthesisUtterance(text)
-        u.lang='zh-TW'; u.rate=1.10   // 稍微快一點，行車中提示才不會拖太久
-        if(onDone){
-          let fired=false
-          const go=()=>{ if(!fired){ fired=true; onDone() } }
-          u.onend=go; u.onerror=go
-          // 保險：某些瀏覽器 onend 不一定會觸發，估個時間強制接手
-          setTimeout(go, 700 + text.length*160)
-        }
+        const u=new SpeechSynthesisUtterance(it.text)
+        u.lang='zh-TW'; u.rate=1.10
+        u.onend=done; u.onerror=done
+        // 保險：某些瀏覽器 onend 不一定會觸發，估個時間強制接手
+        setTimeout(done, 700 + it.text.length*160)
         window.speechSynthesis.speak(u)
-      }catch(e){ if(onDone) onDone() }
+      }catch(e){ done() }
     },60)
-  }catch(e){ if(onDone) onDone() }
+  }catch(e){ _spBusy=false; if(it.onDone) it.onDone() }
 }
 
 // ════════════════════════════════════
@@ -2926,7 +2954,7 @@ function applyVoiceCause(c){
   if(!d) return
   svyStopPickDelay(d, c.group, true)
   // 複誦完整名稱，讓駕駛不用低頭就知道系統聽成什麼；聽錯就直接按按鈕更正
-  speakNav(d.label)
+  speakNav(d.label, null, {high:true})
   showToast(`🎤 ${d.icon} ${d.label}`, true)
 }
 // 提前提示的距離門檻：速度愈快，愈早提醒，給使用者足夠反應時間（沿用節點感應線同一套速度分級邏輯）
@@ -3137,8 +3165,8 @@ function recordNode(auto){
   const isFinal=currentNodeIdx>=names.length
   // 第一個與最後一個節點不響提示音，直接用語音取代；
   // 中間的節點維持原本的提示音。
-  if(justRecorded===1)      speakNav('調查開始')
-  else if(isFinal)          speakNav('調查結束')
+  if(justRecorded===1)      speakNav('調查開始',null,{high:true})
+  else if(isFinal)          speakNav('調查結束',null,{high:true})
   else                      playNodeBeep(false)
 
   // ── Last node: stop the clock ──
@@ -3535,7 +3563,7 @@ function toggleDelay(d,group,opts){
     toggleDelay(d, group)                    // 換成正確的原因
     if(activeDelay && origStart) activeDelay.startedAt=origStart   // 起算點回到原本停下的時刻
     showToast(`✏️ 已更正為 ${d.icon} ${d.label}`, true)
-    speakNav('修改為'+d.label)   // 手動更正也複誦一次，駕駛不用低頭確認
+    speakNav('修改為'+d.label, null, {high:true})   // 手動更正也複誦一次，駕駛不用低頭確認
     return
   }
   if(d.cause!==_voicePick?.cause) _voicePick=null
@@ -3571,7 +3599,7 @@ function toggleDelay(d,group,opts){
     // （12 秒更正時限內的那條路徑在上面自己會講，這裡處理超過時限的情況）
     const _switching = !!activeDelay && !opts?.deductSeconds
     if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(p)toggleDelay(p,activeDelay.group)}
-    if(_switching) speakNav('修改為'+d.label)
+    if(_switching) speakNav('修改為'+d.label, null, {high:true})
     // ── Start recording this delay ──
     const s=new Date(),sp=lastPos?{...lastPos}:null;let el=0
     const tid=setInterval(()=>{
@@ -5427,15 +5455,14 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
 })
 </script>
 
-<!-- ═════════════════════════════════════════════════════════════════
+<!-- ═══════════════════════════════════════════════════════════════
      DEMO 模式
      這一頁就是正式的現場 App（index.html 原封不動複製），
      只把「GPS」與「雲端資料」換成模擬來源；畫面、語音、判斷邏輯全是真的。
-     ───────────────────────────────────────────────────────────────
-     ・路線用 OSRM 取得真實道路幾何，所以會貼合底圖並有真的轉彎
-     ・車輛沿該路徑行駛，地圖方向由 GPS 航跡推算（不吃手機陀螺儀）
-     ・途中兩次腳本化停車，示範語音選延滯原因
-     ═════════════════════════════════════════════════════════════════ -->
+     ・三條示範路線，每條 3 個節點、只有一個轉彎，單趟約 55 秒
+     ・去程／回程都能模擬（回程自動把路徑反過來走）
+     ・車速約 29 km/h，語音講完車子才移動十幾公尺，播報與畫面才對得上
+     ═══════════════════════════════════════════════════════════════ -->
 <div id="demo-hud" style="position:fixed;left:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:9997;
   background:rgba(15,23,42,.9);border:1px solid #334155;border-radius:12px;padding:7px 10px;
   font-size:11px;color:#94a3b8;font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC',sans-serif;
@@ -5451,38 +5478,34 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   const GS='https://demo.local/exec'
   try{ history.replaceState(null,'', location.pathname+'?pid=DEMO&gs='+encodeURIComponent(GS)+'&k=demo') }catch(e){}
   const hud=m=>{ const el=document.getElementById('demo-msg'); if(el) el.textContent=m }
-
-  /* 展示用：每次開啟都要重新走過「每日提醒 → 設備檢測 → 授權」，
-     所以把當日旗標清掉。正式版靠這些旗標做到一天只問一次，這裡不需要。 */
-  try{
-    Object.keys(localStorage).forEach(k=>{
-      if(k.indexOf('daily_setup_reminder')===0 || k==='devtest_daily' || k==='perm_gate_done')
-        localStorage.removeItem(k)
-    })
-  }catch(e){}
   document.getElementById('demo-toggle').onclick=function(){
     const b=document.getElementById('demo-hud')
     const hide=b.style.opacity!=='0.12'
     b.style.opacity=hide?'0.12':'1'
     this.textContent=hide?'顯示':'隱藏'
   }
+  /* 展示用：每次開啟都重走「每日提醒 → 設備檢測 → 授權」，把當日旗標清掉 */
+  try{
+    Object.keys(localStorage).forEach(k=>{
+      if(k.indexOf('daily_setup_reminder')===0||k==='devtest_daily'||k==='perm_gate_done')
+        localStorage.removeItem(k)
+    })
+  }catch(e){}
 
-  /* ── 示範用的假名稱 ── */
   const PROJ_NAME='示範專案（教學用）'
 
-  /* 三條示範路線，各自有真實道路幾何，專案地圖上三條都畫得出來、也都點得進去。
-     R1 是主要示範路線：三段各約 230 公尺，「往東 → 左轉往北 → 右轉往東」，
-     一趟就能演到第一個節點、左轉、右轉、停車、終點全部情境。 */
+  /* 三條示範路線：各 3 個節點、2 段各約 145 公尺、只有一個轉彎。
+     以 29 km/h 行駛，單趟含引道約 55 秒。 */
   const DEF=[
-    {id:'R1',name:'示範路線一',roundCount:2,
-     nodeNames:['起點路口','示範路口一','示範路口二','終點路口'],
-     wp:[[22.96700,120.29300],[22.96700,120.29530],[22.96910,120.29530],[22.96910,120.29760]]},
-    {id:'R2',name:'示範路線二',roundCount:3,
-     nodeNames:['示範路口四','示範路口五','示範路口六'],
-     wp:[[22.96430,120.29320],[22.96430,120.29600],[22.96230,120.29600]]},
-    {id:'R3',name:'示範路線三',roundCount:3,
-     nodeNames:['示範路口七','示範路口八','示範路口九'],
-     wp:[[22.97080,120.29260],[22.97080,120.29520],[22.97080,120.29780]]},
+    {id:'R1',name:'示範路線一',roundCount:2,turn:'左轉',
+     nodeNames:['起點路口','轉彎路口','終點路口'],
+     wp:[[22.96700,120.29300],[22.96700,120.29441],[22.96830,120.29441]]},
+    {id:'R2',name:'示範路線二',roundCount:3,turn:'右轉',
+     nodeNames:['南側起點','南側轉彎','南側終點'],
+     wp:[[22.96450,120.29320],[22.96450,120.29461],[22.96320,120.29461]]},
+    {id:'R3',name:'示範路線三',roundCount:3,turn:'右轉',
+     nodeNames:['北側起點','北側轉彎','北側終點'],
+     wp:[[22.97000,120.29250],[22.97130,120.29250],[22.97130,120.29391]]},
   ]
 
   const D2R=Math.PI/180
@@ -5492,9 +5515,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     return 2*R*Math.asin(Math.sqrt(h))}
   const pathLen=p=>{let s=0;for(let i=1;i<p.length;i++)s+=distM(p[i-1],p[i]);return s}
 
-  const ROUTES={}          // id → 完整路線物件
-  const GEOS={}            // id → 貼路幾何（模擬行駛用）
-
+  const ROUTES={}, GEOS={}
   async function buildRoute(def){
     let nodes=def.wp.map(p=>({lat:p[0],lng:p[1]})), segs=null, geo=null
     try{
@@ -5517,7 +5538,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
         }
       }
     }catch(e){}
-    if(!segs){   // OSRM 不通就退回直線，畫面仍可完整展示
+    if(!segs){                       // OSRM 不通就退回直線，畫面仍可完整展示
       segs=[]
       for(let i=1;i<nodes.length;i++)
         segs.push({name:def.nodeNames[i-1]+' ～ '+def.nodeNames[i],lanes:2,width:8,mode:'straight',
@@ -5532,14 +5553,13 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       segments:segs }
     GEOS[def.id]=geo
   }
-
-  let DRIVE=[]             // 目前選到的路線，車輛要走的座標串
   const INIT=Promise.all(DEF.map(buildRoute))
 
-  /* 依照選到的路線，鋪出車輛要走的座標串。
-     起點前補一段引道，車子才會「由外往內」通過第一個節點的感應線——
-     若直接從節點座標出發，側邊判定一開始就是「已通過」，
-     永遠不會發生「未通過 → 已通過」的穿越，節點就不會觸發。 */
+  /* 鋪出行駛座標串：每 4 公尺一點，頭尾各補約 90 公尺引道。
+     引道很重要——車子若直接從第一個節點的座標出發，感應線的側邊判定
+     一開始就是「已通過」，永遠不會發生「未通過 → 已通過」的穿越，節點就不會觸發。
+     頭尾都補，回程只要把整串反過來走，另一端自然就有引道。 */
+  const LEAD=18
   function buildDrive(id){
     const geo=GEOS[id]||[]
     if(geo.length<2) return []
@@ -5549,12 +5569,11 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       for(let k=0;k<n;k++) dense.push([a[0]+(b[0]-a[0])*k/n, a[1]+(b[1]-a[1])*k/n])
     }
     dense.push(geo[geo.length-1])
-    const lead=[],a=dense[0],b=dense[Math.min(4,dense.length-1)]
-    for(let k=38;k>0;k--) lead.push([a[0]-(b[0]-a[0])*k/4, a[1]-(b[1]-a[1])*k/4])
-    const tail=[]
-    const y=dense[dense.length-1],x=dense[Math.max(0,dense.length-5)]
-    for(let k=1;k<=20;k++) tail.push([y[0]+(y[0]-x[0])*k/4, y[1]+(y[1]-x[1])*k/4])
-    return lead.concat(dense,tail)
+    const head=[],a=dense[0],b=dense[Math.min(4,dense.length-1)]
+    for(let k=LEAD;k>0;k--) head.push([a[0]-(b[0]-a[0])*k/4, a[1]-(b[1]-a[1])*k/4])
+    const tail=[],y=dense[dense.length-1],x=dense[Math.max(0,dense.length-5)]
+    for(let k=1;k<=LEAD;k++) tail.push([y[0]+(y[0]-x[0])*k/4, y[1]+(y[1]-x[1])*k/4])
+    return head.concat(dense,tail)
   }
 
   const PROGRESS=[
@@ -5565,6 +5584,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   /* ── 攔截雲端請求 ── */
   const realFetch=window.fetch.bind(window)
   const J=d=>new Response(JSON.stringify({ok:true,data:d}),{status:200,headers:{'Content-Type':'application/json'}})
+  let CUR='R1', FWD=[]
   window.fetch=async function(input,init){
     const url=String((input&&input.url)||input||'')
     if(url.indexOf('demo.local')<0) return realFetch(input,init)
@@ -5577,10 +5597,11 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       case 'getProjectRoutes':   return J(DEF.map(d=>ROUTES[d.id]))
       case 'getProjectProgress': return J(PROGRESS)
       case 'getRoute':{
-        const id=q.get('id')||'R1'
-        DRIVE=buildDrive(id); SIM.i=0; SIM.running=false; SIM.stopped=false
-        hud('已載入「'+(ROUTES[id]?ROUTES[id].routeName:id)+'」')
-        return J(ROUTES[id]||ROUTES.R1)
+        CUR=q.get('id')||'R1'
+        FWD=buildDrive(CUR)
+        SIM.i=0; SIM.running=false; SIM.stopped=false
+        hud('已載入「'+(ROUTES[CUR]?ROUTES[CUR].routeName:CUR)+'」')
+        return J(ROUTES[CUR]||ROUTES.R1)
       }
       case 'getHistory':
       case 'getSurveys':         return J([])
@@ -5590,11 +5611,11 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   }
 
   /* ── 模擬 GPS ── */
-  const SIM={ i:0, running:false, stopped:false, stops:[], timer:null, cb:null, tick:null }
-  const SPEED_MS=8                      // 約 29 km/h：跑太快語音會追不上畫面
+  const SPEED_MS=8                    // 約 29 km/h：語音講完車子只移動十幾公尺
+  const SIM={ i:0, running:false, stopped:false, stops:[], timer:null, cb:null, tick:null, path:[] }
   function emit(){
-    if(!SIM.cb||!DRIVE.length) return
-    const p=DRIVE[Math.min(SIM.i,DRIVE.length-1)]
+    if(!SIM.cb||!SIM.path.length) return
+    const p=SIM.path[Math.min(SIM.i,SIM.path.length-1)]
     SIM.cb({coords:{latitude:p[0],longitude:p[1],accuracy:6,
       speed:SIM.stopped?0:SPEED_MS,heading:null,altitude:10},timestamp:Date.now()})
   }
@@ -5604,10 +5625,10 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       if(SIM.stops.length && SIM.i>=SIM.stops[0]){
         SIM.stops.shift(); SIM.stopped=true
         hud('🛑 車輛停下 — 會自動彈出面板並語音詢問')
-        clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,20000)   // 沒人選也不會卡住
+        clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,20000)
       }else{
-        SIM.i+=1                        // 每 0.5 秒前進 4 公尺 ＝ 8 m/s ≒ 29 km/h
-        if(SIM.i>=DRIVE.length){ SIM.running=false; hud('🏁 已抵達終點') }
+        SIM.i+=1                      // 每 0.5 秒 4 公尺 ＝ 8 m/s ≒ 29 km/h
+        if(SIM.i>=SIM.path.length){ SIM.running=false; hud('🏁 已抵達終點') }
       }
     }
     emit()
@@ -5622,7 +5643,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     return 1
   }
   navigator.geolocation.getCurrentPosition=function(ok){
-    const p=(DRIVE[Math.min(SIM.i,Math.max(0,DRIVE.length-1))])||DEF[0].wp[0]
+    const p=(SIM.path[Math.min(SIM.i,Math.max(0,SIM.path.length-1))])||FWD[0]||DEF[0].wp[0]
     setTimeout(()=>ok({coords:{latitude:p[0],longitude:p[1],accuracy:6,speed:0},timestamp:Date.now()}),280)
   }
   navigator.geolocation.clearWatch=function(){}
@@ -5632,15 +5653,16 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     const wrap=(name,after)=>{ const f=window[name]
       if(typeof f!=='function') return
       window[name]=function(){ const r=f.apply(this,arguments); try{ after.apply(this,arguments) }catch(e){}; return r } }
-    // 展示時不要吃手機陀螺儀：時速 8 公里以上時 App 本來就用 GPS 航跡轉地圖，
-    // 停下來才會交給指南針——模擬情境下讓它停在最後的行進方向比較穩定。
+    // 展示時不吃手機陀螺儀：時速 8 公里以上 App 本來就用 GPS 航跡轉地圖
     window.initCompass=function(){}
     wrap('startSurvey',()=>{
-      SIM.running=true
-      // 兩個腳本化停車點：分別落在第二段與第三段中間
-      const n=DRIVE.length
-      SIM.stops=[Math.round(n*0.55)]     // 一次停車就夠示範，路線才不會拖太長
-      hud('🚗 模擬行駛中 — 通過節點會自動記錄')
+      // 去程走正向、回程走反向；反向後原本的尾端引道就成了入口引道
+      const combo=(document.getElementById('status-combo')||{}).textContent||''
+      const back=combo.indexOf('回程')>=0
+      SIM.path = back ? FWD.slice().reverse() : FWD.slice()
+      SIM.i=0; SIM.running=true; SIM.stopped=false
+      SIM.stops=[Math.round(SIM.path.length*0.62)]   // 一次停車，落在第二段
+      hud('🚗 模擬'+(back?'回程':'去程')+'行駛中 — 通過節點會自動記錄')
     })
     wrap('svyStopPickDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,4500) } })
     wrap('svyDismissStop',()=>{ if(SIM.stopped) resume() })
