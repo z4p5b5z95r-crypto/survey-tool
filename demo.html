@@ -5460,13 +5460,14 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
 
   /* ── 示範用的假名稱 ── */
   const PROJ_NAME='示範專案（教學用）'
-  const NODE_NAMES=['起點路口','示範路口一','示範路口二','示範路口三','終點路口']
-  const SEG_NAMES=['起點路口 ～ 示範路口一','示範路口一 ～ 示範路口二',
-                   '示範路口二 ～ 示範路口三','示範路口三 ～ 終點路口']
+  const NODE_NAMES=['起點路口','示範路口一','示範路口二','終點路口']
+  const SEG_NAMES=['起點路口 ～ 示範路口一','示範路口一 ～ 示範路口二','示範路口二 ～ 終點路口']
 
-  /* 取幾個會彎來彎去的座標，交給 OSRM 貼合到真實道路上 */
-  const WP=[[22.96530,120.29260],[22.96960,120.29380],[22.97110,120.30010],
-            [22.96690,120.30290],[22.96420,120.30640]]
+  /* 短路線：三段各約 230 公尺，形狀是「往東 → 左轉往北 → 右轉往東」，
+     一趟就能示範到第一個節點、左轉、右轉、停車、終點全部情境。
+     座標交給 OSRM 貼合到真實道路上。 */
+  const WP=[[22.96700,120.29300],[22.96700,120.29530],
+            [22.96910,120.29530],[22.96910,120.29760]]
 
   const D2R=Math.PI/180
   const distM=(a,b)=>{const R=6371000,dLa=(b[0]-a[0])*D2R,dLo=(b[1]-a[1])*D2R,
@@ -5495,7 +5496,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
         segs=[]
         for(let i=1;i<cuts.length;i++){
           const part=geo.slice(cuts[i-1],cuts[i]+1)
-          segs.push({name:SEG_NAMES[i-1],lanes:i===3?3:2,width:i===3?12:8,
+          segs.push({name:SEG_NAMES[i-1],lanes:2,width:8,
             length:Math.round(pathLen(part)),mode:'driving',latlngs:part})
         }
       }
@@ -5518,15 +5519,15 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
        側邊判定一開始就是 +1，永遠不會發生 -1 → +1 的穿越，節點因此不觸發）。 */
     const dense=[]
     for(let i=1;i<geo.length;i++){
-      const a=geo[i-1],b=geo[i],L=distM(a,b),n=Math.max(1,Math.round(L/6))
+      const a=geo[i-1],b=geo[i],L=distM(a,b),n=Math.max(1,Math.round(L/4))
       for(let k=0;k<n;k++) dense.push([a[0]+(b[0]-a[0])*k/n, a[1]+(b[1]-a[1])*k/n])
     }
     dense.push(geo[geo.length-1])
-    const lead=[],a=dense[0],b=dense[Math.min(6,dense.length-1)]
-    for(let k=18;k>0;k--) lead.push([a[0]-(b[0]-a[0])*k/3, a[1]-(b[1]-a[1])*k/3])
+    const lead=[],a=dense[0],b=dense[Math.min(4,dense.length-1)]
+    for(let k=38;k>0;k--) lead.push([a[0]-(b[0]-a[0])*k/4, a[1]-(b[1]-a[1])*k/4])
     const tail=[]
-    const y=dense[dense.length-1],x=dense[Math.max(0,dense.length-7)]
-    for(let k=1;k<=10;k++) tail.push([y[0]+(y[0]-x[0])*k/3, y[1]+(y[1]-x[1])*k/3])
+    const y=dense[dense.length-1],x=dense[Math.max(0,dense.length-5)]
+    for(let k=1;k<=20;k++) tail.push([y[0]+(y[0]-x[0])*k/4, y[1]+(y[1]-x[1])*k/4])
     DRIVE=lead.concat(dense,tail)
     return true
   })()
@@ -5563,7 +5564,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
 
   /* ── 模擬 GPS ── */
   const SIM={ i:0, running:false, stopped:false, stops:[], timer:null, cb:null, tick:null }
-  const SPEED_MS=15                     // 約 54 km/h，與實際位移速度一致
+  const SPEED_MS=8                      // 約 29 km/h：跑太快語音會追不上畫面
   function emit(){
     if(!SIM.cb||!DRIVE.length) return
     const p=DRIVE[Math.min(SIM.i,DRIVE.length-1)]
@@ -5578,7 +5579,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
         hud('🛑 車輛停下 — 會自動彈出面板並語音詢問')
         clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,20000)   // 沒人選也不會卡住
       }else{
-        SIM.i+=1                        // 每 0.4 秒前進約 6 公尺 ≒ 54 km/h
+        SIM.i+=1                        // 每 0.5 秒前進 4 公尺 ＝ 8 m/s ≒ 29 km/h
         if(SIM.i>=DRIVE.length){ SIM.running=false; hud('🏁 已抵達終點') }
       }
     }
@@ -5590,7 +5591,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   }
   navigator.geolocation.watchPosition=function(ok){
     SIM.cb=ok; emit()
-    if(!SIM.tick) SIM.tick=setInterval(step,400)
+    if(!SIM.tick) SIM.tick=setInterval(step,500)
     return 1
   }
   navigator.geolocation.getCurrentPosition=function(ok){
@@ -5611,7 +5612,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       SIM.running=true
       // 兩個腳本化停車點：分別落在第二段與第三段中間
       const n=DRIVE.length
-      SIM.stops=[Math.round(n*0.33),Math.round(n*0.66)]
+      SIM.stops=[Math.round(n*0.55)]     // 一次停車就夠示範，路線才不會拖太長
       hud('🚗 模擬行駛中 — 通過節點會自動記錄')
     })
     wrap('svyStopPickDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,4500) } })
