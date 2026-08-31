@@ -5427,152 +5427,198 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
 })
 </script>
 
-<!-- ════════════════════════════════════════════════════════════════
+<!-- ═════════════════════════════════════════════════════════════════
      DEMO 模式
-     這一頁就是正式的現場 App（index.html 原封不動），
-     只把「GPS」與「雲端資料」換成模擬來源，所以每一個畫面、每一段語音、
-     每一個判斷邏輯都跟真的一模一樣。
-     ════════════════════════════════════════════════════════════════ -->
+     這一頁就是正式的現場 App（index.html 原封不動複製），
+     只把「GPS」與「雲端資料」換成模擬來源；畫面、語音、判斷邏輯全是真的。
+     ───────────────────────────────────────────────────────────────
+     ・路線用 OSRM 取得真實道路幾何，所以會貼合底圖並有真的轉彎
+     ・車輛沿該路徑行駛，地圖方向由 GPS 航跡推算（不吃手機陀螺儀）
+     ・途中兩次腳本化停車，示範語音選延滯原因
+     ═════════════════════════════════════════════════════════════════ -->
 <div id="demo-hud" style="position:fixed;left:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:9997;
-  background:rgba(15,23,42,.9);border:1px solid #334155;border-radius:12px;padding:8px 11px;
-  font-size:11.5px;color:#94a3b8;font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC',sans-serif;
-  display:flex;align-items:center;gap:9px;backdrop-filter:blur(6px);max-width:calc(100% - 20px)">
-  <span style="background:#1d4ed8;color:#fff;border-radius:6px;padding:2px 7px;font-weight:800;font-size:10.5px;flex-shrink:0">DEMO</span>
-  <span id="demo-msg" style="flex:1;min-width:0">模擬模式：GPS 與雲端資料為模擬，其餘完全同正式版</span>
-  <button id="demo-toggle" style="background:#334155;color:#e2e8f0;border:none;border-radius:7px;
-    padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">隱藏</button>
+  background:rgba(15,23,42,.9);border:1px solid #334155;border-radius:12px;padding:7px 10px;
+  font-size:11px;color:#94a3b8;font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC',sans-serif;
+  display:flex;align-items:center;gap:8px;backdrop-filter:blur(6px);max-width:calc(100% - 20px);transition:opacity .2s">
+  <span style="background:#1d4ed8;color:#fff;border-radius:6px;padding:2px 6px;font-weight:800;font-size:10px;flex-shrink:0">DEMO</span>
+  <span id="demo-msg" style="flex:1;min-width:0">模擬模式準備中…</span>
+  <button id="demo-toggle" style="background:#334155;color:#e2e8f0;border:none;border-radius:6px;
+    padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">隱藏</button>
 </div>
 
 <script>
 (function(){
-  /* ── 讓 App 以「掃到專案 QR」的方式啟動 ── */
   const GS='https://demo.local/exec'
   try{ history.replaceState(null,'', location.pathname+'?pid=DEMO&gs='+encodeURIComponent(GS)+'&k=demo') }catch(e){}
-
-  const hud=(m)=>{ const el=document.getElementById('demo-msg'); if(el) el.textContent=m }
+  const hud=m=>{ const el=document.getElementById('demo-msg'); if(el) el.textContent=m }
   document.getElementById('demo-toggle').onclick=function(){
     const b=document.getElementById('demo-hud')
-    b.style.opacity=b.style.opacity==='0.15'?'1':'0.15'
-    this.textContent=b.style.opacity==='0.15'?'顯示':'隱藏'
+    const hide=b.style.opacity!=='0.12'
+    b.style.opacity=hide?'0.12':'1'
+    this.textContent=hide?'顯示':'隱藏'
   }
 
-  /* ── 模擬路線：台南歸仁一帶，四個節點、三個路段，全長約 1.7 公里 ── */
-  const ND=[
-    {name:'歸仁1路',    lat:22.97000,lng:120.29000},
-    {name:'中山路',     lat:22.97020,lng:120.29550},
-    {name:'文化街',     lat:22.97050,lng:120.30100},
-    {name:'長榮路三段', lat:22.97080,lng:120.30650},
-  ]
-  const SEG=[
-    {name:'歸仁1路—中山路',    lanes:2,width:8,length:565,mode:'straight'},
-    {name:'中山路—文化街',     lanes:2,width:8,length:566,mode:'straight'},
-    {name:'文化街—長榮路三段', lanes:3,width:12,length:573,mode:'straight'},
-  ]
-  const ROUTE={
-    id:'R1', routeName:'歸仁大道', routeFromTo:'歸仁1路—長榮路三段',
-    totalLength:1704, roundCount:2,
-    offPeakLabel:'14:00~16:00', peakLabel:'17:00~19:00',
-    offPeakName:'離峰', peakName:'尖峰',
-    nodes:ND.map(n=>({name:n.name,lat:n.lat,lng:n.lng,radius:18})),
-    segments:SEG,
-  }
-  const ROUTES=[
-    ROUTE,
-    {id:'R2',routeName:'高發三路',routeFromTo:'智慧綠能大道二段—大武路一段',totalLength:2380,roundCount:3},
-    {id:'R3',routeName:'南157',   routeFromTo:'智慧綠能大道二段—長榮路三段',totalLength:1960,roundCount:3},
-  ]
+  /* ── 示範用的假名稱 ── */
+  const PROJ_NAME='示範專案（教學用）'
+  const NODE_NAMES=['起點路口','示範路口一','示範路口二','示範路口三','終點路口']
+  const SEG_NAMES=['起點路口 ～ 示範路口一','示範路口一 ～ 示範路口二',
+                   '示範路口二 ～ 示範路口三','示範路口三 ～ 終點路口']
+
+  /* 取幾個會彎來彎去的座標，交給 OSRM 貼合到真實道路上 */
+  const WP=[[22.96530,120.29260],[22.96960,120.29380],[22.97110,120.30010],
+            [22.96690,120.30290],[22.96420,120.30640]]
+
+  const D2R=Math.PI/180
+  const distM=(a,b)=>{const R=6371000,dLa=(b[0]-a[0])*D2R,dLo=(b[1]-a[1])*D2R,
+    la1=a[0]*D2R,la2=b[0]*D2R
+    const h=Math.sin(dLa/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLo/2)**2
+    return 2*R*Math.asin(Math.sqrt(h))}
+  const pathLen=p=>{let s=0;for(let i=1;i<p.length;i++)s+=distM(p[i-1],p[i]);return s}
+
+  let ROUTE=null, DRIVE=[]           // DRIVE = 車輛要走的完整座標串
+  const INIT=(async function(){
+    let nodes=WP.map(p=>({lat:p[0],lng:p[1]})), segs=null, geo=null
+    try{
+      const coords=WP.map(p=>p[1]+','+p[0]).join(';')
+      const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`,
+        {signal:AbortSignal.timeout(9000)})
+      const d=await r.json()
+      if(d.code==='Ok'){
+        // 用 OSRM 貼到路上的座標當節點，節點就會剛好落在道路上
+        nodes=d.waypoints.map(w=>({lat:w.location[1],lng:w.location[0]}))
+        geo=d.routes[0].geometry.coordinates.map(c=>[c[1],c[0]])
+        // 依節點把幾何切成各路段，App 直接用這些 latlngs，不必再打 OSRM
+        const idxOf=n=>{let bi=0,bd=1e9
+          geo.forEach((g,i)=>{const dd=distM(g,[n.lat,n.lng]); if(dd<bd){bd=dd;bi=i}})
+          return bi}
+        const cuts=nodes.map(idxOf)
+        segs=[]
+        for(let i=1;i<cuts.length;i++){
+          const part=geo.slice(cuts[i-1],cuts[i]+1)
+          segs.push({name:SEG_NAMES[i-1],lanes:i===3?3:2,width:i===3?12:8,
+            length:Math.round(pathLen(part)),mode:'driving',latlngs:part})
+        }
+      }
+    }catch(e){}
+    if(!segs){   // OSRM 不通就退回直線，畫面仍可完整展示
+      segs=[]
+      for(let i=1;i<nodes.length;i++)
+        segs.push({name:SEG_NAMES[i-1],lanes:2,width:8,mode:'straight',
+          length:Math.round(distM([nodes[i-1].lat,nodes[i-1].lng],[nodes[i].lat,nodes[i].lng]))})
+      geo=nodes.map(n=>[n.lat,n.lng])
+    }
+    ROUTE={ id:'R1', routeName:'示範路線一', routeFromTo:'起點路口—終點路口',
+      totalLength:segs.reduce((s,x)=>s+x.length,0), roundCount:2,
+      offPeakLabel:'14:00~16:00', peakLabel:'17:00~19:00', offPeakName:'離峰', peakName:'尖峰',
+      nodes:nodes.map((n,i)=>({name:NODE_NAMES[i],lat:n.lat,lng:n.lng,radius:20})),
+      segments:segs }
+
+    /* 車輛路徑：把幾何加密成每 ~8 公尺一點，並在起點前補一段引道，
+       這樣車子才會「由外往內」通過第一個節點的感應線（原本從節點上出發，
+       側邊判定一開始就是 +1，永遠不會發生 -1 → +1 的穿越，節點因此不觸發）。 */
+    const dense=[]
+    for(let i=1;i<geo.length;i++){
+      const a=geo[i-1],b=geo[i],L=distM(a,b),n=Math.max(1,Math.round(L/6))
+      for(let k=0;k<n;k++) dense.push([a[0]+(b[0]-a[0])*k/n, a[1]+(b[1]-a[1])*k/n])
+    }
+    dense.push(geo[geo.length-1])
+    const lead=[],a=dense[0],b=dense[Math.min(6,dense.length-1)]
+    for(let k=18;k>0;k--) lead.push([a[0]-(b[0]-a[0])*k/3, a[1]-(b[1]-a[1])*k/3])
+    const tail=[]
+    const y=dense[dense.length-1],x=dense[Math.max(0,dense.length-7)]
+    for(let k=1;k<=10;k++) tail.push([y[0]+(y[0]-x[0])*k/3, y[1]+(y[1]-x[1])*k/3])
+    DRIVE=lead.concat(dense,tail)
+    return true
+  })()
+
+  const ROUTES=()=>[ ROUTE,
+    {id:'R2',routeName:'示範路線二',routeFromTo:'示範路口一—示範路口三',totalLength:2380,roundCount:3},
+    {id:'R3',routeName:'示範路線三',routeFromTo:'起點路口—示範路口二',totalLength:1960,roundCount:3} ]
   const PROGRESS=[
     {routeId:'R1',roundCount:2,roundStates:['part','todo'],roundDone:[2,0],comboTotal:4},
     {routeId:'R2',roundCount:3,roundStates:['done','part','todo'],roundDone:[4,1,0],comboTotal:4},
-    {routeId:'R3',roundCount:3,roundStates:['todo','todo','todo'],roundDone:[0,0,0],comboTotal:4},
-  ]
+    {routeId:'R3',roundCount:3,roundStates:['todo','todo','todo'],roundDone:[0,0,0],comboTotal:4}]
 
   /* ── 攔截雲端請求 ── */
   const realFetch=window.fetch.bind(window)
   const J=d=>new Response(JSON.stringify({ok:true,data:d}),{status:200,headers:{'Content-Type':'application/json'}})
-  window.fetch=function(input,init){
+  window.fetch=async function(input,init){
     const url=String((input&&input.url)||input||'')
     if(url.indexOf('demo.local')<0) return realFetch(input,init)
+    await INIT
     const q=new URLSearchParams(url.split('?')[1]||'')
     let action=q.get('action')
-    if(!action && init && init.body){ try{ action=JSON.parse(init.body).action }catch(e){} }
+    if(!action&&init&&init.body){ try{ action=JSON.parse(init.body).action }catch(e){} }
     switch(action){
-      case 'getProject':        return Promise.resolve(J({id:'DEMO',name:'115E-094 南科新設園區'}))
-      case 'getProjectRoutes':  return Promise.resolve(J(ROUTES))
-      case 'getProjectProgress':return Promise.resolve(J(PROGRESS))
-      case 'getRoute':          return Promise.resolve(J(ROUTE))
+      case 'getProject':         return J({id:'DEMO',name:PROJ_NAME})
+      case 'getProjectRoutes':   return J(ROUTES())
+      case 'getProjectProgress': return J(PROGRESS)
+      case 'getRoute':           return J(ROUTE)
       case 'getHistory':
-      case 'getSurveys':        return Promise.resolve(J([]))
-      case 'saveSurvey':        hud('☁️ 模擬上傳成功'); return Promise.resolve(J({id:'sv_demo'}))
-      default:                  return Promise.resolve(J([]))
+      case 'getSurveys':         return J([])
+      case 'saveSurvey':         hud('☁️ 模擬上傳成功'); return J({id:'sv_demo'})
+      default:                   return J([])
     }
   }
 
-  /* ── 模擬 GPS：沿著節點路徑前進，途中兩次腳本化停車 ── */
-  const PTS=[]                               // 加密後的路徑點，讓移動平滑
-  for(let i=1;i<ND.length;i++){
-    const a=ND[i-1],b=ND[i]
-    for(let k=0;k<40;k++) PTS.push([a.lat+(b.lat-a.lat)*k/40, a.lng+(b.lng-a.lng)*k/40])
-  }
-  PTS.push([ND[ND.length-1].lat+0.00004, ND[ND.length-1].lng+0.0004])   // 衝過終點感應線
-
-  const SIM={ i:0, running:false, stopped:false, stopsLeft:[38,80], picked:false, timer:null }
-  let watchCb=null
+  /* ── 模擬 GPS ── */
+  const SIM={ i:0, running:false, stopped:false, stops:[], timer:null, cb:null, tick:null }
+  const SPEED_MS=15                     // 約 54 km/h，與實際位移速度一致
   function emit(){
-    if(!watchCb) return
-    const p=PTS[Math.min(SIM.i,PTS.length-1)]
-    watchCb({coords:{latitude:p[0],longitude:p[1],accuracy:6,
-      speed: SIM.stopped?0:12, heading:90, altitude:10},timestamp:Date.now()})
+    if(!SIM.cb||!DRIVE.length) return
+    const p=DRIVE[Math.min(SIM.i,DRIVE.length-1)]
+    SIM.cb({coords:{latitude:p[0],longitude:p[1],accuracy:6,
+      speed:SIM.stopped?0:SPEED_MS,heading:null,altitude:10},timestamp:Date.now()})
   }
   function step(){
     if(!SIM.running) return
     if(!SIM.stopped){
-      // 到了腳本設定的停車點就停下來
-      if(SIM.stopsLeft.length && SIM.i>=SIM.stopsLeft[0]){
-        SIM.stopsLeft.shift(); SIM.stopped=true; SIM.picked=false
-        hud('🛑 模擬車輛停下 — 系統會自動彈出面板並語音詢問')
-        // 沒有人選原因也不能卡住，20 秒後自動開走（示範「未記錄」的情況）
-        clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,20000)
-      } else {
-        SIM.i++
-        if(SIM.i>=PTS.length){ SIM.running=false; hud('🏁 已抵達終點，請在畫面上結束調查') }
+      if(SIM.stops.length && SIM.i>=SIM.stops[0]){
+        SIM.stops.shift(); SIM.stopped=true
+        hud('🛑 車輛停下 — 會自動彈出面板並語音詢問')
+        clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,20000)   // 沒人選也不會卡住
+      }else{
+        SIM.i+=1                        // 每 0.4 秒前進約 6 公尺 ≒ 54 km/h
+        if(SIM.i>=DRIVE.length){ SIM.running=false; hud('🏁 已抵達終點') }
       }
     }
     emit()
   }
   function resume(){
     if(!SIM.stopped) return
-    clearTimeout(SIM.timer)
-    SIM.stopped=false
-    hud('▶ 車輛重新起步')
+    clearTimeout(SIM.timer); SIM.stopped=false; hud('▶ 車輛重新起步')
   }
-
   navigator.geolocation.watchPosition=function(ok){
-    watchCb=ok
-    emit()
-    setInterval(step,420)
+    SIM.cb=ok; emit()
+    if(!SIM.tick) SIM.tick=setInterval(step,400)
     return 1
   }
   navigator.geolocation.getCurrentPosition=function(ok){
-    const p=PTS[Math.min(SIM.i,PTS.length-1)]
-    setTimeout(()=>ok({coords:{latitude:p[0],longitude:p[1],accuracy:6,speed:0},timestamp:Date.now()}),300)
+    const p=(DRIVE[Math.min(SIM.i,Math.max(0,DRIVE.length-1))])||[WP[0][0],WP[0][1]]
+    setTimeout(()=>ok({coords:{latitude:p[0],longitude:p[1],accuracy:6,speed:0},timestamp:Date.now()}),280)
   }
   navigator.geolocation.clearWatch=function(){}
 
-  /* ── 掛勾正式 App 的函式：開始調查才開始跑、選了原因就準備起步 ── */
-  window.addEventListener('load',function(){
-    const wrap=(name,after)=>{
-      const f=window[name]
+  /* ── 掛勾正式 App ── */
+  window.addEventListener('load',async function(){
+    const wrap=(name,after)=>{ const f=window[name]
       if(typeof f!=='function') return
-      window[name]=function(){ const r=f.apply(this,arguments); try{ after.apply(this,arguments) }catch(e){}; return r }
-    }
-    wrap('startSurvey',()=>{ SIM.running=true; hud('🚗 模擬行駛中 — 通過節點會自動記錄') })
-    // 選了停止原因 → 4 秒後車輛起步，讓延滯有秒數可以記
-    wrap('svyStopPickDelay',()=>{ if(SIM.stopped){ SIM.picked=true; clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,4500) } })
+      window[name]=function(){ const r=f.apply(this,arguments); try{ after.apply(this,arguments) }catch(e){}; return r } }
+    // 展示時不要吃手機陀螺儀：時速 8 公里以上時 App 本來就用 GPS 航跡轉地圖，
+    // 停下來才會交給指南針——模擬情境下讓它停在最後的行進方向比較穩定。
+    window.initCompass=function(){}
+    wrap('startSurvey',()=>{
+      SIM.running=true
+      // 兩個腳本化停車點：分別落在第二段與第三段中間
+      const n=DRIVE.length
+      SIM.stops=[Math.round(n*0.33),Math.round(n*0.66)]
+      hud('🚗 模擬行駛中 — 通過節點會自動記錄')
+    })
+    wrap('svyStopPickDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,4500) } })
     wrap('svyDismissStop',()=>{ if(SIM.stopped) resume() })
-    // 手動更正原因 → 把起步時間往後延，方便展示 12 秒更正
-    wrap('toggleDelay',()=>{ if(SIM.stopped&&SIM.picked){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,4500) } })
-    hud('模擬模式已就緒 — 先完成提醒與設備檢測')
+    wrap('toggleDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,4500) } })
+    await INIT
+    hud('模擬模式已就緒 — 依畫面完成提醒與設備檢測')
   })
 })()
 </script>
