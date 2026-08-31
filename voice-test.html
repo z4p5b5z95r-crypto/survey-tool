@@ -69,18 +69,24 @@ button{width:100%;padding:15px;border:none;border-radius:12px;font-size:16px;fon
 
 <script>
 // ── 延滯原因關鍵字：辨識結果只要含其中一個詞就算命中 ──
+// 中文同音字太多，逐一列舉永遠列不完：實測就出現過
+// 「左轉同向」→「左轉同巷」、「左轉對向」→「左轉對象」、「橫越」→「橫樂」。
+// 改用「短而獨特的錨點字」比對：現場一次只會講一種原因，不必怕互相撞號，
+// 抓那個在十一種原因裡獨一無二的字就夠穩。
 const CAUSES = [
-  {label:'紅燈',      words:['紅燈','紅綠燈','等紅燈','號誌']},
-  {label:'阻塞',      words:['阻塞','塞車','壅塞','車多','排隊']},
+  {label:'紅燈',      words:['紅燈','紅綠','號誌','紅']},
+  {label:'阻塞',      words:['阻塞','塞車','壅塞','車多','排隊','塞']},
   {label:'公車停靠',  words:['公車','巴士','客運']},
-  {label:'計程車停靠',words:['計程車','小黃','taxi']},
-  {label:'路邊停靠',  words:['路邊','停靠','違停','臨停']},
-  {label:'行人穿越',  words:['行人','斑馬線','過馬路','路人']},
-  {label:'左轉同向',  words:['左轉同向','同向左轉']},
-  {label:'左轉對向',  words:['左轉對向','對向左轉','對向']},
-  {label:'右轉',      words:['右轉']},
-  {label:'橫越車輛',  words:['橫越','切入','插隊']},
-  {label:'其他',      words:['其他','其它']}
+  {label:'計程車停靠',words:['計程','小黃','taxi']},
+  {label:'路邊停靠',  words:['路邊','違停','臨停']},
+  {label:'行人穿越',  words:['行人','斑馬','過馬路','路人']},
+  // 「同」「對」在其餘十種原因裡都不會出現，所以單字就足以辨別，
+  // 同向／同巷／同象怎麼聽錯都一樣命中。
+  {label:'左轉同向',  words:['左轉同','同向','同']},
+  {label:'左轉對向',  words:['左轉對','對向','對']},
+  {label:'右轉',      words:['右轉','右']},
+  {label:'橫越車輛',  words:['橫','切入','插隊']},
+  {label:'其他',      words:['其他','其它','其']}
 ]
 document.getElementById('kwlist').innerHTML =
   CAUSES.map(c=>`<span>${c.label}</span>`).join('')
@@ -106,20 +112,38 @@ const secure = location.protocol==='https:'||location.hostname==='localhost'
 row('安全連線', secure?'HTTPS':'非 HTTPS（麥克風會被擋）', secure?'ok':'no')
 row('語音合成', ('speechSynthesis' in window)?'可用':'不可用', ('speechSynthesis' in window)?'ok':'no')
 row('線上狀態', navigator.onLine?'已連線':'離線', navigator.onLine?'ok':'warn')
-row('瀏覽器', navigator.userAgent)
+// UA 會騙人：iPhone / iPad 開「要求桌面版網站」時，UA 會變成 Macintosh。
+// 觸控點數與螢幕尺寸才問得出真正的裝置——Mac 是 0 點，iPhone / iPad 是 5 點。
+const touch = navigator.maxTouchPoints || 0
+const uaMac = /Macintosh/.test(navigator.userAgent)
+const uaIOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
+const w = Math.min(screen.width, screen.height)
+let real, realCls
+if(uaIOS)            { real='iPhone / iPad（UA 直接標明）'; realCls='ok' }
+else if(touch>=5 && uaMac) { real=(w<500?'iPhone':'iPad')+'　← UA 說是 Mac，但有 '+touch+' 個觸控點，是「要求桌面版網站」模式'; realCls='warn' }
+else if(touch>=5)    { real='觸控裝置（'+touch+' 點）'; realCls='warn' }
+else                 { real='桌機 / 筆電（無觸控）'; realCls='no' }
+row('實際裝置', real, realCls)
+row('觸控點數', String(touch))
+row('螢幕尺寸', `${screen.width} × ${screen.height}　(${w<500?'手機級':'平板／桌機級'})`)
+row('桌面版模式', (uaMac&&touch>=5)?'是（建議關掉再測一次）':'否', (uaMac&&touch>=5)?'warn':'ok')
+row('瀏覽器 UA', navigator.userAgent)
 document.getElementById('env').innerHTML=rows.join('')
 log(SR ? '偵測到 SpeechRecognition，可以進行測試' : '這個瀏覽器沒有 SpeechRecognition，辨識測試無法進行')
 if(!SR) document.getElementById('btn-start').disabled=true
 
 // ── ② 辨識 ──
-let rec=null, micStream=null, audioCtx=null, rafId=null
+let rec=null, micStream=null, audioCtx=null, rafId=null, _lastHitSig=''
+// 回傳所有命中的原因（測試時把 11 種一次唸完也看得出哪幾種漏掉）。
+// 正式使用時只會唸一種，取第一個即可。
 function matchCause(text){
+  const hits=[]
   for(const c of CAUSES){
     for(const w of c.words){
-      if(text.includes(w)) return c.label
+      if(text.includes(w)){ hits.push(c.label); break }
     }
   }
-  return null
+  return hits
 }
 async function startMeter(){
   try{
@@ -180,11 +204,18 @@ async function startRec(){
       h.innerHTML = (h.dataset.final||'') + final + `<span class="interim">${interim}</span>`
       if(final) h.dataset.final=(h.dataset.final||'')+final
       const all=(h.dataset.final||'')+interim
-      const hit=matchCause(all)
+      const hits=matchCause(all)
       const m=document.getElementById('matched')
-      if(hit){ m.className='hit'; m.textContent='✓ 對應到：'+hit; log('關鍵字命中 → '+hit) }
+      if(hits.length){
+        m.className='hit'
+        m.textContent=`✓ 對應到 ${hits.length}/${CAUSES.length}：`+hits.join('、')
+        // 只在命中組合有變化時才寫紀錄，避免暫定結果洗版
+        const sig=hits.join(',')
+        if(sig!==_lastHitSig){ _lastHitSig=sig; log('關鍵字命中 → '+hits.join('、')) }
+      }
     }
     document.getElementById('heard').dataset.final=''
+    _lastHitSig=''
     rec.start()
     document.getElementById('btn-start').style.display='none'
     document.getElementById('btn-stop').style.display='block'
