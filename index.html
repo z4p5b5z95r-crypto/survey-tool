@@ -181,12 +181,15 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .pr-bar{width:5px;flex-shrink:0;background:#cbd5e1}
 .pr-item-inner{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:11px 13px}
 .pr-item-body{flex:1;min-width:0}
-.pr-item-name{font-size:15px;font-weight:800;color:#0f172a}
+.pr-item-name{font-size:15px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pr-item-sub{font-size:12px;color:#94a3b8;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 每一次調查＝一個圓環，橘色依完成趟數填 1/4、2/4、3/4，四趟做完整圈轉綠 */
-.pr-rings{display:flex;gap:6px;flex-shrink:0;align-items:center}
-.pr-ring{width:18px;height:18px;border-radius:999px;flex-shrink:0;display:grid;place-items:center;background:#e2e8f0}
-.pr-ring::after{content:"";width:9px;height:9px;border-radius:999px;background:#fff}
+/* 一條路線最多 5 次，寬度固定預留 5 個圓的空間（5×13 + 4×4 = 81px），
+   圓靠右對齊。這樣不論路線設幾次，所有卡片的圓都在同一條垂直線上，
+   進度載入前後也不會讓路線名稱忽寬忽窄地跳動。 */
+.pr-rings{display:flex;gap:4px;flex-shrink:0;align-items:center;justify-content:flex-end;width:81px}
+.pr-ring{width:13px;height:13px;border-radius:999px;flex-shrink:0;display:grid;place-items:center;background:#e2e8f0}
+.pr-ring::after{content:"";width:6px;height:6px;border-radius:999px;background:#fff}
 .pr-item-arrow{flex-shrink:0;color:#cbd5e1}
 .field{margin-bottom:10px}
 .field:last-child{margin-bottom:0}
