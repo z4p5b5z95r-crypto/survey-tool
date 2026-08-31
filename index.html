@@ -2388,18 +2388,20 @@ function onPos(p){
       // 節點感應用原始 GPS 座標（rl,ro），不用平滑後的座標，避免平滑延遲造成漏判
       // 永遠執行：停在節點附近時必須持續偵測
       checkNodeProximity(rl,ro)
-      // ── 移動自動結束延滯（3 秒緩衝，排除前車蠕行）──
+      // ── 移動自動結束延滯（確認窗排除前車蠕行）──
       if(activeDelay){
         const RESUME_MS=5/3.6   // 5 km/h = 1.39 m/s
         const overThreshold=(speed!=null && speed>RESUME_MS)
         if(overThreshold){
           if(_resumeAboveSpeedSince===null) _resumeAboveSpeedSince=Date.now()
-          else if(Date.now()-_resumeAboveSpeedSince>=3000){
-            // 持續超過 5 km/h 達 3 秒 → 確認解除，並扣除 3 秒緩衝時間
+          else if(Date.now()-_resumeAboveSpeedSince>=RESUME_CONFIRM_MS){
+            // 持續超過門檻達確認窗 → 確認解除。扣掉的秒數＝確認窗，
+            // 等於把結束時間拉回「速度第一次超過門檻」的瞬間。
+            // 兩個數字共用同一個常數，將來改一個不會忘了另一個。
             const cause=activeDelay.cause,grp=activeDelay.group
             const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===cause)
             if(p){
-              toggleDelay(p,grp,{deductSeconds:3})
+              toggleDelay(p,grp,{deductSeconds:RESUME_CONFIRM_MS/1000})
               showToast(`▸ ${p.label} 自動結束`)
             }
             _resumeAboveSpeedSince=null
@@ -2535,6 +2537,9 @@ const STOP_TH_CRAWL = 5/3.6      // 蠕行門檻
 const STOP_TH_STILL = 1.5/3.6    // 幾乎完全靜止
 const STOP_HOLD_CRAWL = 1200
 const STOP_HOLD_STILL = 500
+// 重新開動的確認窗：速度要持續超過門檻這麼久才算真的走了（排除前車蠕行）。
+// 延滯結束時間會扣掉同樣的秒數，所以這個值改了，扣秒也自動跟著對。
+const RESUME_CONFIRM_MS = 3000
 function evalStopDetection(){
   // 只在監測畫面判斷；還沒過第一個節點、或正在記錄某個延滯 → 不判斷
   const onSurvey = document.getElementById('screen-survey')?.classList.contains('active')
@@ -2551,10 +2556,11 @@ function evalStopDetection(){
     }
   } else {
     _stopSince=null
-    // 面板顯示中車子重新行駛 > 5 km/h 持續 3 秒 → 自動縮回（同延滯自動解除邏輯）
+    // 面板顯示中車子重新開動並持續超過門檻達確認窗 → 自動收起（同延滯自動解除邏輯）。
+    // 這是面板唯一的自動關閉條件：只要車子還停著，面板就一直留著等駕駛選原因。
     if(_stopActive){
       if(_stopResumeSince===null) _stopResumeSince=Date.now()
-      else if(Date.now()-_stopResumeSince>=3000) svyDismissStop()
+      else if(Date.now()-_stopResumeSince>=RESUME_CONFIRM_MS) svyDismissStop(true)
     } else { _stopResumeSince=null }
   }
 }
@@ -2568,14 +2574,17 @@ function stopStopPolling(){
 }
 function triggerStopDetection(){
   if(_stopActive) return
+  // 起算點＝速度第一次掉到門檻以下的那一刻，不是「觸發當下回推固定秒數」。
+  // 舊版寫死回推 3 秒，是照當時較慢的偵測速度抓的；偵測一調快就會回推過頭、
+  // 每筆延滯憑空多算 1.5~2 秒。改用 _stopSince 之後，門檻與 hold 怎麼調都自動對齊。
+  _stopEvent={startedAt: _stopSince || Date.now(), pos:lastPos}
   _stopActive=true; _stopSince=null
-  _stopEvent={startedAt:Date.now()-3000, pos:lastPos}  // retroact 3 s (detection window)
   svySheetExpand()
   svyShowPanel('stop')
-  // 沒有動作就自動關閉。跳窗提早了，這裡也放寬到 7 秒，
-  // 免得駕駛還沒反應過來面板就消失。
-  clearTimeout(_stopCdTimer)
-  _stopCdTimer=setTimeout(()=>{ if(_stopActive) svyDismissStop() },7000)
+  // 選項 A：不設逾時。面板一直留著，直到駕駛選了原因、按了忽略，
+  // 或車子重新開動（evalStopDetection 裡 >5km/h 持續 3 秒會自動收起）。
+  // 舊版 7 秒就自動丟棄，駕駛只要分神或正在看路，那整段紅燈就完全沒進資料。
+  clearTimeout(_stopCdTimer); _stopCdTimer=null
   // 面板彈出不再另外響提示音，直接用語音取代——駕駛聽到就知道要做什麼，
   // 不必先聽一聲嗶再等語音。（延滯開始／結束的提示音維持不變）
   speakNav('請選擇車輛停止原因')
@@ -2606,15 +2615,15 @@ function svyStopPickDelay(d, group){
   showToast(`⏱ ${d.icon} ${d.label} 計時中（含停等時間）`)
 }
 
-// Called when user taps "忽略", 4s timeout, or car resumes — no record, just collapse
-function svyDismissStop(){
-  clearTimeout(_stopCdTimer)
+// 駕駛按「忽略」，或車子重新開動而始終沒選原因時呼叫——不記錄，收起面板
+function svyDismissStop(byResume){
+  clearTimeout(_stopCdTimer); _stopCdTimer=null
   _stopActive=false
   _stopEvent=null
   _stopResumeSince=null
   svyShowPanel('idle')
   svySheetCollapse()
-  showToast('⊘ 已忽略，不記錄')
+  showToast(byResume ? '▸ 車輛已重新行駛，未記錄停等' : '⊘ 已忽略，不記錄')
 }
 
 // ════════════════════════════════════
@@ -3251,7 +3260,15 @@ function toggleDelay(d,group,opts){
   if(activeDelay&&activeDelay.cause===d.cause){
     // ── Stop recording this delay ──
     clearInterval(activeDelay.timerId)
-    const end=new Date()
+    // 手動按鈕結束時，車子往往已經先開走了，伸手按下去的反應時間不該算成延滯。
+    // 若此刻速度已經超過門檻（只是還沒撐滿確認窗），就把結束時間校正到
+    // 「速度第一次超過門檻」的瞬間；車子還停著才用當下時間。
+    // 自動結束（有 deductSeconds）走原本的扣秒邏輯，不重複校正。
+    let end=new Date()
+    if(!opts?.deductSeconds && _resumeAboveSpeedSince){
+      const t=new Date(_resumeAboveSpeedSince)
+      if(t>activeDelay.startedAt && t<end) end=t
+    }
     const rawDur=Math.round((end-activeDelay.startedAt)/1000)
     const dur=Math.max(0,rawDur-(opts?.deductSeconds||0))
     if(group==='road')cur.roadDelays[d.cause]=(cur.roadDelays[d.cause]||0)+dur
