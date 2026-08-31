@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>語音辨識能力測試</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#0f172a;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans-serif;
+  padding:18px 16px calc(28px + env(safe-area-inset-bottom));line-height:1.6}
+h1{font-size:19px;font-weight:800;margin:0 0 4px}
+.sub{font-size:12.5px;color:#64748b;margin-bottom:18px}
+.card{background:#1e293b;border-radius:14px;padding:14px;margin-bottom:12px}
+.card h2{font-size:13px;font-weight:800;color:#93c5fd;margin:0 0 10px;letter-spacing:.5px}
+.row{display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid #334155;font-size:13px}
+.row:last-child{border-bottom:none}
+.row .k{color:#94a3b8;flex-shrink:0;width:112px}
+.row .v{flex:1;min-width:0;word-break:break-all;color:#f1f5f9}
+.tag{display:inline-block;border-radius:6px;padding:1px 8px;font-size:11.5px;font-weight:800}
+.ok{background:#14532d;color:#86efac}
+.no{background:#7f1d1d;color:#fca5a5}
+.warn{background:#78350f;color:#fcd34d}
+button{width:100%;padding:15px;border:none;border-radius:12px;font-size:16px;font-weight:800;
+  cursor:pointer;font-family:inherit;margin-bottom:10px}
+.b1{background:#2563eb;color:#fff}
+.b1:disabled{background:#334155;color:#64748b}
+.b2{background:#334155;color:#e2e8f0}
+.b3{background:#0f766e;color:#fff}
+#mic{height:8px;background:#334155;border-radius:99px;overflow:hidden;margin:4px 0 12px}
+#mic i{display:block;height:100%;width:0;background:#34d399;transition:width .1s}
+#heard{background:#0f172a;border:1.5px solid #334155;border-radius:10px;padding:12px;min-height:76px;
+  font-size:16px;font-weight:700;color:#fff}
+#heard .interim{color:#64748b;font-weight:400}
+#matched{font-size:15px;font-weight:800;margin-top:10px;padding:11px;border-radius:10px;background:#0f172a;
+  border:1.5px solid #334155;color:#64748b;text-align:center}
+#matched.hit{background:#14532d;border-color:#16a34a;color:#86efac}
+#log{font-size:11.5px;color:#94a3b8;font-family:ui-monospace,Menlo,monospace;white-space:pre-wrap;
+  background:#0f172a;border-radius:10px;padding:10px;max-height:190px;overflow:auto}
+.kw{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.kw span{background:#334155;color:#cbd5e1;border-radius:6px;padding:3px 9px;font-size:11.5px;font-weight:700}
+</style>
+</head>
+<body>
+
+<h1>🎤 語音辨識能力測試</h1>
+<div class="sub">用現場那支手機打開這一頁，測完把結果截圖給我</div>
+
+<div class="card">
+  <h2>① 環境檢查</h2>
+  <div id="env"></div>
+</div>
+
+<div class="card">
+  <h2>② 實際辨識測試</h2>
+  <div class="sub" style="margin:-4px 0 10px">按下開始後，用平常在車上講話的音量說出停止原因</div>
+  <button class="b1" id="btn-start" onclick="startRec()">▶ 開始辨識</button>
+  <button class="b2" id="btn-stop" onclick="stopRec()" style="display:none">■ 停止</button>
+  <div id="mic"><i id="mic-bar"></i></div>
+  <div id="heard">（尚未開始）</div>
+  <div id="matched">對應到的延滯原因會顯示在這裡</div>
+  <div class="kw" id="kwlist"></div>
+</div>
+
+<div class="card">
+  <h2>③ 事件紀錄</h2>
+  <button class="b3" onclick="copyAll()">📋 複製全部結果</button>
+  <div id="log">等待測試…</div>
+</div>
+
+<script>
+// ── 延滯原因關鍵字：辨識結果只要含其中一個詞就算命中 ──
+const CAUSES = [
+  {label:'紅燈',      words:['紅燈','紅綠燈','等紅燈','號誌']},
+  {label:'阻塞',      words:['阻塞','塞車','壅塞','車多','排隊']},
+  {label:'公車停靠',  words:['公車','巴士','客運']},
+  {label:'計程車停靠',words:['計程車','小黃','taxi']},
+  {label:'路邊停靠',  words:['路邊','停靠','違停','臨停']},
+  {label:'行人穿越',  words:['行人','斑馬線','過馬路','路人']},
+  {label:'左轉同向',  words:['左轉同向','同向左轉']},
+  {label:'左轉對向',  words:['左轉對向','對向左轉','對向']},
+  {label:'右轉',      words:['右轉']},
+  {label:'橫越車輛',  words:['橫越','切入','插隊']},
+  {label:'其他',      words:['其他','其它']}
+]
+document.getElementById('kwlist').innerHTML =
+  CAUSES.map(c=>`<span>${c.label}</span>`).join('')
+
+const logEl=document.getElementById('log')
+let logLines=[]
+function log(m){
+  const t=new Date().toLocaleTimeString('zh-TW',{hour12:false})
+  logLines.push(`[${t}] ${m}`)
+  logEl.textContent=logLines.join('\n')
+  logEl.scrollTop=logEl.scrollHeight
+}
+
+// ── ① 環境檢查 ──
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+const rows=[]
+function row(k,v,cls){
+  rows.push(`<div class="row"><div class="k">${k}</div><div class="v">${cls?`<span class="tag ${cls}">${v}</span>`:v}</div></div>`)
+}
+row('SpeechRecognition', SR ? (window.SpeechRecognition?'原生支援':'webkit 前綴支援') : '不支援', SR?'ok':'no')
+row('麥克風 API', navigator.mediaDevices?.getUserMedia ? '可用' : '不可用', navigator.mediaDevices?.getUserMedia?'ok':'no')
+const secure = location.protocol==='https:'||location.hostname==='localhost'
+row('安全連線', secure?'HTTPS':'非 HTTPS（麥克風會被擋）', secure?'ok':'no')
+row('語音合成', ('speechSynthesis' in window)?'可用':'不可用', ('speechSynthesis' in window)?'ok':'no')
+row('線上狀態', navigator.onLine?'已連線':'離線', navigator.onLine?'ok':'warn')
+row('瀏覽器', navigator.userAgent)
+document.getElementById('env').innerHTML=rows.join('')
+log(SR ? '偵測到 SpeechRecognition，可以進行測試' : '這個瀏覽器沒有 SpeechRecognition，辨識測試無法進行')
+if(!SR) document.getElementById('btn-start').disabled=true
+
+// ── ② 辨識 ──
+let rec=null, micStream=null, audioCtx=null, rafId=null
+function matchCause(text){
+  for(const c of CAUSES){
+    for(const w of c.words){
+      if(text.includes(w)) return c.label
+    }
+  }
+  return null
+}
+async function startMeter(){
+  try{
+    micStream=await navigator.mediaDevices.getUserMedia({audio:true})
+    audioCtx=new (window.AudioContext||window.webkitAudioContext)()
+    const src=audioCtx.createMediaStreamSource(micStream)
+    const an=audioCtx.createAnalyser(); an.fftSize=512
+    src.connect(an)
+    const buf=new Uint8Array(an.frequencyBinCount)
+    const bar=document.getElementById('mic-bar')
+    ;(function tick(){
+      an.getByteTimeDomainData(buf)
+      let peak=0
+      for(let i=0;i<buf.length;i++) peak=Math.max(peak,Math.abs(buf[i]-128))
+      bar.style.width=Math.min(100,peak/128*260).toFixed(0)+'%'
+      rafId=requestAnimationFrame(tick)
+    })()
+    log('麥克風已開啟，音量表運作中')
+  }catch(e){ log('麥克風開啟失敗：'+e.name+' — '+e.message) }
+}
+function stopMeter(){
+  if(rafId) cancelAnimationFrame(rafId), rafId=null
+  if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null }
+  if(audioCtx){ try{audioCtx.close()}catch(e){}; audioCtx=null }
+  document.getElementById('mic-bar').style.width='0'
+}
+async function startRec(){
+  if(!SR) return
+  document.getElementById('heard').textContent='（聆聽中…請說話）'
+  document.getElementById('matched').className=''
+  document.getElementById('matched').textContent='對應到的延滯原因會顯示在這裡'
+  await startMeter()
+  try{
+    rec=new SR()
+    rec.lang='zh-TW'
+    rec.continuous=true
+    rec.interimResults=true
+    rec.maxAlternatives=3
+    rec.onstart=()=>log('onstart — 辨識已啟動')
+    rec.onaudiostart=()=>log('onaudiostart — 開始收音')
+    rec.onspeechstart=()=>log('onspeechstart — 偵測到說話')
+    rec.onspeechend=()=>log('onspeechend — 說話結束')
+    rec.onnomatch=()=>log('onnomatch — 收到聲音但無法辨識')
+    rec.onerror=e=>log('onerror — '+e.error+(e.message?(' / '+e.message):''))
+    rec.onend=()=>{ log('onend — 辨識結束'); uiStopped() }
+    rec.onresult=ev=>{
+      let final='', interim=''
+      for(let i=ev.resultIndex;i<ev.results.length;i++){
+        const r=ev.results[i]
+        if(r.isFinal){
+          final+=r[0].transcript
+          const alts=[]
+          for(let a=0;a<r.length;a++) alts.push(`${r[a].transcript}(${(r[a].confidence||0).toFixed(2)})`)
+          log('最終結果：'+alts.join(' ｜ '))
+        }else interim+=r[0].transcript
+      }
+      const h=document.getElementById('heard')
+      h.innerHTML = (h.dataset.final||'') + final + `<span class="interim">${interim}</span>`
+      if(final) h.dataset.final=(h.dataset.final||'')+final
+      const all=(h.dataset.final||'')+interim
+      const hit=matchCause(all)
+      const m=document.getElementById('matched')
+      if(hit){ m.className='hit'; m.textContent='✓ 對應到：'+hit; log('關鍵字命中 → '+hit) }
+    }
+    document.getElementById('heard').dataset.final=''
+    rec.start()
+    document.getElementById('btn-start').style.display='none'
+    document.getElementById('btn-stop').style.display='block'
+  }catch(e){ log('啟動失敗：'+e.name+' — '+e.message); stopMeter() }
+}
+function stopRec(){ try{ rec&&rec.stop() }catch(e){}; uiStopped() }
+function uiStopped(){
+  stopMeter()
+  document.getElementById('btn-start').style.display='block'
+  document.getElementById('btn-stop').style.display='none'
+}
+
+function copyAll(){
+  const txt=[
+    '=== 語音辨識能力測試 ===',
+    document.getElementById('env').innerText,
+    '--- 辨識到的內容 ---',
+    document.getElementById('heard').innerText,
+    document.getElementById('matched').innerText,
+    '--- 事件紀錄 ---',
+    logLines.join('\n')
+  ].join('\n')
+  navigator.clipboard?.writeText(txt).then(
+    ()=>alert('已複製，可以貼給我'),
+    ()=>alert('複製失敗，請直接截圖')
+  )
+}
+</script>
+</body>
+</html>
