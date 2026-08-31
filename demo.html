@@ -133,6 +133,10 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .devtest-summary.pass{background:#f0fdf4;color:#15803d}
 .devtest-summary.warn{background:#fffbeb;color:#92400e}
 .devtest-summary.fail{background:#fef2f2;color:#991b1b}
+.devtest-done{width:100%;margin-top:10px;padding:13px;border:none;border-radius:12px;background:#2563eb;
+  color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit}
+.devtest-done:active{filter:brightness(.94)}
+.devtest-done.fail{background:#64748b}
 .devtest-spinner{text-align:center;padding:24px;color:#64748b;font-size:13px}
 @keyframes spin{to{transform:rotate(360deg)}}
 #manual-modal{display:none;position:fixed;inset:0;z-index:9999;flex-direction:column;background:#0f172a}
@@ -4982,6 +4986,7 @@ document.addEventListener('touchmove', e=>{
     </div>
     <div class="devtest-footer" id="devtest-footer" style="display:none">
       <div class="devtest-summary" id="devtest-summary"></div>
+      <button class="devtest-done" id="devtest-done" onclick="closeDevTest()">確認完成，開始簽到</button>
     </div>
   </div>
 </div>
@@ -5420,9 +5425,11 @@ function updateDevSummary(){
   var s=document.getElementById('devtest-summary')
   var f=document.getElementById('devtest-footer')
   f.style.display='block'
+  var doneBtn=document.getElementById('devtest-done')
   if(failCount>0){
     s.className='devtest-summary fail'
     s.textContent='❌ 必要項目未通過，目前無法進行監測，請依上方提示修正'
+    if(doneBtn){ doneBtn.className='devtest-done fail'; doneBtn.textContent='仍要繼續（資料可能不完整）' }
   } else if(optFail+warnCount>0){
     s.className='devtest-summary warn'
     s.textContent='⚠️ 必要項目全部通過，可以出發；另有 '+(optFail+warnCount)+' 項輔助功能受限'
@@ -5430,6 +5437,7 @@ function updateDevSummary(){
     s.className='devtest-summary pass'
     s.textContent='✅ 所有項目通過，裝置完全符合監測需求，可出發！'
   }
+  if(doneBtn && failCount===0){ doneBtn.className='devtest-done'; doneBtn.textContent='確認完成，開始簽到' }
 }
 
 function openManual(){
@@ -5595,6 +5603,9 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       case 'getRoute':{
         CUR=q.get('id')||'R1'
         FWD=buildDrive(CUR)
+        // 先把路徑設好，讓「等待 GPS 訊號…」那一關能收到定位；
+        // 沒有這一步，開始調查按鈕會一直停在 disabled。
+        SIM.path=FWD.slice()
         SIM.i=0; SIM.running=false; SIM.stopped=false
         hud('已載入「'+(ROUTES[CUR]?ROUTES[CUR].routeName:CUR)+'」')
         return J(ROUTES[CUR]||ROUTES.R1)
@@ -5683,6 +5694,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   })
 })()
 </script>
+
 
 
 </body>
