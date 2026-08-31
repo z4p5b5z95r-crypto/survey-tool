@@ -5486,6 +5486,11 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   <div id="dbg-log" style="white-space:pre-wrap"></div>
 </div>
 
+<style>
+/* 展示時底圖只是背景參考，模糊＋降飽和讓路線與節點更突出，
+   也避免真實街道名稱分散注意力。 */
+.leaflet-tile-pane{ filter:blur(2.5px) grayscale(.55) brightness(1.06) contrast(.82); }
+</style>
 <script>
 (function(){
   const GS='https://demo.local/exec'
@@ -5736,6 +5741,9 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       dbg('▶ 記錄節點：當下距離顯示 '+((bar&&bar.textContent)||'?')+' m')
     })
     wrap('speakNav',(t)=>{ dbg('🔊 語音「'+t+'」') })
+    // 提示音有沒有「被呼叫」與有沒有「發出聲音」是兩件事，分開記錄才查得出來
+    wrap('playNodeBeep',(f)=>{ dbg('🔔 節點提示音（'+(f?'終點三聲':'一般兩聲')+'）已呼叫') })
+    wrap('playApproachBeep',()=>{ dbg('🔔 接近感應線提示音已呼叫') })
     wrap('triggerStopDetection',()=>{ dbg('🛑 偵測到停止') })
     wrap('svyStopPickDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,4500) } })
     wrap('svyDismissStop',()=>{ if(SIM.stopped) resume() })
