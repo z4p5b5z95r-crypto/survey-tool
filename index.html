@@ -2103,6 +2103,146 @@ function showSigninScreen(){
   buildDateSelect()     // build date dropdown
   setTimeout(initSigninMap, 120)
   loadCloudHistory()    // load history in background for the history list below
+  // 一次把定位、麥克風、聲音、方向感應的授權問完，不要調查到一半才跳系統對話框
+  setTimeout(maybeShowPermGate, 400)
+}
+
+// ════════════════════════════════════
+//  進場授權：定位／麥克風／喇叭／方向感應
+//  行車中跳出系統授權對話框最危險——駕駛得低頭找按鈕，而且沒授權前
+//  那段時間的資料是缺的。所以在簽到頁就一次問完。
+// ════════════════════════════════════
+const PERM_GATE_KEY='perm_gate_done'
+function permGateDoneToday(){
+  try{ return localStorage.getItem(PERM_GATE_KEY)===todayStr() }catch(e){ return false }
+}
+async function maybeShowPermGate(){
+  if(document.getElementById('perm-gate')) return
+  // 今天問過、而且定位與麥克風都還是 granted，就不用再打擾
+  if(permGateDoneToday() && await allPermsGranted()) return
+  showPermGate()
+}
+async function queryPerm(name){
+  try{
+    if(!navigator.permissions?.query) return 'unknown'
+    const s=await navigator.permissions.query({name})
+    return s.state           // granted / denied / prompt
+  }catch(e){ return 'unknown' }
+}
+async function allPermsGranted(){
+  const g=await queryPerm('geolocation')
+  if(g==='granted') return true
+  // Safari 不支援查詢 geolocation 權限狀態，查不到時就相信「今天已經問過」的旗標，
+  // 否則每次回到簽到頁都會再跳一次，很煩。prompt / denied 則照樣要再問。
+  if(g==='unknown') return true
+  return false
+}
+const PERM_ROWS=[
+  {id:'gps',   icon:'📍', name:'定位（GPS）',    need:'必要', desc:'記錄行車軌跡與節點通過時間'},
+  {id:'audio', icon:'🔊', name:'聲音與語音提示', need:'必要', desc:'節點提示音、開始／結束語音播報'},
+  {id:'mic',   icon:'🎤', name:'麥克風',        need:'選配', desc:'停車時可直接說出延滯原因'},
+  {id:'motion',icon:'🧭', name:'方向感應',      need:'選配', desc:'地圖隨車頭轉向，看路更直覺'},
+]
+function setPermRow(id,state,msg){
+  const el=document.getElementById('pg-'+id)
+  if(!el) return
+  const ic={wait:'⏳',pass:'✅',fail:'⚠️',skip:'—'}[state]||'·'
+  el.querySelector('.pg-st').textContent=ic
+  if(msg) el.querySelector('.pg-msg').textContent=msg
+  el.style.opacity = state==='wait' ? '.6' : '1'
+}
+function showPermGate(){
+  const ov=document.createElement('div')
+  ov.id='perm-gate'
+  ov.style.cssText='position:fixed;inset:0;z-index:4200;background:rgba(15,23,42,.66);display:flex;align-items:center;justify-content:center;padding:18px'
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:18px;padding:20px 18px 16px;width:100%;max-width:340px;box-shadow:0 16px 48px rgba(0,0,0,.35)">
+      <div style="font-size:30px;text-align:center;line-height:1">🔐</div>
+      <div style="font-size:17px;font-weight:800;color:#0f172a;text-align:center;margin-top:8px">出發前先開通權限</div>
+      <div style="font-size:12.5px;color:#64748b;text-align:center;margin-top:5px;line-height:1.6">
+        一次授權完畢，行車中就不會再跳出系統詢問視窗
+      </div>
+      <div style="margin:14px 0 4px">
+        ${PERM_ROWS.map(r=>`
+          <div id="pg-${r.id}" style="display:flex;align-items:flex-start;gap:9px;padding:9px 0;border-bottom:1px solid #f1f5f9">
+            <span style="font-size:18px;flex-shrink:0;line-height:1.3">${r.icon}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13.5px;font-weight:700;color:#0f172a">${r.name}
+                <span style="font-size:10px;font-weight:700;color:${r.need==='必要'?'#ef4444':'#94a3b8'};margin-left:3px">${r.need}</span></div>
+              <div class="pg-msg" style="font-size:11.5px;color:#94a3b8;line-height:1.5">${r.desc}</div>
+            </div>
+            <span class="pg-st" style="font-size:15px;flex-shrink:0;line-height:1.3">·</span>
+          </div>`).join('')}
+      </div>
+      <button id="pg-go" onclick="runPermGate()"
+        style="width:100%;margin-top:12px;padding:14px;background:#2563eb;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">開始授權</button>
+      <button id="pg-skip" onclick="closePermGate()"
+        style="width:100%;margin-top:7px;padding:9px;background:transparent;color:#94a3b8;border:none;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">稍後再說</button>
+    </div>`
+  document.body.appendChild(ov)
+}
+function closePermGate(){
+  try{ localStorage.setItem(PERM_GATE_KEY, todayStr()) }catch(e){}
+  document.getElementById('perm-gate')?.remove()
+}
+async function runPermGate(){
+  const btn=document.getElementById('pg-go')
+  if(btn){ btn.disabled=true; btn.textContent='授權中…'; btn.style.background='#94a3b8' }
+  document.getElementById('pg-skip')?.remove()
+  PERM_ROWS.forEach(r=>setPermRow(r.id,'wait'))
+
+  // ① 聲音與語音：必須在使用者手勢「當下」解鎖，不能放在 await 後面
+  try{ unlockAudio(); unlockNavVoice(); setPermRow('audio','pass','已解鎖，行車中可正常出聲') }
+  catch(e){ setPermRow('audio','fail','解鎖失敗，請確認未開啟靜音模式') }
+
+  // ② 方向感應：iOS 的 requestPermission() 對手勢最敏感，
+  //    所以這裡只「發起」不 await，等後面再收結果
+  let motionP=null
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function')
+      motionP=DeviceOrientationEvent.requestPermission()
+  }catch(e){ motionP=Promise.reject(e) }
+
+  // ③ 麥克風：拿到權限後立刻關掉，這裡只是為了先跳授權視窗
+  try{
+    const st=await navigator.mediaDevices.getUserMedia({audio:true})
+    st.getTracks().forEach(t=>t.stop())
+    setPermRow('mic','pass','已授權，停車時可直接說出原因')
+  }catch(e){
+    setPermRow('mic','fail', e.name==='NotAllowedError'
+      ? '已拒絕，停車時請改用按鈕選擇原因'
+      : '無法使用麥克風，停車時請用按鈕')
+  }
+
+  // ④ 定位：實際取一次位置，順便確認精度
+  await new Promise(res=>{
+    if(!navigator.geolocation){ setPermRow('gps','fail','此瀏覽器不支援定位，無法進行監測'); return res() }
+    navigator.geolocation.getCurrentPosition(
+      p=>{ setPermRow('gps','pass',`已授權，目前精度 ±${Math.round(p.coords.accuracy)} 公尺`); res() },
+      err=>{ setPermRow('gps','fail', err.code===1
+        ? '已拒絕定位，無法記錄軌跡——請到手機設定開啟後重新整理'
+        : '暫時取不到位置，請到空曠處再試'); res() },
+      {enableHighAccuracy:true,timeout:12000,maximumAge:0})
+  })
+
+  // ⑤ 收方向感應的結果
+  if(motionP){
+    try{
+      const s=await motionP
+      if(s==='granted'){ setPermRow('motion','pass','已授權，地圖會隨車頭轉向'); initCompass() }
+      else setPermRow('motion','fail','未授權，地圖將維持固定朝北')
+    }catch(e){ setPermRow('motion','fail','未授權，地圖將維持固定朝北') }
+  }else{
+    setPermRow('motion','skip','此裝置不需額外授權')
+    try{ initCompass() }catch(e){}
+  }
+
+  if(btn){
+    btn.disabled=false
+    btn.textContent='完成，開始簽到'
+    btn.style.background='#16a34a'
+    btn.onclick=closePermGate
+  }
 }
 
 function selSigninWeather(w){
@@ -4578,6 +4718,9 @@ function closeDailyReminder(pid){
   // 藉這個使用者手勢順便解鎖聲音與語音，iOS 才會在之後的自動提示出聲
   try{ unlockAudio() }catch(e){}
   try{ unlockNavVoice() }catch(e){}
+  // 每天第一次開啟專案：接著直接跑一次設備檢測，
+  // 定位、聲音、麥克風的授權一次問完，不會等到行車中才跳系統對話框
+  setTimeout(()=>{ try{ openDevTest() }catch(e){} }, 260)
 }
 function maybeShowDailyReminder(pid){
   if(dailyReminderShown(pid)) return
@@ -4589,7 +4732,7 @@ function maybeShowDailyReminder(pid){
     <div style="background:#fff;border-radius:18px;padding:20px 18px;width:100%;max-width:320px;box-shadow:0 16px 48px rgba(0,0,0,.35)">
       <div style="font-size:30px;text-align:center;line-height:1">🚗</div>
       <div style="font-size:16px;font-weight:800;color:#0f172a;text-align:center;margin:8px 0 4px">出發前確認</div>
-      <div style="font-size:12.5px;color:#64748b;text-align:center;line-height:1.6;margin-bottom:14px">調查過程會用聲音提示節點，請先完成這兩項</div>
+      <div style="font-size:12.5px;color:#64748b;text-align:center;line-height:1.6;margin-bottom:14px">先完成這兩項設定，接著會自動跑一次設備檢測</div>
       <div style="display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border-radius:12px;padding:11px 12px;margin-bottom:8px">
         <span style="font-size:17px;line-height:1.3">🌙</span>
         <div><div style="font-size:13.5px;font-weight:700;color:#0f172a">開啟勿擾模式</div>
@@ -4600,7 +4743,12 @@ function maybeShowDailyReminder(pid){
         <div><div style="font-size:13.5px;font-weight:700;color:#0f172a">關閉靜音、開啟聲音</div>
         <div style="font-size:12px;color:#94a3b8;margin-top:1px">才聽得到節點與轉彎提示</div></div>
       </div>
-      <button id="daily-reminder-ok" style="width:100%;padding:13px;background:#2563eb;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">我知道了</button>
+      <div style="display:flex;gap:10px;align-items:flex-start;background:#eff6ff;border-radius:12px;padding:11px 12px;margin-bottom:16px">
+        <span style="font-size:17px;line-height:1.3">🔍</span>
+        <div><div style="font-size:13.5px;font-weight:700;color:#1e3a8a">接著進行設備檢測</div>
+        <div style="font-size:12px;color:#60a5fa;margin-top:1px">定位、聲音、麥克風一次確認完畢</div></div>
+      </div>
+      <button id="daily-reminder-ok" style="width:100%;padding:13px;background:#2563eb;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">知道了，開始檢測</button>
     </div>`
   document.body.appendChild(ov)
   const btn=document.getElementById('daily-reminder-ok')
@@ -4832,6 +4980,7 @@ function openDevTest(){
   runDeviceChecks()
 }
 function closeDevTest(){
+  devMicCleanup()
   document.getElementById('devtest-modal').classList.remove('open')
 }
 
@@ -4887,6 +5036,15 @@ async function runDeviceChecks(){
     status:'pending',
     desc:'已播放測試音，請確認是否聽到（未聽到請先確認靜音模式已關閉）',
     audioOk:audioOk})
+  renderDevResults()
+
+  // ── 3.5 麥克風與語音辨識（停車時可直接說出延滯原因）──
+  _devResults.push({id:'mic',name:'麥克風與語音辨識',required:false,
+    status: VOICE_SR ? 'pending' : 'warn',
+    heard:'',
+    desc: VOICE_SR
+      ? '停車時可直接說出延滯原因，不必低頭點螢幕。請按下方按鈕唸一句話測試。'
+      : '此瀏覽器不支援語音辨識，停車時請用按鈕選擇原因（不影響監測作業）'})
   renderDevResults()
 
   // ── 4. 定位授權 + GPS 精度（實際取得位置）──
@@ -4985,7 +5143,7 @@ async function runDeviceChecks(){
 function renderDevResults(){
   var body=document.getElementById('devtest-body')
   if(!body) return
-  var iconMap={pass:'✅',fail:'❌',warn:'⚠️',checking:'🔄',pending:'🔊'}
+  var iconMap={pass:'✅',fail:'❌',warn:'⚠️',checking:'🔄',pending:'🔊',listening:'🎤'}
   if(!_devResults.length){body.innerHTML='<div class="devtest-spinner">檢查中…</div>';return}
   var html=_devResults.map(function(r){
     var isAudioPending=(r.id==='audio'&&r.status==='pending')
@@ -5006,10 +5164,137 @@ function renderDevResults(){
         '<div style="display:flex;gap:8px;margin-top:8px">'
         +'<button onclick="devAudioReplayAndReset()" style="padding:7px 14px;border-radius:8px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:12px;cursor:pointer;font-family:inherit">🔁 重播並重新確認</button>'
         +'</div>'
-        :'')
+        : (r.id==='mic' ? devMicRowHtml(r) : ''))
       +'</div></div>'
   }).join('')
   body.innerHTML=html
+}
+
+// ── 麥克風 / 語音辨識測試 ──
+// 讓使用者唸一句含有實際關鍵字的話，同時驗三件事：
+// 麥克風有沒有收到音（音量條）、辨識引擎通不通、關鍵字比得中比不中。
+const DEV_MIC_PHRASE = '前面紅燈，有行人穿越'
+let _devMicStream=null, _devMicCtx=null, _devMicRaf=null, _devMicRec=null, _devMicTimer=null
+function devMicRowHtml(r){
+  if(!VOICE_SR) return ''
+  if(r.status==='listening'){
+    return '<div style="margin-top:9px">'
+      +'<div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:9px;padding:9px 11px;margin-bottom:8px">'
+      +'<div style="font-size:11px;color:#3b82f6;font-weight:700;margin-bottom:3px">請唸出這句話</div>'
+      +'<div style="font-size:16px;font-weight:800;color:#1e3a8a">'+DEV_MIC_PHRASE+'</div></div>'
+      +'<div style="height:7px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-bottom:8px">'
+      +'<div id="devmic-bar" style="height:100%;width:0;background:#22c55e;transition:width .1s"></div></div>'
+      +'<div id="devmic-heard" style="min-height:22px;font-size:14px;font-weight:700;color:#0f172a;margin-bottom:8px">聆聽中…</div>'
+      +'<button onclick="devMicStop()" style="padding:7px 14px;border-radius:8px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:12px;cursor:pointer;font-family:inherit">■ 結束測試</button>'
+      +'</div>'
+  }
+  const first = r.status==='pending'
+  return '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'
+    +(r.heard?'<div style="width:100%;font-size:12px;color:#475569;background:#f8fafc;border-radius:8px;padding:7px 9px">聽到：'+r.heard+'</div>':'')
+    +'<button onclick="devMicTest()" style="padding:7px 14px;border-radius:8px;border:none;background:#dbeafe;color:#1d4ed8;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">'+(first?'🎤 開始測試':'🔁 重新測試')+'</button>'
+    +(first?'<button onclick="devMicSkip()" style="padding:7px 12px;border-radius:8px;border:1px solid #e2e8f0;background:white;color:#94a3b8;font-size:12px;cursor:pointer;font-family:inherit">略過</button>':'')
+    +'</div>'
+}
+async function devMicTest(){
+  const r=_devResults.find(x=>x.id==='mic'); if(!r||!VOICE_SR) return
+  devMicCleanup()
+  r.status='listening'; r.heard=''
+  r.desc='對著手機用平常講話的音量唸出上面那句話'
+  renderDevResults(); updateDevSummary()
+  // 音量條：確認麥克風真的有收到聲音（辨識失敗時可以分辨是沒收到音還是引擎問題）
+  try{
+    _devMicStream=await navigator.mediaDevices.getUserMedia({audio:true})
+    _devMicCtx=new(window.AudioContext||window.webkitAudioContext)()
+    const an=_devMicCtx.createAnalyser(); an.fftSize=512
+    _devMicCtx.createMediaStreamSource(_devMicStream).connect(an)
+    const buf=new Uint8Array(an.frequencyBinCount)
+    ;(function tick(){
+      an.getByteTimeDomainData(buf)
+      let peak=0
+      for(let i=0;i<buf.length;i++) peak=Math.max(peak,Math.abs(buf[i]-128))
+      const bar=document.getElementById('devmic-bar')
+      if(bar) bar.style.width=Math.min(100,peak/128*260).toFixed(0)+'%'
+      _devMicRaf=requestAnimationFrame(tick)
+    })()
+  }catch(e){
+    r.status='fail'
+    r.desc='麥克風開啟失敗（'+e.name+'）— 請到瀏覽器設定允許此網站使用麥克風，或確認沒有其他 App 佔用麥克風'
+    devMicCleanup(); renderDevResults(); updateDevSummary(); return
+  }
+  // 語音辨識
+  try{
+    _devMicRec=new VOICE_SR()
+    _devMicRec.lang='zh-TW'; _devMicRec.continuous=true
+    _devMicRec.interimResults=true; _devMicRec.maxAlternatives=3
+    let heard='', alts=''
+    _devMicRec.onresult=ev=>{
+      let interim=''
+      for(let i=ev.resultIndex;i<ev.results.length;i++){
+        const res=ev.results[i]
+        for(let a=0;a<res.length;a++) alts+=res[a].transcript
+        if(res.isFinal) heard+=res[0].transcript; else interim+=res[0].transcript
+      }
+      const el=document.getElementById('devmic-heard')
+      if(el) el.innerHTML=heard+'<span style="color:#94a3b8;font-weight:400">'+interim+'</span>'
+      r.heard=heard+interim
+      r._alts=alts+interim
+      // 兩個關鍵字都聽到就直接判定通過，不用等使用者按結束
+      if(devMicScore(r._alts)===2) devMicStop()
+    }
+    _devMicRec.onerror=e=>{
+      r.status='fail'
+      r.desc = e.error==='not-allowed' ? '麥克風權限被拒絕，請到瀏覽器設定允許後重試'
+             : e.error==='network' ? '辨識服務連線失敗（可能沒有網路）— 停車時請改用按鈕選擇原因'
+             : '語音辨識發生錯誤：'+e.error
+      devMicCleanup(); renderDevResults(); updateDevSummary()
+    }
+    _devMicRec.onend=()=>{}
+    _devMicRec.start()
+    // 15 秒沒講完就自動收尾，避免一直開著麥克風
+    _devMicTimer=setTimeout(devMicStop,15000)
+  }catch(e){
+    r.status='fail'; r.desc='語音辨識無法啟動：'+e.message
+    devMicCleanup(); renderDevResults(); updateDevSummary()
+  }
+}
+// 這句測試話裡藏了兩個實際會用到的關鍵字，比對命中幾個
+function devMicScore(text){
+  if(!text) return 0
+  let n=0
+  if(text.includes('紅燈')||text.includes('紅')) n++
+  if(text.includes('行人')||text.includes('穿越')) n++
+  return n
+}
+function devMicStop(){
+  const r=_devResults.find(x=>x.id==='mic')
+  devMicCleanup()
+  if(!r) return
+  const score=devMicScore(r._alts||r.heard)
+  if(score===2){
+    r.status='pass'
+    r.desc='語音辨識正常，停車時可直接說出原因（例如「紅燈」「行人」「計程車」）'
+  } else if(score===1 || (r.heard||'').trim()){
+    r.status='warn'
+    r.desc='有聽到聲音但關鍵字沒有完全對上。行車中仍可嘗試語音，聽錯時直接按按鈕更正即可'
+  } else {
+    r.status='warn'
+    r.desc='沒有辨識到任何內容。請確認麥克風權限與收音環境；停車時改用按鈕選擇原因即可'
+  }
+  renderDevResults(); updateDevSummary()
+}
+function devMicSkip(){
+  const r=_devResults.find(x=>x.id==='mic'); if(!r) return
+  devMicCleanup()
+  r.status='warn'
+  r.desc='已略過語音測試。停車時用按鈕選擇原因即可，之後也能在停止面板上重新啟用語音'
+  renderDevResults(); updateDevSummary()
+}
+function devMicCleanup(){
+  if(_devMicTimer){ clearTimeout(_devMicTimer); _devMicTimer=null }
+  if(_devMicRaf){ cancelAnimationFrame(_devMicRaf); _devMicRaf=null }
+  if(_devMicRec){ try{ _devMicRec.onresult=null; _devMicRec.onerror=null; _devMicRec.abort() }catch(e){}; _devMicRec=null }
+  if(_devMicStream){ _devMicStream.getTracks().forEach(t=>t.stop()); _devMicStream=null }
+  if(_devMicCtx){ try{_devMicCtx.close()}catch(e){}; _devMicCtx=null }
 }
 
 function devAudioConfirm(heard){
@@ -5062,8 +5347,14 @@ function playTestBeep(ctx){
 }
 
 function updateDevSummary(){
-  var pending=_devResults.some(function(r){return r.status==='pending'||r.status==='checking'})
+  var pending=_devResults.some(function(r){return r.status==='pending'||r.status==='checking'||r.status==='listening'})
   if(pending){document.getElementById('devtest-footer').style.display='none';return}
+  // 設備檢測本身就會把定位、聲音、麥克風的授權問完，
+  // 所以跑完之後簽到頁不用再跳一次授權視窗
+  try{
+    var gpsOk=_devResults.some(function(r){return r.id==='gps'&&r.status==='pass'})
+    if(gpsOk) localStorage.setItem(PERM_GATE_KEY, todayStr())
+  }catch(e){}
   var failCount=_devResults.filter(function(r){return r.status==='fail'&&r.required}).length
   var anyFail=_devResults.filter(function(r){return r.status==='fail'}).length
   var warnCount=_devResults.filter(function(r){return r.status==='warn'}).length
