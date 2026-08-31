@@ -520,6 +520,55 @@ async function onReportDateChange(date){
   // 路線與調查資料已在快取裡，換日期只要重新套篩選即可，不必再連線
   await switchReportRoute(_pm.routeId)
 }
+// 重新從雲端抓一次：清掉快取（不然會一直讀舊資料）、更新日期清單與完成狀態，
+// 再把目前這條路線重畫，其餘路線照樣在背景補齊。
+async function refreshReportData(){
+  const btn=document.getElementById('ph-refresh')
+  const txt=document.getElementById('ph-refresh-txt')
+  if(btn&&btn.disabled) return
+  if(!_pm){ location.reload(); return }
+  if(btn){ btn.disabled=true; btn.classList.add('busy') }
+  if(txt) txt.textContent='更新中…'
+  try{
+    Object.keys(_rdata).forEach(k=>delete _rdata[k])
+    Object.keys(_rpending).forEach(k=>delete _rpending[k])
+    Object.keys(_pmShown).forEach(k=>delete _pmShown[k])
+
+    const [routesRes, datesRes] = await Promise.all([
+      cloudGet(_pm.gs, _pm.sessionToken, {action:'getProjectRoutes', pid:_pm.pid}),
+      cloudGet(_pm.gs, _pm.sessionToken, {action:'getProjectDates', pid:_pm.pid}).catch(()=>({ok:true,data:[]}))
+    ])
+    if(routesRes.ok && (routesRes.data||[]).length) _pm.routes = routesRes.data
+    _pm.dates = datesRes.data || _pm.dates
+    // 原本看的日期若已不存在（例如紀錄被刪掉），退回最近一次
+    if(_pm.dates.length && !_pm.dates.some(d=>d.date===_pm.date)) _pm.date=_pm.dates[0].date
+    // 原本看的路線若已不存在，退回第一條
+    if(!_pm.routes.some(r=>String(r.id)===String(_pm.routeId))) _pm.routeId=_pm.routes[0].id
+
+    _pm.stateById={}
+    try{
+      const prog=await cloudGet(_pm.gs, _pm.sessionToken, {action:'getProjectProgress', pid:_pm.pid, date:_pm.date})
+      ;(prog.data||[]).forEach(p=>{
+        const s=Array.isArray(p.roundStates)?p.roundStates:[]
+        _pm.stateById[String(p.routeId)] = s.length ? `${s.filter(x=>x==='done').length}/${s.length}` : ''
+      })
+    }catch(e){}
+
+    renderDateOptions()
+    renderRouteTabs()
+    await _loadRouteIntoGlobals(_pm.gs, _pm.sessionToken, _pm.routeId, _pm.date)
+    renderPage()
+    setTimeout(()=>{ _prefetchAllRoutes() }, 0)
+    if(txt) txt.textContent='已更新'
+    setTimeout(()=>{ if(txt) txt.textContent='更新資料' }, 1600)
+  }catch(e){
+    alert('更新失敗：'+e.message)
+    if(txt) txt.textContent='更新資料'
+  }finally{
+    if(btn){ btn.disabled=false; btn.classList.remove('busy') }
+  }
+}
+
 // ── 批次下載：先讓 PM 勾選要哪幾張表 ──
 const SGS_SECTIONS=[
   {k:'delaySec', label:'延滯統計表（秒）'},
