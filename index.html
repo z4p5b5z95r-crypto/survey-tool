@@ -972,6 +972,7 @@ let lastPos=null, clockTimer=null, elapsedSec=0
 let activeDelay=null, delayLog=[], _resumeAboveSpeedSince=null
 // Stop detection
 let _stopSince=null, _stopActive=false, _stopCdTimer=null, _stopCdVal=5, _stopEvent=null, _stopResumeSince=null
+let _lastSpeedMs=null, _lastSpeedTs=0, _stopPollTimer=null   // 停止偵測輪詢用
 
 // Nodes
 let nodeTimestamps=[], currentNodeIdx=0
@@ -2335,7 +2336,9 @@ function disableNoSleep() {
 
 function startGPS(){
   if(watchId||!navigator.geolocation)return
-  watchId=navigator.geolocation.watchPosition(onPos,onGPSErr,{enableHighAccuracy:true,timeout:10000,maximumAge:800})
+  // maximumAge 改 0：不接受快取定位，煞停後最多可以早 0.8 秒察覺
+  watchId=navigator.geolocation.watchPosition(onPos,onGPSErr,{enableHighAccuracy:true,timeout:10000,maximumAge:0})
+  startStopPolling()
 }
 function onPos(p){
   const{latitude:rl,longitude:ro,accuracy,speed}=p.coords
@@ -2418,22 +2421,12 @@ function onPos(p){
           sv.style.color=kmh<5?'#f87171':kmh<30?'#fbbf24':'#4ade80'
         }
       }
-      // ── 停止偵測（< 5 km/h 持續 1.5 秒，通過第一個節點後才啟用）──
-      if(!activeDelay&&currentNodeIdx>0){
-        const STOP_TH=5/3.6
-        if(speed!=null&&speed<STOP_TH){
-          _stopResumeSince=null  // 低速時重置行車計時
-          if(_stopSince===null) _stopSince=Date.now()
-          else if(!_stopActive&&Date.now()-_stopSince>=1500) triggerStopDetection()
-        } else {
-          _stopSince=null
-          // 面板顯示中車子重新行駛 > 5 km/h 持續 3 秒 → 自動縮回（同延滯自動解除邏輯）
-          if(_stopActive){
-            if(_stopResumeSince===null) _stopResumeSince=Date.now()
-            else if(Date.now()-_stopResumeSince>=3000) svyDismissStop()
-          } else { _stopResumeSince=null }
-        }
-      } else { _stopSince=null; _stopResumeSince=null; }  // reset when not yet past node 1
+      // ── 停止偵測（通過第一個節點後才啟用）──
+      // 判斷本體搬到 evalStopDetection()，由獨立的 200ms 計時器輪詢，
+      // 不必等下一次 GPS callback（那要等最多 1 秒）。這裡只負責記錄最新速度。
+      _lastSpeedMs = speed
+      _lastSpeedTs = Date.now()
+      evalStopDetection()
     }
   }
 }
@@ -2533,15 +2526,56 @@ function svyShowPanel(name){
   })
 }
 
+// ── 停止偵測：分級門檻 + 獨立輪詢 ──
+// 之前是「<5 km/h 連續 1.5 秒」，而且只在 GPS callback（約每秒一次）裡判斷，
+// 加上手機回報的速度本身有平滑處理，實際跳窗大概慢 3~5 秒。
+// 改成：幾乎停死（<1.5 km/h）只要 0.5 秒就跳，蠕行（<5 km/h）維持 1.2 秒；
+// 判斷改由 200ms 的計時器輪詢最後一筆速度，不必等下一次 GPS 回報。
+const STOP_TH_CRAWL = 5/3.6      // 蠕行門檻
+const STOP_TH_STILL = 1.5/3.6    // 幾乎完全靜止
+const STOP_HOLD_CRAWL = 1200
+const STOP_HOLD_STILL = 500
+function evalStopDetection(){
+  // 只在監測畫面判斷；還沒過第一個節點、或正在記錄某個延滯 → 不判斷
+  const onSurvey = document.getElementById('screen-survey')?.classList.contains('active')
+  if(!onSurvey || activeDelay || currentNodeIdx<=0){ _stopSince=null; _stopResumeSince=null; return }
+  // 速度資料太舊（超過 4 秒沒新定位）就不要拿來判斷，避免停在隧道裡誤判
+  const speed = (Date.now()-_lastSpeedTs < 4000) ? _lastSpeedMs : null
+  if(speed!=null && speed<STOP_TH_CRAWL){
+    _stopResumeSince=null
+    if(_stopSince===null) _stopSince=Date.now()
+    else if(!_stopActive){
+      const held = Date.now()-_stopSince
+      const need = speed<STOP_TH_STILL ? STOP_HOLD_STILL : STOP_HOLD_CRAWL
+      if(held>=need) triggerStopDetection()
+    }
+  } else {
+    _stopSince=null
+    // 面板顯示中車子重新行駛 > 5 km/h 持續 3 秒 → 自動縮回（同延滯自動解除邏輯）
+    if(_stopActive){
+      if(_stopResumeSince===null) _stopResumeSince=Date.now()
+      else if(Date.now()-_stopResumeSince>=3000) svyDismissStop()
+    } else { _stopResumeSince=null }
+  }
+}
+function startStopPolling(){
+  if(_stopPollTimer) return
+  _stopPollTimer=setInterval(evalStopDetection,200)
+}
+function stopStopPolling(){
+  if(_stopPollTimer){ clearInterval(_stopPollTimer); _stopPollTimer=null }
+  _lastSpeedMs=null; _lastSpeedTs=0; _stopSince=null; _stopResumeSince=null
+}
 function triggerStopDetection(){
   if(_stopActive) return
   _stopActive=true; _stopSince=null
   _stopEvent={startedAt:Date.now()-3000, pos:lastPos}  // retroact 3 s (detection window)
   svySheetExpand()
   svyShowPanel('stop')
-  // Auto-dismiss after 4 s with no action — no record
+  // 沒有動作就自動關閉。跳窗提早了，這裡也放寬到 7 秒，
+  // 免得駕駛還沒反應過來面板就消失。
   clearTimeout(_stopCdTimer)
-  _stopCdTimer=setTimeout(()=>{ if(_stopActive) svyDismissStop() },4000)
+  _stopCdTimer=setTimeout(()=>{ if(_stopActive) svyDismissStop() },7000)
   // 面板彈出不再另外響提示音，直接用語音取代——駕駛聽到就知道要做什麼，
   // 不必先聽一聲嗶再等語音。（延滯開始／結束的提示音維持不變）
   speakNav('請選擇車輛停止原因')
@@ -2791,8 +2825,7 @@ function playApproachBeep(){
   }catch(e){}
 }
 
-// 節點提示音大約 0.46 秒（終點三聲、一般兩聲）；語音提示等它響完再開口，避免兩個聲音疊在一起
-const NODE_BEEP_MS = 520
+// 中間節點的提示音（兩聲）。第一個與最後一個節點改用語音，不走這裡。
 function playNodeBeep(isFinal){
   try{
     // Reuse the unlocked AudioContext created on user gesture in startSurvey()
@@ -2846,11 +2879,11 @@ function recordNode(auto){
   nodeApproaching=false   // reset so next node fires its own approach beep
   _navAnnouncedTier=0     // 換下一個節點，導航語音提示可以再提醒一次
   const isFinal=currentNodeIdx>=names.length
-  playNodeBeep(isFinal)
-  // 語音一定排在節點提示音「之後」才開口，兩個聲音不會疊在一起。
-  // 只講「調查開始」「調查結束」，不再多念計時相關的字。
-  if(justRecorded===1) setTimeout(()=>speakNav('調查開始'), NODE_BEEP_MS)
-  if(isFinal)          setTimeout(()=>speakNav('調查結束'), NODE_BEEP_MS)
+  // 第一個與最後一個節點不響提示音，直接用語音取代；
+  // 中間的節點維持原本的提示音。
+  if(justRecorded===1)      speakNav('調查開始')
+  else if(isFinal)          speakNav('調查結束')
+  else                      playNodeBeep(false)
 
   // ── Last node: stop the clock ──
   if(isFinal){
