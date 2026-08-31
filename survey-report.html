@@ -802,6 +802,26 @@ async function runBatchSgsPdf(gs, sessionToken, pid, date){
   setTimeout(()=>{ try{ window.print() }catch(e){} }, 600)
 }
 
+// ════════════════ 憑證交接 ════════════════
+// PM 端把憑證放進 localStorage 再開新分頁，這裡取出後就從 localStorage 移除（一次性交接），
+// 但同時複製一份到 sessionStorage。sessionStorage 是「這個分頁專用」而且撐得過重新整理，
+// 所以使用者按瀏覽器的重新載入不會再看到「憑證已過期」，關掉分頁後憑證也就跟著消失。
+function takeCreds(tok){
+  const key = 'sr_tok_' + tok
+  let raw = sessionStorage.getItem(key)
+  if(!raw){
+    raw = localStorage.getItem(key)
+    if(raw){
+      try{ sessionStorage.setItem(key, raw) }catch(e){}
+      localStorage.removeItem(key)
+    }
+  }
+  if(!raw) throw new Error('憑證已過期或無效，請從主頁重新開啟報告')
+  const c = JSON.parse(raw)
+  if(!c || !c.gs || !c.sessionToken) throw new Error('憑證格式錯誤')
+  return c
+}
+
 // ════════════════ INIT ════════════════
 window.addEventListener('load', async () => {
   const p = new URLSearchParams(location.search)
@@ -814,11 +834,7 @@ window.addEventListener('load', async () => {
   if(batchPid && tok && p.get('batch')!=='1'){
     let gs, sessionToken
     try{
-      const raw = localStorage.getItem('sr_tok_' + tok)
-      if(!raw) throw new Error('憑證已過期或無效，請從主頁重新開啟')
-      localStorage.removeItem('sr_tok_' + tok)
-      ;({ gs, sessionToken } = JSON.parse(raw))
-      if(!gs||!sessionToken) throw new Error('憑證格式錯誤')
+      ;({ gs, sessionToken } = takeCreds(tok))
     }catch(e){ showError(e.message); return }
     try{
       await initProjectReport(gs, sessionToken, batchPid, _filterDate)
@@ -834,11 +850,7 @@ window.addEventListener('load', async () => {
   if(batchPid && tok){
     let gs, sessionToken
     try{
-      const raw = localStorage.getItem('sr_tok_' + tok)
-      if(!raw) throw new Error('憑證已過期或無效，請從主頁重新開啟')
-      localStorage.removeItem('sr_tok_' + tok)
-      ;({ gs, sessionToken } = JSON.parse(raw))
-      if(!gs||!sessionToken) throw new Error('憑證格式錯誤')
+      ;({ gs, sessionToken } = takeCreds(tok))
     }catch(e){ showError(e.message); return }
     try{
       await runBatchSgsPdf(gs, sessionToken, batchPid, _filterDate)
@@ -857,11 +869,7 @@ window.addEventListener('load', async () => {
   // Retrieve one-time credentials from localStorage and immediately remove them
   let gs, sessionToken
   try {
-    const raw = localStorage.getItem('sr_tok_' + tok)
-    if(!raw) throw new Error('憑證已過期或無效，請從主頁重新開啟報告')
-    localStorage.removeItem('sr_tok_' + tok)
-    ;({ gs, sessionToken } = JSON.parse(raw))
-    if(!gs||!sessionToken) throw new Error('憑證格式錯誤')
+    ;({ gs, sessionToken } = takeCreds(tok))
   } catch(e) { showError(e.message); return }
 
   try{
