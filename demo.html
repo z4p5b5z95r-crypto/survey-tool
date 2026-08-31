@@ -5469,14 +5469,21 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
 
   /* ── 示範用的假名稱 ── */
   const PROJ_NAME='示範專案（教學用）'
-  const NODE_NAMES=['起點路口','示範路口一','示範路口二','終點路口']
-  const SEG_NAMES=['起點路口 ～ 示範路口一','示範路口一 ～ 示範路口二','示範路口二 ～ 終點路口']
 
-  /* 短路線：三段各約 230 公尺，形狀是「往東 → 左轉往北 → 右轉往東」，
-     一趟就能示範到第一個節點、左轉、右轉、停車、終點全部情境。
-     座標交給 OSRM 貼合到真實道路上。 */
-  const WP=[[22.96700,120.29300],[22.96700,120.29530],
-            [22.96910,120.29530],[22.96910,120.29760]]
+  /* 三條示範路線，各自有真實道路幾何，專案地圖上三條都畫得出來、也都點得進去。
+     R1 是主要示範路線：三段各約 230 公尺，「往東 → 左轉往北 → 右轉往東」，
+     一趟就能演到第一個節點、左轉、右轉、停車、終點全部情境。 */
+  const DEF=[
+    {id:'R1',name:'示範路線一',roundCount:2,
+     nodeNames:['起點路口','示範路口一','示範路口二','終點路口'],
+     wp:[[22.96700,120.29300],[22.96700,120.29530],[22.96910,120.29530],[22.96910,120.29760]]},
+    {id:'R2',name:'示範路線二',roundCount:3,
+     nodeNames:['示範路口四','示範路口五','示範路口六'],
+     wp:[[22.96430,120.29320],[22.96430,120.29600],[22.96230,120.29600]]},
+    {id:'R3',name:'示範路線三',roundCount:3,
+     nodeNames:['示範路口七','示範路口八','示範路口九'],
+     wp:[[22.97080,120.29260],[22.97080,120.29520],[22.97080,120.29780]]},
+  ]
 
   const D2R=Math.PI/180
   const distM=(a,b)=>{const R=6371000,dLa=(b[0]-a[0])*D2R,dLo=(b[1]-a[1])*D2R,
@@ -5485,19 +5492,19 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     return 2*R*Math.asin(Math.sqrt(h))}
   const pathLen=p=>{let s=0;for(let i=1;i<p.length;i++)s+=distM(p[i-1],p[i]);return s}
 
-  let ROUTE=null, DRIVE=[]           // DRIVE = 車輛要走的完整座標串
-  const INIT=(async function(){
-    let nodes=WP.map(p=>({lat:p[0],lng:p[1]})), segs=null, geo=null
+  const ROUTES={}          // id → 完整路線物件
+  const GEOS={}            // id → 貼路幾何（模擬行駛用）
+
+  async function buildRoute(def){
+    let nodes=def.wp.map(p=>({lat:p[0],lng:p[1]})), segs=null, geo=null
     try{
-      const coords=WP.map(p=>p[1]+','+p[0]).join(';')
+      const coords=def.wp.map(p=>p[1]+','+p[0]).join(';')
       const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`,
         {signal:AbortSignal.timeout(9000)})
       const d=await r.json()
       if(d.code==='Ok'){
-        // 用 OSRM 貼到路上的座標當節點，節點就會剛好落在道路上
         nodes=d.waypoints.map(w=>({lat:w.location[1],lng:w.location[0]}))
         geo=d.routes[0].geometry.coordinates.map(c=>[c[1],c[0]])
-        // 依節點把幾何切成各路段，App 直接用這些 latlngs，不必再打 OSRM
         const idxOf=n=>{let bi=0,bd=1e9
           geo.forEach((g,i)=>{const dd=distM(g,[n.lat,n.lng]); if(dd<bd){bd=dd;bi=i}})
           return bi}
@@ -5505,7 +5512,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
         segs=[]
         for(let i=1;i<cuts.length;i++){
           const part=geo.slice(cuts[i-1],cuts[i]+1)
-          segs.push({name:SEG_NAMES[i-1],lanes:2,width:8,
+          segs.push({name:def.nodeNames[i-1]+' ～ '+def.nodeNames[i],lanes:2,width:8,
             length:Math.round(pathLen(part)),mode:'driving',latlngs:part})
         }
       }
@@ -5513,19 +5520,29 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     if(!segs){   // OSRM 不通就退回直線，畫面仍可完整展示
       segs=[]
       for(let i=1;i<nodes.length;i++)
-        segs.push({name:SEG_NAMES[i-1],lanes:2,width:8,mode:'straight',
+        segs.push({name:def.nodeNames[i-1]+' ～ '+def.nodeNames[i],lanes:2,width:8,mode:'straight',
           length:Math.round(distM([nodes[i-1].lat,nodes[i-1].lng],[nodes[i].lat,nodes[i].lng]))})
       geo=nodes.map(n=>[n.lat,n.lng])
     }
-    ROUTE={ id:'R1', routeName:'示範路線一', routeFromTo:'起點路口—終點路口',
-      totalLength:segs.reduce((s,x)=>s+x.length,0), roundCount:2,
+    ROUTES[def.id]={ id:def.id, routeName:def.name,
+      routeFromTo:def.nodeNames[0]+'—'+def.nodeNames[def.nodeNames.length-1],
+      totalLength:segs.reduce((s,x)=>s+x.length,0), roundCount:def.roundCount,
       offPeakLabel:'14:00~16:00', peakLabel:'17:00~19:00', offPeakName:'離峰', peakName:'尖峰',
-      nodes:nodes.map((n,i)=>({name:NODE_NAMES[i],lat:n.lat,lng:n.lng,radius:20})),
+      nodes:nodes.map((n,i)=>({name:def.nodeNames[i],lat:n.lat,lng:n.lng,radius:20})),
       segments:segs }
+    GEOS[def.id]=geo
+  }
 
-    /* 車輛路徑：把幾何加密成每 ~8 公尺一點，並在起點前補一段引道，
-       這樣車子才會「由外往內」通過第一個節點的感應線（原本從節點上出發，
-       側邊判定一開始就是 +1，永遠不會發生 -1 → +1 的穿越，節點因此不觸發）。 */
+  let DRIVE=[]             // 目前選到的路線，車輛要走的座標串
+  const INIT=Promise.all(DEF.map(buildRoute))
+
+  /* 依照選到的路線，鋪出車輛要走的座標串。
+     起點前補一段引道，車子才會「由外往內」通過第一個節點的感應線——
+     若直接從節點座標出發，側邊判定一開始就是「已通過」，
+     永遠不會發生「未通過 → 已通過」的穿越，節點就不會觸發。 */
+  function buildDrive(id){
+    const geo=GEOS[id]||[]
+    if(geo.length<2) return []
     const dense=[]
     for(let i=1;i<geo.length;i++){
       const a=geo[i-1],b=geo[i],L=distM(a,b),n=Math.max(1,Math.round(L/4))
@@ -5537,13 +5554,9 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     const tail=[]
     const y=dense[dense.length-1],x=dense[Math.max(0,dense.length-5)]
     for(let k=1;k<=20;k++) tail.push([y[0]+(y[0]-x[0])*k/4, y[1]+(y[1]-x[1])*k/4])
-    DRIVE=lead.concat(dense,tail)
-    return true
-  })()
+    return lead.concat(dense,tail)
+  }
 
-  const ROUTES=()=>[ ROUTE,
-    {id:'R2',routeName:'示範路線二',routeFromTo:'示範路口一—示範路口三',totalLength:2380,roundCount:3},
-    {id:'R3',routeName:'示範路線三',routeFromTo:'起點路口—示範路口二',totalLength:1960,roundCount:3} ]
   const PROGRESS=[
     {routeId:'R1',roundCount:2,roundStates:['part','todo'],roundDone:[2,0],comboTotal:4},
     {routeId:'R2',roundCount:3,roundStates:['done','part','todo'],roundDone:[4,1,0],comboTotal:4},
@@ -5561,9 +5574,14 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     if(!action&&init&&init.body){ try{ action=JSON.parse(init.body).action }catch(e){} }
     switch(action){
       case 'getProject':         return J({id:'DEMO',name:PROJ_NAME})
-      case 'getProjectRoutes':   return J(ROUTES())
+      case 'getProjectRoutes':   return J(DEF.map(d=>ROUTES[d.id]))
       case 'getProjectProgress': return J(PROGRESS)
-      case 'getRoute':           return J(ROUTE)
+      case 'getRoute':{
+        const id=q.get('id')||'R1'
+        DRIVE=buildDrive(id); SIM.i=0; SIM.running=false; SIM.stopped=false
+        hud('已載入「'+(ROUTES[id]?ROUTES[id].routeName:id)+'」')
+        return J(ROUTES[id]||ROUTES.R1)
+      }
       case 'getHistory':
       case 'getSurveys':         return J([])
       case 'saveSurvey':         hud('☁️ 模擬上傳成功'); return J({id:'sv_demo'})
@@ -5604,7 +5622,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     return 1
   }
   navigator.geolocation.getCurrentPosition=function(ok){
-    const p=(DRIVE[Math.min(SIM.i,Math.max(0,DRIVE.length-1))])||[WP[0][0],WP[0][1]]
+    const p=(DRIVE[Math.min(SIM.i,Math.max(0,DRIVE.length-1))])||DEF[0].wp[0]
     setTimeout(()=>ok({coords:{latitude:p[0],longitude:p[1],accuracy:6,speed:0},timestamp:Date.now()}),280)
   }
   navigator.geolocation.clearWatch=function(){}
