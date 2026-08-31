@@ -67,7 +67,13 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color
 .ph-meta{font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ph-tools{display:flex;gap:8px;align-items:center;flex-shrink:0}
 .ph-datelbl{font-size:11px;color:#64748b}
-.ph-right{flex:1;display:flex;justify-content:flex-end;min-width:0}
+.ph-right{flex:1;display:flex;justify-content:flex-end;align-items:center;gap:8px;min-width:0}
+.ph-rf{display:inline-flex;align-items:center;gap:6px;background:transparent;color:#cbd5e1;border:1px solid #334155;border-radius:7px;padding:6px 11px;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
+.ph-rf:hover{background:#1e293b;color:#fff;border-color:#475569}
+.ph-rf svg{width:13px;height:13px;flex-shrink:0}
+.ph-rf:disabled{color:#64748b;border-color:#1e293b;cursor:default}
+.ph-rf.busy svg{animation:phSpin .8s linear infinite}
+@keyframes phSpin{to{transform:rotate(360deg)}}
 .ph-sel{background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:7px;padding:6px 10px;font-size:11.5px;font-family:inherit;cursor:pointer}
 .ph-dl{background:#fff;color:#0f172a;border:1px solid rgba(255,255,255,.25);border-radius:7px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
 .ph-dl:hover{background:#e2e8f0}
@@ -311,8 +317,12 @@ td:first-child{text-align:left;font-weight:500}
         <span class="ph-datelbl">調查日期</span>
         <select class="ph-sel" id="ph-date" onchange="onReportDateChange(this.value)"></select>
       </div>
-      <div class="ph-right" id="ph-right" style="display:none">
-        <button class="ph-dl" id="ph-batch" onclick="batchDownloadCurrentDate()">📄 批次下載當日平均報告</button>
+      <div class="ph-right" id="ph-right">
+        <button class="ph-rf" id="ph-refresh" onclick="refreshReportData()" title="重新從雲端下載最新的調查紀錄">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+          <span id="ph-refresh-txt">更新資料</span>
+        </button>
+        <button class="ph-dl" id="ph-batch" style="display:none" onclick="batchDownloadCurrentDate()">📄 批次下載當日平均報告</button>
       </div>
     </div>
   </div>
@@ -642,7 +652,7 @@ async function initProjectReport(gs, sessionToken, pid, wantDate){
   }catch(e){}
 
   document.getElementById('ph-tools').style.display='flex'
-  document.getElementById('ph-right').style.display='flex'
+  document.getElementById('ph-batch').style.display='block'
   renderDateOptions()
   renderRouteTabs()
   // 先把使用者要看的第一條路線載進來，其餘在背景繼續抓，
@@ -892,11 +902,19 @@ function plannedRoundCount(){
   const n = parseInt(route&&route.roundCount)
   return (n>=1&&n<=5) ? n : 3   // 後端同樣夾在 1~5，預設 3
 }
+// 判斷「第幾次做了沒」時，必須只看目前選定日期的紀錄。
+// 用 allSurveys（所有日期）會讓別天做過的那一次在今天也亮綠燈，
+// 跟路線膠囊上的 1/2 對不起來——這就是「只做了第1次，第2次卻是綠的」的原因。
+// 注意不能直接用 surveys，因為它已經被「第幾次」篩選過了。
+function surveysOfDate(){
+  if(!_filterDate) return allSurveys
+  return allSurveys.filter(sv=>String(sv.date||'').slice(0,10)===_filterDate)
+}
 // 保險：萬一資料裡出現超過設定次數的紀錄（例如 PM 事後把次數調少），
 // 那些紀錄仍然要有按鈕可以點開，否則資料會變成看得到總平均卻永遠打不開的孤兒。
 function extraRoundsBeyondPlan(){
   const plan = plannedRoundCount()
-  const set = new Set(allSurveys.map(sv=>+sv.round||1).filter(n=>n>plan))
+  const set = new Set(surveysOfDate().map(sv=>+sv.round||1).filter(n=>n>plan))
   return [...set].sort((a,b)=>a-b)
 }
 function availableRounds(){
@@ -908,7 +926,7 @@ function availableRounds(){
 // 回傳這一次已經完成幾個組合，用來判斷「已完成／調查中／尚未調查」。
 function roundProgress(n){
   const done = new Set()
-  allSurveys.forEach(sv=>{
+  surveysOfDate().forEach(sv=>{
     if((+sv.round||1)!==n) return
     ;(sv.trips||[]).forEach(t=>{
       const key = t.peakType+'_'+t.direction
