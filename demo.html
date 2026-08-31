@@ -5473,8 +5473,17 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   display:flex;align-items:center;gap:8px;backdrop-filter:blur(6px);max-width:calc(100% - 20px);transition:opacity .2s">
   <span style="background:#1d4ed8;color:#fff;border-radius:6px;padding:2px 6px;font-weight:800;font-size:10px;flex-shrink:0">DEMO</span>
   <span id="demo-msg" style="flex:1;min-width:0">模擬模式準備中…</span>
+  <button id="demo-dbg" style="background:#334155;color:#e2e8f0;border:none;border-radius:6px;
+    padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">診斷</button>
   <button id="demo-toggle" style="background:#334155;color:#e2e8f0;border:none;border-radius:6px;
     padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">隱藏</button>
+</div>
+<div id="demo-dbgbox" style="display:none;position:fixed;left:10px;right:10px;
+  bottom:calc(58px + env(safe-area-inset-bottom));z-index:9998;background:rgba(2,6,23,.94);
+  border:1px solid #334155;border-radius:12px;padding:9px 11px;max-height:44vh;overflow:auto;
+  font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#94a3b8;line-height:1.5">
+  <div id="dbg-live" style="color:#93c5fd;font-weight:700;margin-bottom:6px"></div>
+  <div id="dbg-log" style="white-space:pre-wrap"></div>
 </div>
 
 <script>
@@ -5520,44 +5529,42 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   const pathLen=p=>{let s=0;for(let i=1;i<p.length;i++)s+=distM(p[i-1],p[i]);return s}
 
   const ROUTES={}, GEOS={}
-  async function buildRoute(def){
-    let nodes=def.wp.map(p=>({lat:p[0],lng:p[1]})), segs=null, geo=null
-    try{
-      const coords=def.wp.map(p=>p[1]+','+p[0]).join(';')
-      const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`,
-        {signal:AbortSignal.timeout(9000)})
-      const d=await r.json()
-      if(d.code==='Ok'){
-        nodes=d.waypoints.map(w=>({lat:w.location[1],lng:w.location[0]}))
-        geo=d.routes[0].geometry.coordinates.map(c=>[c[1],c[0]])
-        const idxOf=n=>{let bi=0,bd=1e9
-          geo.forEach((g,i)=>{const dd=distM(g,[n.lat,n.lng]); if(dd<bd){bd=dd;bi=i}})
-          return bi}
-        const cuts=nodes.map(idxOf)
-        segs=[]
-        for(let i=1;i<cuts.length;i++){
-          const part=geo.slice(cuts[i-1],cuts[i]+1)
-          segs.push({name:def.nodeNames[i-1]+' ～ '+def.nodeNames[i],lanes:2,width:8,
-            length:Math.round(pathLen(part)),mode:'driving',latlngs:part})
-        }
-      }
-    }catch(e){}
-    if(!segs){                       // OSRM 不通就退回直線，畫面仍可完整展示
-      segs=[]
-      for(let i=1;i<nodes.length;i++)
-        segs.push({name:def.nodeNames[i-1]+' ～ '+def.nodeNames[i],lanes:2,width:8,mode:'straight',
-          length:Math.round(distM([nodes[i-1].lat,nodes[i-1].lng],[nodes[i].lat,nodes[i].lng]))})
-      geo=nodes.map(n=>[n.lat,n.lng])
+
+  /* 完全不叫 OSRM：路線就是純粹的模擬幾何。
+     直接把三個轉折點連成直線再加密，節點就落在車子會經過的位置上，
+     順序、距離、轉向全部可預期，也不會因為繞路而提早觸發節點。 */
+  function buildRoute(def){
+    const geo=[]
+    for(let i=1;i<def.wp.length;i++){
+      const a=def.wp[i-1],b=def.wp[i]
+      const L=distM(a,b), n=Math.max(2,Math.round(L/8))
+      for(let k=0;k<n;k++) geo.push([a[0]+(b[0]-a[0])*k/n, a[1]+(b[1]-a[1])*k/n])
+    }
+    geo.push(def.wp[def.wp.length-1])
+
+    // 節點＝轉折點本身，直接落在行駛路徑上
+    const cuts=def.wp.map(p=>{
+      let bi=0,bd=1e9
+      geo.forEach((g,i)=>{const d=distM(g,p); if(d<bd){bd=d;bi=i}})
+      return bi
+    })
+    const nodes=def.wp.map((p,k)=>({name:def.nodeNames[k],lat:p[0],lng:p[1],radius:20}))
+    const segs=[]
+    for(let i=1;i<cuts.length;i++){
+      const part=geo.slice(cuts[i-1],cuts[i]+1)
+      segs.push({name:def.nodeNames[i-1]+' ～ '+def.nodeNames[i],lanes:2,width:8,
+        length:Math.round(pathLen(part)),mode:'straight',latlngs:part})
     }
     ROUTES[def.id]={ id:def.id, routeName:def.name,
       routeFromTo:def.nodeNames[0]+'—'+def.nodeNames[def.nodeNames.length-1],
       totalLength:segs.reduce((s,x)=>s+x.length,0), roundCount:def.roundCount,
       offPeakLabel:'14:00~16:00', peakLabel:'17:00~19:00', offPeakName:'離峰', peakName:'尖峰',
-      nodes:nodes.map((n,i)=>({name:def.nodeNames[i],lat:n.lat,lng:n.lng,radius:20})),
-      segments:segs }
+      nodes, segments:segs }
     GEOS[def.id]=geo
   }
-  const INIT=Promise.all(DEF.map(buildRoute))
+  DEF.forEach(buildRoute)
+  const INIT=Promise.resolve()
+
 
   /* 鋪出行駛座標串：每 4 公尺一點，頭尾各補約 90 公尺引道。
      引道很重要——車子若直接從第一個節點的座標出發，感應線的側邊判定
@@ -5670,6 +5677,36 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       DeviceMotionEvent.requestPermission=()=>Promise.resolve('granted')
   }catch(e){}
 
+  /* ── 診斷面板：把節點判定與語音事件的實際距離攤開來看 ── */
+  let DBG=false, dbgLines=[]
+  document.getElementById('demo-dbg').onclick=function(){
+    DBG=!DBG
+    document.getElementById('demo-dbgbox').style.display=DBG?'block':'none'
+    this.style.background=DBG?'#1d4ed8':'#334155'
+  }
+  function dbg(m){
+    dbgLines.push(new Date().toLocaleTimeString('zh-TW',{hour12:false})+' '+m)
+    if(dbgLines.length>60) dbgLines.shift()
+    const el=document.getElementById('dbg-log')
+    if(el){ el.textContent=dbgLines.join('\n'); el.parentNode.scrollTop=1e6 }
+  }
+  function dbgLive(){
+    if(!DBG) return
+    const el=document.getElementById('dbg-live'); if(!el) return
+    try{
+      const r=ROUTES[CUR]; if(!r) return
+      const p=SIM.path[Math.min(SIM.i,SIM.path.length-1)]; if(!p) return
+      const near=(document.getElementById('nnc-dist-num')||{}).textContent||'—'
+      const name=(document.getElementById('next-node-name')||{}).textContent||''
+      const banner=document.getElementById('nav-banner')
+      const bTxt=(banner&&banner.style.display!=='none')
+        ? ((document.getElementById('nav-banner-dist')||{}).textContent+' '+(document.getElementById('nav-banner-turn')||{}).textContent)
+        : '（未顯示）'
+      el.textContent='下一節點 '+name+' 距離 '+near+' m｜導航橫幅 '+bTxt+'｜點 '+SIM.i+'/'+SIM.path.length
+    }catch(e){}
+  }
+  setInterval(dbgLive,300)
+
   /* ── 掛勾正式 App ── */
   window.addEventListener('load',async function(){
     const wrap=(name,after)=>{ const f=window[name]
@@ -5686,6 +5723,20 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       SIM.stops=[Math.round(SIM.path.length*0.62)]   // 一次停車，落在第二段
       hud('🚗 模擬'+(back?'回程':'去程')+'行駛中 — 通過節點會自動記錄')
     })
+    // 事件發生的當下，記下「離該節點還有多遠」，就能看出是不是提早觸發
+    const distToNode=(k)=>{
+      try{
+        const r=ROUTES[CUR]; const p=SIM.path[Math.min(SIM.i,SIM.path.length-1)]
+        const n=r&&r.nodes&&r.nodes[k]
+        return (n&&p)?Math.round(distM([n.lat,n.lng],p)):-1
+      }catch(e){ return -1 }
+    }
+    wrap('recordNode',()=>{
+      const bar=document.getElementById('nnc-dist-num')
+      dbg('▶ 記錄節點：當下距離顯示 '+((bar&&bar.textContent)||'?')+' m')
+    })
+    wrap('speakNav',(t)=>{ dbg('🔊 語音「'+t+'」') })
+    wrap('triggerStopDetection',()=>{ dbg('🛑 偵測到停止') })
     wrap('svyStopPickDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,4500) } })
     wrap('svyDismissStop',()=>{ if(SIM.stopped) resume() })
     wrap('toggleDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,4500) } })
@@ -5694,6 +5745,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   })
 })()
 </script>
+
 
 
 
