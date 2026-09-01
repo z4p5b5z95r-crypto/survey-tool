@@ -3285,6 +3285,26 @@ async function openSurveyManager(cloudId,routeName,opn,pkn) {
   document.body.appendChild(overlay)
   await refreshSurveyModal()
 }
+// ── 非當日執行標記（僅 PM 端稽核用，報告與 PDF 都不會帶入）──────────────
+// 後端 getSurveys 會比對「登記的調查日期」與「設備實際跑這趟的日期」，
+// 兩者不同就回傳 dateFlag：'backfill' 補登舊日期、'ahead' 登記日填成了未來。
+// 這不會擋任何操作，只是讓 PM 一眼看出這筆不是當天現場做的。
+function svDateFlagBadge(sv, opts){
+  if(!sv || !sv.dateFlag) return ''
+  const back = sv.dateFlag === 'backfill'
+  const n    = Math.abs(+sv.dateOffset || 0)
+  const txt  = back ? `補登（實際 ${sv.execDate||'—'} 執行）`
+                    : `提前登記（實際 ${sv.execDate||'—'} 執行）`
+  const bg   = back ? '#fef3c7' : '#fee2e2'
+  const fg   = back ? '#92400e' : '#991b1b'
+  const bd   = back ? '#fcd34d' : '#fca5a5'
+  const tip  = back ? `登記日期比實際執行日期晚 ${n} 天` : `登記日期比實際執行日期早 ${n} 天`
+  const mt   = (opts&&opts.block) ? 'display:inline-block;margin-top:3px;' : ''
+  return `<span title="${tip}" style="${mt}background:${bg};color:${fg};border:1px solid ${bd};`
+       + `font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:10px;white-space:nowrap">`
+       + `⚠️ ${txt}</span>`
+}
+
 async function refreshSurveyModal() {
   const body=document.getElementById('sv-modal-body');if(!body)return
   const btn=document.querySelector('[onclick="refreshSurveyModal()"]')
@@ -3308,10 +3328,18 @@ async function refreshSurveyModal() {
       const weathers=[...new Set(items.map(({sv})=>WZH[sv.weather]||''))].join('')
       const firstIdx=items[0].i
       const allIds=items.map(({sv})=>sv.id)
+      // 這個日期底下只要有任何一筆不是當天現場做的，就在這一列標出來
+      const flagged=items.map(({sv})=>sv).filter(sv=>sv.dateFlag)
+      const flagBadge=flagged.length
+        ? svDateFlagBadge(flagged[0],{block:true})
+          + (flagged.length<items.length
+              ? `<span style="font-size:10px;color:#94a3b8;margin-left:4px">${flagged.length}/${items.length} 筆</span>`
+              : '')
+        : ''
       return`<div class="sv-row">
         <div class="sv-row-info" style="cursor:pointer" onclick="viewSurveyFromModal(${firstIdx})">
           <div class="sv-row-date">${weathers} ${date}</div>
-          <div class="sv-row-meta"><span style="background:#e2e8f0;color:#64748b;font-size:11px;padding:1px 7px;border-radius:10px">${items.length} 筆調查</span></div>
+          <div class="sv-row-meta"><span style="background:#e2e8f0;color:#64748b;font-size:11px;padding:1px 7px;border-radius:10px">${items.length} 筆調查</span>${flagBadge}</div>
         </div>
         <button class="sv-btn sv-btn-view" onclick="viewSurveyFromModal(${firstIdx})">📊 查看</button>
         <button class="sv-btn sv-btn-del" onclick="toggleDeleteMenu('${date}', this)">🗑</button>
@@ -3775,7 +3803,7 @@ async function loadAdminSurveys() {
       <tbody>${surveys.map(sv => `<tr>
         <td><strong>${routeMap[sv.routeId] || '—'}</strong></td>
         <td>${sv.surveyor || '—'}</td>
-        <td style="color:#64748b;font-size:12px">${sv.date ? String(sv.date).slice(0,10) : '—'}</td>
+        <td style="color:#64748b;font-size:12px">${sv.date ? String(sv.date).slice(0,10) : '—'}${svDateFlagBadge(sv,{block:true})}</td>
         <td>${WZH[sv.weather] || sv.weather || '—'}</td>
         <td style="text-align:center;color:#475569">${sv.tripCount || 0}</td>
         <td style="color:#94a3b8;font-size:12px">${sv.submittedAt ? new Date(sv.submittedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</td>

@@ -253,6 +253,11 @@ td:first-child{text-align:left;font-weight:500}
 /* ── Inline table edit ── */
 .pf-time-inp{width:34px;font-size:11px;padding:2px 2px;border:1.5px solid #3b82f6;border-radius:4px;text-align:center;font-family:monospace;background:#eff6ff;color:#1e3a5f}
 .pf-edit-inp{width:42px;font-size:11px;padding:2px 3px;border:1.5px solid #3b82f6;border-radius:4px;text-align:center;font-family:monospace;background:#eff6ff;color:#1e3a5f}
+/* SGS 表頭可編輯欄位（日期／天氣／調查員／旅次編號／方向／時期） */
+.pf-meta-inp{font-size:11px;padding:2px 5px;border:1.5px solid #3b82f6;border-radius:4px;
+  background:#eff6ff;color:#1e3a5f;font-family:inherit;vertical-align:middle;max-width:140px}
+.pf-meta-inp:focus{outline:none;border-color:#1d4ed8;box-shadow:0 0 0 2px rgba(59,130,246,.2)}
+select.pf-meta-inp{padding:2px 3px}
 .sv-rec-header.editing{background:#1d4374}
 .em-save-inline{padding:5px 14px;background:#22c55e;color:white;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap}
 .em-save-inline:hover{background:#16a34a}
@@ -466,6 +471,7 @@ const he = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace
 // ════════════════ 專案報告模式：一次瀏覽整個專案、可切換日期與路線 ════════════════
 const RT_COLORS=['#2563eb','#ea580c','#0d9488','#dc2626','#7c3aed','#0891b2','#ca8a04','#db2777']
 let _pm = null   // {gs, sessionToken, pid, projName, routes:[], dates:[], date:'', routeId:''}
+let _creds = null // {gs, sessionToken}：takeCreds() 填入，寫回雲端時用
 const _pmShown = {}   // routeId -> 已經播過「下載完成」勾勾動畫
 
 function renderRouteTabs(){
@@ -822,6 +828,7 @@ function takeCreds(tok){
   if(!raw) throw new Error('憑證已過期或無效，請從主頁重新開啟報告')
   const c = JSON.parse(raw)
   if(!c || !c.gs || !c.sessionToken) throw new Error('憑證格式錯誤')
+  _creds = c   // 表頭修改要寫回雲端時用；所有進入路徑都會經過這裡
   return c
 }
 
@@ -946,6 +953,23 @@ async function cloudGet(gsUrl, sessionToken, params, _retried){
     }
     throw e
   }
+}
+
+// 寫入用。Apps Script 的 doPost 不接受自訂 header（會觸發 CORS preflight），
+// 所以照專案慣例用 text/plain 送 JSON，權限由 body 裡的 sessionToken 驗證。
+async function cloudPost(body){
+  const c = _creds || (_pm ? {gs:_pm.gs, sessionToken:_pm.sessionToken} : null)
+  if(!c || !c.gs) throw new Error('缺少雲端連線憑證，請從主頁重新開啟報告')
+  const res = await fetch(c.gs, {
+    method: 'POST',
+    headers: {'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({...body, sessionToken: c.sessionToken}),
+    signal: AbortSignal.timeout(45000)
+  })
+  const j = await res.json().catch(()=>null)
+  if(!j) throw new Error('伺服器回應格式錯誤')
+  if(j.ok===false || j.error) throw new Error(j.error || '寫入失敗')
+  return j.data !== undefined ? j.data : j
 }
 
 // ════════════════ FILTERS (date / 第幾次) ════════════════
@@ -1584,14 +1608,34 @@ function renderComboRecords(combo){
         <div class="sgs-pf-meta">
           <div class="sgs-pf-ml">
             <div>站　名：&nbsp;<u>${he(route.routeName||'')}</u></div>
-            <div>旅次編號：</div>
-            <div>方向往：&nbsp;${!isReturn?'■':'□'} 去　　${isReturn?'■':'□'} 回</div>
-            <div>時　間：&nbsp;${!isPeak?'■':'□'} ${route.offPeakName||'離峰'}（${off}）　&nbsp;${isPeak?'■':'□'} ${route.peakName||'尖峰'}（${pk}）</div>
+            <div>旅次編號：&nbsp;${isEdit
+              ?`<input class="pf-meta-inp" style="width:120px" type="text" data-ie="meta-tripno" value="${he(trip.tripNo||'')}" placeholder="可留空">`
+              :he(trip.tripNo||'')}</div>
+            <div>方向往：&nbsp;${isEdit
+              ?`<select class="pf-meta-inp" data-ie="meta-dir">
+                  <option value="bound"${!isReturn?' selected':''}>去</option>
+                  <option value="return"${isReturn?' selected':''}>回</option>
+                </select>`
+              :`${!isReturn?'■':'□'} 去　　${isReturn?'■':'□'} 回`}</div>
+            <div>時　間：&nbsp;${isEdit
+              ?`<select class="pf-meta-inp" data-ie="meta-peak">
+                  <option value="off_peak"${!isPeak?' selected':''}>${he(route.offPeakName||'離峰')}（${he(off)}）</option>
+                  <option value="peak"${isPeak?' selected':''}>${he(route.peakName||'尖峰')}（${he(pk)}）</option>
+                </select>`
+              :`${!isPeak?'■':'□'} ${route.offPeakName||'離峰'}（${off}）　&nbsp;${isPeak?'■':'□'} ${route.peakName||'尖峰'}（${pk}）`}</div>
           </div>
           <div class="sgs-pf-mr">
-            <div>日　期：&nbsp;<span style="color:#dc2626;font-weight:700">${he(sv.date||'')}</span></div>
-            <div>天　氣：&nbsp;${he(sv.weather||'—')}</div>
-            <div>調查員：&nbsp;<u>${he(sv.surveyor||'—')}</u></div>
+            <div>日　期：&nbsp;${isEdit
+              ?`<input class="pf-meta-inp" style="width:125px" type="date" data-ie="meta-date" value="${he((sv.date||'').slice(0,10))}">`
+              :`<span style="color:#dc2626;font-weight:700">${he(sv.date||'')}</span>`}</div>
+            <div>天　氣：&nbsp;${isEdit
+              ?`<select class="pf-meta-inp" data-ie="meta-weather">
+                  ${['sunny','cloudy','rainy'].map(w=>`<option value="${w}"${sv.weather===w?' selected':''}>${({sunny:'☀️ sunny',cloudy:'☁️ cloudy',rainy:'🌧️ rainy'})[w]}</option>`).join('')}
+                </select>`
+              :he(sv.weather||'—')}</div>
+            <div>調查員：&nbsp;${isEdit
+              ?`<input class="pf-meta-inp" style="width:110px" type="text" data-ie="meta-surveyor" value="${he(sv.surveyor||'')}">`
+              :`<u>${he(sv.surveyor||'—')}</u>`}</div>
           </div>
         </div>
         <!-- ③ Summary table (路/線/時刻/速率) — 獨立欄位不跨表 -->
@@ -3210,13 +3254,87 @@ function saveInlineEdit(si,combo){
   }
   trip.delayLog=newLog
 
-  // 4. Recalculate & re-render
+  // 4. 表頭欄位（調查層級：日期／天氣／調查員；旅次層級：編號／方向／時期）
+  //    這些不影響任何計算，但改日期或方向會換掉這筆在報告裡的分組位置，
+  //    所以要記下哪些真的變了，稍後決定是否寫回雲端、是否需要重載。
+  const svPatch={}, tpPatch={}
+  const _set=(obj,k,oldV,newV)=>{ if(newV!==''&&newV!=null&&String(newV)!==String(oldV||'')) obj[k]=newV }
+  _set(svPatch,'date',     (sv.date||'').slice(0,10), inpV('meta-date'))
+  _set(svPatch,'weather',  sv.weather,                inpV('meta-weather'))
+  _set(svPatch,'surveyor', sv.surveyor,               inpV('meta-surveyor'))
+  if(container.querySelector('[data-ie="meta-tripno"]')) _set(tpPatch,'tripNo', trip.tripNo, inpV('meta-tripno'))
+  _set(tpPatch,'direction',trip.direction,             inpV('meta-dir'))
+  _set(tpPatch,'peakType', trip.peakType,              inpV('meta-peak'))
+  Object.assign(sv, svPatch)
+  Object.assign(trip, tpPatch)
+  // 方向或時期一改，這趟就屬於別的組合了，留在原本的分頁會看到空白
+  const _moved = tpPatch.direction!==undefined || tpPatch.peakType!==undefined
+
+  // 5. Recalculate & re-render
   _recalcTrip(trip)
   calcAverages()
   renderTravelTable(); renderSpeedTable(); renderDelayTable()
   _editModes.delete(key)
   renderComboRecords(combo)
-  _emToast('✅ 已儲存並重新計算')
+
+  const _metaChanged = Object.keys(svPatch).length || Object.keys(tpPatch).length
+  if(_metaChanged) askSaveScope(sv,trip,svPatch,tpPatch,_moved)
+  else _emToast('✅ 已儲存並重新計算')
+}
+
+// ── 儲存範圍：只套用到這份報告，或一併寫回雲端 ──────────────────
+// 節點時刻與延滯秒數一律只存在記憶體裡（重新整理就還原），這是原本就有的行為。
+// 但表頭這幾個欄位是基本資料，改錯了每次開報告都會錯，所以額外提供寫回雲端的選項。
+function askSaveScope(sv,trip,svPatch,tpPatch,moved){
+  const ZH={date:'日期',weather:'天氣',surveyor:'調查員',tripNo:'旅次編號',direction:'方向',peakType:'時期'}
+  const VZH={bound:'去',return:'回',peak:'尖峰',off_peak:'離峰'}
+  const lines=[...Object.entries(svPatch),...Object.entries(tpPatch)]
+    .map(([k,v])=>`<li><b>${ZH[k]||k}</b> → ${he(String(VZH[v]||v))}</li>`).join('')
+  const warn=moved
+    ? `<div style="margin-top:8px;padding:7px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:7px;font-size:11.5px;color:#92400e">
+         改了方向或時期，這趟會換到另一個組合分頁，儲存後畫面會重新整理。</div>`
+    : ''
+  const box=document.createElement('div')
+  box.id='save-scope-modal'
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px'
+  box.innerHTML=`<div style="background:#fff;border-radius:14px;max-width:390px;width:100%;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+    <div style="font-size:15px;font-weight:800;color:#0f172a;margin-bottom:8px">要把表頭的修改存到哪裡？</div>
+    <ul style="margin:0 0 4px;padding-left:20px;font-size:12.5px;color:#475569;line-height:1.9">${lines}</ul>
+    ${warn}
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+      <button id="ss-cloud" style="padding:11px;background:#2563eb;color:#fff;border:none;border-radius:9px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit">☁️ 一併寫回雲端（永久修正）</button>
+      <button id="ss-local" style="padding:11px;background:#f1f5f9;color:#475569;border:none;border-radius:9px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit">📄 只套用到這份報告</button>
+    </div>
+    <div style="margin-top:9px;font-size:11px;color:#94a3b8;line-height:1.6">
+      「只套用到這份報告」重新整理後就會還原，雲端資料不變。節點時刻與延滯秒數一律只套用到這份報告。
+    </div>
+  </div>`
+  document.body.appendChild(box)
+  const close=()=>box.remove()
+  box.querySelector('#ss-local').onclick=()=>{ close(); _emToast('✅ 已套用到這份報告（未寫回雲端）') }
+  box.querySelector('#ss-cloud').onclick=async()=>{
+    const btn=box.querySelector('#ss-cloud')
+    btn.disabled=true; btn.textContent='⏳ 寫回中…'
+    try{
+      await pushMetaToCloud(sv,trip,svPatch,tpPatch)
+      close()
+      _emToast('☁️ 已寫回雲端')
+      if(moved||svPatch.date!==undefined) setTimeout(()=>refreshReportData(),700)
+    }catch(e){
+      btn.disabled=false; btn.textContent='☁️ 一併寫回雲端（永久修正）'
+      const er=box.querySelector('#ss-err')||document.createElement('div')
+      er.id='ss-err'
+      er.style.cssText='margin-top:9px;padding:8px 10px;background:#fee2e2;border:1px solid #fca5a5;border-radius:7px;font-size:11.5px;color:#991b1b'
+      er.textContent='寫回失敗：'+(e.message||e)+'（修改仍套用在這份報告上）'
+      box.querySelector('div').appendChild(er)
+    }
+  }
+}
+
+// 寫回雲端。surveys 與 trips 是兩支不同的 action，任一支失敗就整個視為失敗。
+async function pushMetaToCloud(sv,trip,svPatch,tpPatch){
+  if(Object.keys(svPatch).length) await cloudPost({action:'updateSurveyMeta',surveyId:sv.id,patch:svPatch})
+  if(Object.keys(tpPatch).length) await cloudPost({action:'updateTripMeta', tripId:trip.id, patch:tpPatch})
 }
 </script>
 
