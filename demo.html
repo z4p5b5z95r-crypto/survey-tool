@@ -987,6 +987,7 @@ let lastPos=null, clockTimer=null, elapsedSec=0
 let activeDelay=null, delayLog=[], _resumeAboveSpeedSince=null
 // Stop detection
 let _stopSince=null, _stopActive=false, _stopCdTimer=null, _stopCdVal=5, _stopEvent=null, _stopResumeSince=null
+let _autoEndTimer=null   // 通過最後一個節點後自動結束的計時器（手動按結束時要取消，避免結算兩次）
 let _lastSpeedMs=null, _lastSpeedTs=0, _stopPollTimer=null   // 停止偵測輪詢用
 
 // Nodes
@@ -3258,8 +3259,12 @@ function recordNode(auto){
     const navBanner=$('nav-banner'); if(navBanner) navBanner.style.display='none'; _syncSurveyTopOffsets()
     updateNextNodeCard()
     showToast(`🏁 已抵達終點！節點 ${justRecorded}／${names.length}`,true)
-    // Ask to end survey after a short delay so toast is visible first
-    setTimeout(()=>promptEndSurvey(),800)
+    // 通過最後一個節點＝這趟結束，不再詢問「繼續行駛／結束調查」，
+    // 直接結算並上傳。延遲 800ms 只是讓「調查結束」語音與 toast 先出來。
+    // （後端以 路線＋日期＋回合＋組合 為鍵覆寫，萬一提前壓到終點線，
+    //   重跑一次這個組合就會取代掉這筆，不會留下錯誤資料。）
+    clearTimeout(_autoEndTimer)
+    _autoEndTimer=setTimeout(()=>endSurvey(true),800)
   }else{
     const nextDot=$(`nd-${currentNodeIdx}`)
     if(nextDot) nextDot.className='nd cur'
@@ -3735,6 +3740,8 @@ function surveyBackConfirm(){
   cur=null
   goReady()
 }
+// ⚠️ 目前沒有呼叫者：通過最後一個節點已改成直接結算並上傳（見 recordNode 的 isFinal 分支）。
+// 保留這支是為了萬一要改回「先問要不要繼續行駛」，把 isFinal 那行換回 promptEndSurvey() 即可。
 function promptEndSurvey(){
   // Show end-survey confirmation dialog after last node reached
   svySheetExpand()
@@ -3765,8 +3772,13 @@ function svyDismissEndPrompt(){
   svyShowPanel('idle');svySheetCollapse()
 }
 
-function endSurvey(){
-  if(!confirm('確定結束調查？'))return
+// auto=true：通過最後一個節點自動結束，不跳確認框（畫面上的「🔴 結束調查」按鈕仍會確認）
+function endSurvey(auto){
+  if(!auto && !confirm('確定結束調查？'))return
+  if(!cur) return
+  clearTimeout(_autoEndTimer); _autoEndTimer=null   // 手動先按了結束，就別再自動結算一次
+  // 自動結束時面板可能還停在「已記錄最後一個節點」的提示，先收掉
+  const _ep=$('end-survey-prompt'); if(_ep) _ep.style.display='none'
   stopAudioKeepAlive(); releaseWakeLock(); disableNoSleep()
   // If last node already set endTime, keep it; otherwise record now
   if(!cur.endTime) cur.endTime=new Date()
