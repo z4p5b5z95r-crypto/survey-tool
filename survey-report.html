@@ -371,6 +371,13 @@ select.pf-meta-inp{padding:2px 3px}
   <div id="panel-trips" class="panel">
     <!-- Combo selector -->
     <div class="combo-selector" id="combo-selector"></div>
+    <!-- 整天刪除：範圍是「目前這條路線 × 目前這個日期」，不會動到其他路線 -->
+    <div id="day-del-bar" style="display:none;padding:0 20px 4px;text-align:right">
+      <button onclick="deleteWholeDay()" style="background:#fff;color:#b91c1c;border:1px solid #fecaca;
+        border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+        🗑 刪除本日此路線全部紀錄
+      </button>
+    </div>
     <!-- Survey records for selected combo -->
     <div id="combo-records"></div>
   </div>
@@ -552,10 +559,11 @@ function renderRouteTabs(){
     const on = String(r.id)===String(_pm.routeId)
     const st = _pm.stateById?.[String(r.id)]
     const col = RT_COLORS[i%RT_COLORS.length]
-    const ready = !!_rdata[String(r.id)]
+    const rk = _rkey(r.id, _pm.date||'')
+    const ready = !!_rdata[rk]
     // 剛下載完的那一條才播放勾勾彈出動畫，其餘只是靜靜地打勾
-    const pop = ready && !_pmShown[String(r.id)]
-    if(ready) _pmShown[String(r.id)]=true
+    const pop = ready && !_pmShown[rk]
+    if(ready) _pmShown[rk]=true
     const mark = ready
       ? `<svg class="rok${pop?' pop':''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
       : '<span class="rld" title="資料下載中"></span>'
@@ -581,7 +589,7 @@ async function switchReportRoute(routeId){
   _pm.routeId=routeId
   renderRouteTabs()
   // 背景已抓好就直接切，不再轉圈；沒抓好才顯示載入中
-  const cached = !!_rdata[String(routeId)]
+  const cached = !!_rdata[_rkey(routeId, _pm.date||'')]
   if(!cached) showDlOverlay('載入路線資料…')
   try{
     await _loadRouteIntoGlobals(_pm.gs, _pm.sessionToken, routeId, _pm.date)
@@ -593,8 +601,21 @@ async function switchReportRoute(routeId){
 async function onReportDateChange(date){
   if(!_pm) return
   _pm.date=date
-  // 路線與調查資料已在快取裡，換日期只要重新套篩選即可，不必再連線
+  // 換日期＝換一批資料。沒抓過的那天會連線抓（只抓那天），抓過的直接從快取讀。
   await switchReportRoute(_pm.routeId)
+  await refreshRoundProgress()
+  // 其餘路線那一天的資料在背景補齊，之後切換路線就不用等
+  setTimeout(()=>{ _prefetchAllRoutes() }, 0)
+}
+// 重新抓「目前這個日期」各路線的完成度（膠囊上的圓環）
+async function refreshRoundProgress(){
+  if(!_pm) return
+  try{
+    const prog=await cloudGet(_pm.gs, _pm.sessionToken, {action:'getProjectProgress', pid:_pm.pid, date:_pm.date})
+    _pm.stateById={}
+    ;(prog.data||[]).forEach(p=>{ _pm.stateById[String(p.routeId)] = p })
+    renderRouteTabs()
+  }catch(e){}
 }
 // 重新從雲端抓一次：清掉快取（不然會一直讀舊資料）、更新日期清單與完成狀態，
 // 再把目前這條路線重畫，其餘路線照樣在背景補齊。
@@ -738,12 +759,15 @@ async function startBatchDownload(){
     if(btn){ btn.disabled=false; btn.textContent='📄 批次下載當日平均報告' }
   }
 }
-// 進到專案報告後，把其餘路線的資料在背景一次抓完，之後切換路線就不用再等
+// 進到專案報告後，把其餘路線「目前這一天」的資料在背景抓完，之後切換路線就不用再等。
+// 只抓目前選的日期——換日期時 _prefetchAllRoutes 會再被呼叫一次，抓那一天的。
 async function _prefetchAllRoutes(){
   if(!_pm) return
+  const day=_pm.date||''
   for(const r of _pm.routes){
-    if(_rdata[String(r.id)]) continue
-    try{ await _fetchRouteData(_pm.gs, _pm.sessionToken, r.id) }catch(e){}
+    if(day!==(_pm.date||'')) return      // 抓到一半使用者又換了日期，這批就作廢
+    if(_rdata[_rkey(r.id, day)]) continue
+    try{ await _fetchRouteData(_pm.gs, _pm.sessionToken, r.id, day) }catch(e){}
     renderRouteTabs()
   }
   renderRouteTabs()   // 收尾再畫一次，確保沒有任何一顆轉圈被留下來
@@ -793,14 +817,18 @@ const _tryParseSR = (v, fb) => { if(typeof v!=='string') return v??fb; try{retur
 // 路線資料快取：一條路線只連線抓一次（getSurveys 回傳全部日期，換日期只要重新篩選）
 const _rdata = {}      // routeId -> {route, surveys}
 const _rpending = {}   // routeId -> Promise（避免同一條被重複抓）
-function _fetchRouteData(gs, sessionToken, routeId){
-  const k = String(routeId)
+// 快取鍵是「路線＋日期」。以前只用路線當鍵、後端也一次回傳所有日期，
+// 開啟專案報告等於把每條路線每一天的 GPS 軌跡全部拉下來，路線一多就會卡很久。
+// 現在只抓目前選的那一天，換日期時再抓那一天（抓過的留在快取裡，切回去不必重抓）。
+function _rkey(routeId, date){ return String(routeId)+'|'+(date||'') }
+function _fetchRouteData(gs, sessionToken, routeId, date){
+  const k = _rkey(routeId, date)
   if(_rdata[k]) return Promise.resolve(_rdata[k])
   if(_rpending[k]) return _rpending[k]
   const job = (async()=>{
     const [routeRes, surveyRes] = await Promise.all([
       cloudGet(gs, sessionToken, {action:'getRoute', id: routeId}),
-      cloudGet(gs, sessionToken, {action:'getSurveys', routeId})
+      cloudGet(gs, sessionToken, {action:'getSurveys', routeId, date: date||''})
     ])
     if(!routeRes.ok)  throw new Error(routeRes.error||'讀取路線失敗')
     if(!surveyRes.ok) throw new Error(surveyRes.error||'讀取調查結果失敗')
@@ -826,7 +854,7 @@ function _fetchRouteData(gs, sessionToken, routeId){
   return job
 }
 async function _loadRouteIntoGlobals(gs, sessionToken, routeId, date){
-  const d = await _fetchRouteData(gs, sessionToken, routeId)
+  const d = await _fetchRouteData(gs, sessionToken, routeId, date)
   route      = d.route
   allSurveys = d.surveys
   _filterDate = date || ''
@@ -1528,9 +1556,52 @@ function switchCombo(combo){
   renderComboRecords(combo)
 }
 
+// ════════════════ 刪除調查紀錄 ════════════════
+// 走後端既有的 deleteSurvey（軟刪除，PM 端垃圾桶可還原），需要 sessionToken。
+// 單筆＝這張卡片對應的那筆 survey；整天＝目前這條路線在目前這個日期的全部紀錄。
+async function deleteOneSurvey(si){
+  const sv=surveys[si]
+  if(!sv||!sv.id){ alert('這筆紀錄沒有可用的編號，無法刪除'); return }
+  const label=`調查 #${si+1}・第${sv.round||1}次・${sv.surveyor||'—'}（${sv.date||''}）`
+  if(!confirm(`確定刪除這筆調查紀錄？\n\n${label}\n\n刪除後可在 PM 端的垃圾桶還原。`)) return
+  const note=prompt('刪除原因（會記在垃圾桶，方便日後查核）：','')
+  if(note===null) return
+  await _runDeleteSurveys([sv.id], note, '已刪除 1 筆紀錄')
+}
+async function deleteWholeDay(){
+  if(!_filterDate){ alert('請先在上方選一個調查日期，才能刪除整天的紀錄'); return }
+  // allSurveys 已由後端依日期過濾，等同「這條路線在這一天」的全部紀錄（不分第幾次）
+  const ids=(allSurveys||[]).map(s=>s.id).filter(Boolean)
+  if(!ids.length){ alert('這一天沒有可刪除的紀錄'); return }
+  const rn=(route&&route.routeName)||'這條路線'
+  if(!confirm(`確定刪除以下範圍的全部調查紀錄？\n\n路線：${rn}\n日期：${_filterDate}\n筆數：${ids.length} 筆\n\n只會影響這條路線，其他路線不受影響。\n刪除後可在 PM 端的垃圾桶還原。`)) return
+  const note=prompt(`刪除原因（將套用到這 ${ids.length} 筆）：`,'')
+  if(note===null) return
+  if(!confirm(`最後確認：即將刪除 ${ids.length} 筆紀錄。`)) return
+  await _runDeleteSurveys(ids, note, `已刪除 ${ids.length} 筆紀錄`)
+}
+async function _runDeleteSurveys(ids, note, okMsg){
+  showDlOverlay('刪除紀錄中…', `0 / ${ids.length}`)
+  let done=0; const fail=[]
+  for(const id of ids){
+    try{ await cloudPost({action:'deleteSurvey', surveyId:id, note:note||''}); done++ }
+    catch(e){ fail.push(String(e&&e.message||e)) }
+    try{ document.getElementById('dl-overlay-sub').textContent=`${done} / ${ids.length}` }catch(e){}
+  }
+  hideDlOverlay()
+  if(fail.length) alert(`完成 ${done}/${ids.length} 筆，有 ${fail.length} 筆失敗：\n`+fail.slice(0,3).join('\n'))
+  else alert(okMsg)
+  // 重新抓資料：日期清單、完成度圓環、目前路線的紀錄都要跟著更新
+  if(_pm) await refreshReportData()
+  else location.reload()
+}
+
 function renderComboRecords(combo){
   const [pt, dir] = parseCombo(combo)
   const el = document.getElementById('combo-records')
+  // 有選定日期、而且這一天確實有紀錄時，才顯示「刪除整天」
+  const dayBar=document.getElementById('day-del-bar')
+  if(dayBar) dayBar.style.display=(_filterDate && (allSurveys||[]).length) ? 'block' : 'none'
   const isReturn = dir==='return'
   // 用合併過假節點的路段，假節點不是真的監測路口，不該出現在調查紀錄裡
   const segs = _mergeGhostSegs()
@@ -1636,7 +1707,11 @@ function renderComboRecords(combo){
       <div class="sv-rec-header${isEdit?' editing':''}">
         <div>
           <div class="sv-num">調查 #${si+1} · 第${sv.round||1}次</div>
-          <div class="sv-info">👤 ${he(sv.surveyor||'未知')}</div>
+          <div class="sv-info">👤 ${he(sv.surveyor||'未知')}
+            <button onclick="deleteOneSurvey(${si})" title="刪除這筆紀錄（可在 PM 端垃圾桶還原）"
+              style="margin-left:8px;background:rgba(255,255,255,.12);color:#fca5a5;border:1px solid rgba(252,165,165,.45);
+              border-radius:7px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🗑 刪除</button>
+          </div>
         </div>
         <div class="sv-meta">
           📅 ${he(sv.date||'—')}<br>
