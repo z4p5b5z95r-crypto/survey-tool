@@ -84,6 +84,12 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color
 .route-tab:hover{border-color:#94a3b8;color:#0f172a}
 .route-tab .rdot{width:7px;height:7px;border-radius:999px;flex-shrink:0}
 .route-tab .rst{font-size:10px;color:#94a3b8;font-weight:700}
+/* 每日調查次數的進度圓環：一次一顆，跟現場 App 選路線畫面用同一套視覺。
+   灰＝還沒做、橘色扇形＝做了幾趟（4 趟為一次完整調查）、整圈綠＝該次完成。 */
+.route-tab .rt-rings{display:flex;gap:3px;flex-shrink:0;align-items:center}
+.route-tab .rt-ring{width:11px;height:11px;border-radius:999px;flex-shrink:0;
+  display:grid;place-items:center;background:#e2e8f0}
+.route-tab .rt-ring::after{content:"";width:5px;height:5px;border-radius:999px;background:#fff}
 /* 資料下載中：缺口圓環轉圈；下載完成：綠色勾勾彈出 */
 .route-tab .rld{width:11px;height:11px;border:2px solid #e2e8f0;border-top-color:#2563eb;border-radius:999px;animation:rtSpin .7s linear infinite;flex-shrink:0}
 @keyframes rtSpin{to{transform:rotate(360deg)}}
@@ -474,6 +480,38 @@ let _pm = null   // {gs, sessionToken, pid, projName, routes:[], dates:[], date:
 let _creds = null // {gs, sessionToken}：takeCreds() 填入，寫回雲端時用
 const _pmShown = {}   // routeId -> 已經播過「下載完成」勾勾動畫
 
+// ── 調查進度圓環（與現場 App 選路線畫面同一套規則）──────────────
+// 一次完整調查 = 離峰去/回 + 尖峰去/回 共 4 趟。
+// 0 趟＝灰環、1~3 趟＝橘色扇形填 1/4・2/4・3/4、4 趟＝整圈綠。
+const RING_DONE='#16a34a', RING_PART='#f59e0b', RING_EMPTY='#e2e8f0'
+function ringStyle(done, total, emptyCol){
+  const t = total||4
+  const d = Math.max(0, Math.min(t, +done||0))
+  const empty = emptyCol || RING_EMPTY
+  if(d>=t) return `background:${RING_DONE}`
+  if(d<=0) return `background:${empty}`
+  return `background:conic-gradient(${RING_PART} 0 ${(d/t*100).toFixed(0)}%,${empty} 0)`
+}
+// 舊版後端沒有 roundDone 時，用 roundStates 反推：done→4 趟、part→2 趟（無法得知確切趟數）
+function roundDoneOf(p){
+  if(p && Array.isArray(p.roundDone)) return p.roundDone
+  const st = (p && Array.isArray(p.roundStates)) ? p.roundStates : []
+  return st.map(s=> s==='done' ? 4 : (s==='part' ? 2 : 0))
+}
+// active 的膠囊底色是路線色，灰環會糊在上面，所以未完成的環改用半透明白
+function renderRouteRings(p, active){
+  if(!p) return ''
+  const t = (p.comboTotal)||4
+  const arr = roundDoneOf(p)
+  const n = arr.length || p.roundCount || 0
+  if(!n) return ''
+  const empty = active ? 'rgba(255,255,255,.34)' : RING_EMPTY
+  const done  = arr.filter(d=>d>=t).length
+  return `<span class="rt-rings" title="已完成 ${done}/${n} 次">`
+       + arr.slice(0,n).map(d=>`<span class="rt-ring" style="${ringStyle(d,t,empty)}"></span>`).join('')
+       + `</span>`
+}
+
 function renderRouteTabs(){
   const box=document.getElementById('route-tabs')
   if(!box||!_pm) return
@@ -493,7 +531,7 @@ function renderRouteTabs(){
     return `<button class="route-tab${on?' on':''}" style="${on?`background:${col};`:''}" onclick="switchReportRoute('${String(r.id).replace(/'/g,"\\'")}')">
       <span class="rdot" style="background:${col}"></span>
       <span>${he(r.routeName||'未命名路線')}</span>
-      ${st?`<span class="rst">${he(st)}</span>`:''}
+      ${renderRouteRings(st, on)}
       ${mark}
     </button>`
   }).join('')
@@ -555,10 +593,8 @@ async function refreshReportData(){
     _pm.stateById={}
     try{
       const prog=await cloudGet(_pm.gs, _pm.sessionToken, {action:'getProjectProgress', pid:_pm.pid, date:_pm.date})
-      ;(prog.data||[]).forEach(p=>{
-        const s=Array.isArray(p.roundStates)?p.roundStates:[]
-        _pm.stateById[String(p.routeId)] = s.length ? `${s.filter(x=>x==='done').length}/${s.length}` : ''
-      })
+      // 整包留著（roundDone / comboTotal / roundStates），膠囊上的圓環要靠它畫每一次的趟數
+      ;(prog.data||[]).forEach(p=>{ _pm.stateById[String(p.routeId)] = p })
     }catch(e){}
 
     renderDateOptions()
@@ -701,11 +737,8 @@ async function initProjectReport(gs, sessionToken, pid, wantDate){
   // 每條路線在所選日期的完成狀態，標在分頁上
   try{
     const prog=await cloudGet(gs, sessionToken, {action:'getProjectProgress', pid, date:_pm.date})
-    ;(prog.data||[]).forEach(p=>{
-      const s=Array.isArray(p.roundStates)?p.roundStates:[]
-      const done=s.filter(x=>x==='done').length
-      _pm.stateById[String(p.routeId)] = s.length ? `${done}/${s.length}` : ''
-    })
+    // 整包留著（roundDone / comboTotal / roundStates），膠囊上的圓環要靠它畫每一次的趟數
+    ;(prog.data||[]).forEach(p=>{ _pm.stateById[String(p.routeId)] = p })
   }catch(e){}
 
   document.getElementById('ph-tools').style.display='flex'
@@ -1664,8 +1697,7 @@ function renderComboRecords(combo){
             <td rowspan="2" class="pf-seg">${he(toNode?.name||'終點')}</td>
             <td rowspan="2">${TL}</td>
             ${isEdit?`<td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="23" data-ie="start-h" value="${+sH||0}"></td><td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="start-m" value="${+sM||0}"></td><td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="start-s" value="${+sS||0}"></td>`:`<td class="pf-time">${sH}</td><td class="pf-time">${sM}</td><td class="pf-time">${sS}</td>`}
-            <td class="pf-time">${eH}</td><td class="pf-time">${eM}</td>
-            <td class="pf-arrive">${eS}</td>
+            ${isEdit?`<td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="23" data-ie="end-h" value="${+eH||0}"></td><td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="end-m" value="${+eM||0}"></td><td class="pf-arrive"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="end-s" value="${+eS||0}"></td>`:`<td class="pf-time">${eH}</td><td class="pf-time">${eM}</td><td class="pf-arrive">${eS}</td>`}
             <td style="font-weight:700">${trip.travelS||0}</td>
             <td>${trip.intTotalS||0}</td>
             <td>${trip.roadTotalS||0}</td>
@@ -3206,6 +3238,33 @@ function cancelInlineEdit(si,combo){
   renderComboRecords(combo)
 }
 
+// 「終點」時刻與「最後一段路段的經過時刻」是同一個值，畫面上卻有兩組輸入框。
+// 改任一邊就即時同步另一邊，避免兩個框顯示不同時間、讓人不知道以哪個為準。
+// 用事件委派綁在 document 上，這樣每次重繪表格都不必重新綁定。
+function _bindEndTimeSync(){
+  if(_bindEndTimeSync._done) return
+  _bindEndTimeSync._done=true
+  document.addEventListener('input', e=>{
+    const el=e.target
+    const ie=el&&el.dataset&&el.dataset.ie
+    if(!ie) return
+    const m=ie.match(/^(end|node)-([hms])(?:-(\d+))?$/)
+    if(!m) return
+    const box=el.closest('[data-sv-key]')
+    if(!box) return
+    const idxs=[...box.querySelectorAll('[data-ie^="node-h-"]')]
+      .map(n=>parseInt(n.dataset.ie.slice(7),10)).filter(n=>!isNaN(n))
+    if(!idxs.length) return
+    const last=Math.max(...idxs)
+    const kind=m[1], unit=m[2]
+    if(kind==='node' && parseInt(m[3],10)!==last) return   // 只有最後一段對應終點
+    const sel = kind==='end' ? `[data-ie="node-${unit}-${last}"]` : `[data-ie="end-${unit}"]`
+    const other=box.querySelector(sel)
+    if(other && other.value!==el.value) other.value=el.value
+  })
+}
+_bindEndTimeSync()
+
 function saveInlineEdit(si,combo){
   const key=`${si}-${combo}`
   const [pt,dir]=parseCombo(combo)
@@ -3240,6 +3299,18 @@ function saveInlineEdit(si,combo){
     const newISO=_rebuildTS(origISO,`${h}:${m}:${s}`,prevISO,survDate)
     newTs[ni]=newISO; prevISO=newISO
   }
+
+  // 2b. 摘要列的「終點」另有一組輸入框，指向的其實就是最後一個節點的到達時刻。
+  //     兩邊已經即時同步（見 _bindEndTimeSync），這裡再明確以終點框為準，
+  //     免得將來版面調整、最後一段路段列不再顯示時就漏掉這個值。
+  if(nNodes>1 && container.querySelector('[data-ie="end-h"]')){
+    const li=nNodes-1
+    newTs[li]=_rebuildTS(
+      trip.nodeTimestamps?.[li]||trip.endTime,
+      `${pad(inpV('end-h'))}:${pad(inpV('end-m'))}:${pad(inpV('end-s'))}`,
+      newTs[li-1], survDate)
+  }
+
   trip.nodeTimestamps=newTs; trip.startTime=newTs[0]; trip.endTime=newTs[nNodes-1]
 
   // 3. Rebuild delayLog from per-segment per-cause inputs
