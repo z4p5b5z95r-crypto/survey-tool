@@ -3672,7 +3672,9 @@ function toggleDelay(d,group,opts){
       ;[...document.querySelectorAll('.btn-dl.picked')].forEach(b=>b.classList.remove('picked'))
       svyShowPanel('idle')
     }
-    svySheetCollapse()
+    // keepPanel 時這只是更正過程中的內部結束，面板高度也不能收
+    // （先前只擋了「切回 idle」，沒擋這一行，所以手動改選後面板仍然縮回去）
+    if(!opts?.keepPanel) svySheetCollapse()
   }else{
     // ── If another delay is active, stop it first ──
     // 從一個原因切到另一個原因＝更正，複誦新的原因讓駕駛不用低頭確認。

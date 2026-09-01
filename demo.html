@@ -3672,7 +3672,9 @@ function toggleDelay(d,group,opts){
       ;[...document.querySelectorAll('.btn-dl.picked')].forEach(b=>b.classList.remove('picked'))
       svyShowPanel('idle')
     }
-    svySheetCollapse()
+    // keepPanel 時這只是更正過程中的內部結束，面板高度也不能收
+    // （先前只擋了「切回 idle」，沒擋這一行，所以手動改選後面板仍然縮回去）
+    if(!opts?.keepPanel) svySheetCollapse()
   }else{
     // ── If another delay is active, stop it first ──
     // 從一個原因切到另一個原因＝更正，複誦新的原因讓駕駛不用低頭確認。
@@ -5548,19 +5550,24 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     DEMO 模式
+     DEMO 模擬層
      這一頁就是正式的現場 App（index.html 原封不動複製），
      只把「GPS」與「雲端資料」換成模擬來源；畫面、語音、判斷邏輯全是真的。
      ・三條示範路線，每條 3 個節點、只有一個轉彎，單趟約 55 秒
      ・去程／回程都能模擬（回程自動把路徑反過來走）
-     ・車速約 29 km/h，語音講完車子才移動十幾公尺，播報與畫面才對得上
+     ・車速約 29 km/h，語音講完車子只移動十幾公尺，播報與畫面才對得上
+     ・完全不呼叫 OSRM，也不使用真實 GPS
      ═══════════════════════════════════════════════════════════════ -->
+<style>
+/* 展示時底圖只是背景參考，模糊＋降飽和讓路線與節點更突出 */
+.leaflet-tile-pane{ filter:blur(2.5px) grayscale(.55) brightness(1.06) contrast(.82); }
+</style>
 <div id="demo-hud" style="position:fixed;left:10px;top:calc(8px + env(safe-area-inset-top));z-index:9997;
   background:rgba(15,23,42,.92);border:1px solid #334155;border-radius:12px;padding:7px 10px;
   font-size:11px;color:#94a3b8;font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC',sans-serif;
   display:flex;align-items:center;gap:8px;backdrop-filter:blur(6px);max-width:calc(100% - 20px);
   transition:opacity .2s;touch-action:none;cursor:move;user-select:none;-webkit-user-select:none">
-  <span id="demo-grip" style="color:#475569;font-size:13px;flex-shrink:0;letter-spacing:-2px">⠿</span>
+  <span style="color:#475569;font-size:13px;flex-shrink:0;letter-spacing:-2px">⠿</span>
   <span style="background:#1d4ed8;color:#fff;border-radius:6px;padding:2px 6px;font-weight:800;font-size:10px;flex-shrink:0">DEMO</span>
   <span id="demo-msg" style="flex:1;min-width:0">模擬模式準備中…</span>
   <button id="demo-dbg" style="background:#334155;color:#e2e8f0;border:none;border-radius:6px;
@@ -5576,43 +5583,43 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   <div id="dbg-log" style="white-space:pre-wrap"></div>
 </div>
 
-<style>
-/* 展示時底圖只是背景參考，模糊＋降飽和讓路線與節點更突出，
-   也避免真實街道名稱分散注意力。 */
-.leaflet-tile-pane{ filter:blur(2.5px) grayscale(.55) brightness(1.06) contrast(.82); }
-</style>
 <script>
 (function(){
   const GS='https://demo.local/exec'
   try{ history.replaceState(null,'', location.pathname+'?pid=DEMO&gs='+encodeURIComponent(GS)+'&k=demo') }catch(e){}
   const hud=m=>{ const el=document.getElementById('demo-msg'); if(el) el.textContent=m }
-  // HUD 可以拖到任何位置，避免擋到要展示的畫面
+
+  /* 展示用：每次開啟都重走「每日提醒 → 授權 → 設備檢測」，把當日旗標清掉 */
+  try{
+    Object.keys(localStorage).forEach(k=>{
+      if(k.indexOf('daily_setup_reminder')===0||k==='devtest_daily'||k==='perm_gate_done')
+        localStorage.removeItem(k)
+    })
+  }catch(e){}
+
+  /* HUD 可以拖到任何位置，避免擋到要展示的畫面 */
   ;(function(){
     const el=document.getElementById('demo-hud')
-    let sx=0,sy=0,ox=0,oy=0,moved=false
-    const start=e=>{
-      if(e.target.tagName==='BUTTON') return
-      const p=e.touches?e.touches[0]:e
-      const r=el.getBoundingClientRect()
-      sx=p.clientX; sy=p.clientY; ox=r.left; oy=r.top; moved=false
-      el.style.right='auto'; el.style.bottom='auto'
-      document.addEventListener('mousemove',move); document.addEventListener('touchmove',move,{passive:false})
-      document.addEventListener('mouseup',end);    document.addEventListener('touchend',end)
-    }
+    let sx=0,sy=0,ox=0,oy=0
     const move=e=>{
       const p=e.touches?e.touches[0]:e
-      const dx=p.clientX-sx, dy=p.clientY-sy
-      if(Math.abs(dx)>3||Math.abs(dy)>3) moved=true
-      el.style.left=Math.max(4,Math.min(window.innerWidth-60, ox+dx))+'px'
-      el.style.top =Math.max(4,Math.min(window.innerHeight-40, oy+dy))+'px'
+      el.style.left=Math.max(4,Math.min(window.innerWidth-60, ox+p.clientX-sx))+'px'
+      el.style.top =Math.max(4,Math.min(window.innerHeight-40, oy+p.clientY-sy))+'px'
       if(e.cancelable) e.preventDefault()
-      // 診斷框跟著跑到 HUD 下方
       const box=document.getElementById('demo-dbgbox')
       if(box&&box.style.display!=='none') box.style.top=(parseFloat(el.style.top)+44)+'px'
     }
     const end=()=>{
       document.removeEventListener('mousemove',move); document.removeEventListener('touchmove',move)
       document.removeEventListener('mouseup',end);    document.removeEventListener('touchend',end)
+    }
+    const start=e=>{
+      if(e.target.tagName==='BUTTON') return
+      const p=e.touches?e.touches[0]:e, r=el.getBoundingClientRect()
+      sx=p.clientX; sy=p.clientY; ox=r.left; oy=r.top
+      el.style.right='auto'; el.style.bottom='auto'
+      document.addEventListener('mousemove',move); document.addEventListener('touchmove',move,{passive:false})
+      document.addEventListener('mouseup',end);    document.addEventListener('touchend',end)
     }
     el.addEventListener('mousedown',start)
     el.addEventListener('touchstart',start,{passive:true})
@@ -5623,26 +5630,19 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     b.style.opacity=hide?'0.12':'1'
     this.textContent=hide?'顯示':'隱藏'
   }
-  /* 展示用：每次開啟都重走「每日提醒 → 設備檢測 → 授權」，把當日旗標清掉 */
-  try{
-    Object.keys(localStorage).forEach(k=>{
-      if(k.indexOf('daily_setup_reminder')===0||k==='devtest_daily'||k==='perm_gate_done')
-        localStorage.removeItem(k)
-    })
-  }catch(e){}
 
   const PROJ_NAME='示範專案（教學用）'
 
   /* 三條示範路線：各 3 個節點、2 段各約 145 公尺、只有一個轉彎。
-     以 29 km/h 行駛，單趟含引道約 55 秒。 */
+     以 29 km/h 行駛，單趟含引道約 55 秒。座標直接連成直線，不呼叫 OSRM。 */
   const DEF=[
-    {id:'R1',name:'示範路線一',roundCount:2,turn:'左轉',
+    {id:'R1',name:'示範路線一',roundCount:2,
      nodeNames:['起點路口','轉彎路口','終點路口'],
      wp:[[22.96700,120.29300],[22.96700,120.29441],[22.96830,120.29441]]},
-    {id:'R2',name:'示範路線二',roundCount:3,turn:'右轉',
+    {id:'R2',name:'示範路線二',roundCount:3,
      nodeNames:['南側起點','南側轉彎','南側終點'],
      wp:[[22.96450,120.29320],[22.96450,120.29461],[22.96320,120.29461]]},
-    {id:'R3',name:'示範路線三',roundCount:3,turn:'右轉',
+    {id:'R3',name:'示範路線三',roundCount:3,
      nodeNames:['北側起點','北側轉彎','北側終點'],
      wp:[[22.97000,120.29250],[22.97130,120.29250],[22.97130,120.29391]]},
   ]
@@ -5655,9 +5655,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   const pathLen=p=>{let s=0;for(let i=1;i<p.length;i++)s+=distM(p[i-1],p[i]);return s}
 
   const ROUTES={}, GEOS={}
-
-  /* 完全不叫 OSRM：路線就是純粹的模擬幾何。
-     直接把三個轉折點連成直線再加密，節點就落在車子會經過的位置上，
+  /* 節點就是轉折點本身，直接落在車子會經過的路徑上，
      順序、距離、轉向全部可預期，也不會因為繞路而提早觸發節點。 */
   function buildRoute(def){
     const geo=[]
@@ -5667,8 +5665,6 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       for(let k=0;k<n;k++) geo.push([a[0]+(b[0]-a[0])*k/n, a[1]+(b[1]-a[1])*k/n])
     }
     geo.push(def.wp[def.wp.length-1])
-
-    // 節點＝轉折點本身，直接落在行駛路徑上
     const cuts=def.wp.map(p=>{
       let bi=0,bd=1e9
       geo.forEach((g,i)=>{const d=distM(g,p); if(d<bd){bd=d;bi=i}})
@@ -5689,10 +5685,8 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     GEOS[def.id]=geo
   }
   DEF.forEach(buildRoute)
-  const INIT=Promise.resolve()
 
-
-  /* 鋪出行駛座標串：每 4 公尺一點，頭尾各補約 90 公尺引道。
+  /* 行駛座標串：每 4 公尺一點，頭尾各補約 72 公尺引道。
      引道很重要——車子若直接從第一個節點的座標出發，感應線的側邊判定
      一開始就是「已通過」，永遠不會發生「未通過 → 已通過」的穿越，節點就不會觸發。
      頭尾都補，回程只要把整串反過來走，另一端自然就有引道。 */
@@ -5725,7 +5719,6 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   window.fetch=async function(input,init){
     const url=String((input&&input.url)||input||'')
     if(url.indexOf('demo.local')<0) return realFetch(input,init)
-    await INIT
     const q=new URLSearchParams(url.split('?')[1]||'')
     let action=q.get('action')
     if(!action&&init&&init.body){ try{ action=JSON.parse(init.body).action }catch(e){} }
@@ -5765,7 +5758,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       if(SIM.stops.length && SIM.i>=SIM.stops[0]){
         SIM.stops.shift(); SIM.stopped=true
         hud('🛑 車輛停下 — 會自動彈出面板並語音詢問')
-        clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,20000)
+        clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,25000)   // 沒人選也不會卡住
       }else{
         SIM.i+=1                      // 每 0.5 秒 4 公尺 ＝ 8 m/s ≒ 29 km/h
         if(SIM.i>=SIM.path.length){ SIM.running=false; hud('🏁 已抵達終點') }
@@ -5777,6 +5770,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     if(!SIM.stopped) return
     clearTimeout(SIM.timer); SIM.stopped=false; hud('▶ 車輛重新起步')
   }
+
   /* 完全不碰真實 GPS：整個 navigator.geolocation 換成模擬版。
      同時覆寫實例與整個屬性，避免某些瀏覽器不讓直接改實例上的方法。 */
   const GEOSTUB={
@@ -5803,7 +5797,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       DeviceMotionEvent.requestPermission=()=>Promise.resolve('granted')
   }catch(e){}
 
-  /* ── 診斷面板：把節點判定與語音事件的實際距離攤開來看 ── */
+  /* ── 診斷面板 ── */
   let DBG=false, dbgLines=[]
   document.getElementById('demo-dbg').onclick=function(){
     DBG=!DBG
@@ -5820,8 +5814,6 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     if(!DBG) return
     const el=document.getElementById('dbg-live'); if(!el) return
     try{
-      const r=ROUTES[CUR]; if(!r) return
-      const p=SIM.path[Math.min(SIM.i,SIM.path.length-1)]; if(!p) return
       const near=(document.getElementById('nnc-dist-num')||{}).textContent||'—'
       const name=(document.getElementById('next-node-name')||{}).textContent||''
       const banner=document.getElementById('nav-banner')
@@ -5834,34 +5826,34 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   setInterval(dbgLive,300)
 
   /* ── 掛勾正式 App ── */
-  window.addEventListener('load',async function(){
+  window.addEventListener('load',function(){
     const wrap=(name,after)=>{ const f=window[name]
       if(typeof f!=='function') return
       window[name]=function(){ const r=f.apply(this,arguments); try{ after.apply(this,arguments) }catch(e){}; return r } }
+    const wrapBefore=(name,before)=>{ const f=window[name]
+      if(typeof f!=='function') return
+      window[name]=function(){ try{ before.apply(this,arguments) }catch(e){}; return f.apply(this,arguments) } }
+
     // 展示時不吃手機陀螺儀：時速 8 公里以上 App 本來就用 GPS 航跡轉地圖
     window.initCompass=function(){}
+
     wrap('startSurvey',()=>{
       // 去程走正向、回程走反向；反向後原本的尾端引道就成了入口引道
       const combo=(document.getElementById('status-combo')||{}).textContent||''
       const back=combo.indexOf('回程')>=0
       SIM.path = back ? FWD.slice().reverse() : FWD.slice()
       SIM.i=0; SIM.running=true; SIM.stopped=false
-      SIM.stops=[Math.round(SIM.path.length*0.62)]   // 一次停車，落在第二段
+      SIM.stops=[Math.round(SIM.path.length*0.55)]   // 一次停車就夠示範
       hud('🚗 模擬'+(back?'回程':'去程')+'行駛中 — 通過節點會自動記錄')
     })
-    // 事件發生的當下，記下「離該節點還有多遠」，就能看出是不是提早觸發
-    const distToNode=(k)=>{
-      try{
-        const r=ROUTES[CUR]; const p=SIM.path[Math.min(SIM.i,SIM.path.length-1)]
-        const n=r&&r.nodes&&r.nodes[k]
-        return (n&&p)?Math.round(distM([n.lat,n.lng],p)):-1
-      }catch(e){ return -1 }
-    }
+    // 選了原因後 12 秒才起步，方便當場示範「改選」
+    wrap('svyStopPickDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,12000) } })
+    wrap('svyDismissStop',()=>{ if(SIM.stopped) resume() })
+    wrap('toggleDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,12000) } })
+    wrap('svyManualEndDelay',()=>{ if(SIM.stopped) resume() })
+
     // 要在 recordNode 執行「之前」讀距離：它內部會把 currentNodeIdx 加一、
     // 把畫面換成「到下一個節點」的距離，事後才讀會得到毫無意義的數字。
-    const wrapBefore=(name,before)=>{ const f=window[name]
-      if(typeof f!=='function') return
-      window[name]=function(){ try{ before.apply(this,arguments) }catch(e){}; return f.apply(this,arguments) } }
     wrapBefore('recordNode',()=>{
       const bar=document.getElementById('nnc-dist-num')
       dbg('▶ 記錄節點：觸發當下距節點 '+((bar&&bar.textContent)||'?')+' m')
@@ -5871,21 +5863,14 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     wrap('playNodeBeep',(f)=>{ dbg('🔔 節點提示音（'+(f?'終點三聲':'一般兩聲')+'）已呼叫') })
     wrap('playApproachBeep',()=>{ dbg('🔔 接近感應線提示音已呼叫') })
     wrap('triggerStopDetection',()=>{ dbg('🛑 偵測到停止') })
-    // 語音辨識的生命週期：開始／結束／錯誤／命中，全部記下來
     wrap('startCauseListening',()=>{ dbg('🎤 開始聆聽') })
     wrap('stopCauseListening',()=>{ dbg('🎤 停止聆聽') })
     wrap('applyVoiceCause',(c)=>{ dbg('🎤 語音命中 → '+(c&&c.cause)) })
-    wrap('svyStopPickDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,9000) } })
-    wrap('svyDismissStop',()=>{ if(SIM.stopped) resume() })
-    wrap('toggleDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,9000) } })
-    await INIT
+
     hud('模擬模式已就緒 — GPS 全程模擬，不使用真實定位')
   })
 })()
 </script>
-
-
-
 
 </body>
 </html>
