@@ -3289,12 +3289,28 @@ async function openSurveyManager(cloudId,routeName,opn,pkn) {
 // 後端 getSurveys 會比對「登記的調查日期」與「設備實際跑這趟的日期」，
 // 兩者不同就回傳 dateFlag：'backfill' 補登舊日期、'ahead' 登記日填成了未來。
 // 這不會擋任何操作，只是讓 PM 一眼看出這筆不是當天現場做的。
+// 後端還沒重新部署時沒有 dateFlag，這裡自己用「第一趟的 startTime」比對登記日期補算一次
+function svExecFlagOf(sv){
+  if(!sv) return null
+  const dateStr=String(sv.date||'').slice(0,10)
+  if(!dateStr) return null
+  if(sv.dateFlag) return {flag:sv.dateFlag, execDate:sv.execDate||'', offset:+sv.dateOffset||0}
+  const t=(sv.trips||[]).find(x=>x&&x.startTime)
+  if(!t) return null
+  const d=new Date(t.startTime)
+  if(isNaN(d.getTime())) return null
+  const execDate=d.toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'})
+  if(execDate===dateStr) return null
+  const diff=Math.round((new Date(dateStr+'T00:00:00Z')-new Date(execDate+'T00:00:00Z'))/86400000)
+  return {flag:diff<0?'backfill':'ahead', execDate, offset:diff}
+}
 function svDateFlagBadge(sv, opts){
-  if(!sv || !sv.dateFlag) return ''
-  const back = sv.dateFlag === 'backfill'
-  const n    = Math.abs(+sv.dateOffset || 0)
-  const txt  = back ? `補登（實際 ${sv.execDate||'—'} 執行）`
-                    : `提前登記（實際 ${sv.execDate||'—'} 執行）`
+  const f = svExecFlagOf(sv)
+  if(!f) return ''
+  const back = f.flag === 'backfill'
+  const n    = Math.abs(f.offset || 0)
+  const txt  = back ? `補登（實際 ${f.execDate||'—'} 執行）`
+                    : `提前登記（實際 ${f.execDate||'—'} 執行）`
   const bg   = back ? '#fef3c7' : '#fee2e2'
   const fg   = back ? '#92400e' : '#991b1b'
   const bd   = back ? '#fcd34d' : '#fca5a5'

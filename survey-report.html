@@ -480,6 +480,37 @@ let _pm = null   // {gs, sessionToken, pid, projName, routes:[], dates:[], date:
 let _creds = null // {gs, sessionToken}：takeCreds() 填入，寫回雲端時用
 const _pmShown = {}   // routeId -> 已經播過「下載完成」勾勾動畫
 
+// ── 非當日執行標記（補登／提前登記）────────────────────────────
+// 後端 getSurveys 會回傳 dateFlag/execDate；但若 Apps Script 還沒重新部署就沒有這些欄位，
+// 所以這裡自己再算一次：拿「登記的調查日期」比對「第一趟 trip 的實際 startTime」。
+// 時間戳是設備當下蓋的，不會被簽到頁選錯日期影響，所以能反映真正的執行日。
+// 只出現在瀏覽用的調查紀錄卡片，SGS 表格與匯出的 PDF 一律不帶。
+function execFlagOf(sv){
+  if(!sv) return null
+  const dateStr=String(sv.date||'').slice(0,10)
+  if(!dateStr) return null
+  if(sv.dateFlag) return {flag:sv.dateFlag, execDate:sv.execDate||'', offset:+sv.dateOffset||0}
+  const t=(sv.trips||[]).find(x=>x&&x.startTime)
+  if(!t) return null
+  const d=new Date(t.startTime)
+  if(isNaN(d.getTime())) return null
+  const execDate=d.toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'})
+  if(execDate===dateStr) return null
+  const diff=Math.round((new Date(dateStr+'T00:00:00Z')-new Date(execDate+'T00:00:00Z'))/86400000)
+  return {flag:diff<0?'backfill':'ahead', execDate, offset:diff}
+}
+function execFlagBadge(sv){
+  const f=execFlagOf(sv); if(!f) return ''
+  const back=f.flag==='backfill'
+  const n=Math.abs(f.offset)
+  const txt=back?`補登（實際 ${f.execDate} 執行）`:`提前登記（實際 ${f.execDate} 執行）`
+  const tip=back?`登記日期比實際執行日期晚 ${n} 天`:`登記日期比實際執行日期早 ${n} 天`
+  const bg=back?'#fef3c7':'#fee2e2', fg=back?'#92400e':'#991b1b', bd=back?'#fcd34d':'#fca5a5'
+  return `<div title="${he(tip)}" style="display:inline-block;margin-top:5px;background:${bg};color:${fg};`
+       + `border:1px solid ${bd};font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;`
+       + `white-space:nowrap;line-height:1.5">⚠️ ${he(txt)}</div>`
+}
+
 // ── 調查進度圓環（與現場 App 選路線畫面同一套規則）──────────────
 // 一次完整調查 = 離峰去/回 + 尖峰去/回 共 4 趟。
 // 0 趟＝灰環、1~3 趟＝橘色扇形填 1/4・2/4・3/4、4 趟＝整圈綠。
@@ -1610,6 +1641,7 @@ function renderComboRecords(combo){
         <div class="sv-meta">
           📅 ${he(sv.date||'—')}<br>
           🌤 ${he(sv.weather||'—')}
+          ${execFlagBadge(sv)}
         </div>
       </div>
       <!-- GPS Track Map -->
