@@ -2730,9 +2730,6 @@ function triggerStopDetection(){
   _stopEvent={startedAt: _stopSince || Date.now(), pos:lastPos}
   _stopActive=true; _stopSince=null
   _vrecDead=false; _vrecErr=''      // 新的一次停等，語音重新來過
-  svySheetExpand()
-  svyShowPanel('stop')
-  startStopTicker()
   // 選項 A：不設逾時。面板一直留著，直到駕駛選了原因、按了忽略，
   // 或車子重新開動（evalStopDetection 裡 >5km/h 持續 3 秒會自動收起）。
   // 舊版 7 秒就自動丟棄，駕駛只要分神或正在看路，那整段紅燈就完全沒進資料。
@@ -2740,7 +2737,14 @@ function triggerStopDetection(){
   // 面板彈出不再另外響提示音，直接用語音取代——駕駛聽到就知道要做什麼，
   // 不必先聽一聲嗶再等語音。（延滯開始／結束的提示音維持不變）
   // 提示語「播完」才開始聆聽，否則麥克風會把自己播的聲音收進去。
+  //
+  // ⚠️ 順序有意義：語音要「先送出」再做畫面。
+  // TTS 引擎從呼叫到真的出聲有啟動延遲，而面板動畫是呼叫當下就開始跑的；
+  // 先畫面後語音會變成「面板都滑上來了才聽到聲音」。先送語音才會同時到達。
   speakNav('請說出車輛停止原因', ()=>{ if(_stopActive) startCauseListening() }, {high:true})
+  svySheetExpand()
+  svyShowPanel('stop')
+  startStopTicker()
 }
 
 // Called when user picks a delay button while stop panel is shown
@@ -2866,6 +2870,7 @@ function unlockNavVoice(){
 // 現在：一般提示排隊等前一句講完；節點與停止面板這類重要提示標為 high，
 // 會清空佇列立刻插播。兩秒內同一句話不重複播，避免連續觸發洗版。
 let _spQueue=[], _spBusy=false, _spLastText='', _spLastAt=0
+let _spNeedGap=false   // 剛做過 cancel()，下一次 speak() 要留一點間隔（見 _spPump）
 function speakNav(text, onDone, opts){
   if(!navVoiceEnabled){ if(onDone) onDone(); return }
   if(!('speechSynthesis' in window)){ if(onDone) onDone(); return }
@@ -2874,7 +2879,14 @@ function speakNav(text, onDone, opts){
   const item={text,onDone,high:!!(opts&&opts.high)}
   if(item.high){
     _spQueue=[]
-    try{ window.speechSynthesis.cancel() }catch(e){}
+    // 只有「真的有東西在講」才需要 cancel。沒在講卻照樣 cancel，
+    // 會白白吃掉下面那 60ms 的緩衝，讓插播比畫面慢半拍。
+    let speaking=false
+    try{ speaking=_spBusy||window.speechSynthesis.speaking||window.speechSynthesis.pending }catch(e){ speaking=_spBusy }
+    if(speaking){
+      try{ window.speechSynthesis.cancel() }catch(e){}
+      _spNeedGap=true
+    }
     _spBusy=false
   }else if(_spQueue.length>=2){
     _spQueue.shift()          // 佇列太長就丟掉最舊的，免得語音一直落後畫面
@@ -2890,8 +2902,7 @@ function _spPump(){
   _spLastText=it.text; _spLastAt=Date.now()
   try{
     if(window.speechSynthesis.paused) window.speechSynthesis.resume()
-    // WebKit 有個已知 bug：cancel() 之後立刻 speak() 常常直接被吃掉不出聲，延遲一點點呼叫比較穩
-    setTimeout(()=>{
+    const fire=()=>{
       let fired=false
       const done=()=>{
         if(fired) return
@@ -2907,7 +2918,12 @@ function _spPump(){
         setTimeout(done, 700 + it.text.length*160)
         window.speechSynthesis.speak(u)
       }catch(e){ done() }
-    },60)
+    }
+    // WebKit 有個已知 bug：cancel() 之後立刻 speak() 常常直接被吃掉不出聲，
+    // 所以「剛 cancel 過」才延遲一點點呼叫。沒 cancel 過就同步送出——
+    // 這樣停止面板的語音和面板動畫會在同一個 frame 出發，聽感上同時發生。
+    if(_spNeedGap){ _spNeedGap=false; setTimeout(fire,60) }
+    else fire()
   }catch(e){ _spBusy=false; if(it.onDone) it.onDone() }
 }
 
