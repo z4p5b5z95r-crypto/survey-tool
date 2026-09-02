@@ -632,7 +632,7 @@ async function refreshReportData(){
     Object.keys(_pmShown).forEach(k=>delete _pmShown[k])
 
     const [routesRes, datesRes] = await Promise.all([
-      cloudGet(_pm.gs, _pm.sessionToken, {action:'getProjectRoutes', pid:_pm.pid}),
+      cloudGet(_pm.gs, _pm.sessionToken, {action:'getProjectRoutes', pid:_pm.pid, light:'1'}),
       cloudGet(_pm.gs, _pm.sessionToken, {action:'getProjectDates', pid:_pm.pid}).catch(()=>({ok:true,data:[]}))
     ])
     if(routesRes.ok && (routesRes.data||[]).length) _pm.routes = routesRes.data
@@ -774,6 +774,34 @@ async function _prefetchAllRoutes(){
 }
 async function initProjectReport(gs, sessionToken, pid, wantDate){
   ld('調查紀錄下載中...')
+  // 先試單次載入端點：一個往返就把清單、日期、完成度、第一條路線與其調查全部帶回來。
+  // 舊版後端沒有這支，會回 unknown action，這時退回下面的分次載入流程。
+  try{
+    const r = await cloudGet(gs, sessionToken, {action:'getReportInit', pid, date: wantDate||''})
+    if(r && r.ok && r.data){
+      const d = r.data
+      _pm = { gs, sessionToken, pid, projName: d.projectName||'專案',
+              routes: d.routes||[], dates: d.dates||[], date: d.date||'',
+              routeId: d.routeId, stateById:{} }
+      ;(d.progress||[]).forEach(p=>{ _pm.stateById[String(p.routeId)] = p })
+      // 這批 surveys 是輕量版（沒有 gpsTrack），先讓畫面出來
+      _seedRouteData(d.routeId, d.date, d.route, d.surveys, true)
+      document.getElementById('ph-tools').style.display='flex'
+      document.getElementById('ph-batch').style.display='block'
+      renderDateOptions()
+      await _loadRouteIntoGlobals(gs, sessionToken, _pm.routeId, _pm.date)   // 直接命中上面塞好的快取
+      renderPage()
+      renderRouteTabs()
+      // 畫面已經可以看了，剩下的在背景補：先補目前這條的軌跡，再補其他路線
+      setTimeout(()=>{
+        _ensureFullRouteData(_pm.routeId, _pm.date)
+          .then(()=>{ if(_curTab==='trips') renderComboRecords(currentCombo) })
+          .finally(()=>{ _prefetchAllRoutes() })
+      }, 0)
+      return
+    }
+  }catch(e){ /* 後端還沒更新就走下面的舊流程 */ }
+
   const [routesRes, datesRes, projRes] = await Promise.all([
     cloudGet(gs, sessionToken, {action:'getProjectRoutes', pid}),
     cloudGet(gs, sessionToken, {action:'getProjectDates', pid}).catch(()=>({ok:true,data:[]})),
@@ -821,6 +849,61 @@ const _rpending = {}   // routeId -> Promise（避免同一條被重複抓）
 // 開啟專案報告等於把每條路線每一天的 GPS 軌跡全部拉下來，路線一多就會卡很久。
 // 現在只抓目前選的那一天，換日期時再抓那一天（抓過的留在快取裡，切回去不必重抓）。
 function _rkey(routeId, date){ return String(routeId)+'|'+(date||'') }
+// 後端把巢狀結構存成 JSON 字串，取用前要先解開。
+// 單次載入端點與逐條抓取共用這一段，兩邊的資料形狀才會一致。
+function _normalizeRoute(rt){
+  rt.nodes    = _tryParseSR(rt.nodes, [])
+  rt.segments = _tryParseSR(rt.segments, [])
+  return rt
+}
+function _normalizeSurveys(svs){
+  ;(svs||[]).forEach(sv => {
+    sv.round = +sv.round || 1
+    sv.trips = _tryParseSR(sv.trips, [])
+    ;(Array.isArray(sv.trips)?sv.trips:[]).forEach(t=>{
+      t.gpsTrack=_tryParseSR(t.gpsTrack,[]); t.delayLog=_tryParseSR(t.delayLog,[])
+      t.nodeTimestamps=_tryParseSR(t.nodeTimestamps,[]); t.segTimes=_tryParseSR(t.segTimes,[])
+      t.roadDelays=_tryParseSR(t.roadDelays,{}); t.intDelays=_tryParseSR(t.intDelays,{})
+    })
+  })
+  return svs||[]
+}
+// 把單次載入端點回來的第一條路線直接放進快取，
+// 後面的 _loadRouteIntoGlobals 就會命中快取而不再連線。
+function _seedRouteData(routeId, date, rt, svs, light){
+  if(!rt) return
+  _rdata[_rkey(routeId, date)] = { route:_normalizeRoute(rt), surveys:_normalizeSurveys(svs), light:!!light }
+}
+// 輕量資料缺的只有 gpsTrack（軌跡圖與時序匯出才需要）。
+// 這支負責把它補齊：已經是完整版就直接回，否則連線抓完整版換掉快取。
+// 同一組路線＋日期同時被呼叫多次也只會抓一次。
+const _fullPending = {}
+async function _ensureFullRouteData(routeId, date){
+  const k=_rkey(routeId, date)
+  const cur=_rdata[k]
+  if(cur && !cur.light) return cur
+  if(_fullPending[k]) return _fullPending[k]
+  const c=_creds || (_pm?{gs:_pm.gs, sessionToken:_pm.sessionToken}:null)
+  if(!c) return cur
+  const job=(async()=>{
+    try{
+      const r=await cloudGet(c.gs, c.sessionToken, {action:'getSurveys', routeId, date:date||''})
+      if(r&&r.ok&&Array.isArray(r.data)&&_rdata[k]){
+        _rdata[k].surveys=_normalizeSurveys(r.data)
+        _rdata[k].light=false
+        // 目前正在看的就是這一條，把全域資料換成含軌跡的版本
+        if(_pm && String(_pm.routeId)===String(routeId) && (_pm.date||'')===(date||'')){
+          allSurveys=_rdata[k].surveys
+          applyFilters(); calcAverages()
+        }
+      }
+    }catch(e){}
+    delete _fullPending[k]
+    return _rdata[k]
+  })()
+  _fullPending[k]=job
+  return job
+}
 function _fetchRouteData(gs, sessionToken, routeId, date){
   const k = _rkey(routeId, date)
   if(_rdata[k]) return Promise.resolve(_rdata[k])
@@ -832,20 +915,8 @@ function _fetchRouteData(gs, sessionToken, routeId, date){
     ])
     if(!routeRes.ok)  throw new Error(routeRes.error||'讀取路線失敗')
     if(!surveyRes.ok) throw new Error(surveyRes.error||'讀取調查結果失敗')
-    const rt = routeRes.data
-    rt.nodes    = _tryParseSR(rt.nodes, [])
-    rt.segments = _tryParseSR(rt.segments, [])
-    const svs = surveyRes.data || []
-    svs.forEach(sv => {
-      sv.round = +sv.round || 1
-      sv.trips = _tryParseSR(sv.trips, [])
-      ;(Array.isArray(sv.trips)?sv.trips:[]).forEach(t=>{
-        t.gpsTrack=_tryParseSR(t.gpsTrack,[]); t.delayLog=_tryParseSR(t.delayLog,[])
-        t.nodeTimestamps=_tryParseSR(t.nodeTimestamps,[]); t.segTimes=_tryParseSR(t.segTimes,[])
-        t.roadDelays=_tryParseSR(t.roadDelays,{}); t.intDelays=_tryParseSR(t.intDelays,{})
-      })
-    })
-    _rdata[k] = {route: rt, surveys: svs}
+    _rdata[k] = { route: _normalizeRoute(routeRes.data),
+                  surveys: _normalizeSurveys(surveyRes.data||[]) }
     delete _rpending[k]
     return _rdata[k]
   })()
@@ -2067,13 +2138,25 @@ function fmtSec(s){
 
 
 // ════════════════ TABS ════════════════
+let _curTab='stats'
 function switchTab(tab){
+  _curTab=tab
   document.querySelectorAll('.tab-btn').forEach(b=>{
     b.classList.toggle('active', b.dataset.tab===tab)
   })
   document.querySelectorAll('.panel').forEach(p=>{
     p.classList.toggle('active', p.id===`panel-${tab}`)
   })
+  // 軌跡圖需要 gpsTrack。開啟報告時為了讓畫面早點出來沒有帶它，
+  // 使用者比背景補齊更早切過來的話，這裡補抓完再重畫一次。
+  if(tab==='trips' && _pm){
+    const k=_rkey(_pm.routeId, _pm.date||'')
+    if(_rdata[k] && _rdata[k].light){
+      _ensureFullRouteData(_pm.routeId, _pm.date).then(()=>{
+        if(_curTab==='trips') renderComboRecords(currentCombo)
+      })
+    }
+  }
   // Leaflet maps initialised in hidden containers have wrong size — fix after reveal
   if(tab==='trips'){
     requestAnimationFrame(()=>{
@@ -2404,8 +2487,13 @@ function _wgs84ToTM2(lat,lng){
   return{E:Math.round(E),N:Math.round(Nm)}
 }
 
-function downloadRawTimeline(){
+async function downloadRawTimeline(){
   if(!route||!surveys.length){alert('尚無資料');return}
+  // 這份匯出要帶每個事件的 GPS 座標，輕量資料裡沒有軌跡，先確保補齊
+  if(_pm){
+    const k=_rkey(_pm.routeId, _pm.date||'')
+    if(_rdata[k] && _rdata[k].light) await _ensureFullRouteData(_pm.routeId, _pm.date)
+  }
   withDlAnim('產生時序原始資料...','整理節點與延滯座標',()=>{
     const wb=XLSX.utils.book_new()
     const allDefs=[...ROAD_DELAYS,...INT_DELAYS]
