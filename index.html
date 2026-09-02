@@ -885,8 +885,8 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
   </div>
   <!-- Top-level tab bar -->
   <div class="rpt-tab-bar">
-    <button class="rpt-tab active" onclick="switchRptTab('overview',this)">總覽</button>
-    <button class="rpt-tab" onclick="switchRptTab('official',this)">調查紀錄</button>
+    <button class="rpt-tab active" id="rpt-tab-overview" onclick="switchRptTab('overview',this)">總覽</button>
+    <button class="rpt-tab" id="rpt-tab-official" onclick="switchRptTab('official',this)">調查紀錄</button>
   </div>
   <div class="scroll-body" style="margin-top:8px">
     <!-- 總覽 panel -->
@@ -1098,16 +1098,37 @@ function showScreen(id){
     if(id==='screen-report'&&mapResult)  { mapResult.invalidateSize(); requestAnimationFrame(()=>{ if(mapResult)mapResult.invalidateSize() }) }
     if(id==='screen-ready'&&mapReady)    { mapReady.invalidateSize(); requestAnimationFrame(()=>{ if(mapReady)mapReady.invalidateSize() }) }
   },120)
-  // Reset report to 總覽 tab when entering report screen
-  if(id==='screen-report'){
-    document.querySelectorAll('.rpt-tab').forEach(t=>t.classList.remove('active'))
-    document.querySelectorAll('.rpt-panel').forEach(p=>p.classList.remove('active'))
-    const first=document.querySelector('.rpt-tab')
-    if(first) first.classList.add('active')
-    const fp=document.getElementById('rpt-panel-overview')
-    if(fp) fp.classList.add('active')
+  // 進報告畫面時重設分頁。剛調查完只看得到「調查紀錄」——那時調查員關心的是
+  // 自己剛跑的那一趟，而總覽是四個組合的平均，多數欄位都還是「—」，反而干擾。
+  // 從「過去調查記錄」回頭看舊紀錄時總覽仍然保留（由 _reportOverviewHidden 控制）。
+  if(id==='screen-report') applyReportTabMode()
+}
+// 剛調查完＝true，看歷史紀錄＝false
+let _reportOverviewHidden=false
+function applyReportTabMode(){
+  const tabOv=document.getElementById('rpt-tab-overview')
+  const tabOf=document.getElementById('rpt-tab-official')
+  const panOv=document.getElementById('rpt-panel-overview')
+  const panOf=document.getElementById('rpt-panel-official')
+  if(tabOv) tabOv.style.display=_reportOverviewHidden?'none':'block'
+  // 只剩一個分頁時整條分頁列就沒有意義了，一併收起來
+  const bar=document.querySelector('.rpt-tab-bar')
+  if(bar) bar.style.display=_reportOverviewHidden?'none':'flex'
+  document.querySelectorAll('.rpt-tab').forEach(t=>t.classList.remove('active'))
+  document.querySelectorAll('.rpt-panel').forEach(p=>p.classList.remove('active'))
+  if(_reportOverviewHidden){
+    if(tabOf) tabOf.classList.add('active')
+    if(panOf) panOf.classList.add('active')
+    if(mapResult) setTimeout(()=>{
+      mapResult.invalidateSize()
+      if(_activeComboTab) updateResultMapTrack(_activeComboTab)
+    },150)
+  }else{
+    if(tabOv) tabOv.classList.add('active')
+    if(panOv) panOv.classList.add('active')
   }
 }
+
 function switchRptTab(panel, btn){
   document.querySelectorAll('.rpt-tab').forEach(t=>t.classList.remove('active'))
   document.querySelectorAll('.rpt-panel').forEach(p=>p.classList.remove('active'))
@@ -1684,6 +1705,7 @@ function viewHistoryReport(idx){
   // Swap allTrips temporarily and show report screen
   allTrips=synth
   config.date=(g.date||'').slice(0,10)
+  _reportOverviewHidden=false  // 回頭看舊紀錄：總覽仍然保留
   buildReport()
   const sub=document.getElementById('report-subtitle')
   if(sub) sub.textContent += `　第${g.round||1}次`
@@ -4125,6 +4147,7 @@ function parseComboKey(k){
 function goNextCombo(){showScreen('screen-ready');checkStart()}
 function goReport(){
   document.getElementById('hist-report-back')?.remove()
+  _reportOverviewHidden=true   // 剛調查完：只給看這一趟的紀錄
   buildReport()
   showScreen('screen-report')
   // Cloud upload is handled automatically in endSurvey; hide the manual box
