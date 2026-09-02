@@ -356,6 +356,12 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .btn-dl{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 6px;min-height:68px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:#94a3b8;cursor:pointer;transition:all .15s;width:100%}
 .btn-dl:active{transform:scale(.96)}
 .btn-dl.active{background:#450a0a;border-color:#ef4444;color:#fca5a5}
+/* 停止面板裡「目前正在計時的原因」。markStopPanelPicked() 一直有在切換這個 class，
+   但先前沒有任何對應樣式，所以不論用說的還是用點的都看不出選了哪一個。
+   用外圈光暈跟一般的 .active 區隔：這裡強調的是「就是這顆在計時」。 */
+.btn-dl.picked{background:#450a0a;border-color:#ef4444;color:#fecaca;
+  box-shadow:0 0 0 2px rgba(239,68,68,.45)}
+.btn-dl.picked .dn{font-weight:800}
 .btn-dl .di{font-size:22px}
 .btn-dl .dn{font-size:14px;margin-top:4px;text-align:center;line-height:1.2;font-weight:600}
 .btn-dl .dt{font-size:10px;font-family:monospace;color:#f87171;margin-top:2px}
@@ -2864,7 +2870,7 @@ function triggerStopDetection(){
 // Called when user picks a delay button while stop panel is shown
 function svyStopPickDelay(d, group, byVoice){
   clearTimeout(_stopCdTimer)
-  endPedClarify()      // 駕駛直接點了按鈕，追問就作廢
+  endClarify()         // 駕駛直接點了按鈕，追問就作廢
   stopCauseListening()
   _stopActive=false
   // 已經是同一個原因就什麼都不做，免得變成「再按一次＝結束計時」
@@ -2952,7 +2958,7 @@ function markStopPanelPicked(d){
 // 駕駛按「忽略」，或車子重新開動而始終沒選原因時呼叫——不記錄，收起面板
 function svyDismissStop(byResume){
   clearTimeout(_stopCdTimer); _stopCdTimer=null
-  endPedClarify()
+  endClarify()
   stopCauseListening()
   _stopActive=false
   _stopPanelOpen=false
@@ -3119,62 +3125,85 @@ function matchVoiceCause(text){
   for(const c of VOICE_CAUSES) for(const a of c.anchors) if(t.includes(a)) return c
   return null
 }
-// ── 「行人」的釐清追問 ──────────────────────────────────────────
-// 路口的「行人」和路段的「行人穿越」是兩個不同的統計欄位，猜錯會直接記到錯的類別。
-// 只說「行人」時無從判斷，所以先語音追問「路口還是路段」；
-// 逾時沒回答就採用預設值「行人穿越」（路段），並用語音複誦讓駕駛知道記了什麼。
-const PED_CLARIFY_MS = 6000
-let _pedClarify=false, _pedClarifyTimer=null
-function isAmbiguousPed(text){
+// ── 語音釐清追問 ────────────────────────────────────────────────
+// 有些說法本身就不足以決定要記到哪一欄，而且兩個選項分屬不同統計類別，猜錯會直接記錯：
+//   「行人」→ 路口的「行人」 vs 路段的「行人穿越」
+//   「左轉」→ 「左轉同向」 vs 「左轉對向」
+// 這類情況先語音追問，逾時沒回答才採用預設值，並用 toast 明確告知記了什麼。
+const CLARIFY_MS = 6000
+const CLARIFY_RULES = [
+  {
+    // 只要聽到「人」就算可能在講行人——「行」很容易被聽成同音字，
+    // 而這裡放寬的代價只是多問一句，不會直接寫錯資料
+    when: 'ped_cross',
+    ambiguous: t => t.includes('人') && !/路口|交叉口|穿越|過馬路|斑馬|路段/.test(t),
+    ask: '路口還是路段',
+    hint: '行人 — 請說「路口」或「路段」',
+    answers: [
+      { re: /路口|交叉口|口/,            cause: 'ped_int'   },
+      { re: /路段|穿越|過馬路|斑馬|段/,   cause: 'ped_cross' }
+    ],
+    fallback: 'ped_cross',
+    fallbackMsg: '⏱ 未回答，已記為行人穿越（路段）'
+  },
+  {
+    when: 'left_same',
+    ambiguous: t => t.includes('左轉') && !/同向|對向|同|銅|對/.test(t),
+    ask: '同向還是對向',
+    hint: '左轉 — 請說「同向」或「對向」',
+    answers: [
+      { re: /對向|對/,        cause: 'left_opp'  },
+      { re: /同向|同|銅/,     cause: 'left_same' }
+    ],
+    fallback: 'left_same',
+    fallbackMsg: '⏱ 未回答，已記為左轉同向'
+  }
+]
+let _clarify=null, _clarifyTimer=null
+function findClarifyRule(hitCause, text){
   const t=normVoice(text)
-  // 只要聽到「人」就當作可能在講行人——反正接下來會追問路口或路段，
-  // 這一步寬鬆一點不會有代價，卻能救回「行」被聽成別字的情況
-  if(!t.includes('人')) return false
-  // 已經講清楚位置或動作的就不模糊了
-  if(/路口|交叉口|穿越|過馬路|斑馬|路段/.test(t)) return false
-  return true
+  return CLARIFY_RULES.find(r => r.when===hitCause && r.ambiguous(t)) || null
 }
-function matchPedAnswer(text){
+function matchClarifyAnswer(rule, text){
   const t=normVoice(text)
   // 追問階段預期的回答很短，所以連單字都接受
-  if(/路口|交叉口|口/.test(t)) return 'ped_int'
-  if(/路段|穿越|過馬路|斑馬|段/.test(t)) return 'ped_cross'
-  return null
+  const a=rule.answers.find(x=>x.re.test(t))
+  return a ? a.cause : null
 }
 function setVoiceHint(txt){
   const el=document.getElementById('svy-voice-hint-txt')
   if(el) el.textContent=txt
 }
-function startPedClarify(){
-  if(_pedClarify) return
-  _pedClarify=true
-  setVoiceHint('行人 — 請說「路口」或「路段」')
-  // 先停掉目前這輪辨識：它的結果裡已經有「行人」，不清掉會一直重複命中
+function startClarify(rule){
+  if(_clarify) return
+  _clarify=rule
+  setVoiceHint(rule.hint)
+  // 先停掉目前這輪辨識：它的結果裡已經有觸發詞，不清掉會一直重複命中
   stopCauseListening()
   const hint=document.getElementById('svy-voice-hint')
   if(hint) hint.style.display='flex'   // stopCauseListening 會把提示藏起來，追問期間要留著
-  speakNav('路口還是路段', ()=>{
-    if(!_stopActive || !_pedClarify) return
+  speakNav(rule.ask, ()=>{
+    if(!_stopActive || _clarify!==rule) return
     startCauseListening()
     // 逾時從「問完」開始算，不然朗讀時間會吃掉駕駛的回答時間
-    clearTimeout(_pedClarifyTimer)
-    _pedClarifyTimer=setTimeout(()=>{
-      if(!_stopActive || !_pedClarify) return
-      applyPedAnswer('ped_cross', true)
-    }, PED_CLARIFY_MS)
+    clearTimeout(_clarifyTimer)
+    _clarifyTimer=setTimeout(()=>{
+      if(!_stopActive || _clarify!==rule) return
+      applyClarifyAnswer(rule.fallback, rule.fallbackMsg)
+    }, CLARIFY_MS)
   }, {high:true})
 }
-function endPedClarify(){
-  _pedClarify=false
-  clearTimeout(_pedClarifyTimer); _pedClarifyTimer=null
+function endClarify(){
+  _clarify=null
+  clearTimeout(_clarifyTimer); _clarifyTimer=null
   setVoiceHint('聆聽中，請說出停止原因')
 }
-function applyPedAnswer(cause, byTimeout){
-  endPedClarify()
+function applyClarifyAnswer(cause, timeoutMsg){
+  endClarify()
   const c=VOICE_CAUSES.find(x=>x.cause===cause)
   if(!c) return
   applyVoiceCause(c)
-  if(byTimeout) showToast('⏱ 未回答，已記為行人穿越（路段）', true)
+  if(timeoutMsg) showToast(timeoutMsg, true)
 }
 
 function startCauseListening(){
@@ -3194,18 +3223,19 @@ function startCauseListening(){
         for(let a=0;a<r.length;a++) all+=r[a].transcript   // 三個候選都拿來比對，同音字更容易命中
         if(r.isFinal) heard+=r[0].transcript
       }
-      // 正在追問「路口還是路段」時，只聽這個問題的答案
-      if(_pedClarify){
-        const ans=matchPedAnswer(all)
-        if(ans) applyPedAnswer(ans)
+      // 追問進行中：只聽這個問題的答案，其他一律忽略
+      if(_clarify){
+        const ans=matchClarifyAnswer(_clarify, all)
+        if(ans) applyClarifyAnswer(ans)
         return
       }
       const hit=matchVoiceCause(all)
       if(!hit) return
-      // 只說「行人」無法判斷是路口的行人還是路段的行人穿越——先追問再決定。
-      // 必須先確認命中的就是 ped_cross，否則像「計程車有人下車」這種
-      // 已經命中別的原因、句子裡剛好有「人」的說法也會被拉進追問。
-      if(hit.cause==='ped_cross' && isAmbiguousPed(all)){ startPedClarify(); return }
+      // 說法不足以決定要記哪一欄時先追問。必須以「命中的原因」為條件，
+      // 否則像「計程車有人下車」這種已經命中別的原因、句中剛好有觸發字的說法
+      // 也會被拉進追問。
+      const rule=findClarifyRule(hit.cause, all)
+      if(rule){ startClarify(rule); return }
       applyVoiceCause(hit)
     }
     // 沒網路、沒授權都靜默處理，按鈕照樣能用；但被拒絕就別再重試
