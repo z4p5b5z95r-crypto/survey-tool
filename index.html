@@ -3089,7 +3089,14 @@ const VOICE_CAUSES = [
   {cause:'taxi_stop',  group:'road', words:['計程','小黃'],                       anchors:[]},
   {cause:'parking',    group:'road', words:['路邊','違停','臨停'],                anchors:[]},
   {cause:'ped_int',    group:'int',  words:['路口行人','交叉口行人'],              anchors:[]},
-  {cause:'ped_cross',  group:'road', words:['行人','穿越','斑馬','過馬路','路人','人行'], anchors:[]},
+  // 「行人」只有兩個音節又很短，辨識常把「行」聽成同音或近音字（型／星／形／刑／姓／興／性），
+  // 但「人」這個音很少被聽錯。所以除了列出常見的錯字組合，也把單字「人」放進 anchors。
+  // anchors 只有在所有 words 都沒命中時才會比對，而且「人」命中後一定會進入
+  // 「路口還是路段」的追問流程，猜錯還有一次修正機會，所以放寬是安全的。
+  {cause:'ped_cross',  group:'road',
+   words:['行人','穿越','斑馬','過馬路','路人','人行',
+          '型人','星人','形人','刑人','姓人','幸人','興人','性人','醒人'],
+   anchors:['人']},
   {cause:'left_same',  group:'int',  words:['左轉同','同向','左轉銅'],             anchors:['同','銅','左轉']},   // 只說「左轉」預設同向
   {cause:'left_opp',   group:'int',  words:['左轉對','對向'],                     anchors:['對']},
   {cause:'right_turn', group:'int',  words:['右轉'],                              anchors:['右']},
@@ -3120,7 +3127,9 @@ const PED_CLARIFY_MS = 6000
 let _pedClarify=false, _pedClarifyTimer=null
 function isAmbiguousPed(text){
   const t=normVoice(text)
-  if(!t.includes('行人') && !t.includes('人行')) return false
+  // 只要聽到「人」就當作可能在講行人——反正接下來會追問路口或路段，
+  // 這一步寬鬆一點不會有代價，卻能救回「行」被聽成別字的情況
+  if(!t.includes('人')) return false
   // 已經講清楚位置或動作的就不模糊了
   if(/路口|交叉口|穿越|過馬路|斑馬|路段/.test(t)) return false
   return true
@@ -3193,8 +3202,10 @@ function startCauseListening(){
       }
       const hit=matchVoiceCause(all)
       if(!hit) return
-      // 只說「行人」無法判斷是路口的行人還是路段的行人穿越——先追問再決定
-      if(isAmbiguousPed(all)){ startPedClarify(); return }
+      // 只說「行人」無法判斷是路口的行人還是路段的行人穿越——先追問再決定。
+      // 必須先確認命中的就是 ped_cross，否則像「計程車有人下車」這種
+      // 已經命中別的原因、句子裡剛好有「人」的說法也會被拉進追問。
+      if(hit.cause==='ped_cross' && isAmbiguousPed(all)){ startPedClarify(); return }
       applyVoiceCause(hit)
     }
     // 沒網路、沒授權都靜默處理，按鈕照樣能用；但被拒絕就別再重試
