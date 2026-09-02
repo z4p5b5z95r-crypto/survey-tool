@@ -5592,7 +5592,7 @@ async function runDeviceChecks(){
   renderDevResults()
 
   // ── 3.5 麥克風與語音辨識（停車時可直接說出延滯原因）──
-  _devResults.push({id:'mic',name:'麥克風與語音辨識',required:false,
+  _devResults.push({id:'mic',name:'語音輸入測試',required:false,
     status: VOICE_SR ? 'pending' : 'warn',
     heard:'',
     desc: VOICE_SR
@@ -5792,10 +5792,10 @@ function devStepHtml(r){
         +'<div style="text-align:left;margin-top:12px">'+devMicRowHtml(r)+'</div></div>'
     }
     return '<div class="dvq"><div class="dvq-ico">🎤</div>'
-      +'<div class="dvq-title">測試麥克風</div>'
+      +'<div class="dvq-title">語音輸入測試</div>'
       +'<div class="dvq-sub">停車時可以直接說出延滯原因，<br>不必低頭點螢幕</div>'
       +'<div class="dvq-acts">'
-      +'<button class="dvq-btn go" onclick="devMicStart()">開始測試</button>'
+      +'<button class="dvq-btn go" onclick="devMicTest()">開始測試</button>'
       +'</div>'
       +'<button class="dvq-link" onclick="devMicSkip()">略過，用按鈕就好</button></div>'
   }
