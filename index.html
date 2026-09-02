@@ -3161,9 +3161,12 @@ const CLARIFY_RULES = [
     ambiguous: t => t.includes('人') && !/路口|交叉口|穿越|過馬路|斑馬|路段/.test(t),
     ask: '路口還是路段',
     hint: '行人 — 請說「路口」或「路段」',
+    // say：複誦時要唸的名稱。路口那顆按鈕的標籤本身就叫「行人」，
+    // 剛被問完「路口還是路段」又聽到「行人」會分不清系統到底記了哪一個，
+    // 所以複誦時補上位置唸成「路口行人」。
     answers: [
-      { re: /路口|交叉口|口/,            cause: 'ped_int'   },
-      { re: /路段|穿越|過馬路|斑馬|段/,   cause: 'ped_cross' }
+      { re: /路口|交叉口|口/,            cause: 'ped_int',   say: '路口行人' },
+      { re: /路段|穿越|過馬路|斑馬|段/,   cause: 'ped_cross', say: '行人穿越' }
     ],
     fallback: 'ped_cross',
     fallbackMsg: '⏱ 未回答，已記為行人穿越（路段）'
@@ -3189,8 +3192,7 @@ function findClarifyRule(hitCause, text){
 function matchClarifyAnswer(rule, text){
   const t=normVoice(text)
   // 追問階段預期的回答很短，所以連單字都接受
-  const a=rule.answers.find(x=>x.re.test(t))
-  return a ? a.cause : null
+  return rule.answers.find(x=>x.re.test(t)) || null
 }
 function setVoiceHint(txt){
   const el=document.getElementById('svy-voice-hint-txt')
@@ -3211,7 +3213,8 @@ function startClarify(rule){
     clearTimeout(_clarifyTimer)
     _clarifyTimer=setTimeout(()=>{
       if(!_stopActive || _clarify!==rule) return
-      applyClarifyAnswer(rule.fallback, rule.fallbackMsg)
+      const fb=rule.answers.find(x=>x.cause===rule.fallback)
+      applyClarifyAnswer(rule.fallback, rule.fallbackMsg, fb && fb.say)
     }, CLARIFY_MS)
   }, {high:true})
 }
@@ -3220,11 +3223,11 @@ function endClarify(){
   clearTimeout(_clarifyTimer); _clarifyTimer=null
   setVoiceHint('聆聽中，請說出停止原因')
 }
-function applyClarifyAnswer(cause, timeoutMsg){
+function applyClarifyAnswer(cause, timeoutMsg, sayAs){
   endClarify()
   const c=VOICE_CAUSES.find(x=>x.cause===cause)
   if(!c) return
-  applyVoiceCause(c)
+  applyVoiceCause(c, sayAs)
   if(timeoutMsg) showToast(timeoutMsg, true)
 }
 
@@ -3248,7 +3251,7 @@ function startCauseListening(){
       // 追問進行中：只聽這個問題的答案，其他一律忽略
       if(_clarify){
         const ans=matchClarifyAnswer(_clarify, all)
-        if(ans) applyClarifyAnswer(ans)
+        if(ans) applyClarifyAnswer(ans.cause, null, ans.say)
         return
       }
       const hit=matchVoiceCause(all)
@@ -3297,15 +3300,17 @@ function stopCauseListening(){
   try{ _vrec.onresult=null; _vrec.onend=null; _vrec.abort() }catch(e){}
   _vrec=null; _vrecOn=false
 }
-function applyVoiceCause(c){
+function applyVoiceCause(c, sayAs){
   if(!_stopActive) return
   stopCauseListening()
   const d=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===c.cause)
   if(!d) return
   svyStopPickDelay(d, c.group, true)
-  // 複誦完整名稱，讓駕駛不用低頭就知道系統聽成什麼；聽錯就直接按按鈕更正
-  speakNav(d.label, null, {high:true})
-  showToast(`🎤 ${d.icon} ${d.label}`, true)
+  // 複誦完整名稱，讓駕駛不用低頭就知道系統聽成什麼；聽錯就直接按按鈕更正。
+  // sayAs 用於追問後的複誦——按鈕標籤有時不足以區分（例如路口那顆就叫「行人」）。
+  const name=sayAs||d.label
+  speakNav(name, null, {high:true})
+  showToast(`🎤 ${d.icon} ${name}`, true)
 }
 // 提前提示的距離門檻：速度愈快，愈早提醒，給使用者足夠反應時間（沿用節點感應線同一套速度分級邏輯）
 function getNavFarDist(){
