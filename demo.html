@@ -3276,9 +3276,13 @@ function startCauseListening(){
         for(let a=0;a<r.length;a++) all+=r[a].transcript   // 三個候選都拿來比對，同音字更容易命中
         if(r.isFinal) heard+=r[0].transcript
       }
-      // 追問進行中：只聽這個問題的答案，其他一律忽略
+      // 追問進行中：只聽這個問題的答案，其他一律忽略。
+      // 這裡故意只看「已確定」的 heard（isFinal），不用還在變動的暫定結果 all——
+      // 追問的關鍵字（口／段）很短，暫定結果常常話講到一半就先冒出來，
+      // 用 all 判斷會在使用者還沒講完時就被提前判定、答案被截斷。
+      // 6 秒的追問逾時很寬裕，等最終結果出來再判斷也不會來不及。
       if(_clarify){
-        const ans=matchClarifyAnswer(_clarify, all)
+        const ans=matchClarifyAnswer(_clarify, heard)
         if(ans) applyClarifyAnswer(ans.cause, null, ans.say)
         return
       }
