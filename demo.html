@@ -3044,15 +3044,25 @@ function toggleNavVoice(){
   if(btn) btn.textContent = navVoiceEnabled ? '🔊' : '🔇'
   if(!navVoiceEnabled){ try{window.speechSynthesis&&window.speechSynthesis.cancel()}catch(e){} }
 }
+// 手機（尤其 iOS/iPadOS Safari）的語音與音訊管線比桌機慢很多，好幾處等待時間要拉長。
+// iPadOS 13 之後 UA 會偽裝成 Mac，所以額外用觸控點數判斷。
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1)
 // iOS Safari 對語音合成也有類似 AudioContext 的「解鎖」限制：第一次 speak() 如果不是在使用者手勢當下觸發，
 // 之後在 GPS callback 裡呼叫常常會被靜音吃掉。跟 unlockAudio() 一樣，在 startSurvey()（使用者按下開始鍵）當下先播一次無聲的
 function unlockNavVoice(){
   try{
     if(!('speechSynthesis' in window)) return
     window.speechSynthesis.getVoices()
-    const u=new SpeechSynthesisUtterance(' ')
-    u.volume=0
+    // ⚠️ iOS 上 volume=0 或內容是空白的 utterance 常常被合成器直接跳過，
+    // 跳過就等於沒真正解鎖，之後在 GPS callback 裡播「調查開始」會整句沒聲音。
+    // 所以改用「有內容、音量極小」的一句：聽不見，但確實走完一次朗讀流程。
+    const u=new SpeechSynthesisUtterance('嗯')
+    u.volume=0.01
+    u.rate=2
     u.lang='zh-TW'
+    // iOS 有時會把 speechSynthesis 留在 paused 狀態，之後所有 speak() 都不會出聲
+    try{ window.speechSynthesis.resume() }catch(e){}
     window.speechSynthesis.speak(u)
   }catch(e){}
 }
@@ -3115,7 +3125,9 @@ function _spPump(){
     // WebKit 有個已知 bug：cancel() 之後立刻 speak() 常常直接被吃掉不出聲，
     // 所以「剛 cancel 過」才延遲一點點呼叫。沒 cancel 過就同步送出——
     // 這樣停止面板的語音和面板動畫會在同一個 frame 出發，聽感上同時發生。
-    if(_spNeedGap){ _spNeedGap=false; setTimeout(fire,60) }
+    // 桌機 60ms 就夠，但手機 Safari 的音訊管線比較慢，60ms 常常還是被吃掉
+    // （現場症狀：第一個節點的「調查開始」整句沒聲音），所以手機拉長到 250ms。
+    if(_spNeedGap){ _spNeedGap=false; setTimeout(fire, IS_IOS?250:60) }
     else fire()
   }catch(e){ _spBusy=false; if(it.onDone) it.onDone() }
 }
@@ -3231,6 +3243,15 @@ function startClarify(rule){
   stopCauseListening()
   const hint=document.getElementById('svy-voice-hint')
   if(hint) hint.style.display='flex'   // stopCauseListening 會把提示藏起來，追問期間要留著
+  // ⚠️ abort() 在 iOS 上不是同步就結束的：系統要把音訊 session 從「錄音」切回「播放」，
+  // 這個切換若落在問句朗讀的中途，會把問句從中間直接掐斷（現場症狀：問到一半就斷）。
+  // 桌機沒有這層 session 切換所以聽不出問題。這裡先讓麥克風收乾淨再開口。
+  setTimeout(()=>{
+    if(!_stopActive || _clarify!==rule) return
+    askClarify(rule)
+  }, IS_IOS?300:0)
+}
+function askClarify(rule){
   speakNav(rule.ask, ()=>{
     if(!_stopActive || _clarify!==rule) return
     // ⚠️ 不能在這裡直接開麥。speakNav 的 onDone 有可能是「保險計時器」提前叫的
@@ -3252,8 +3273,8 @@ function startClarify(rule){
         applyClarifyAnswer(rule.fallback, rule.fallbackMsg, fb && fb.say)
       }, CLARIFY_MS)
     }
-    // 喇叭停了到聲音真的消失還有一點延遲，多留一段緩衝再開麥
-    setTimeout(arm, 250)
+    // 喇叭停了到聲音真的消失還有一點延遲，多留一段緩衝再開麥（手機更慢）
+    setTimeout(arm, IS_IOS?400:250)
   }, {high:true})
 }
 function endClarify(){
