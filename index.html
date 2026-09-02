@@ -2904,7 +2904,10 @@ function triggerStopDetection(){
   // ⚠️ 順序有意義：語音要「先送出」再做畫面。
   // TTS 引擎從呼叫到真的出聲有啟動延遲，而面板動畫是呼叫當下就開始跑的；
   // 先畫面後語音會變成「面板都滑上來了才聽到聲音」。先送語音才會同時到達。
-  speakNav('請說出車輛停止原因', ()=>{ if(_stopActive) startCauseListening() }, {high:true})
+  // onDone 有可能是 speakNav 的「估算保險計時器」提前叫的，這時手機還在唸。
+  // 在 iOS 上開麥會把音訊 session 從播放切成錄音，正在唸的提示語就被從中間掐斷
+  // （現場症狀：提示語沒講完就卡掉）。所以一律用 listenAfterSpeech 等真的講完。
+  speakNav('請說出車輛停止原因', ()=>{ listenAfterSpeech(()=>_stopActive) }, {high:true})
   svySheetExpand()
   svyShowPanel('stop')
   startStopTicker()
@@ -3088,6 +3091,7 @@ function speakNav(text, onDone, opts){
   const now=Date.now()
   if(text===_spLastText && now-_spLastAt<2000){ if(onDone) onDone(); return }
   const item={text,onDone,high:!!(opts&&opts.high)}
+  vlog('speakNav("'+text+'") high='+item.high+' busy='+_spBusy+' unlocking='+_spUnlocking)
   if(item.high){
     _spQueue=[]
     // 只有「真的有東西在講」才需要 cancel。沒在講卻照樣 cancel，
@@ -3126,11 +3130,16 @@ function _spPump(){
       try{
         const u=new SpeechSynthesisUtterance(it.text)
         u.lang='zh-TW'; u.rate=1.10
-        u.onend=done; u.onerror=done
+        const t0=Date.now()
+        u.onstart=()=>vlog('  ▶ 真的開始唸 "'+it.text+'" (+'+(Date.now()-t0)+'ms)')
+        u.onend=()=>{ vlog('  ■ onend "'+it.text+'" (+'+(Date.now()-t0)+'ms)'); done() }
+        u.onerror=e=>{ vlog('  ✗ onerror "'+it.text+'" '+((e&&e.error)||'')); done() }
         // 保險：某些瀏覽器 onend 不一定會觸發，估個時間強制接手
-        setTimeout(done, 700 + it.text.length*160)
+        setTimeout(()=>{ if(!fired) vlog('  ⏱ 保險計時器接手 "'+it.text+'"（onend 沒來）'); done() },
+                   700 + it.text.length*160)
         window.speechSynthesis.speak(u)
-      }catch(e){ done() }
+        vlog('  → speak() 已送出 "'+it.text+'"')
+      }catch(e){ vlog('  ✗ speak() 例外 '+e); done() }
     }
     // WebKit 有個已知 bug：cancel() 之後立刻 speak() 常常直接被吃掉不出聲，
     // 所以「剛 cancel 過」才延遲一點點呼叫。沒 cancel 過就同步送出——
@@ -3147,6 +3156,40 @@ function _spPump(){
 //  面板彈出、播完提示語之後開始聆聽；聽到關鍵字就直接套用並複誦完整名稱。
 //  辨識不到、沒網路、瀏覽器不支援都只是靜靜地退回按鈕操作，不打擾駕駛。
 // ════════════════════════════════════
+// ── 語音診斷紀錄 ──────────────────────────────────────────
+// 手機上沒有 console 可看，而語音問題全都是時序問題（誰先誰後、差幾毫秒），
+// 沒有實際時間點就只能猜。這裡留一份環狀紀錄，隨時可以叫出來看：
+//   在網址列輸入   javascript:alert(__voiceLog())
+//   或在停止面板的語音提示列上連點三下
+// 只在記憶體裡，不上傳、不寫檔，正式版留著也無妨（每筆就一個字串）。
+let _vlogBuf=[]
+function vlog(){
+  try{
+    const t=new Date()
+    const ts=String(t.getMinutes()).padStart(2,'0')+':'+String(t.getSeconds()).padStart(2,'0')
+      +'.'+String(t.getMilliseconds()).padStart(3,'0')
+    _vlogBuf.push(ts+' '+Array.from(arguments).join(' '))
+    if(_vlogBuf.length>120) _vlogBuf.shift()
+  }catch(e){}
+}
+window.__voiceLog=()=>_vlogBuf.join('\n')
+// 手機上把紀錄叫出來：在畫面右下角「連點三下」（1.5 秒內）。
+// 位置刻意選在沒有任何按鈕的死角，正常操作不會誤觸。
+;(function(){
+  let taps=[], W=90, H=90
+  document.addEventListener('touchend', e=>{
+    const t=e.changedTouches && e.changedTouches[0]
+    if(!t) return
+    if(t.clientX < innerWidth-W || t.clientY < innerHeight-H) return
+    const now=Date.now()
+    taps=taps.filter(x=>now-x<1500); taps.push(now)
+    if(taps.length>=3){
+      taps=[]
+      const txt=_vlogBuf.length?_vlogBuf.join('\n'):'（還沒有任何語音紀錄）'
+      try{ prompt('語音診斷紀錄（可長按複製）', txt) }catch(e){ alert(txt) }
+    }
+  }, {passive:true})
+})()
 const VOICE_SR = window.SpeechRecognition || window.webkitSpeechRecognition
 let voicePickEnabled = (localStorage.getItem('voice_pick_enabled') ?? '1') === '1'
 let _vrec=null, _vrecOn=false, _vrecErr='', _vrecDead=false
@@ -3245,6 +3288,27 @@ function setVoiceHint(txt){
   const el=document.getElementById('svy-voice-hint-txt')
   if(el) el.textContent=txt
 }
+// 「等系統真的講完再開麥」。所有『先播提示語、再聽駕駛回答』的地方都要走這裡。
+//
+// 為什麼不能直接在 speakNav 的 onDone 裡開麥：onDone 有可能是 speakNav 內部的
+// 估算保險計時器（700+字數*160ms）提前叫的——WebKit 的 onend 常常不觸發，
+// 所以一定要有那個保險。但估算偏短時，手機其實還在唸，這時開麥有兩個後果：
+//   1. iOS 把音訊 session 從「播放」切成「錄音」，正在唸的提示語被從中間掐斷
+//   2. 麥克風收到系統自己講的尾巴，變成自問自答（例如問句裡的「路段」）
+// 桌機兩者都不會發生，所以只在手機上看得到。
+// still() 回傳 false 代表狀況已經變了（面板收了、追問作廢），就不要開麥。
+function listenAfterSpeech(still, onArmed){
+  const arm=()=>{
+    if(still && !still()) return
+    let speaking=false
+    try{ speaking=window.speechSynthesis.speaking||window.speechSynthesis.pending }catch(e){}
+    if(speaking){ setTimeout(arm,120); return }
+    startCauseListening()
+    if(onArmed) onArmed()
+  }
+  // 喇叭停了到聲音真的消失還有一點延遲，多留一段緩衝再開麥（手機更慢）
+  setTimeout(arm, IS_IOS?400:250)
+}
 function startClarify(rule){
   if(_clarify) return
   _clarify=rule
@@ -3263,18 +3327,7 @@ function startClarify(rule){
 }
 function askClarify(rule){
   speakNav(rule.ask, ()=>{
-    if(!_stopActive || _clarify!==rule) return
-    // ⚠️ 不能在這裡直接開麥。speakNav 的 onDone 有可能是「保險計時器」提前叫的
-    // （WebKit 的 onend 常常不觸發，所以用 700+字數*160ms 估算），而這個估算對
-    // 「路口還是路段」偏短——手機還在唸問句的尾巴時就開麥，麥克風會把系統自己
-    // 講的「…還是路段」收進去，變成自問自答直接定案；駕駛真正說的「路口」
-    // 反而因為追問已經結束而被忽略。所以要等 speechSynthesis 真的講完再開。
-    const arm=()=>{
-      if(!_stopActive || _clarify!==rule) return
-      let speaking=false
-      try{ speaking=window.speechSynthesis.speaking||window.speechSynthesis.pending }catch(e){}
-      if(speaking){ setTimeout(arm,120); return }
-      startCauseListening()
+    listenAfterSpeech(()=>_stopActive && _clarify===rule, ()=>{
       // 逾時從「問完」開始算，不然朗讀時間會吃掉駕駛的回答時間
       clearTimeout(_clarifyTimer)
       _clarifyTimer=setTimeout(()=>{
@@ -3282,9 +3335,7 @@ function askClarify(rule){
         const fb=rule.answers.find(x=>x.cause===rule.fallback)
         applyClarifyAnswer(rule.fallback, rule.fallbackMsg, fb && fb.say)
       }, CLARIFY_MS)
-    }
-    // 喇叭停了到聲音真的消失還有一點延遲，多留一段緩衝再開麥（手機更慢）
-    setTimeout(arm, IS_IOS?400:250)
+    })
   }, {high:true})
 }
 function endClarify(){
@@ -3293,9 +3344,10 @@ function endClarify(){
   setVoiceHint('聆聽中，請說出停止原因')
 }
 function applyClarifyAnswer(cause, timeoutMsg, sayAs){
+  vlog('clarify答案', cause, 'stopActive='+_stopActive)
   endClarify()
   const c=VOICE_CAUSES.find(x=>x.cause===cause)
-  if(!c) return
+  if(!c){ vlog('✗ VOICE_CAUSES 找不到', cause); return }
   applyVoiceCause(c, sayAs)
   if(timeoutMsg) showToast(timeoutMsg, true)
 }
@@ -3317,10 +3369,12 @@ function startCauseListening(){
         for(let a=0;a<r.length;a++) all+=r[a].transcript   // 三個候選都拿來比對，同音字更容易命中
         if(r.isFinal) heard+=r[0].transcript
       }
+      vlog(_clarify?'追問中聽到':'聽到', JSON.stringify(all))
       // 追問進行中：只聽這個問題的答案，其他一律忽略
       if(_clarify){
         const ans=matchClarifyAnswer(_clarify, all)
         if(ans) applyClarifyAnswer(ans.cause, null, ans.say)
+        else vlog('  追問比對不到，繼續等')
         return
       }
       const hit=matchVoiceCause(all)
@@ -3370,10 +3424,17 @@ function stopCauseListening(){
   _vrec=null; _vrecOn=false
 }
 function applyVoiceCause(c, sayAs){
-  if(!_stopActive) return
+  // 這兩個 return 以前是靜靜地什麼都不做，現場看起來就是「我明明說了卻沒紀錄」，
+  // 完全查不出是哪個環節掉的。現在一律留下紀錄並讓駕駛看得到。
+  if(!_stopActive){
+    vlog('✗ 已離開停止狀態，放棄', c.cause)
+    showToast('⚠️ 已聽到但面板已關閉，未記錄 — 請手動選擇', true)
+    return
+  }
   stopCauseListening()
   const d=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===c.cause)
-  if(!d) return
+  if(!d){ vlog('✗ DELAYS 找不到', c.cause); return }
+  vlog('✓ 記錄', d.label)
   svyStopPickDelay(d, c.group, true)
   // 複誦完整名稱，讓駕駛不用低頭就知道系統聽成什麼；聽錯就直接按按鈕更正。
   // sayAs 用於追問後的複誦——按鈕標籤有時不足以區分（例如路口那顆就叫「行人」）。
