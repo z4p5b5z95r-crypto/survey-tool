@@ -894,7 +894,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     <div id="td-cloud-status" style="display:none;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:600;text-align:center;margin-bottom:4px">⏳ 上傳中...</div>
     <button class="btn-blue" id="btn-next-combo" onclick="goNextCombo()">繼續調查 →</button>
     <button class="btn-purple" onclick="goReport()">📊 查看調查報告</button>
-    <button class="btn-orange" onclick="confirmClearStorage()">重新調查</button>
+    <button class="btn-orange" onclick="confirmClearStorage()">🔄 清除所有調查記錄（重新開始）</button>
   </div>
 </div>
 
@@ -3064,19 +3064,13 @@ function unlockNavVoice(){
 // 會清空佇列立刻插播。兩秒內同一句話不重複播，避免連續觸發洗版。
 let _spQueue=[], _spBusy=false, _spLastText='', _spLastAt=0
 let _spNeedGap=false   // 剛做過 cancel()，下一次 speak() 要留一點間隔（見 _spPump）
-let _spCurrentTag=''   // 目前正在講的這句話屬於哪種類型（見下方 node vs node 的例外）
 function speakNav(text, onDone, opts){
   if(!navVoiceEnabled){ if(onDone) onDone(); return }
   if(!('speechSynthesis' in window)){ if(onDone) onDone(); return }
   const now=Date.now()
   if(text===_spLastText && now-_spLastAt<2000){ if(onDone) onDone(); return }
-  const tag=(opts&&opts.tag)||''
-  const item={text,onDone,high:!!(opts&&opts.high),tag}
-  // 節點語音（調查開始／通過節點／調查結束）彼此不互相打斷——
-  // 節點間距太近（模擬移動、或真實路線節點很近）時，後一個節點的語音才不會
-  // 把前一個還沒講完的節點語音直接砍掉。但節點語音仍然可以打斷導航轉彎之類的一般提示。
-  const isNodeVsNode = tag==='node' && _spCurrentTag==='node'
-  if(item.high && !isNodeVsNode){
+  const item={text,onDone,high:!!(opts&&opts.high)}
+  if(item.high){
     _spQueue=[]
     // 只有「真的有東西在講」才需要 cancel。沒在講卻照樣 cancel，
     // 會白白吃掉下面那 60ms 的緩衝，讓插播比畫面慢半拍。
@@ -3099,7 +3093,6 @@ function _spPump(){
   if(!it) return
   _spBusy=true
   _spLastText=it.text; _spLastAt=Date.now()
-  _spCurrentTag=it.tag||''
   try{
     if(window.speechSynthesis.paused) window.speechSynthesis.resume()
     const fire=()=>{
@@ -3276,13 +3269,9 @@ function startCauseListening(){
         for(let a=0;a<r.length;a++) all+=r[a].transcript   // 三個候選都拿來比對，同音字更容易命中
         if(r.isFinal) heard+=r[0].transcript
       }
-      // 追問進行中：只聽這個問題的答案，其他一律忽略。
-      // 這裡故意只看「已確定」的 heard（isFinal），不用還在變動的暫定結果 all——
-      // 追問的關鍵字（口／段）很短，暫定結果常常話講到一半就先冒出來，
-      // 用 all 判斷會在使用者還沒講完時就被提前判定、答案被截斷。
-      // 6 秒的追問逾時很寬裕，等最終結果出來再判斷也不會來不及。
+      // 追問進行中：只聽這個問題的答案，其他一律忽略
       if(_clarify){
-        const ans=matchClarifyAnswer(_clarify, heard)
+        const ans=matchClarifyAnswer(_clarify, all)
         if(ans) applyClarifyAnswer(ans.cause, null, ans.say)
         return
       }
@@ -3568,8 +3557,8 @@ function recordNode(auto){
   const isFinal=currentNodeIdx>=names.length
   // 第一個與最後一個節點不響提示音，直接用語音取代；
   // 中間的節點維持原本的提示音。
-  if(justRecorded===1)      speakNav('調查開始',null,{high:true,tag:'node'})
-  else if(isFinal)          speakNav('調查結束',null,{high:true,tag:'node'})
+  if(justRecorded===1)      speakNav('調查開始',null,{high:true})
+  else if(isFinal)          speakNav('調查結束',null,{high:true})
   else                      playNodeBeep(false)
 
   // ── Last node: stop the clock ──
