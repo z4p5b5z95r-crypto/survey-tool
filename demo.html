@@ -3137,7 +3137,11 @@ const VOICE_CAUSES = [
   {cause:'bus_stop',   group:'road', words:['公車','巴士','客運'],                anchors:[]},
   {cause:'taxi_stop',  group:'road', words:['計程','小黃'],                       anchors:[]},
   {cause:'parking',    group:'road', words:['路邊','違停','臨停'],                anchors:[]},
-  {cause:'ped_int',    group:'int',  words:['路口行人','交叉口行人'],              anchors:[]},
+  // 「路口」「交叉口」放在 anchors 而不是 words：anchors 只有在所有原因的 words
+  // 都沒命中時才比對，這樣「路口其他」仍然會先命中 int_other 的 words，不會被搶走。
+  // 放這兩個是為了當「路口還是路段」的追問因故失效時，駕駛單說「路口」還有救——
+  // 否則只有「路口行人」這種完整說法才比對得到，單說「路口」會被靜靜忽略。
+  {cause:'ped_int',    group:'int',  words:['路口行人','交叉口行人'],              anchors:['路口','交叉口']},
   // 「行人」只有兩個音節又很短，辨識常把「行」聽成同音或近音字（型／星／形／刑／姓／興／性），
   // 但「人」這個音很少被聽錯。所以除了列出常見的錯字組合，也把單字「人」放進 anchors。
   // anchors 只有在所有 words 都沒命中時才會比對，而且「人」命中後一定會進入
@@ -3229,14 +3233,27 @@ function startClarify(rule){
   if(hint) hint.style.display='flex'   // stopCauseListening 會把提示藏起來，追問期間要留著
   speakNav(rule.ask, ()=>{
     if(!_stopActive || _clarify!==rule) return
-    startCauseListening()
-    // 逾時從「問完」開始算，不然朗讀時間會吃掉駕駛的回答時間
-    clearTimeout(_clarifyTimer)
-    _clarifyTimer=setTimeout(()=>{
+    // ⚠️ 不能在這裡直接開麥。speakNav 的 onDone 有可能是「保險計時器」提前叫的
+    // （WebKit 的 onend 常常不觸發，所以用 700+字數*160ms 估算），而這個估算對
+    // 「路口還是路段」偏短——手機還在唸問句的尾巴時就開麥，麥克風會把系統自己
+    // 講的「…還是路段」收進去，變成自問自答直接定案；駕駛真正說的「路口」
+    // 反而因為追問已經結束而被忽略。所以要等 speechSynthesis 真的講完再開。
+    const arm=()=>{
       if(!_stopActive || _clarify!==rule) return
-      const fb=rule.answers.find(x=>x.cause===rule.fallback)
-      applyClarifyAnswer(rule.fallback, rule.fallbackMsg, fb && fb.say)
-    }, CLARIFY_MS)
+      let speaking=false
+      try{ speaking=window.speechSynthesis.speaking||window.speechSynthesis.pending }catch(e){}
+      if(speaking){ setTimeout(arm,120); return }
+      startCauseListening()
+      // 逾時從「問完」開始算，不然朗讀時間會吃掉駕駛的回答時間
+      clearTimeout(_clarifyTimer)
+      _clarifyTimer=setTimeout(()=>{
+        if(!_stopActive || _clarify!==rule) return
+        const fb=rule.answers.find(x=>x.cause===rule.fallback)
+        applyClarifyAnswer(rule.fallback, rule.fallbackMsg, fb && fb.say)
+      }, CLARIFY_MS)
+    }
+    // 喇叭停了到聲音真的消失還有一點延遲，多留一段緩衝再開麥
+    setTimeout(arm, 250)
   }, {high:true})
 }
 function endClarify(){
