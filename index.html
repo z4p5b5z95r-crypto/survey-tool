@@ -2897,6 +2897,9 @@ function triggerStopDetection(){
   // 或車子重新開動（evalStopDetection 裡 >5km/h 持續 3 秒會自動收起）。
   // 舊版 7 秒就自動丟棄，駕駛只要分神或正在看路，那整段紅燈就完全沒進資料。
   clearTimeout(_stopCdTimer); _stopCdTimer=null
+  // 上一次停等若留下「延後收面板」的計時器，一定要清掉，
+  // 否則它會在這一次的面板剛開時就把它收走。
+  clearTimeout(_stopDeferTimer); _stopDeferTimer=null
   // 面板彈出不再另外響提示音，直接用語音取代——駕駛聽到就知道要做什麼，
   // 不必先聽一聲嗶再等語音。（延滯開始／結束的提示音維持不變）
   // 提示語「播完」才開始聆聽，否則麥克風會把自己播的聲音收進去。
@@ -3003,7 +3006,27 @@ function markStopPanelPicked(d){
 
 // 駕駛按「忽略」，或車子重新開動而始終沒選原因時呼叫——不記錄，收起面板
 function svyDismissStop(byResume){
+  // ⚠️ 車子重新開動、但駕駛正在回答語音追問的情況，不能把面板收掉。
+  // 真實路況這是常態：紅燈停等行人 → 系統問「路口還是路段」→ 綠燈了駕駛就起步 →
+  // 話還沒說完面板已經關閉，答案整個被丟掉、那段停等也沒有原因。
+  // 這段停等本來就已經發生、_stopEvent 也記著起算時刻了，
+  // 駕駛的答案只是決定「歸到哪個原因」，車子動了並不影響它的正確性。
+  // 所以追問進行中就延後收面板，給駕駛把話講完的時間。
+  // evalStopDetection 是輪詢呼叫的，車子一直在動就會每次都進來；
+  // 只在第一次安排延後，之後直接返回，不要一直重設計時器也不要洗版日誌。
+  if(byResume && _clarify){
+    if(!_stopDeferTimer){
+      vlog('▸ 車輛重新行駛，但追問進行中 — 延後收面板')
+      _stopDeferTimer=setTimeout(()=>{
+        _stopDeferTimer=null
+        if(_stopActive) svyDismissStop(true)
+      }, CLARIFY_MS+2000)
+    }
+    return
+  }
+  clearTimeout(_stopDeferTimer); _stopDeferTimer=null
   clearTimeout(_stopCdTimer); _stopCdTimer=null
+  vlog('▸ 收起停止面板 byResume='+!!byResume)
   endClarify()
   stopCauseListening()
   _stopActive=false
@@ -3083,8 +3106,15 @@ function unlockNavVoice(){
 // 現場聽起來就是「有時沒聲音、有時只講一半、跟畫面對不上」。
 // 現在：一般提示排隊等前一句講完；節點與停止面板這類重要提示標為 high，
 // 會清空佇列立刻插播。兩秒內同一句話不重複播，避免連續觸發洗版。
+// 一句話大概要唸多久（這只是 onend 沒來時的保險估算，正常情況以 onend 為準）。
+// 數字取自實機日誌（rate=1.10）：2字 695ms、4字 1849ms、6字 2168ms、9字 2758~2827ms。
+// 注意不是線性的——短句的固定開銷佔比很大（4 字就要 1.8 秒），所以除了斜率還要有下限。
+// 寧可估長也不能估短：估短會讓下一句疊上去，而 iOS 的 utterance 一旦被插隊，
+// 就再也不發 onend、speaking 還會永遠卡在 true。估長最多只是晚一點交棒。
+function SPEAK_MS(t){ return Math.max(2200, 500 + String(t||'').length*300) }
 let _spQueue=[], _spBusy=false, _spLastText='', _spLastAt=0
 let _spNeedGap=false   // 剛做過 cancel()，下一次 speak() 要留一點間隔（見 _spPump）
+let _spCurHigh=false   // 目前正在播的是不是「重要語音」（見 speakNav 的略過規則）
 function speakNav(text, onDone, opts){
   if(!navVoiceEnabled){ if(onDone) onDone(); return }
   if(!('speechSynthesis' in window)){ if(onDone) onDone(); return }
@@ -3092,15 +3122,26 @@ function speakNav(text, onDone, opts){
   if(text===_spLastText && now-_spLastAt<2000){ if(onDone) onDone(); return }
   const item={text,onDone,high:!!(opts&&opts.high)}
   vlog('speakNav("'+text+'") high='+item.high+' busy='+_spBusy+' unlocking='+_spUnlocking)
+  // 重要語音（節點、停止面板、追問）正在播的時候，一般導航提示直接丟掉不排隊。
+  // 排了也沒意義——輪到它時車子早就過了那個路口，而且多排一句就多一次
+  // 「插隊」的機會，而 iOS 的 utterance 一旦被插隊就再也不發 onend。
+  if(!item.high && _spBusy && _spCurHigh){
+    vlog('  ↷ 重要語音播放中，略過這句一般提示')
+    if(onDone) onDone()
+    return
+  }
   if(item.high){
     _spQueue=[]
     // 只有「真的有東西在講」才需要 cancel。沒在講卻照樣 cancel，
     // 會白白吃掉下面那 60ms 的緩衝，讓插播比畫面慢半拍。
     let speaking=false
     try{ speaking=_spBusy||window.speechSynthesis.speaking||window.speechSynthesis.pending }catch(e){ speaking=_spBusy }
-    // 正在播的如果只是解鎖用的那句無聲短音，就不要 cancel——它本來就只有 0.2 秒，
-    // 直接排在它後面即可。硬要 cancel 反而會讓緊接著的「調查開始」被 iOS 整句吃掉。
-    if(speaking && !_spUnlocking){
+    // ⚠️ 在 iOS 上「沒東西在播就不 cancel」這個最佳化是錯的。
+    // 實機日誌顯示：合成引擎會自己卡住——utterance 收下了、onstart 也發了，
+    // 但完全沒有聲音、onend 永遠不來、speaking 永遠是 true。日誌裡唯一每次都成功的
+    // 那幾句，共通點就是前面剛好做過 cancel()。cancel() 等於把引擎踹醒。
+    // 代價只是下面那段 250ms 間隔，遠比整句沒聲音划算，所以手機上一律先 cancel。
+    if((speaking || IS_IOS) && !_spUnlocking){
       try{ window.speechSynthesis.cancel() }catch(e){}
       _spNeedGap=true
     }
@@ -3116,6 +3157,7 @@ function _spPump(){
   const it=_spQueue.shift()
   if(!it) return
   _spBusy=true
+  _spCurHigh=!!it.high
   _spLastText=it.text; _spLastAt=Date.now()
   try{
     if(window.speechSynthesis.paused) window.speechSynthesis.resume()
@@ -3134,25 +3176,26 @@ function _spPump(){
         u.onstart=()=>vlog('  ▶ 真的開始唸 "'+it.text+'" (+'+(Date.now()-t0)+'ms)')
         u.onend=()=>{ vlog('  ■ onend "'+it.text+'" (+'+(Date.now()-t0)+'ms)'); done() }
         u.onerror=e=>{ vlog('  ✗ onerror "'+it.text+'" '+((e&&e.error)||'')); done() }
-        // 保險：某些瀏覽器 onend 不一定會觸發，估個時間強制接手。
+        // 保險：iOS 的 onend 很常不觸發，一定要估個時間接手。
         //
-        // ⚠️ 但「估算時間到了」不等於「真的講完了」。實測 iPhone 上這個估算一律
-        // 短 500~800ms，時間一到就當作講完、把下一句丟進去，聲音就會一直往上疊：
-        // 現場看到的是「調查開始」卡在 iOS 佇列裡 22 秒沒播完，直到別的語音 cancel
-        // 才被丟掉——使用者當然從頭到尾沒聽到它。
-        // 所以估算時間到了之後改成「輪詢等它真的講完」，只有 speaking/pending 都是
-        // false 才收工；並保留一個硬上限，避免 onend 真的壞掉時永遠卡住。
-        const est = 700 + it.text.length*160
-        const hardStop = Date.now() + est*3 + 5000
-        const watch=()=>{
+        // ⚠️ 兩個坑都踩過了，這裡的取捨要寫清楚：
+        //  1) 估太短 → 還在講就放行下一句，聲音疊在一起、前一句被推到佇列深處。
+        //     原本的 700+字數*160 就是這樣，實測一律短 500~800ms。
+        //  2) 改成「輪詢等 speaking 變 false」→ 更糟。實測這支 iPhone 的 speaking
+        //     在被插隊過的 utterance 上會永遠卡在 true，結果硬等到上限 9 秒才放行。
+        // 所以：估算值改用實測校正（9字≈2800ms、4字≈1850ms、2字≈695ms，
+        // 約 400+字數*300），時間到就放行，只在 speaking 還是 true 時多寬限一小段，
+        // 寬限完無論如何都放行——絕不把流程押在 iOS 的狀態旗標上。
+        const est = SPEAK_MS(it.text)
+        const watch=(graced)=>{
           if(fired) return
           let sp=false
           try{ sp=window.speechSynthesis.speaking||window.speechSynthesis.pending }catch(e){}
-          if(sp && Date.now()<hardStop){ setTimeout(watch,150); return }
+          if(sp && !graced){ setTimeout(()=>watch(true), 500); return }
           vlog('  ⏱ 接手 "'+it.text+'"（onend 沒來，speaking='+sp+'）')
           done()
         }
-        setTimeout(watch, est)
+        setTimeout(()=>watch(false), est)
         window.speechSynthesis.speak(u)
         vlog('  → speak() 已送出 "'+it.text+'"')
       }catch(e){ vlog('  ✗ speak() 例外 '+e); done() }
@@ -3340,6 +3383,8 @@ const CLARIFY_RULES = [
   }
 ]
 let _clarify=null, _clarifyTimer=null
+// 車子重新開動、但追問還在進行時，延後收面板用的計時器（見 svyDismissStop）
+let _stopDeferTimer=null
 function findClarifyRule(hitCause, text){
   const t=normVoice(text)
   return CLARIFY_RULES.find(r => r.when===hitCause && r.ambiguous(t)) || null
@@ -3363,11 +3408,16 @@ function setVoiceHint(txt){
 // 桌機兩者都不會發生，所以只在手機上看得到。
 // still() 回傳 false 代表狀況已經變了（面板收了、追問作廢），就不要開麥。
 function listenAfterSpeech(still, onArmed){
+  // ⚠️ 這裡不能無限等 speaking 變 false：實測 iPhone 上被插隊過的 utterance
+  // 會讓 speaking 永遠卡在 true，那樣麥克風就永遠不會開，駕駛說什麼都沒反應。
+  // 所以設一個上限，時間到就照樣開麥。
+  const deadline = Date.now() + 2500
   const arm=()=>{
     if(still && !still()){ vlog('✗ 狀況已改變，不開麥（面板關了或追問作廢）'); return }
     let speaking=false
     try{ speaking=window.speechSynthesis.speaking||window.speechSynthesis.pending }catch(e){}
-    if(speaking){ setTimeout(arm,120); return }
+    if(speaking && Date.now()<deadline){ setTimeout(arm,120); return }
+    if(speaking) vlog('  ⏱ speaking 卡住不放，仍然開麥')
     startCauseListening()
     if(onArmed) onArmed()
   }
@@ -3385,8 +3435,12 @@ function startClarify(rule){
   // ⚠️ abort() 在 iOS 上不是同步就結束的：系統要把音訊 session 從「錄音」切回「播放」，
   // 這個切換若落在問句朗讀的中途，會把問句從中間直接掐斷（現場症狀：問到一半就斷）。
   // 桌機沒有這層 session 切換所以聽不出問題。這裡先讓麥克風收乾淨再開口。
+  vlog('❓ 觸發追問：'+rule.ask)
   setTimeout(()=>{
-    if(!_stopActive || _clarify!==rule) return
+    if(!_stopActive || _clarify!==rule){
+      vlog('✗ 追問取消（stopActive='+_stopActive+' 規則還在='+(_clarify===rule)+'）')
+      return
+    }
     askClarify(rule)
   }, IS_IOS?300:0)
 }

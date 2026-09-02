@@ -2897,6 +2897,9 @@ function triggerStopDetection(){
   // 或車子重新開動（evalStopDetection 裡 >5km/h 持續 3 秒會自動收起）。
   // 舊版 7 秒就自動丟棄，駕駛只要分神或正在看路，那整段紅燈就完全沒進資料。
   clearTimeout(_stopCdTimer); _stopCdTimer=null
+  // 上一次停等若留下「延後收面板」的計時器，一定要清掉，
+  // 否則它會在這一次的面板剛開時就把它收走。
+  clearTimeout(_stopDeferTimer); _stopDeferTimer=null
   // 面板彈出不再另外響提示音，直接用語音取代——駕駛聽到就知道要做什麼，
   // 不必先聽一聲嗶再等語音。（延滯開始／結束的提示音維持不變）
   // 提示語「播完」才開始聆聽，否則麥克風會把自己播的聲音收進去。
@@ -3003,7 +3006,27 @@ function markStopPanelPicked(d){
 
 // 駕駛按「忽略」，或車子重新開動而始終沒選原因時呼叫——不記錄，收起面板
 function svyDismissStop(byResume){
+  // ⚠️ 車子重新開動、但駕駛正在回答語音追問的情況，不能把面板收掉。
+  // 真實路況這是常態：紅燈停等行人 → 系統問「路口還是路段」→ 綠燈了駕駛就起步 →
+  // 話還沒說完面板已經關閉，答案整個被丟掉、那段停等也沒有原因。
+  // 這段停等本來就已經發生、_stopEvent 也記著起算時刻了，
+  // 駕駛的答案只是決定「歸到哪個原因」，車子動了並不影響它的正確性。
+  // 所以追問進行中就延後收面板，給駕駛把話講完的時間。
+  // evalStopDetection 是輪詢呼叫的，車子一直在動就會每次都進來；
+  // 只在第一次安排延後，之後直接返回，不要一直重設計時器也不要洗版日誌。
+  if(byResume && _clarify){
+    if(!_stopDeferTimer){
+      vlog('▸ 車輛重新行駛，但追問進行中 — 延後收面板')
+      _stopDeferTimer=setTimeout(()=>{
+        _stopDeferTimer=null
+        if(_stopActive) svyDismissStop(true)
+      }, CLARIFY_MS+2000)
+    }
+    return
+  }
+  clearTimeout(_stopDeferTimer); _stopDeferTimer=null
   clearTimeout(_stopCdTimer); _stopCdTimer=null
+  vlog('▸ 收起停止面板 byResume='+!!byResume)
   endClarify()
   stopCauseListening()
   _stopActive=false
@@ -3113,9 +3136,12 @@ function speakNav(text, onDone, opts){
     // 會白白吃掉下面那 60ms 的緩衝，讓插播比畫面慢半拍。
     let speaking=false
     try{ speaking=_spBusy||window.speechSynthesis.speaking||window.speechSynthesis.pending }catch(e){ speaking=_spBusy }
-    // 正在播的如果只是解鎖用的那句無聲短音，就不要 cancel——它本來就只有 0.2 秒，
-    // 直接排在它後面即可。硬要 cancel 反而會讓緊接著的「調查開始」被 iOS 整句吃掉。
-    if(speaking && !_spUnlocking){
+    // ⚠️ 在 iOS 上「沒東西在播就不 cancel」這個最佳化是錯的。
+    // 實機日誌顯示：合成引擎會自己卡住——utterance 收下了、onstart 也發了，
+    // 但完全沒有聲音、onend 永遠不來、speaking 永遠是 true。日誌裡唯一每次都成功的
+    // 那幾句，共通點就是前面剛好做過 cancel()。cancel() 等於把引擎踹醒。
+    // 代價只是下面那段 250ms 間隔，遠比整句沒聲音划算，所以手機上一律先 cancel。
+    if((speaking || IS_IOS) && !_spUnlocking){
       try{ window.speechSynthesis.cancel() }catch(e){}
       _spNeedGap=true
     }
@@ -3357,6 +3383,8 @@ const CLARIFY_RULES = [
   }
 ]
 let _clarify=null, _clarifyTimer=null
+// 車子重新開動、但追問還在進行時，延後收面板用的計時器（見 svyDismissStop）
+let _stopDeferTimer=null
 function findClarifyRule(hitCause, text){
   const t=normVoice(text)
   return CLARIFY_RULES.find(r => r.when===hitCause && r.ambiguous(t)) || null
