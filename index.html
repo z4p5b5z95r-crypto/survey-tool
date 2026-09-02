@@ -894,7 +894,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     <div id="td-cloud-status" style="display:none;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:600;text-align:center;margin-bottom:4px">⏳ 上傳中...</div>
     <button class="btn-blue" id="btn-next-combo" onclick="goNextCombo()">繼續調查 →</button>
     <button class="btn-purple" onclick="goReport()">📊 查看調查報告</button>
-    <button class="btn-orange" onclick="confirmClearStorage()">🔄 清除所有調查記錄（重新開始）</button>
+    <button class="btn-orange" onclick="confirmClearStorage()">重新調查</button>
   </div>
 </div>
 
@@ -3064,13 +3064,19 @@ function unlockNavVoice(){
 // 會清空佇列立刻插播。兩秒內同一句話不重複播，避免連續觸發洗版。
 let _spQueue=[], _spBusy=false, _spLastText='', _spLastAt=0
 let _spNeedGap=false   // 剛做過 cancel()，下一次 speak() 要留一點間隔（見 _spPump）
+let _spCurrentTag=''   // 目前正在講的這句話屬於哪種類型（見下方 node vs node 的例外）
 function speakNav(text, onDone, opts){
   if(!navVoiceEnabled){ if(onDone) onDone(); return }
   if(!('speechSynthesis' in window)){ if(onDone) onDone(); return }
   const now=Date.now()
   if(text===_spLastText && now-_spLastAt<2000){ if(onDone) onDone(); return }
-  const item={text,onDone,high:!!(opts&&opts.high)}
-  if(item.high){
+  const tag=(opts&&opts.tag)||''
+  const item={text,onDone,high:!!(opts&&opts.high),tag}
+  // 節點語音（調查開始／通過節點／調查結束）彼此不互相打斷——
+  // 節點間距太近（模擬移動、或真實路線節點很近）時，後一個節點的語音才不會
+  // 把前一個還沒講完的節點語音直接砍掉。但節點語音仍然可以打斷導航轉彎之類的一般提示。
+  const isNodeVsNode = tag==='node' && _spCurrentTag==='node'
+  if(item.high && !isNodeVsNode){
     _spQueue=[]
     // 只有「真的有東西在講」才需要 cancel。沒在講卻照樣 cancel，
     // 會白白吃掉下面那 60ms 的緩衝，讓插播比畫面慢半拍。
@@ -3093,6 +3099,7 @@ function _spPump(){
   if(!it) return
   _spBusy=true
   _spLastText=it.text; _spLastAt=Date.now()
+  _spCurrentTag=it.tag||''
   try{
     if(window.speechSynthesis.paused) window.speechSynthesis.resume()
     const fire=()=>{
