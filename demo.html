@@ -5478,7 +5478,7 @@ document.addEventListener('touchmove', e=>{
 <div id="devtest-modal" onclick="if(event.target===this)closeDevTest()">
   <div class="devtest-box">
     <div class="devtest-hdr">
-      <span class="devtest-hdr-title">🔬 裝置相容性檢查</span>
+      <span class="devtest-hdr-title">裝置相容性檢查</span>
       <button class="devtest-close" onclick="closeDevTest()">✕</button>
     </div>
     <div id="devtest-steps"></div>
@@ -5487,7 +5487,7 @@ document.addEventListener('touchmove', e=>{
     </div>
     <div class="devtest-footer" id="devtest-footer" style="display:none">
       <div class="devtest-summary" id="devtest-summary"></div>
-      <button class="devtest-done" id="devtest-done" onclick="closeDevTest()">確認完成，開始簽到</button>
+      <button class="devtest-done" id="devtest-done" onclick="closeDevTest()">開始任務</button>
     </div>
   </div>
 </div>
@@ -6016,7 +6016,7 @@ function updateDevSummary(){
   var doneBtn=document.getElementById('devtest-done')
   if(!f) return
   // 還有步驟沒處理完就不顯示底部按鈕——逐步引導的重點就是一次只做一件事，
-  // 底下若一直擺著「開始簽到」，使用者會直接跳過音效與麥克風測試。
+  // 底下若一直擺著完成按鈕，使用者會直接跳過音效與語音輸入測試。
   if(devIsChecking()||devActionableSteps().length){ f.style.display='none'; return }
 
   // 設備檢測本身就會把定位、聲音、麥克風的授權問完，
@@ -6035,7 +6035,7 @@ function updateDevSummary(){
   if(s) s.style.display='none'
   if(doneBtn){
     doneBtn.className = reqFail>0 ? 'devtest-done fail' : 'devtest-done'
-    doneBtn.textContent = reqFail>0 ? '仍要繼續（資料可能不完整）' : '開始簽到'
+    doneBtn.textContent = reqFail>0 ? '仍要繼續（資料可能不完整）' : '開始任務'
   }
 }
 
