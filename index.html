@@ -352,7 +352,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 body.survey-lock .delay-columns,
 body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .delay-col{flex:1;display:flex;flex-direction:column;gap:7px;min-width:0}
-.dl-col-label{font-size:15px;color:#64748b;font-weight:700;text-align:center;padding:4px 0 5px;border-bottom:1px solid #334155;margin-bottom:2px}
+.dl-col-label{font-size:17px;color:#cbd5e1;font-weight:700;text-align:center;letter-spacing:2px;padding:4px 0 5px;border-bottom:1px solid #334155;margin-bottom:2px}
 .btn-dl{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 6px;min-height:68px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:#94a3b8;cursor:pointer;transition:all .15s;width:100%}
 .btn-dl:active{transform:scale(.96)}
 .btn-dl.active{background:#450a0a;border-color:#ef4444;color:#fca5a5}
@@ -782,11 +782,11 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
       <!-- Delay columns (visible when expanded) -->
       <div class="delay-columns" style="flex:1;overflow-y:auto;min-height:0">
         <div class="delay-col">
-          <div class="dl-col-label">🛣 路段延滯</div>
+          <div class="dl-col-label">路段</div>
           <div id="grid-road"></div>
         </div>
         <div class="delay-col">
-          <div class="dl-col-label">🚦 交叉口延滯</div>
+          <div class="dl-col-label">路口</div>
           <div id="grid-inter"></div>
         </div>
       </div>
@@ -798,9 +798,14 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     <!-- ── STOP panel (stop detection, shown on trigger) ── -->
     <div id="svy-panel-stop" style="display:none;flex-direction:column;flex:1;overflow:hidden;min-height:0">
       <div class="svy-stop-hdr">
-        <span style="font-size:16px;flex-shrink:0">⚠️</span>
+        <span id="svy-stop-warn" style="font-size:16px;flex-shrink:0">⚠️</span>
         <span id="svy-stop-title" style="color:#fed7aa;font-size:13px;font-weight:600;flex:1;min-width:0">偵測到停止 — 選擇延滯類型或忽略</span>
-        <span id="svy-stop-timer" style="color:#fff;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;flex-shrink:0">0:00</span>
+        <!-- 計時中才出現：目前選到的原因圖示與計時綁成一組，深色底把右半邊收成一塊 -->
+        <span id="svy-stop-meter" style="display:none;align-items:center;gap:6px;background:rgba(0,0,0,.28);border-radius:8px;padding:3px 9px;flex-shrink:0">
+          <span id="svy-stop-icon" style="font-size:17px;line-height:1"></span>
+          <span id="svy-stop-timer" style="color:#fff;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums">0:00</span>
+        </span>
+        <span id="svy-stop-timer-plain" style="color:#fff;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;flex-shrink:0">0:00</span>
         <button id="svy-stop-end" onclick="svyManualEndDelay()" style="display:none;flex-shrink:0;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">■ 停止計時</button>
       </div>
       <!-- 語音聆聽中的提示，只有真的開始收音才出現 -->
@@ -812,11 +817,11 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
       <!-- Same delay columns as idle panel -->
       <div class="delay-columns" style="flex:1;overflow-y:auto;min-height:0">
         <div class="delay-col">
-          <div class="dl-col-label">🛣 路段延滯</div>
+          <div class="dl-col-label">路段</div>
           <div id="stop-grid-road"></div>
         </div>
         <div class="delay-col">
-          <div class="dl-col-label">🚦 交叉口延滯</div>
+          <div class="dl-col-label">路口</div>
           <div id="stop-grid-inter"></div>
         </div>
       </div>
@@ -2788,8 +2793,14 @@ function svyShowPanel(name){
 // 判斷改由 200ms 的計時器輪詢最後一筆速度，不必等下一次 GPS 回報。
 const STOP_TH_CRAWL = 5/3.6      // 蠕行門檻
 const STOP_TH_STILL = 1.5/3.6    // 幾乎完全靜止
-const STOP_HOLD_CRAWL = 1200
-const STOP_HOLD_STILL = 500
+// 蠕行區間（1.5~5 km/h）原本只要 1.2 秒就跳窗，慢速轉彎很容易誤觸發：
+// 5 km/h 差不多是快走的速度，轉彎本來就會掉進這個區間，而且 GPS 在低速又
+// 同時航向劇烈變化時速度估計會低估，實際還在跑 8 km/h 卻可能回報 3 km/h。
+// 拉到 2.5 秒：一般路口轉彎兩秒內就完成並加速，紅燈與塞車停等則遠超過這個長度。
+// 注意延滯的起算點用的是「速度第一次掉到門檻以下」的時刻（_stopSince），
+// 不是跳窗當下，所以這裡調長不會讓延滯少算秒數。
+const STOP_HOLD_CRAWL = 2500
+const STOP_HOLD_STILL = 500      // 幾乎停死的維持原本 0.5 秒，紅燈才不會反應遲鈍
 // 重新開動的確認窗：速度要持續超過門檻這麼久才算真的走了（排除前車蠕行）。
 // 延滯結束時間會扣掉同樣的秒數，所以這個值改了，扣秒也自動跟著對。
 const RESUME_CONFIRM_MS = 3000
@@ -2884,9 +2895,15 @@ function startStopTicker(){
   clearInterval(_stopTick)
   const from = (_stopEvent && _stopEvent.startedAt) || Date.now()
   const paint=()=>{
-    const el=document.getElementById('svy-stop-timer'); if(!el) return
+    // 兩個計時元素只會有一個是可見的（未選原因用 plain，計時中用群組裡那個），
+    // 兩邊都寫才不會在切換狀態的瞬間看到停在舊秒數的畫面
+    const a=document.getElementById('svy-stop-timer')
+    const b=document.getElementById('svy-stop-timer-plain')
+    if(!a && !b) return
     const base = (activeDelay && activeDelay.startedAt) ? activeDelay.startedAt.getTime() : from
-    el.textContent=fmtSec(Math.max(0,Math.round((Date.now()-base)/1000)))
+    const txt=fmtSec(Math.max(0,Math.round((Date.now()-base)/1000)))
+    if(a) a.textContent=txt
+    if(b) b.textContent=txt
   }
   paint()
   _stopTick=setInterval(paint,500)
@@ -2898,9 +2915,32 @@ function svyManualEndDelay(){
   const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause)
   if(p) toggleDelay(p,activeDelay.group)   // 走正常結束流程：記錄秒數並收面板
 }
+// 停止面板的紅色標題列有兩種狀態：
+//   idle   還沒選原因 — 維持原本的「⚠️ 偵測到停止 — 選擇延滯類型或忽略」
+//   timing 已選原因計時中 — 左側換成放大的操作提示，右側顯示「原因圖示＋計時」深色群組
+// 手機寬度有限，計時中會把左邊的 ⚠️ 收起來，箭頭也只留一個，才放得下完整的「■ 停止計時」。
+function setStopHdrMode(mode, d){
+  const warn =document.getElementById('svy-stop-warn')
+  const title=document.getElementById('svy-stop-title')
+  const meter=document.getElementById('svy-stop-meter')
+  const icon =document.getElementById('svy-stop-icon')
+  const plain=document.getElementById('svy-stop-timer-plain')
+  const timing = mode==='timing'
+  if(warn)  warn.style.display  = timing ? 'none' : 'inline'
+  if(meter) meter.style.display = timing ? 'flex' : 'none'
+  if(plain) plain.style.display = timing ? 'none' : 'inline'
+  if(icon && d) icon.textContent = d.icon||''
+  if(title){
+    title.textContent = timing ? '⬇ 點圖可改選' : '偵測到停止 — 選擇延滯類型或忽略'
+    title.style.fontSize = timing ? '17px' : '13px'
+    title.style.whiteSpace = timing ? 'nowrap' : 'normal'
+  }
+}
+
 function markStopPanelPicked(d){
-  const hdr=document.getElementById('svy-stop-title')
-  if(hdr) hdr.textContent=`${d.icon} ${d.label} 計時中 — 選錯可直接改選`
+  // 已經選了原因＝計時中。左側改成操作提示並放大，右側把「原因圖示＋計時」
+  // 綁成一組（深色底），原因與已經計了多久一眼看得出關係。
+  setStopHdrMode('timing', d)
   const btn=document.getElementById('svy-stop-end')
   if(btn) btn.style.display='block'
   ;[...document.querySelectorAll('#stop-grid-road .btn-dl, #stop-grid-inter .btn-dl')].forEach(b=>{
@@ -2915,8 +2955,7 @@ function svyDismissStop(byResume){
   _stopActive=false
   _stopPanelOpen=false
   stopStopTicker()
-  { const hdr=document.getElementById('svy-stop-title')
-    if(hdr) hdr.textContent='偵測到停止 — 選擇延滯類型或忽略'
+  { setStopHdrMode('idle')
     const eb=document.getElementById('svy-stop-end'); if(eb) eb.style.display='none'
     ;[...document.querySelectorAll('.btn-dl.picked')].forEach(b=>b.classList.remove('picked')) }
   _stopEvent=null
@@ -3048,7 +3087,7 @@ const VOICE_CAUSES = [
   {cause:'taxi_stop',  group:'road', words:['計程','小黃'],                       anchors:[]},
   {cause:'parking',    group:'road', words:['路邊','違停','臨停'],                anchors:[]},
   {cause:'ped_int',    group:'int',  words:['路口行人','交叉口行人'],              anchors:[]},
-  {cause:'ped_cross',  group:'road', words:['行人','穿越','斑馬','過馬路','路人'], anchors:[]},
+  {cause:'ped_cross',  group:'road', words:['行人','穿越','斑馬','過馬路','路人','人行'], anchors:[]},
   {cause:'left_same',  group:'int',  words:['左轉同','同向','左轉銅'],             anchors:['同','銅','左轉']},   // 只說「左轉」預設同向
   {cause:'left_opp',   group:'int',  words:['左轉對','對向'],                     anchors:['對']},
   {cause:'right_turn', group:'int',  words:['右轉'],                              anchors:['右']},
@@ -3056,10 +3095,19 @@ const VOICE_CAUSES = [
   {cause:'int_other',  group:'int',  words:['路口其他'],                          anchors:[]},
   {cause:'road_other', group:'road', words:['其他','其它'],                       anchors:['其']},
 ]
+// iOS Safari 的中文辨識會在詞之間插入空格，回傳的是「行 人」「紅 燈」而不是「行人」「紅燈」，
+// 有時還會帶標點。用 includes() 直接比對多字詞就全部對不上——這就是「說行人卻沒反應」的原因。
+// 比對前一律先把空白與標點清掉。
+function normVoice(s){
+  return String(s||'')
+    .replace(/[\s　​]+/g,'')
+    .replace(/[，。、！？；：,.!?;:~～·・「」『』（）()]/g,'')
+}
 function matchVoiceCause(text){
-  if(!text) return null
-  for(const c of VOICE_CAUSES) for(const w of c.words) if(text.includes(w)) return c
-  for(const c of VOICE_CAUSES) for(const a of c.anchors) if(text.includes(a)) return c
+  const t=normVoice(text)
+  if(!t) return null
+  for(const c of VOICE_CAUSES) for(const w of c.words) if(t.includes(w)) return c
+  for(const c of VOICE_CAUSES) for(const a of c.anchors) if(t.includes(a)) return c
   return null
 }
 function startCauseListening(){
@@ -3806,8 +3854,7 @@ function toggleDelay(d,group,opts){
     if(_stopPanelOpen && !opts?.keepPanel){
       _stopPanelOpen=false
       _voicePick=null
-      const hdr=document.getElementById('svy-stop-title')
-      if(hdr) hdr.textContent='偵測到停止 — 選擇延滯類型或忽略'
+      setStopHdrMode('idle')
       const eb=document.getElementById('svy-stop-end'); if(eb) eb.style.display='none'
       stopStopTicker()
       ;[...document.querySelectorAll('.btn-dl.picked')].forEach(b=>b.classList.remove('picked'))
@@ -5610,7 +5657,10 @@ async function devMicTest(){
 const DEV_MIC_ALT = [['紅燈','紅'],['行人','人行'],['阻塞','塞車','塞']]
 function devMicHas(text, i){
   if(!text) return false
-  return DEV_MIC_ALT[i].some(function(w){ return text.includes(w) })
+  // 同樣要先正規化：辨識結果的「紅 燈」帶著空格，直接 includes('紅燈') 會漏掉，
+  // 裝置檢測就會一直過不了，讓人誤以為麥克風壞掉
+  const t=normVoice(text)
+  return DEV_MIC_ALT[i].some(function(w){ return t.includes(w) })
 }
 function devMicScore(text){
   if(!text) return 0
