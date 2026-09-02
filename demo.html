@@ -6,7 +6,7 @@
 <!-- Clickjacking 防護：靜態站無法設 HTTP header，以 frame-busting JS + CSP meta 替代 -->
 <!-- 伺服器端請另行配置：X-Frame-Options: SAMEORIGIN                                     -->
 <meta http-equiv="Content-Security-Policy" content="frame-ancestors 'self'"/>
-<title>交通調查 DEMO 教學模擬</title>
+<title>---🚗---</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/nosleep.js/dist/NoSleep.min.js"></script>
@@ -3500,7 +3500,8 @@ async function playApproachBeep(){
   }catch(e){}
 }
 
-// 中間節點的提示音（兩聲）。第一個與最後一個節點改用語音，不走這裡。
+// 中間節點提示音（兩聲）。⚠️ 目前沒有呼叫者——所有節點已改用 speakNav 語音播報，
+// 因為手機靜音鍵會讓這裡的 Web Audio 完全沒聲音，語音合成則不受影響。保留函式備用。
 async function playNodeBeep(isFinal){
   try{
     // Reuse the unlocked AudioContext created on user gesture in startSurvey()
@@ -3555,11 +3556,11 @@ function recordNode(auto){
   nodeApproaching=false   // reset so next node fires its own approach beep
   _navAnnouncedTier=0     // 換下一個節點，導航語音提示可以再提醒一次
   const isFinal=currentNodeIdx>=names.length
-  // 第一個與最後一個節點不響提示音，直接用語音取代；
-  // 中間的節點維持原本的提示音。
+  // 全部節點都用語音播報（不用嗶聲）：手機靜音鍵會讓 Web Audio 完全沒聲音，
+  // 但不會影響語音合成，調查員習慣靜音手機時中間節點才不會被漏聽。
   if(justRecorded===1)      speakNav('調查開始',null,{high:true})
   else if(isFinal)          speakNav('調查結束',null,{high:true})
-  else                      playNodeBeep(false)
+  else                      speakNav('通過節點',null,{high:true})
 
   // ── Last node: stop the clock ──
   if(isFinal){
