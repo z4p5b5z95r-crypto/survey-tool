@@ -147,6 +147,25 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 .devtest-done:active{filter:brightness(.94)}
 .devtest-done.fail{background:#64748b}
 .devtest-spinner{text-align:center;padding:24px;color:#64748b;font-size:13px}
+/* 逐步引導：頂端進度條 + 一次一題的大版面 */
+#devtest-steps{display:none;align-items:center;gap:5px;padding:10px 16px 0}
+#devtest-steps.on{display:flex}
+.dvs-seg{height:3px;flex:1;border-radius:9px;background:#e2e8f0;transition:background .25s}
+.dvs-seg.done{background:#16a34a}
+.dvs-seg.cur{background:#2563eb}
+.dvs-num{font-size:10.5px;color:#64748b;margin-left:3px;flex-shrink:0}
+.dvq{text-align:center;padding:18px 6px 4px}
+.dvq-ico{font-size:34px;line-height:1}
+.dvq-title{font-size:16px;font-weight:800;color:#0f172a;margin-top:9px}
+.dvq-sub{font-size:12px;color:#64748b;margin-top:5px;line-height:1.55}
+.dvq-acts{display:flex;gap:8px;margin-top:14px}
+.dvq-btn{flex:1;padding:11px 0;border:none;border-radius:10px;font-size:13.5px;font-weight:800;cursor:pointer;font-family:inherit}
+.dvq-btn.ok{background:#dcfce7;color:#15803d}
+.dvq-btn.no{background:#fee2e2;color:#b91c1c}
+.dvq-btn.go{background:#dbeafe;color:#1d4ed8}
+.dvq-link{background:none;border:none;color:#94a3b8;font-size:12px;margin-top:10px;cursor:pointer;font-family:inherit;text-decoration:underline}
+.dvq-fixbox{background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 12px;
+  font-size:12px;color:#991b1b;text-align:left;line-height:1.6;margin-top:12px;white-space:pre-line}
 @keyframes spin{to{transform:rotate(360deg)}}
 #manual-modal{display:none;position:fixed;inset:0;z-index:9999;flex-direction:column;background:#0f172a}
 #manual-modal.open{display:flex}
@@ -5462,6 +5481,7 @@ document.addEventListener('touchmove', e=>{
       <span class="devtest-hdr-title">🔬 裝置相容性檢查</span>
       <button class="devtest-close" onclick="closeDevTest()">✕</button>
     </div>
+    <div id="devtest-steps"></div>
     <div class="devtest-body" id="devtest-body">
       <div class="devtest-spinner">檢查中…</div>
     </div>
@@ -5500,6 +5520,8 @@ function closeHelpMenu(){
 // ── Device test ──
 function openDevTest(){
   var modal=document.getElementById('devtest-modal')
+  _devStepTotal=0
+  var _bar=document.getElementById('devtest-steps'); if(_bar) _bar.className=''
   document.getElementById('devtest-body').innerHTML='<div class="devtest-spinner">檢查中…</div>'
   document.getElementById('devtest-footer').style.display='none'
   modal.classList.add('open')
@@ -5671,35 +5693,132 @@ async function runDeviceChecks(){
   updateDevSummary()
 }
 
+// ── 逐步引導式檢查介面 ──────────────────────────────────────────
+// 自動就能判斷的項目（HTTPS／網路／GPS／喚醒鎖／方向感應）通過時不需要任何說明文字，
+// 它們只有失敗才需要告訴使用者怎麼辦。所以畫面上只呈現：
+//   ① 還在檢查 → 轉圈
+//   ② 需要使用者動手的（確認聽到嗶聲、唸一句話測麥克風）→ 一次問一題
+//   ③ 失敗的項目 → 一次一項，附排除方式
+//   ④ 都處理完 → 完成頁
+// _devResults 仍是唯一的狀態來源，原本的檢查與處理函式完全沒有改動。
+function devPendingSteps(){
+  return _devResults.filter(function(r){
+    if(r.id==='audio') return r.status==='pending'||r.status==='fail'
+    if(r.id==='mic')   return r.status==='pending'||r.status==='listening'
+    return r.status==='fail'
+  })
+}
+function devIsChecking(){
+  return _devResults.some(function(r){ return r.status==='checking' })
+}
+// 「還等著使用者動手」的步驟。硬體本身壞掉（例如沒有定位權限）不算——
+// 那種在這個畫面裡按什麼都解決不了，若因此把底部按鈕藏起來，
+// 使用者就會被卡在一個沒有出口的畫面上。
+function devActionableSteps(){
+  return devPendingSteps().filter(function(r){
+    return r.id==='audio' || r.id==='mic'
+  })
+}
 function renderDevResults(){
   var body=document.getElementById('devtest-body')
+  var bar=document.getElementById('devtest-steps')
   if(!body) return
-  var iconMap={pass:'✅',fail:'❌',warn:'⚠️',checking:'🔄',pending:'🔊',listening:'🎤'}
-  if(!_devResults.length){body.innerHTML='<div class="devtest-spinner">檢查中…</div>';return}
-  var html=_devResults.map(function(r){
-    var isAudioPending=(r.id==='audio'&&r.status==='pending')
-    var isAudioFail=(r.id==='audio'&&r.status==='fail')
-    var isChecking=(r.status==='checking')
-    return '<div class="devtest-row" id="devrow-'+r.id+'">'
-      +'<span class="devtest-icon">'+(isChecking?'<span style="display:inline-block;animation:spin 1s linear infinite">🔄</span>':iconMap[r.status]||'🔄')+'</span>'
-      +'<div class="devtest-info">'
-      +'<div class="devtest-name">'+r.name+(r.required?' <span style="font-size:10px;color:#ef4444;font-weight:700">必要</span>':'')+'</div>'
-      +'<div class="devtest-desc">'+r.desc.replace(/\n/g,'<br>')+'</div>'
-      +(isAudioPending?
-        '<div style="display:flex;gap:8px;margin-top:8px">'
-        +'<button onclick="devAudioConfirm(true)" style="flex:1;padding:7px;border-radius:8px;border:none;background:#dcfce7;color:#15803d;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">✓ 聽到了</button>'
-        +'<button onclick="devAudioConfirm(false)" style="flex:1;padding:7px;border-radius:8px;border:none;background:#fee2e2;color:#b91c1c;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">✗ 沒聽到</button>'
-        +'<button onclick="devAudioReplay()" style="padding:7px 10px;border-radius:8px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:12px;cursor:pointer;font-family:inherit">🔁 重播</button>'
-        +'</div>'
-        : isAudioFail?
-        '<div style="display:flex;gap:8px;margin-top:8px">'
-        +'<button onclick="devAudioReplayAndReset()" style="padding:7px 14px;border-radius:8px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:12px;cursor:pointer;font-family:inherit">🔁 重播並重新確認</button>'
-        +'</div>'
-        : (r.id==='mic' ? devMicRowHtml(r) : ''))
-      +'</div></div>'
-  }).join('')
-  body.innerHTML=html
+
+  if(!_devResults.length||devIsChecking()){
+    if(bar) bar.className=''
+    body.innerHTML='<div class="devtest-spinner"><div style="font-size:26px">🔎</div>'
+      +'<div style="margin-top:8px">檢查裝置中…</div></div>'
+    return
+  }
+
+  var steps=devPendingSteps()
+  // 進度條：總步數＝這一輪出現過的最大步數，避免中途多一項時倒退
+  _devStepTotal=Math.max(_devStepTotal||0, steps.length)
+  var doneN=_devStepTotal-steps.length
+  if(bar){
+    if(_devStepTotal>0 && steps.length>0){
+      bar.className='on'
+      var segs=''
+      for(var i=0;i<_devStepTotal;i++)
+        segs+='<span class="dvs-seg '+(i<doneN?'done':(i===doneN?'cur':''))+'"></span>'
+      bar.innerHTML=segs+'<span class="dvs-num">'+(doneN+1)+'/'+_devStepTotal+'</span>'
+    } else bar.className=''
+  }
+
+  if(!steps.length){ body.innerHTML=devDoneHtml(); return }
+  body.innerHTML=devStepHtml(steps[0])
 }
+function devDoneHtml(){
+  var reqFail=_devResults.filter(function(r){return r.status==='fail'&&r.required}).length
+  var limited=_devResults.filter(function(r){return r.status==='warn'||(r.status==='fail'&&!r.required)}).length
+  var okN=_devResults.filter(function(r){return r.status==='pass'}).length
+  if(reqFail>0){
+    return '<div class="dvq"><div class="dvq-ico">⛔</div>'
+      +'<div class="dvq-title">必要項目未通過</div>'
+      +'<div class="dvq-sub">沒有定位就無法記錄軌跡與節點時間。<br>請依上一步的提示修正後重新檢查。</div></div>'
+  }
+  return '<div class="dvq"><div class="dvq-ico">✅</div>'
+    +'<div class="dvq-title">裝置檢查完成</div>'
+    +'<div class="dvq-sub">'+okN+' 項正常'
+    +(limited>0?('，'+limited+' 項輔助功能受限（不影響資料完整性）'):'')
+    +'</div></div>'
+}
+function devStepHtml(r){
+  // 需要使用者確認聽到嗶聲
+  if(r.id==='audio'&&r.status==='pending'){
+    return '<div class="dvq"><div class="dvq-ico">🔊</div>'
+      +'<div class="dvq-title">有聽到提示音嗎？</div>'
+      +'<div class="dvq-sub">沒聽到請先確認手機側邊的靜音鍵已關閉</div>'
+      +'<div class="dvq-acts">'
+      +'<button class="dvq-btn ok" onclick="devAudioConfirm(true)">聽到了</button>'
+      +'<button class="dvq-btn no" onclick="devAudioConfirm(false)">沒聽到</button>'
+      +'</div>'
+      +'<button class="dvq-link" onclick="devAudioReplay()">再播一次</button></div>'
+  }
+  if(r.id==='audio'&&r.status==='fail'){
+    return '<div class="dvq"><div class="dvq-ico">🔇</div>'
+      +'<div class="dvq-title">沒有聲音</div>'
+      +'<div class="dvq-fixbox">'+devPlainDesc(r)+'</div>'
+      +'<div class="dvq-acts">'
+      +'<button class="dvq-btn go" onclick="devAudioReplayAndReset()">修好了，再試一次</button>'
+      +'</div>'
+      +'<button class="dvq-link" onclick="devSkipItem(\'audio\')">略過，改用畫面提示</button></div>'
+  }
+  // 麥克風：沿用原本的收音介面（音量條＋三個關鍵字）
+  if(r.id==='mic'){
+    if(r.status==='listening'){
+      return '<div class="dvq"><div class="dvq-ico">🎤</div>'
+        +'<div class="dvq-title">請依序唸出這三個詞</div>'
+        +'<div style="text-align:left;margin-top:12px">'+devMicRowHtml(r)+'</div></div>'
+    }
+    return '<div class="dvq"><div class="dvq-ico">🎤</div>'
+      +'<div class="dvq-title">測試麥克風</div>'
+      +'<div class="dvq-sub">停車時可以直接說出延滯原因，<br>不必低頭點螢幕</div>'
+      +'<div class="dvq-acts">'
+      +'<button class="dvq-btn go" onclick="devMicStart()">開始測試</button>'
+      +'</div>'
+      +'<button class="dvq-link" onclick="devMicSkip()">略過，用按鈕就好</button></div>'
+  }
+  // 其餘失敗項目：一次一項，附排除方式
+  return '<div class="dvq"><div class="dvq-ico">'+(r.required?'⛔':'⚠️')+'</div>'
+    +'<div class="dvq-title">'+r.name+(r.required?'（必要）':'')+'</div>'
+    +'<div class="dvq-fixbox">'+devPlainDesc(r)+'</div>'
+    +(r.required
+      ? '<div class="dvq-acts"><button class="dvq-btn go" onclick="openDevTest()">重新檢查</button></div>'
+      : '<div class="dvq-acts"><button class="dvq-btn go" onclick="devSkipItem(\''+r.id+'\')">知道了，繼續</button></div>')
+    +'</div>'
+}
+function devPlainDesc(r){
+  return String(r.desc||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+}
+// 把非必要的失敗項降級成「已知悉」，讓流程能往下走
+function devSkipItem(id){
+  var r=_devResults.find(function(x){return x.id===id}); if(!r) return
+  if(r.required) return
+  r.status='warn'
+  renderDevResults(); updateDevSummary()
+}
+var _devStepTotal=0
 
 // ── 麥克風 / 語音辨識測試 ──
 // 讓使用者唸一句含有實際關鍵字的話，同時驗三件事：
@@ -5892,8 +6011,14 @@ function playTestBeep(ctx){
 }
 
 function updateDevSummary(){
-  var pending=_devResults.some(function(r){return r.status==='pending'||r.status==='checking'||r.status==='listening'})
-  if(pending){document.getElementById('devtest-footer').style.display='none';return}
+  var f=document.getElementById('devtest-footer')
+  var s=document.getElementById('devtest-summary')
+  var doneBtn=document.getElementById('devtest-done')
+  if(!f) return
+  // 還有步驟沒處理完就不顯示底部按鈕——逐步引導的重點就是一次只做一件事，
+  // 底下若一直擺著「開始簽到」，使用者會直接跳過音效與麥克風測試。
+  if(devIsChecking()||devActionableSteps().length){ f.style.display='none'; return }
+
   // 設備檢測本身就會把定位、聲音、麥克風的授權問完，
   // 所以跑完之後簽到頁不用再跳一次授權視窗
   try{
@@ -5901,27 +6026,17 @@ function updateDevSummary(){
     var gpsOk=_devResults.some(function(r){return r.id==='gps'&&r.status==='pass'})
     if(gpsOk) localStorage.setItem(PERM_GATE_KEY, todayStr())
   }catch(e){}
+
   // 只有「必要」項目失敗才代表不能出發（實際上就是 GPS 與它的前提 HTTPS）；
   // 聲音、麥克風、喚醒鎖、方向感應壞掉只是變得不好用，調查資料仍然完整。
-  var failCount=_devResults.filter(function(r){return r.status==='fail'&&r.required}).length
-  var optFail=_devResults.filter(function(r){return r.status==='fail'&&!r.required}).length
-  var warnCount=_devResults.filter(function(r){return r.status==='warn'}).length
-  var s=document.getElementById('devtest-summary')
-  var f=document.getElementById('devtest-footer')
+  var reqFail=_devResults.filter(function(r){return r.status==='fail'&&r.required}).length
   f.style.display='block'
-  var doneBtn=document.getElementById('devtest-done')
-  if(failCount>0){
-    s.className='devtest-summary fail'
-    s.textContent='❌ 必要項目未通過，目前無法進行監測，請依上方提示修正'
-    if(doneBtn){ doneBtn.className='devtest-done fail'; doneBtn.textContent='仍要繼續（資料可能不完整）' }
-  } else if(optFail+warnCount>0){
-    s.className='devtest-summary warn'
-    s.textContent='⚠️ 必要項目全部通過，可以出發；另有 '+(optFail+warnCount)+' 項輔助功能受限'
-  } else {
-    s.className='devtest-summary pass'
-    s.textContent='✅ 所有項目通過，裝置完全符合監測需求，可出發！'
+  // 狀態已經寫在完成頁的大字上了，這裡不再重複一次
+  if(s) s.style.display='none'
+  if(doneBtn){
+    doneBtn.className = reqFail>0 ? 'devtest-done fail' : 'devtest-done'
+    doneBtn.textContent = reqFail>0 ? '仍要繼續（資料可能不完整）' : '開始簽到'
   }
-  if(doneBtn && failCount===0){ doneBtn.className='devtest-done'; doneBtn.textContent='確認完成，開始簽到' }
 }
 
 function openManual(){
