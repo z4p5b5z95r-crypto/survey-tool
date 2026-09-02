@@ -811,7 +811,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
       <!-- 語音聆聽中的提示，只有真的開始收音才出現 -->
       <div id="svy-voice-hint" style="display:none;align-items:center;gap:8px;padding:7px 14px;background:#1e3a5f;color:#bfdbfe;font-size:12.5px;font-weight:600">
         <span class="vh-dot"></span>
-        <span style="flex:1">聆聽中，可直接說出原因（例如「行人」「紅燈」）</span>
+        <span id="svy-voice-hint-txt" style="flex:1">聆聽中，請說出停止原因</span>
         <button onclick="toggleVoicePick()" style="background:rgba(255,255,255,.14);border:none;border-radius:7px;color:#bfdbfe;font-size:11.5px;font-weight:700;padding:4px 9px;cursor:pointer;font-family:inherit;flex-shrink:0">關閉語音</button>
       </div>
       <!-- Same delay columns as idle panel -->
@@ -2864,6 +2864,7 @@ function triggerStopDetection(){
 // Called when user picks a delay button while stop panel is shown
 function svyStopPickDelay(d, group, byVoice){
   clearTimeout(_stopCdTimer)
+  endPedClarify()      // 駕駛直接點了按鈕，追問就作廢
   stopCauseListening()
   _stopActive=false
   // 已經是同一個原因就什麼都不做，免得變成「再按一次＝結束計時」
@@ -2951,6 +2952,7 @@ function markStopPanelPicked(d){
 // 駕駛按「忽略」，或車子重新開動而始終沒選原因時呼叫——不記錄，收起面板
 function svyDismissStop(byResume){
   clearTimeout(_stopCdTimer); _stopCdTimer=null
+  endPedClarify()
   stopCauseListening()
   _stopActive=false
   _stopPanelOpen=false
@@ -3110,6 +3112,62 @@ function matchVoiceCause(text){
   for(const c of VOICE_CAUSES) for(const a of c.anchors) if(t.includes(a)) return c
   return null
 }
+// ── 「行人」的釐清追問 ──────────────────────────────────────────
+// 路口的「行人」和路段的「行人穿越」是兩個不同的統計欄位，猜錯會直接記到錯的類別。
+// 只說「行人」時無從判斷，所以先語音追問「路口還是路段」；
+// 逾時沒回答就採用預設值「行人穿越」（路段），並用語音複誦讓駕駛知道記了什麼。
+const PED_CLARIFY_MS = 6000
+let _pedClarify=false, _pedClarifyTimer=null
+function isAmbiguousPed(text){
+  const t=normVoice(text)
+  if(!t.includes('行人') && !t.includes('人行')) return false
+  // 已經講清楚位置或動作的就不模糊了
+  if(/路口|交叉口|穿越|過馬路|斑馬|路段/.test(t)) return false
+  return true
+}
+function matchPedAnswer(text){
+  const t=normVoice(text)
+  // 追問階段預期的回答很短，所以連單字都接受
+  if(/路口|交叉口|口/.test(t)) return 'ped_int'
+  if(/路段|穿越|過馬路|斑馬|段/.test(t)) return 'ped_cross'
+  return null
+}
+function setVoiceHint(txt){
+  const el=document.getElementById('svy-voice-hint-txt')
+  if(el) el.textContent=txt
+}
+function startPedClarify(){
+  if(_pedClarify) return
+  _pedClarify=true
+  setVoiceHint('行人 — 請說「路口」或「路段」')
+  // 先停掉目前這輪辨識：它的結果裡已經有「行人」，不清掉會一直重複命中
+  stopCauseListening()
+  const hint=document.getElementById('svy-voice-hint')
+  if(hint) hint.style.display='flex'   // stopCauseListening 會把提示藏起來，追問期間要留著
+  speakNav('路口還是路段', ()=>{
+    if(!_stopActive || !_pedClarify) return
+    startCauseListening()
+    // 逾時從「問完」開始算，不然朗讀時間會吃掉駕駛的回答時間
+    clearTimeout(_pedClarifyTimer)
+    _pedClarifyTimer=setTimeout(()=>{
+      if(!_stopActive || !_pedClarify) return
+      applyPedAnswer('ped_cross', true)
+    }, PED_CLARIFY_MS)
+  }, {high:true})
+}
+function endPedClarify(){
+  _pedClarify=false
+  clearTimeout(_pedClarifyTimer); _pedClarifyTimer=null
+  setVoiceHint('聆聽中，請說出停止原因')
+}
+function applyPedAnswer(cause, byTimeout){
+  endPedClarify()
+  const c=VOICE_CAUSES.find(x=>x.cause===cause)
+  if(!c) return
+  applyVoiceCause(c)
+  if(byTimeout) showToast('⏱ 未回答，已記為行人穿越（路段）', true)
+}
+
 function startCauseListening(){
   if(!VOICE_SR || !voicePickEnabled || _vrecOn || _vrecDead) return
   try{
@@ -3127,8 +3185,17 @@ function startCauseListening(){
         for(let a=0;a<r.length;a++) all+=r[a].transcript   // 三個候選都拿來比對，同音字更容易命中
         if(r.isFinal) heard+=r[0].transcript
       }
+      // 正在追問「路口還是路段」時，只聽這個問題的答案
+      if(_pedClarify){
+        const ans=matchPedAnswer(all)
+        if(ans) applyPedAnswer(ans)
+        return
+      }
       const hit=matchVoiceCause(all)
-      if(hit) applyVoiceCause(hit)
+      if(!hit) return
+      // 只說「行人」無法判斷是路口的行人還是路段的行人穿越——先追問再決定
+      if(isAmbiguousPed(all)){ startPedClarify(); return }
+      applyVoiceCause(hit)
     }
     // 沒網路、沒授權都靜默處理，按鈕照樣能用；但被拒絕就別再重試
     _vrec.onerror=e=>{
@@ -3160,7 +3227,11 @@ function stopCauseListening(){
   const hint=document.getElementById('svy-voice-hint')
   if(hint) hint.style.display='none'
   if(!_vrec) return
-  try{ _vrec.onresult=null; _vrec.abort() }catch(e){}
+  // onend 也要一併解除。onend 裡有「沉默自動結束就接回去」的重啟邏輯，
+  // 但那是給引擎自己停下來的情況用的；這裡是我們主動停，若不解除，
+  // abort() 觸發的 onend 會在 300ms 後自動重新收音——追問「路口還是路段」時
+  // 就會把自己唸出來的提示語收進去，直接誤判成使用者回答了「路口」。
+  try{ _vrec.onresult=null; _vrec.onend=null; _vrec.abort() }catch(e){}
   _vrec=null; _vrecOn=false
 }
 function applyVoiceCause(c){
