@@ -1526,6 +1526,33 @@ function getLocalHistory(){
 // Returns cached cloud history, or local if cloud not loaded
 function getHistory(){ return _histCache !== null ? _histCache : getLocalHistory() }
 
+// 主要的歷史查詢固定回「最近 30 筆」，而現在每上傳一趟就是一筆獨立紀錄，
+// 30 筆大概只夠涵蓋兩三天。補調查較舊的日期時，那天的紀錄早就掉出這個視窗：
+// 組合按鈕不會亮，孤兒對帳也會把已經上傳過的誤判成沒上傳而重複補送。
+// 這支負責補齊：發現目前這個調查日期不在快取裡，就單獨把那一天抓回來合併進去。
+// 後端帶 date 時不設筆數上限，只回那一天，所以比原本更省。
+let _histDateFetched=new Set()
+async function ensureHistoryForDate(day){
+  const d=(day||'').slice(0,10)
+  if(!d || !cloudRouteId || !cloudScriptUrl || !cloudApiKey) return false
+  if(_histDateFetched.has(d)) return false
+  const cache=_histCache||[]
+  if(cache.some(h=>(h.date||'').slice(0,10)===d)){ _histDateFetched.add(d); return false }
+  _histDateFetched.add(d)
+  try{
+    const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey,date:d,t:Date.now()})
+    const res=await fetch(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(20000)})
+    const json=await res.json()
+    if(!json.ok||!Array.isArray(json.data)) return false
+    // 合併而不是取代——記錄視窗與日期下拉還要靠原本那批涵蓋其他日期
+    const seen=new Set(cache.map(h=>(h.date||'').slice(0,10)+'|'+(h.round||1)+'|'+(h.submittedAt||'')))
+    const add=json.data.filter(h=>!seen.has((h.date||'').slice(0,10)+'|'+(h.round||1)+'|'+(h.submittedAt||'')))
+    if(!add.length) return false
+    _histCache=cache.concat(add)
+    return true
+  }catch(e){ return false }
+}
+
 // Group raw history entries by date+回合 — one row per day per round (rounds kept separate,
 // so a 2nd/3rd round's trips on the same day no longer overwrite/hide the 1st round's data)
 function groupHistoryByDate(hist){
@@ -1550,7 +1577,18 @@ async function loadCloudHistory(){
     const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey})
     const res=await fetch(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(10000)})
     const json=await res.json()
-    if(json.ok){ _histCache=json.data; renderHistModal(); syncChipsFromCloudHistory(); renderDateSelectOptions() }
+    if(json.ok){
+      _histCache=json.data; renderHistModal(); renderDateSelectOptions()
+      // 目前這個調查日期若不在這 30 筆裡（補調查舊日期時很常見），先單獨補抓那一天，
+      // 否則組合按鈕不會亮、對帳還會把早就上傳過的誤判成孤兒而重複送一次
+      const _day=(config.date||todayStr()).slice(0,10)
+      ensureHistoryForDate(_day).then(added=>{
+        if(added) renderHistModal()
+        syncChipsFromCloudHistory()
+        // 對帳一定要在雲端歷史齊備「之後」做，才知道哪些是真的沒上傳
+        try{ reenqueueStrandedTrips() }catch(e){}
+      })
+    }
     else{ console.error('[history] GAS error:', json.error) }
   }catch(e){ console.error('[history] fetch error:', e.message) }
 }
@@ -2356,6 +2394,10 @@ function startFromQR(){
     }
   }
   syncChipsFromCloudHistory()   // 把選定調查日期的雲端紀錄還原進 allTrips（若雲端資料已載入）
+  // 換到別的調查日期時，那天可能不在已載入的最近 30 筆裡，補抓後再同步一次
+  ensureHistoryForDate((config.date||todayStr()).slice(0,10)).then(added=>{
+    if(added){ syncChipsFromCloudHistory(); try{ reenqueueStrandedTrips() }catch(e){} }
+  })
   autoSelectPeak()   // auto-detect by current time on first entry
   if(restored>0) showToast(`📂 已恢復 ${restored} 筆旅次記錄`)
 }
@@ -2507,13 +2549,16 @@ function surveyLocate(){
 let wakeLockSentinel = null
 
 async function acquireWakeLock() {
-  if (!('wakeLock' in navigator)) return  // not supported
+  if (!('wakeLock' in navigator)) return false  // not supported
   try {
     wakeLockSentinel = await navigator.wakeLock.request('screen')
     // Re-acquire after visibility change (e.g. tab switch back)
     document.addEventListener('visibilitychange', reacquireWakeLock)
+    return true
   } catch(e) {
-    // permission denied or not available — silently ignore
+    // 拿不到就退回 NoSleep 的影片迴圈（此時已無使用者手勢，未必成功，但聊勝於無）
+    try { enableNoSleep() } catch(_) {}
+    return false
   }
 }
 
@@ -3511,7 +3556,12 @@ function startSurvey(){
   unlockNavVoice()       // 同理解鎖語音合成，不然導航語音在 GPS callback 裡常常會被 iOS 靜音
   startAudioKeepAlive()  // silent loop keeps iOS from suspending the context
   acquireWakeLock()
-  enableNoSleep()        // video-loop trick to prevent iOS screen auto-sleep
+  // NoSleep 的原理是背景播一段無限循環的影片。iOS 16.4 以後 Safari 已支援
+  // Screen Wake Lock API，兩者同時開等於在一個已經跑著地圖、持續 GPS、Web Audio
+  // 與語音的頁面上，再多掛一個永不停止的影片解碼——記憶體吃緊時很容易被系統收掉。
+  // 所以只在瀏覽器不支援 wakeLock 時才用它；wakeLock 要到卻失敗的情況，
+  // 由 acquireWakeLock() 的 catch 補上。
+  if(!('wakeLock' in navigator)) enableNoSleep()
 
   $('status-combo').textContent=`● ${PEAK_LABEL[selPeakType]} ${DIR_LABEL[selDirection]}`
   svyShowPanel('idle')   // ensure idle panel visible
@@ -4007,6 +4057,45 @@ function buildTripEntry(t){
 // 組合按鈕的綠勾原本只看「本機有沒有這筆資料」，跟有沒有進雲端無關。
 // 上傳失敗或途中閃退時，畫面照樣是綠勾、雲端卻是空的，調查員不會察覺。
 // 現在改成：_uploaded 為真才算完成（綠勾），否則是已記錄待上傳（橘色時鐘）。
+// ── 搶救「孤兒趟次」 ────────────────────────────────────────────
+// enqueueOffline() 只在 submitToCloud() 的 catch 裡執行。萬一 App 在
+// 「趟次已寫進 localStorage」之後、「上傳成功或失敗」之前就被系統回收或閃退，
+// 那筆資料既沒上傳、也沒進離線佇列，會永遠卡在裝置上沒人發現。
+// 這支在載入完雲端歷史後對帳一次：本機有、雲端沒有、佇列裡也沒有的，補排進佇列。
+function reenqueueStrandedTrips(){
+  if(!cloudRouteId||!cloudScriptUrl||!cloudApiKey) return 0
+  const day=(config.date||todayStr()).slice(0,10)
+  if(!day) return 0
+  // 佇列裡已經有的組合先記下來，避免重複排入
+  const queued=new Set()
+  offlineQueue().forEach(it=>{
+    const b=it.body||{}
+    if((b.date||'').slice(0,10)!==day) return
+    Object.keys(b.trips||{}).forEach(k=>queued.add((b.round||1)+'|'+k))
+  })
+  let added=0
+  ROUND_KEYS.forEach(n=>{
+    const bucket=allTripsByRound[n]||{}
+    Object.keys(bucket).forEach(k=>{
+      const t=bucket[k]
+      if(!t || tripUploaded(t)) return          // 已進雲端的不用管
+      if(queued.has(n+'|'+k)) return            // 佇列裡已經有了
+      if(!t.startTime || !t.endTime) return     // 資料不完整就不送，避免上傳半筆髒資料
+      enqueueOffline({gsUrl:cloudScriptUrl, apiKey:cloudApiKey, body:{
+        action:'saveSurvey', routeId:cloudRouteId,
+        surveyor:config.surveyor, weather:config.weather,
+        date:day, round:n, trips:{[k]:buildTripEntry(t)}
+      }})
+      added++
+    })
+  })
+  if(added>0){
+    showToast(`⚠️ 找到 ${added} 筆未上傳的調查，已排入補送`)
+    flushOfflineQueue(true)
+  }
+  return added
+}
+
 function markUploaded(round, keys){
   const bucket=allTripsByRound[round]; if(!bucket) return false
   let changed=false
