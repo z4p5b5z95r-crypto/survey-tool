@@ -262,6 +262,14 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 .cgb-dir{font-size:15px;font-weight:800;color:#e2e8f0;white-space:nowrap}
 .combo-grid-btn.done .cgb-dir{color:#bbf7d0}
 .cgb-check{position:absolute;top:8px;right:8px;width:19px;height:19px;border-radius:50%;background:#16a34a;color:white;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+/* 已記錄但還沒進雲端：橘色時鐘。跟綠勾明確區分，調查員一眼看得出哪幾趟還沒上傳 */
+.combo-grid-btn.pending{background:#2a1f0f;border-color:#d97706}
+.combo-grid-btn.pending.sel{background:#2a1f0f;border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f6,0 4px 14px rgba(59,130,246,.25)}
+.combo-grid-btn.pending .cgb-tag.pk{background:#7f1d1d;color:#fecaca}
+.combo-grid-btn.pending .cgb-tag.op{background:#1e3a5f;color:#bfdbfe}
+.combo-grid-btn.pending .cgb-dir{color:#fde68a}
+.combo-grid-btn.pending .cgb-time{color:#fcd34d}
+.cgb-pend{position:absolute;top:8px;right:8px;width:19px;height:19px;border-radius:50%;background:#d97706;color:white;font-size:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .cgb-time{font-size:12px;color:#64748b;font-variant-numeric:tabular-nums}
 .combo-grid-btn.sel .cgb-time{color:#93c5fd}
 .combo-grid-btn.done .cgb-time{color:#86efac}
@@ -269,7 +277,9 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 .round-pill{flex:1 1 auto;min-width:56px;padding:9px 6px;border-radius:10px;border:none;background:transparent;color:#64748b;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px}
 .round-pill.rd{background:#1d4ed8;color:white;box-shadow:0 2px 8px rgba(29,78,216,.4)}
 .round-pill.done:not(.rd){color:#4ade80}
+.round-pill.pending:not(.rd){color:#fbbf24}
 .round-pill .rp-check{font-size:11px}
+.round-pill .rp-pend{font-size:11px}
 .progress-chips{display:flex;gap:5px;margin-top:4px}
 .prog-chip{flex:1;padding:9px 4px;border-radius:10px;font-size:11px;font-weight:700;border:1.5px solid #334155;background:#0f172a;color:#475569;cursor:default;font-family:inherit;text-align:center;transition:all .15s;white-space:nowrap}
 .prog-chip.done{background:#14532d;border-color:#16a34a;color:#4ade80;cursor:pointer}
@@ -1393,6 +1403,11 @@ async function flushOfflineQueue(silent){
     for(const item of q){
       try{
         await cloudPostSurvey(item.gsUrl,item.apiKey,item.body)
+        // 補送成功：若補的正好是目前這個調查日期，組合按鈕要跟著變綠勾
+        const b=item.body||{}
+        if((b.date||'').slice(0,10)===(config.date||'').slice(0,10)){
+          markUploaded(b.round||1, Object.keys(b.trips||{}))
+        }
       }catch(e){ remaining.push(item) }
     }
     localStorage.setItem(OFFLINE_QUEUE_KEY,JSON.stringify(remaining))
@@ -1553,7 +1568,12 @@ function syncChipsFromCloudHistory(){
     const rnd = entry.round||1
     const bucket = allTripsByRound[rnd]; if(!bucket) return
     Object.entries(entry.trips||{}).forEach(([k,t])=>{
-      if(bucket[k]) return   // don't overwrite data recorded in this session
+      if(bucket[k]){
+        // 本機已經有這一趟，資料不覆蓋；但雲端既然查得到，就代表它確實上傳過了。
+        // 沒有這一步，改版前記錄的舊資料會一直顯示成「待上傳」的橘色時鐘。
+        if(!bucket[k]._uploaded){ bucket[k]._uploaded=true; changed=true }
+        return
+      }
       // Preserve ALL fields the cloud returns — segTimes/nodeTimestamps/gpsTrack
       // are needed for the official form and result map. Fall back to [] only if absent.
       bucket[k]={
@@ -1579,7 +1599,7 @@ function syncChipsFromCloudHistory(){
   })
   if(changed){
     allTrips=allTripsByRound[selRound]
-    saveTripsToStorage(); updateProgressChips(); checkStart(); renderRoundRow()
+    saveTripsToStorage(); updateProgressChips(); checkStart(); renderComboGrid()
   }
 }
 
@@ -2137,6 +2157,28 @@ async function queryPerm(name){
     return s.state           // granted / denied / prompt
   }catch(e){ return 'unknown' }
 }
+// 先引出 iOS 的「允許語音辨識」提示，避免它出現在行車途中。
+// 只跑一次、最多等 2.5 秒；失敗完全不影響流程（語音本來就是選配，按鈕照樣能用）。
+let _speechWarmed=false
+function warmUpSpeechPermission(){
+  if(_speechWarmed || !VOICE_SR) return Promise.resolve()
+  _speechWarmed=true
+  return new Promise(res=>{
+    let done=false
+    const fin=()=>{ if(done) return; done=true; res() }
+    try{
+      const r=new VOICE_SR()
+      r.lang='zh-TW'
+      r.continuous=false
+      r.interimResults=false
+      r.onstart=()=>{ try{ r.stop() }catch(e){}; fin() }
+      r.onend=fin
+      r.onerror=fin
+      r.start()
+      setTimeout(()=>{ try{ r.abort() }catch(e){}; fin() }, 2500)
+    }catch(e){ fin() }
+  })
+}
 async function allPermsGranted(){
   const g=await queryPerm('geolocation')
   if(g==='granted') return true
@@ -2218,6 +2260,12 @@ async function runPermGate(){
   try{
     const st=await navigator.mediaDevices.getUserMedia({audio:true})
     st.getTracks().forEach(t=>t.stop())
+    // iOS Safari 把「麥克風」和「語音辨識」當成兩個獨立權限：
+    // 上面的 getUserMedia 只拿到麥克風，webkitSpeechRecognition 第一次 start()
+    // 還會再跳一次「允許語音辨識」。若不在這裡先引出來，那一次就會落在行車中
+    // 第一次偵測到停止的時候，駕駛正在看路卻突然跳系統視窗。
+    // 這裡起一個辨識實例、立刻停掉，只為了把提示提前到出發前。
+    await warmUpSpeechPermission()
     setPermRow('mic','pass','已授權，停車時可直接說出原因')
   }catch(e){
     setPermRow('mic','fail', e.name==='NotAllowedError'
@@ -3319,7 +3367,11 @@ function applyRoundCount(){
   allTrips = allTripsByRound[selRound]
   renderRoundRow()
 }
+// 「這一次的四趟都跑完了嗎」——決定要自動選到第幾次，看的是有沒有記錄
 function roundAllDone(n){ return COMBO_KEYS.every(k=>allTripsByRound[n][k]) }
+// 「這一次都進雲端了嗎」——回合按鈕的綠勾看這個。四趟都記錄了但還有沒上傳的，
+// 就不該顯示成完成，否則跟組合按鈕的橘色時鐘自相矛盾。
+function roundAllUploaded(n){ return COMBO_KEYS.every(k=>tripUploaded(allTripsByRound[n][k])) }
 function autoPickRound(){
   const n = ROUND_KEYS.find(n=>!roundAllDone(n))
   selRound = n || ROUND_KEYS[ROUND_KEYS.length-1]
@@ -3340,10 +3392,12 @@ function renderRoundRow(){
   }
   ROUND_KEYS.forEach(n=>{
     const btn=$('btn-r'+n); if(!btn) return
-    const done = roundAllDone(n)
+    const rec = roundAllDone(n)
+    const up  = roundAllUploaded(n)
     btn.classList.toggle('rd', n===selRound)
-    btn.classList.toggle('done', done)
-    btn.innerHTML = `第 ${n} 次${done?' <span class="rp-check">✓</span>':''}`
+    btn.classList.toggle('done', up)
+    btn.classList.toggle('pending', rec && !up)
+    btn.innerHTML = `第 ${n} 次${up?' <span class="rp-check">✓</span>':(rec?' <span class="rp-pend">⏳</span>':'')}`
   })
 }
 // ── 監測組合選擇（尖峰去程／尖峰回程／離峰去程／離峰回程 合併成單一按鈕）──
@@ -3372,15 +3426,22 @@ function renderComboGrid(){
     const dirTxt = dir==='bound'?'去程':'回程'
     const dirIcon = dir==='bound'?'▶':'◀'
     const timeTxt = isPeak?(config.peakLabel||''):(config.offPeakLabel||'')
-    const done=!!allTrips[k]
+    // 三種狀態：未調查／已記錄但還沒上傳（橘色時鐘）／已上傳雲端（綠勾）
+    const t=allTrips[k]
+    const done=!!t
+    const up=tripUploaded(t)
+    const pending=done&&!up
     // 選取狀態只看目前選了哪個組合，跟是否完成無關——同一時間只會有這一顆按鈕出現藍框
     const isSel = selPeakType===pt && selDirection===dir
-    const cls = 'combo-grid-btn'+(done?' done':'')+(isSel?' sel':'')
+    const cls = 'combo-grid-btn'+(up?' done':'')+(pending?' pending':'')+(isSel?' sel':'')
+    const mark = up      ? '<span class="cgb-check">✓</span>'
+               : pending ? '<span class="cgb-pend" title="已記錄，尚未上傳雲端">⏳</span>'
+               : ''
     return `<button class="${cls}" onclick="onComboGridClick('${k}')">
       <div class="cgb-row1">
         <span class="${tagCls}">${tagTxt}</span>
         <span class="cgb-dir">${dirIcon} ${dirTxt}</span>
-        ${done?'<span class="cgb-check">✓</span>':''}
+        ${mark}
       </div>
       <div class="cgb-time">${timeTxt}</div>
     </button>`
@@ -3897,6 +3958,8 @@ async function submitToCloud(tripKey, round){
   try{
     await cloudPostSurvey(cloudScriptUrl, cloudApiKey, body)
     cloudSubmitted=true
+    // 確認進了雲端才把這幾趟標成已上傳，組合按鈕才會從橘色時鐘變綠勾
+    markUploaded(body.round, Object.keys(body.trips||{}))
     saveToLocalHistory()    // persist to device as offline backup
     _histCache=null         // invalidate cache so cloud re-fetch gets fresh data
     loadCloudHistory()      // refresh history from cloud
@@ -3940,6 +4003,19 @@ function buildTripEntry(t){
     }))
   }
 }
+// ── 上傳狀態 ────────────────────────────────────────────────────
+// 組合按鈕的綠勾原本只看「本機有沒有這筆資料」，跟有沒有進雲端無關。
+// 上傳失敗或途中閃退時，畫面照樣是綠勾、雲端卻是空的，調查員不會察覺。
+// 現在改成：_uploaded 為真才算完成（綠勾），否則是已記錄待上傳（橘色時鐘）。
+function markUploaded(round, keys){
+  const bucket=allTripsByRound[round]; if(!bucket) return false
+  let changed=false
+  ;(keys||[]).forEach(k=>{ if(bucket[k] && !bucket[k]._uploaded){ bucket[k]._uploaded=true; changed=true } })
+  if(changed){ saveTripsToStorage(); renderComboGrid(); updateProgressChips() }
+  return changed
+}
+function tripUploaded(t){ return !!(t && (t._uploaded || t._fromCloud)) }
+
 function buildTripsPayload(tripKey){
   // Only send the specified trip — one cloud survey per combo
   // tripKey is captured synchronously in endSurvey before cur may be cleared
