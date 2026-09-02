@@ -386,6 +386,8 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .badge-todo{font-size:11px;padding:3px 9px;border-radius:20px;background:#f1f5f9;color:#94a3b8}
 .btn-blue{width:100%;padding:16px;background:#2563eb;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer}
 .btn-purple{width:100%;padding:16px;background:#7c3aed;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer}
+/* 與「重新調查」同一個橘（.btn-start.redo）：代表「重來一次」這類動作 */
+.btn-orange{width:100%;padding:16px;background:#ea580c;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(234,88,12,.35)}
 
 /* ── Report ── */
 #screen-report{background:#f1f5f9}
@@ -873,7 +875,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     <div id="td-cloud-status" style="display:none;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:600;text-align:center;margin-bottom:4px">⏳ 上傳中...</div>
     <button class="btn-blue" id="btn-next-combo" onclick="goNextCombo()">繼續調查 →</button>
     <button class="btn-purple" onclick="goReport()">📊 查看調查報告</button>
-    <button style="width:100%;padding:13px;background:#1e293b;border:1.5px solid #334155;border-radius:14px;font-size:13px;font-weight:600;color:#94a3b8;cursor:pointer" onclick="confirmClearStorage()">🗑 清除所有調查記錄（重新開始）</button>
+    <button class="btn-orange" onclick="confirmClearStorage()">🔄 清除所有調查記錄（重新開始）</button>
   </div>
 </div>
 
@@ -5954,32 +5956,19 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
 /* 展示時底圖只是背景參考，模糊＋降飽和讓路線與節點更突出 */
 .leaflet-tile-pane{ filter:blur(2.5px) grayscale(.55) brightness(1.06) contrast(.82); }
 </style>
-<div id="demo-hud" style="position:fixed;left:10px;top:calc(8px + env(safe-area-inset-top));z-index:9997;
-  background:rgba(15,23,42,.92);border:1px solid #334155;border-radius:12px;padding:7px 10px;
-  font-size:11px;color:#94a3b8;font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC',sans-serif;
-  display:flex;align-items:center;gap:8px;backdrop-filter:blur(6px);max-width:calc(100% - 20px);
-  transition:opacity .2s;touch-action:none;cursor:move;user-select:none;-webkit-user-select:none">
-  <span style="color:#475569;font-size:13px;flex-shrink:0;letter-spacing:-2px">⠿</span>
-  <span style="background:#1d4ed8;color:#fff;border-radius:6px;padding:2px 6px;font-weight:800;font-size:10px;flex-shrink:0">DEMO</span>
-  <span id="demo-msg" style="flex:1;min-width:0">模擬模式準備中…</span>
-  <button id="demo-dbg" style="background:#334155;color:#e2e8f0;border:none;border-radius:6px;
-    padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">診斷</button>
-  <button id="demo-toggle" style="background:#334155;color:#e2e8f0;border:none;border-radius:6px;
-    padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">隱藏</button>
-</div>
-<div id="demo-dbgbox" style="display:none;position:fixed;left:10px;right:10px;
-  top:calc(52px + env(safe-area-inset-top));z-index:9996;background:rgba(2,6,23,.94);
-  border:1px solid #334155;border-radius:12px;padding:9px 11px;max-height:44vh;overflow:auto;
-  font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#94a3b8;line-height:1.5">
-  <div id="dbg-live" style="color:#93c5fd;font-weight:700;margin-bottom:6px"></div>
-  <div id="dbg-log" style="white-space:pre-wrap"></div>
-</div>
+<!-- 只保留一個小浮水印。pointer-events:none 讓它完全不吃觸控，
+     疊在任何按鈕上都不會擋到操作；也不再佔用畫面頂端的空間。 -->
+<div id="demo-wm" style="position:fixed;right:6px;bottom:calc(6px + env(safe-area-inset-bottom));
+  z-index:9997;pointer-events:none;user-select:none;-webkit-user-select:none;
+  font:800 9px/1 -apple-system,BlinkMacSystemFont,'Noto Sans TC',sans-serif;
+  letter-spacing:1px;color:rgba(148,163,184,.5);
+  background:rgba(15,23,42,.35);border-radius:4px;padding:2px 5px">DEMO</div>
 
 <script>
 (function(){
   const GS='https://demo.local/exec'
   try{ history.replaceState(null,'', location.pathname+'?pid=DEMO&gs='+encodeURIComponent(GS)+'&k=demo') }catch(e){}
-  const hud=m=>{ const el=document.getElementById('demo-msg'); if(el) el.textContent=m }
+  const hud=m=>{ try{ dbg('[狀態] '+m) }catch(e){} }   // 不再顯示在畫面上，只留進診斷紀錄
 
   /* 展示用：每次開啟都重走「每日提醒 → 授權 → 設備檢測」，把當日旗標清掉 */
   try{
@@ -5989,39 +5978,9 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     })
   }catch(e){}
 
-  /* HUD 可以拖到任何位置，避免擋到要展示的畫面 */
-  ;(function(){
-    const el=document.getElementById('demo-hud')
-    let sx=0,sy=0,ox=0,oy=0
-    const move=e=>{
-      const p=e.touches?e.touches[0]:e
-      el.style.left=Math.max(4,Math.min(window.innerWidth-60, ox+p.clientX-sx))+'px'
-      el.style.top =Math.max(4,Math.min(window.innerHeight-40, oy+p.clientY-sy))+'px'
-      if(e.cancelable) e.preventDefault()
-      const box=document.getElementById('demo-dbgbox')
-      if(box&&box.style.display!=='none') box.style.top=(parseFloat(el.style.top)+44)+'px'
-    }
-    const end=()=>{
-      document.removeEventListener('mousemove',move); document.removeEventListener('touchmove',move)
-      document.removeEventListener('mouseup',end);    document.removeEventListener('touchend',end)
-    }
-    const start=e=>{
-      if(e.target.tagName==='BUTTON') return
-      const p=e.touches?e.touches[0]:e, r=el.getBoundingClientRect()
-      sx=p.clientX; sy=p.clientY; ox=r.left; oy=r.top
-      el.style.right='auto'; el.style.bottom='auto'
-      document.addEventListener('mousemove',move); document.addEventListener('touchmove',move,{passive:false})
-      document.addEventListener('mouseup',end);    document.addEventListener('touchend',end)
-    }
-    el.addEventListener('mousedown',start)
-    el.addEventListener('touchstart',start,{passive:true})
-  })()
-  document.getElementById('demo-toggle').onclick=function(){
-    const b=document.getElementById('demo-hud')
-    const hide=b.style.opacity!=='0.12'
-    b.style.opacity=hide?'0.12':'1'
-    this.textContent=hide?'顯示':'隱藏'
-  }
+  /* 原本的 DEMO 資訊列與診斷面板已移除：它固定在畫面頂端，會擋住返回鍵與地圖，
+     實地示範時很干擾。診斷用的 dbg() 仍然保留，只是不再畫到畫面上，
+     需要時在瀏覽器主控台輸入 __demoLog() 就能看到完整事件紀錄。 */
 
   const PROJ_NAME='示範專案（教學用）'
 
@@ -6189,33 +6148,15 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       DeviceMotionEvent.requestPermission=()=>Promise.resolve('granted')
   }catch(e){}
 
-  /* ── 診斷面板 ── */
-  let DBG=false, dbgLines=[]
-  document.getElementById('demo-dbg').onclick=function(){
-    DBG=!DBG
-    document.getElementById('demo-dbgbox').style.display=DBG?'block':'none'
-    this.style.background=DBG?'#1d4ed8':'#334155'
-  }
+  /* ── 診斷紀錄（不顯示在畫面上）──
+     保留記錄能力是刻意的：先前抓語音、節點提示音那些問題都靠它。
+     需要看的時候在主控台輸入 __demoLog() 即可。 */
+  let dbgLines=[]
   function dbg(m){
     dbgLines.push(new Date().toLocaleTimeString('zh-TW',{hour12:false})+' '+m)
-    if(dbgLines.length>60) dbgLines.shift()
-    const el=document.getElementById('dbg-log')
-    if(el){ el.textContent=dbgLines.join('\n'); el.parentNode.scrollTop=1e6 }
+    if(dbgLines.length>200) dbgLines.shift()
   }
-  function dbgLive(){
-    if(!DBG) return
-    const el=document.getElementById('dbg-live'); if(!el) return
-    try{
-      const near=(document.getElementById('nnc-dist-num')||{}).textContent||'—'
-      const name=(document.getElementById('next-node-name')||{}).textContent||''
-      const banner=document.getElementById('nav-banner')
-      const bTxt=(banner&&banner.style.display!=='none')
-        ? ((document.getElementById('nav-banner-dist')||{}).textContent+' '+(document.getElementById('nav-banner-turn')||{}).textContent)
-        : '（未顯示）'
-      el.textContent='下一節點 '+name+' 距離 '+near+' m｜導航橫幅 '+bTxt+'｜點 '+SIM.i+'/'+SIM.path.length
-    }catch(e){}
-  }
-  setInterval(dbgLive,300)
+  window.__demoLog=()=>dbgLines.join('\n')
 
   /* ── 掛勾正式 App ── */
   window.addEventListener('load',function(){

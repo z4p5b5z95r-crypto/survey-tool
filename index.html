@@ -386,6 +386,8 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .badge-todo{font-size:11px;padding:3px 9px;border-radius:20px;background:#f1f5f9;color:#94a3b8}
 .btn-blue{width:100%;padding:16px;background:#2563eb;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer}
 .btn-purple{width:100%;padding:16px;background:#7c3aed;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer}
+/* 與「重新調查」同一個橘（.btn-start.redo）：代表「重來一次」這類動作 */
+.btn-orange{width:100%;padding:16px;background:#ea580c;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(234,88,12,.35)}
 
 /* ── Report ── */
 #screen-report{background:#f1f5f9}
@@ -873,7 +875,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     <div id="td-cloud-status" style="display:none;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:600;text-align:center;margin-bottom:4px">⏳ 上傳中...</div>
     <button class="btn-blue" id="btn-next-combo" onclick="goNextCombo()">繼續調查 →</button>
     <button class="btn-purple" onclick="goReport()">📊 查看調查報告</button>
-    <button style="width:100%;padding:13px;background:#1e293b;border:1.5px solid #334155;border-radius:14px;font-size:13px;font-weight:600;color:#94a3b8;cursor:pointer" onclick="confirmClearStorage()">🗑 清除所有調查記錄（重新開始）</button>
+    <button class="btn-orange" onclick="confirmClearStorage()">🔄 清除所有調查記錄（重新開始）</button>
   </div>
 </div>
 
