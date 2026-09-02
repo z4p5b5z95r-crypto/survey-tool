@@ -83,6 +83,17 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .cloud-icon.syncing .cloud-arr{animation:cloud-pulse .7s ease-in-out infinite}
 .cloud-icon.uploading{color:#a78bfa}
 .cloud-icon.uploading .cloud-arr{animation:cloud-pulse .7s ease-in-out infinite}
+/* 登入後同步中的全畫面遮罩。原本只有右上角一顆小雲朵在轉，
+   畫面主體卻是空的專案列表加一張地圖，看起來像已經載完了。 */
+#sync-overlay{position:fixed;inset:0;z-index:9500;background:rgba(9,14,26,.62);
+  display:none;align-items:center;justify-content:center;flex-direction:column;gap:15px}
+#sync-overlay.on{display:flex}
+#sync-overlay .so-card{width:84px;height:84px;border-radius:16px;background:#1e293b;
+  display:flex;align-items:center;justify-content:center;overflow:hidden}
+#sync-overlay .so-card svg{width:36px;height:36px;color:#4ade80;
+  animation:so-bob 1.3s ease-in-out infinite}
+#sync-overlay .so-txt{font-size:13px;color:#e2e8f0}
+@keyframes so-bob{0%,100%{transform:translateY(-8px);opacity:.5}50%{transform:translateY(8px);opacity:1}}
 @keyframes cloud-pulse{0%,100%{opacity:1;transform:translateY(0)}50%{opacity:.35;transform:translateY(2px)}}
 .tb-user{
   display:flex;align-items:center;gap:8px;
@@ -1032,7 +1043,8 @@ function enterApp(name) {
   new ResizeObserver(()=>map.invalidateSize()).observe(map.getContainer())
   if (gsUrl) {
     updateCloudDot('idle')
-    syncFromCloud().catch(() => {})
+    // first:true → 登入後這一次要蓋全畫面遮罩，之後的背景同步不蓋
+    syncFromCloud({first:true}).catch(() => { hideSyncOverlay() })
   }
 }
 
@@ -2755,9 +2767,27 @@ async function syncProjectsFromCloud(me) {
   }catch(e){/* 專案同步失敗不影響路線同步，靜默即可 */}
   return map
 }
-async function syncFromCloud() {
+// 同步中的全畫面遮罩。只在「登入後第一次同步」顯示——之後的背景同步
+// 不該把整個畫面蓋住打斷操作，那時右上角的小雲朵就夠了。
+let _syncOverlayShown=false, _syncOverlayTimer=null
+function showSyncOverlay(){
+  const el=document.getElementById('sync-overlay')
+  if(el) el.classList.add('on')
+  // 保險：這層遮罩會擋住整個畫面，萬一某個請求卡住不回來（例如 Apps Script 冷啟動逾時
+  // 又沒有觸發 catch），使用者會完全動不了。60 秒後強制收掉，至少還能操作。
+  clearTimeout(_syncOverlayTimer)
+  _syncOverlayTimer=setTimeout(hideSyncOverlay, 60000)
+}
+function hideSyncOverlay(){
+  clearTimeout(_syncOverlayTimer); _syncOverlayTimer=null
+  const el=document.getElementById('sync-overlay')
+  if(el) el.classList.remove('on')
+}
+async function syncFromCloud(opts) {
   const _tok = getSessionToken()
   if(!gsUrl||!_tok)return
+  const _first = opts && opts.first && !_syncOverlayShown
+  if(_first){ _syncOverlayShown=true; showSyncOverlay() }
   updateCloudDot('syncing')
   const me=getCurrentUser()||'未知'
   try{
@@ -2812,6 +2842,7 @@ async function syncFromCloud() {
     if(savedTasks.length!==before)changed+=before-savedTasks.length
     localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
     renderProjects()
+    hideSyncOverlay()   // 專案列表已經畫出來了，遮罩可以收掉
     if(changed>0) toast(`☁️ 雲端同步完成`)
     // 專案功能是後來才加的：早期上傳的路線，雲端的 projectId 是空的或跟本機歸屬對不上，
     // 會害「掃專案 QR」「選擇專案」這些以專案為單位的入口抓不到任何路線。這裡自動補寫回去。
@@ -2819,6 +2850,7 @@ async function syncFromCloud() {
   }catch(e){
     updateCloudDot('err','同步失敗')
     if(_lbl)_lbl.textContent='ERR:'+e.message.slice(0,30)
+    hideSyncOverlay()   // 失敗也要收掉，不然遮罩會一直卡在畫面上
     // 之前這個錯誤只寫在一個很小的角落標籤上、又會被截斷，等於看不到真正原因。
     // 雲端拉不到資料時專案列表會是空的，所以直接把完整錯誤秀出來。
     if(window.__showFatal) window.__showFatal('❌ 雲端同步失敗：'+(e.message||e))
@@ -3995,5 +4027,16 @@ function downloadSGS() {
 
 
 </script>
+
+<div id="sync-overlay" role="status" aria-live="polite">
+  <div class="so-card">
+    <svg viewBox="0 0 22 17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M16.5 12H5.5a4 4 0 0 1-.2-8 5 5 0 0 1 9.8 1H16a3 3 0 0 1 .5 7z"/>
+      <line x1="11" y1="9" x2="11" y2="15.5"/>
+      <polyline points="8.5,13 11,15.5 13.5,13"/>
+    </svg>
+  </div>
+  <div class="so-txt">專案資料下載中…</div>
+</div>
 </body>
 </html>

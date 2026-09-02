@@ -1351,7 +1351,43 @@ function _segTimesFor(trip){
 // 假節點只是用來讓路線在地圖上繞路的隱形點，不是真正的監測路口。
 // 現場人員看不到、也不會記錄通過時間，所以報告的任何地方都不該出現它們。
 // 這裡集中提供「真實節點清單」，讓各處畫面都用同一份，不會有的地方算進去、有的地方沒算。
+// ── 「調查當下的路線」 ──────────────────────────────────────────
+// 規劃路線（虛線）、節點標記、路段名稱與距離都來自路線設定。若一律讀目前的設定，
+// PM 之後改一次路線就會把所有歷史紀錄改成調查員當時根本沒走過的路線。
+// 後端 getSurveys 會依該筆的實際執行時間附上當時有效的版本（routeVersion），
+// 沒有就代表那之後沒改過，用目前的設定即可。
+// _rtCtx 是渲染單筆紀錄時暫時切換的「當時路線」，統計表與平均值仍用目前設定
+//（跨多筆的彙總混用不同版本沒有意義）。
+let _rtCtx=null
+const _rvCache=new WeakMap()
+function routeForSurvey(sv){
+  if(!sv||!sv.routeVersion) return null
+  if(_rvCache.has(sv)) return _rvCache.get(sv)
+  const v=sv.routeVersion
+  const r={
+    ...route,
+    routeName:        v.routeName||route.routeName,
+    routeFromTo:      v.routeFromTo||route.routeFromTo,
+    totalLength:      v.totalLength||route.totalLength,
+    nodes:            _tryParseSR(v.nodes, []),
+    segments:         _tryParseSR(v.segments, []),
+    ghostNodeIndices: _tryParseSR(v.ghostNodeIndices, [])
+  }
+  // 版本壞掉或空的就別用，退回目前設定，至少畫得出東西
+  const ok=Array.isArray(r.nodes)&&r.nodes.length>=2
+  _rvCache.set(sv, ok?r:null)
+  return ok?r:null
+}
+function _rt(){ return _rtCtx||route }
+function _routeOf(sv){ return routeForSurvey(sv)||route }
+function _withRoute(sv, fn){
+  const prev=_rtCtx
+  _rtCtx=routeForSurvey(sv)
+  try{ return fn() } finally{ _rtCtx=prev }
+}
+
 function _realNodes(){
+  const route=_rt()
   const nodes = route.nodes||[]
   const ghostIdxSet = new Set(route.ghostNodeIndices||[])
   nodes.forEach((n,i)=>{ if(n&&(n.ghost||n.gh)) ghostIdxSet.add(i) })
@@ -1382,6 +1418,7 @@ function _fixSegNames(segs){
 // rawSegs[k] connects nodes[k]→nodes[k+1].
 // If rawSegs[k].name starts with "節點N", nodes[k] is a ghost node → merge with rawSegs[k-1].
 function _mergeGhostSegs(){
+  const route=_rt()
   const rawSegs = route.segments||[]
   const nodes   = route.nodes||[]
   const ghostIdxSet = new Set(route.ghostNodeIndices||[])
@@ -1562,11 +1599,8 @@ function switchCombo(combo){
 async function deleteOneSurvey(si){
   const sv=surveys[si]
   if(!sv||!sv.id){ alert('這筆紀錄沒有可用的編號，無法刪除'); return }
-  const label=`調查 #${si+1}・第${sv.round||1}次・${sv.surveyor||'—'}（${sv.date||''}）`
-  if(!confirm(`確定刪除這筆調查紀錄？\n\n${label}\n\n刪除後可在 PM 端的垃圾桶還原。`)) return
-  const note=prompt('刪除原因（會記在垃圾桶，方便日後查核）：','')
-  if(note===null) return
-  await _runDeleteSurveys([sv.id], note, '已刪除 1 筆紀錄')
+  if(!confirm(`確定刪除這筆調查紀錄？\n調查 #${si+1}・第${sv.round||1}次・${sv.surveyor||'—'}`)) return
+  await _runDeleteSurveys([sv.id])
 }
 async function deleteWholeDay(){
   if(!_filterDate){ alert('請先在上方選一個調查日期，才能刪除整天的紀錄'); return }
@@ -1574,24 +1608,20 @@ async function deleteWholeDay(){
   const ids=(allSurveys||[]).map(s=>s.id).filter(Boolean)
   if(!ids.length){ alert('這一天沒有可刪除的紀錄'); return }
   const rn=(route&&route.routeName)||'這條路線'
-  if(!confirm(`確定刪除以下範圍的全部調查紀錄？\n\n路線：${rn}\n日期：${_filterDate}\n筆數：${ids.length} 筆\n\n只會影響這條路線，其他路線不受影響。\n刪除後可在 PM 端的垃圾桶還原。`)) return
-  const note=prompt(`刪除原因（將套用到這 ${ids.length} 筆）：`,'')
-  if(note===null) return
-  if(!confirm(`最後確認：即將刪除 ${ids.length} 筆紀錄。`)) return
-  await _runDeleteSurveys(ids, note, `已刪除 ${ids.length} 筆紀錄`)
+  if(!confirm(`確定刪除 ${rn} 在 ${_filterDate} 的全部 ${ids.length} 筆紀錄？`)) return
+  await _runDeleteSurveys(ids)
 }
-async function _runDeleteSurveys(ids, note, okMsg){
-  showDlOverlay('刪除紀錄中…', `0 / ${ids.length}`)
-  let done=0; const fail=[]
-  for(const id of ids){
-    try{ await cloudPost({action:'deleteSurvey', surveyId:id, note:note||''}); done++ }
-    catch(e){ fail.push(String(e&&e.message||e)) }
-    try{ document.getElementById('dl-overlay-sub').textContent=`${done} / ${ids.length}` }catch(e){}
-  }
+// 刪除全部平行送出（原本是一筆一筆等，10 筆就要來回 10 次，很慢）。
+// 都是軟刪除、互不相干，同時送沒有先後順序問題。
+async function _runDeleteSurveys(ids){
+  showDlOverlay('刪除紀錄中…', `共 ${ids.length} 筆`)
+  const rs=await Promise.allSettled(
+    ids.map(id=>cloudPost({action:'deleteSurvey', surveyId:id, note:''})))
+  const fail=rs.filter(r=>r.status==='rejected')
   hideDlOverlay()
-  if(fail.length) alert(`完成 ${done}/${ids.length} 筆，有 ${fail.length} 筆失敗：\n`+fail.slice(0,3).join('\n'))
-  else alert(okMsg)
-  // 重新抓資料：日期清單、完成度圓環、目前路線的紀錄都要跟著更新
+  if(fail.length) alert(`完成 ${ids.length-fail.length}/${ids.length} 筆，有 ${fail.length} 筆失敗：\n`
+    +fail.slice(0,3).map(f=>String(f.reason&&f.reason.message||f.reason)).join('\n'))
+  // 成功就不再跳確認框，直接重新載入畫面
   if(_pm) await refreshReportData()
   else location.reload()
 }
@@ -1622,7 +1652,10 @@ function renderComboRecords(combo){
   Object.values(_tripMaps).forEach(m=>m.remove())
   _tripMaps={}
 
-  el.innerHTML = matchSurveys.map(({sv,si,trip})=>{
+  el.innerHTML = matchSurveys.map(({sv,si,trip})=>_withRoute(sv,()=>{
+    const route=_rt()          // 這筆調查當時的路線（沒有封存版本就是目前的設定）
+    const segs = _mergeGhostSegs()
+    const segOrder = isReturn ? [...segs].reverse() : segs
     const isPeak = pt==='peak'
     const off=route.offPeakLabel||'14:00~16:00', pk=route.peakLabel||'17:00~19:00'
     const st=trip.startTime?new Date(trip.startTime):null
@@ -1884,13 +1917,14 @@ function renderComboRecords(combo){
         </div>
       </div>
     </div>`
-  }).join('')
+  })).join('')
 
   // Init maps after DOM update
   requestAnimationFrame(()=>{
     matchSurveys.forEach(({sv,si,trip})=>{
       const mapId=`trip-map-${si}-${combo}`
-      initTripMap(mapId, trip, combo)
+      // 地圖上的虛線＝規劃路線，同樣要用這筆調查當時的版本
+      _withRoute(sv, ()=>initTripMap(mapId, trip, combo))
     })
   })
 }
@@ -1914,8 +1948,9 @@ function initTripMap(mapId, trip, combo){
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(m)
 
   // Route path (grey dashed) — use stored OSRM latlngs if available, else straight-line fallback
+  // 規劃路線一律取「這筆調查當時」的版本（_rt()），不是目前最新的路線設定
   if(nodes.length>=2){
-    const segs = route.segments||[]
+    const segs = _rt().segments||[]
     const allHaveLL = segs.length>0 && segs.every(s=>s.latlngs?.length>=2)
     if(allHaveLL){
       // Concatenate each segment's road-following coordinates
@@ -2473,6 +2508,10 @@ function downloadRawTimeline(){
 // ════════════════ SGS PDF PRINT ════════════════
 // returnOnly=true 時不開新視窗，改回傳「平均報告」的頁面與樣式，供批次合併使用
 function downloadSGSPdf(returnOnly){
+  // 這份 PDF 是同一天多筆調查的平均，路線結構取這批第一筆調查當時的版本，
+  // 而不是目前最新的設定——否則 PM 事後改了路線，舊報告的路段名稱與距離會跟著變。
+  // （同一天的紀錄幾乎必然是同一個版本，所以取第一筆即可代表這一批。）
+  const route = surveys.length ? _routeOf(surveys[0]) : null
   if(!route||!surveys.length){ if(!returnOnly) alert('尚無資料'); return null }
 
   const ROAD_C = ['congestion','bus_stop','taxi_stop','parking','ped_cross','road_other']
