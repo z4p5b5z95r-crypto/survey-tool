@@ -3050,17 +3050,25 @@ const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
   || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1)
 // iOS Safari 對語音合成也有類似 AudioContext 的「解鎖」限制：第一次 speak() 如果不是在使用者手勢當下觸發，
 // 之後在 GPS callback 裡呼叫常常會被靜音吃掉。跟 unlockAudio() 一樣，在 startSurvey()（使用者按下開始鍵）當下先播一次無聲的
+// 解鎖那句還沒播完的期間為 true。speakNav 看到這個旗標就「排在它後面」而不是 cancel 它，
+// 因為 iOS 上 cancel() 之後的 speak() 很容易整句被吃掉——第一個節點的「調查開始」
+// 消失就是這樣來的（現場只聽到解鎖那句，正戲反而沒出聲）。
+let _spUnlocking=false
 function unlockNavVoice(){
   try{
     if(!('speechSynthesis' in window)) return
     window.speechSynthesis.getVoices()
-    // ⚠️ iOS 上 volume=0 或內容是空白的 utterance 常常被合成器直接跳過，
-    // 跳過就等於沒真正解鎖，之後在 GPS callback 裡播「調查開始」會整句沒聲音。
-    // 所以改用「有內容、音量極小」的一句：聽不見，但確實走完一次朗讀流程。
+    // ⚠️ 內容是空白的 utterance 會被 iOS 直接跳過，跳過就等於沒解鎖，
+    // 之後在 GPS callback 裡播「調查開始」會整句沒聲音。所以要給真的內容；
+    // 但音量必須是 0，不然使用者會聽到一聲莫名其妙的「嗯」。
     const u=new SpeechSynthesisUtterance('嗯')
-    u.volume=0.01
+    u.volume=0
     u.rate=2
     u.lang='zh-TW'
+    _spUnlocking=true
+    const clear=()=>{ _spUnlocking=false }
+    u.onend=clear; u.onerror=clear
+    setTimeout(clear,1500)   // 保險：iOS 的 onend 不一定會觸發
     // iOS 有時會把 speechSynthesis 留在 paused 狀態，之後所有 speak() 都不會出聲
     try{ window.speechSynthesis.resume() }catch(e){}
     window.speechSynthesis.speak(u)
@@ -3086,7 +3094,9 @@ function speakNav(text, onDone, opts){
     // 會白白吃掉下面那 60ms 的緩衝，讓插播比畫面慢半拍。
     let speaking=false
     try{ speaking=_spBusy||window.speechSynthesis.speaking||window.speechSynthesis.pending }catch(e){ speaking=_spBusy }
-    if(speaking){
+    // 正在播的如果只是解鎖用的那句無聲短音，就不要 cancel——它本來就只有 0.2 秒，
+    // 直接排在它後面即可。硬要 cancel 反而會讓緊接著的「調查開始」被 iOS 整句吃掉。
+    if(speaking && !_spUnlocking){
       try{ window.speechSynthesis.cancel() }catch(e){}
       _spNeedGap=true
     }
