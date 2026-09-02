@@ -3134,9 +3134,25 @@ function _spPump(){
         u.onstart=()=>vlog('  ▶ 真的開始唸 "'+it.text+'" (+'+(Date.now()-t0)+'ms)')
         u.onend=()=>{ vlog('  ■ onend "'+it.text+'" (+'+(Date.now()-t0)+'ms)'); done() }
         u.onerror=e=>{ vlog('  ✗ onerror "'+it.text+'" '+((e&&e.error)||'')); done() }
-        // 保險：某些瀏覽器 onend 不一定會觸發，估個時間強制接手
-        setTimeout(()=>{ if(!fired) vlog('  ⏱ 保險計時器接手 "'+it.text+'"（onend 沒來）'); done() },
-                   700 + it.text.length*160)
+        // 保險：某些瀏覽器 onend 不一定會觸發，估個時間強制接手。
+        //
+        // ⚠️ 但「估算時間到了」不等於「真的講完了」。實測 iPhone 上這個估算一律
+        // 短 500~800ms，時間一到就當作講完、把下一句丟進去，聲音就會一直往上疊：
+        // 現場看到的是「調查開始」卡在 iOS 佇列裡 22 秒沒播完，直到別的語音 cancel
+        // 才被丟掉——使用者當然從頭到尾沒聽到它。
+        // 所以估算時間到了之後改成「輪詢等它真的講完」，只有 speaking/pending 都是
+        // false 才收工；並保留一個硬上限，避免 onend 真的壞掉時永遠卡住。
+        const est = 700 + it.text.length*160
+        const hardStop = Date.now() + est*3 + 5000
+        const watch=()=>{
+          if(fired) return
+          let sp=false
+          try{ sp=window.speechSynthesis.speaking||window.speechSynthesis.pending }catch(e){}
+          if(sp && Date.now()<hardStop){ setTimeout(watch,150); return }
+          vlog('  ⏱ 接手 "'+it.text+'"（onend 沒來，speaking='+sp+'）')
+          done()
+        }
+        setTimeout(watch, est)
         window.speechSynthesis.speak(u)
         vlog('  → speak() 已送出 "'+it.text+'"')
       }catch(e){ vlog('  ✗ speak() 例外 '+e); done() }
@@ -3348,7 +3364,7 @@ function setVoiceHint(txt){
 // still() 回傳 false 代表狀況已經變了（面板收了、追問作廢），就不要開麥。
 function listenAfterSpeech(still, onArmed){
   const arm=()=>{
-    if(still && !still()) return
+    if(still && !still()){ vlog('✗ 狀況已改變，不開麥（面板關了或追問作廢）'); return }
     let speaking=false
     try{ speaking=window.speechSynthesis.speaking||window.speechSynthesis.pending }catch(e){}
     if(speaking){ setTimeout(arm,120); return }
@@ -3402,7 +3418,11 @@ function applyClarifyAnswer(cause, timeoutMsg, sayAs){
 }
 
 function startCauseListening(){
-  if(!VOICE_SR || !voicePickEnabled || _vrecOn || _vrecDead) return
+  if(!VOICE_SR || !voicePickEnabled || _vrecOn || _vrecDead){
+    vlog('✗ 沒開麥：SR='+!!VOICE_SR+' 開關='+voicePickEnabled+' 已開='+_vrecOn+' 停用='+_vrecDead)
+    return
+  }
+  vlog('🎤 開麥')
   try{
     _vrec=new VOICE_SR()
     _vrec.lang='zh-TW'
@@ -3438,10 +3458,14 @@ function startCauseListening(){
     // 沒網路、沒授權都靜默處理，按鈕照樣能用；但被拒絕就別再重試
     _vrec.onerror=e=>{
       _vrecErr = e && e.error || ''
+      vlog('  ✗ 辨識錯誤 '+_vrecErr)
       if(_vrecErr==='not-allowed'||_vrecErr==='service-not-allowed') _vrecDead=true
     }
+    _vrec.onstart=()=>vlog('  🎤 麥克風真的開了')
+    _vrec.onspeechstart=()=>vlog('  🗣 偵測到說話')
     _vrec.onend=()=>{
       _vrecOn=false
+      vlog('  🎤 麥克風結束 stopActive='+_stopActive+' err='+(_vrecErr||'無'))
       // 辨識引擎沉默幾秒就會自己結束（iOS 尤其明顯，continuous=true 也擋不住）。
       // 停止面板現在會一直開著等駕駛選原因，若不自動接回去，
       // 駕駛稍晚才開口就完全沒反應——這就是「語音輸入失效」的原因。
@@ -3453,7 +3477,7 @@ function startCauseListening(){
     _vrecOn=true
     const hint=document.getElementById('svy-voice-hint')
     if(hint) hint.style.display='flex'
-  }catch(e){ _vrecOn=false }
+  }catch(e){ _vrecOn=false; vlog('  ✗ start() 例外 '+e) }
 }
 function toggleVoicePick(){
   voicePickEnabled=!voicePickEnabled
