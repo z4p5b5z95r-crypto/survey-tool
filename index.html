@@ -3218,9 +3218,8 @@ function _spPump(){
 // ── 語音診斷紀錄 ──────────────────────────────────────────
 // 手機上沒有 console 可看，而語音問題全都是時序問題（誰先誰後、差幾毫秒），
 // 沒有實際時間點就只能猜。這裡留一份環狀紀錄，隨時可以叫出來看：
-//   在網址列輸入   javascript:alert(__voiceLog())
-//   或在停止面板的語音提示列上連點三下
-// 只在記憶體裡，不上傳、不寫檔，正式版留著也無妨（每筆就一個字串）。
+// 只在記憶體裡，不上傳、不寫檔（每筆就一個字串），畫面上沒有任何入口。
+// 需要時接上電腦、在瀏覽器主控台輸入 __voiceLog() 即可取出。
 let _vlogBuf=[]
 function vlog(){
   try{
@@ -3232,72 +3231,6 @@ function vlog(){
   }catch(e){}
 }
 window.__voiceLog=()=>_vlogBuf.join('\n')
-// 手機上把紀錄叫出來：在畫面右下角「連點三下」（1.5 秒內）。
-// 位置刻意選在沒有任何按鈕的死角，正常操作不會誤觸。
-function showVoiceLog(){
-  const txt=_vlogBuf.length?_vlogBuf.join('\n'):'（還沒有任何語音紀錄）'
-  let box=document.getElementById('vlog-modal')
-  if(box) box.remove()
-  box=document.createElement('div')
-  box.id='vlog-modal'
-  box.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(2,6,23,.92);'
-    +'display:flex;flex-direction:column;padding:calc(env(safe-area-inset-top) + 12px) 12px '
-    +'calc(env(safe-area-inset-bottom) + 12px)'
-  box.innerHTML=
-     '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">'
-    +'<div style="flex:1;font:800 15px/1.2 -apple-system,sans-serif;color:#e2e8f0">語音診斷紀錄</div>'
-    +'<button id="vlog-close" style="padding:9px 14px;border:0;border-radius:10px;'
-    +'background:#334155;color:#e2e8f0;font-size:14px;font-weight:700">關閉</button></div>'
-    // textarea（不是 div）才能在 iOS 上用 select() 選取並複製
-    +'<textarea id="vlog-text" readonly style="flex:1;width:100%;box-sizing:border-box;'
-    +'background:#0f172a;color:#cbd5e1;border:1px solid #334155;border-radius:10px;padding:10px;'
-    +'font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;resize:none;-webkit-user-select:text;'
-    +'user-select:text"></textarea>'
-    +'<div style="display:flex;gap:8px;margin-top:10px">'
-    +'<button id="vlog-copy" style="flex:2;padding:15px;border:0;border-radius:12px;background:#2563eb;'
-    +'color:#fff;font-size:16px;font-weight:800">📋 複製全部</button>'
-    +'<button id="vlog-clear" style="flex:1;padding:15px;border:0;border-radius:12px;background:#7c2d12;'
-    +'color:#fed7aa;font-size:15px;font-weight:700">清除</button></div>'
-  document.body.appendChild(box)
-  const ta=box.querySelector('#vlog-text')
-  ta.value=txt
-  box.querySelector('#vlog-close').onclick=()=>box.remove()
-  box.querySelector('#vlog-clear').onclick=()=>{ _vlogBuf=[]; ta.value='（已清除）' }
-  box.querySelector('#vlog-copy').onclick=async ()=>{
-    const btn=box.querySelector('#vlog-copy')
-    let ok=false
-    // iOS 需要在使用者手勢當下操作，而且 clipboard API 在非 https 會不存在，
-    // 所以保留 select()+execCommand 這條舊路當後援。
-    try{
-      if(navigator.clipboard && window.isSecureContext){
-        await navigator.clipboard.writeText(ta.value); ok=true
-      }
-    }catch(e){}
-    if(!ok){
-      try{
-        // 保持 readonly：iOS 上 readonly 的 textarea 一樣可以 setSelectionRange，
-        // 但不會把虛擬鍵盤叫出來擋住畫面。
-        ta.focus(); ta.setSelectionRange(0, ta.value.length)
-        ok=document.execCommand('copy')
-      }catch(e){}
-      // 真的複製不成也已經幫你把全文選起來了，直接用 iOS 的「拷貝」即可
-    }
-    btn.textContent = ok ? '✓ 已複製' : '已全選 — 請按 iOS 的「拷貝」'
-    btn.style.background = ok ? '#16a34a' : '#b91c1c'
-    setTimeout(()=>{ btn.textContent='📋 複製全部'; btn.style.background='#2563eb' },1800)
-  }
-}
-;(function(){
-  let taps=[], W=90, H=90
-  document.addEventListener('touchend', e=>{
-    const t=e.changedTouches && e.changedTouches[0]
-    if(!t) return
-    if(t.clientX < innerWidth-W || t.clientY < innerHeight-H) return
-    const now=Date.now()
-    taps=taps.filter(x=>now-x<1500); taps.push(now)
-    if(taps.length>=3){ taps=[]; showVoiceLog() }
-  }, {passive:true})
-})()
 const VOICE_SR = window.SpeechRecognition || window.webkitSpeechRecognition
 let voicePickEnabled = (localStorage.getItem('voice_pick_enabled') ?? '1') === '1'
 let _vrec=null, _vrecOn=false, _vrecErr='', _vrecDead=false
