@@ -1549,12 +1549,14 @@ async function cloudAuth(body) {
   return json.data
 }
 // cloudGet / cloudPost — 登入後改用 sessionToken，靜態 key 不再傳出
-async function cloudGet(params) {
+// timeoutMs 可省略，預設 15 秒。資料量大的查詢（例如月曆一次要整批調查紀錄）
+// 可以自己指定更長的時間，不然 Apps Script 冷啟動就直接被 abort 掉。
+async function cloudGet(params, timeoutMs) {
   if (!gsUrl) throw new Error('未設定雲端')
   const tok = getSessionToken()
   if (!tok) throw new Error('未登入或 session 已過期，請重新登入')
   const p = new URLSearchParams({ ...params, sessionToken: tok, _t: Date.now() })
-  const res = await fetch(`${gsUrl}?${p}`, { signal: AbortSignal.timeout(15000), cache: 'no-store' })
+  const res = await fetch(`${gsUrl}?${p}`, { signal: AbortSignal.timeout(timeoutMs||15000), cache: 'no-store' })
   const json = await res.json()
   if (!json.ok) throw new Error(json.error || 'cloud error')
   return json.data
@@ -2866,6 +2868,79 @@ async function showListQR(taskId){
 // ════════════════════════════════════════════════════════
 // 把雲端專案同步回本機，回傳「雲端專案 id → 本機專案 id」的對照表
 let _lastCloudProjects=[]   // 給 repairCloudProjectIds 比對用，不必再打一次後端
+// 路線找不到本機專案時的歸屬處理。
+//
+// ⚠️ 舊版是直接 push 一個新專案，於是每同步一次就多一份重複的空殼：
+//   1) 名稱取自「路線名稱」，所以會冒出叫「測試路線A」的專案；
+//   2) 路線沒有 projectId 時 cloudId 存成 null，下次同步永遠比對不到 → 再建一個；
+//   3) 專案擁有者不是自己時，syncProjectsFromCloud 會跳過它、projectMap 裡沒有，
+//      同樣會走到新建這條路。
+// 現在改成三段比對，而且「由名稱決定的固定 id」讓重複同步一定命中同一筆。
+function _pjSlug(name){
+  // 名稱 → 穩定 id（不依賴時間或亂數，才有冪等性）
+  let h=0; const s=String(name||'')
+  for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0 }
+  return 'pj_n_'+(h>>>0).toString(36)
+}
+function _adoptProject(r, me){
+  const cid=r.projectId||''
+  const nm=S(r.routeName)||'未命名專案'
+  // (1) 先比 cloudId
+  if(cid){
+    const byCloud=savedProjects.find(p=>p.cloudId===cid)
+    if(byCloud) return byCloud.id
+  }
+  // (2) 再比名稱：把既有的同名專案認回來，順便補上 cloudId，
+  //     這樣過去產生的重複空殼不會再繼續分裂
+  const byName=savedProjects.find(p=>S(p.name)===nm && (!p.cloudId||p.cloudId===cid))
+  if(byName){
+    if(cid && !byName.cloudId){ byName.cloudId=cid; localStorage.setItem('pm_projects',JSON.stringify(savedProjects)) }
+    return byName.id
+  }
+  // (3) 都沒有才新建。沒有 cloudId 的情況用名稱推出固定 id，確保下次同步比對得到
+  const proj={ id: cid ? ('pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)) : _pjSlug(nm),
+               cloudId: cid||null, name: nm,
+               savedAt: (r.createdAt||'').slice(0,10)||'雲端', creator: me }
+  if(savedProjects.some(p=>p.id===proj.id)) return proj.id   // 固定 id 可能已存在
+  savedProjects.push(proj)
+  localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
+  return proj.id
+}
+
+// 清掉過去已經產生的重複專案。同 cloudId 或同名的合併成一筆，
+// 路線改掛到保留的那筆，最後把沒有任何路線又沒有 cloudId 的空殼刪掉。
+function dedupeProjects(){
+  const keepOf={}     // 舊 id -> 保留的 id
+  const seenCloud={}, seenName={}
+  const kept=[]
+  for(const p of savedProjects){
+    const cid=p.cloudId||''
+    const nm=S(p.name)
+    let target=null
+    if(cid && seenCloud[cid]) target=seenCloud[cid]
+    else if(seenName[nm]) target=seenName[nm]
+    if(target){ keepOf[p.id]=target; continue }
+    kept.push(p); keepOf[p.id]=p.id
+    if(cid) seenCloud[cid]=p.id
+    if(nm)  seenName[nm]=p.id
+  }
+  let moved=0
+  savedTasks.forEach(t=>{
+    const to=keepOf[t.projectId]
+    if(to && to!==t.projectId){ t.projectId=to; moved++ }
+  })
+  // 沒路線、又沒對應雲端專案的，就是分裂出來的空殼
+  const used=new Set(savedTasks.map(t=>t.projectId))
+  const final=kept.filter(p=>used.has(p.id)||p.cloudId)
+  const removed=savedProjects.length-final.length
+  if(removed||moved){
+    savedProjects=final
+    localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
+    localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
+  }
+  return {removed, moved}
+}
+
 async function syncProjectsFromCloud(me) {
   const map={}
   try{
@@ -2936,10 +3011,8 @@ async function syncFromCloud(opts) {
         // 全新路線（本機從沒見過）或本機歸屬已失效，才需要靠雲端的 projectId 對照／新建專案
         localProjectId=r.projectId?projectMap[r.projectId]:null
         if(!localProjectId){
-          const proj={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:r.projectId||null,name:r.routeName||'未命名專案',savedAt:r.createdAt?.slice(0,10)||'雲端',creator:me}
-          savedProjects.push(proj);localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
-          localProjectId=proj.id
-          if(r.projectId) projectMap[r.projectId]=proj.id
+          localProjectId=_adoptProject(r, me)
+          if(r.projectId) projectMap[r.projectId]=localProjectId
         }
       }
       if(existIdx>=0){
@@ -2960,6 +3033,9 @@ async function syncFromCloud(opts) {
     savedTasks=savedTasks.filter(t=>!t.cloudId||myCloudIds.has(t.cloudId))
     if(savedTasks.length!==before)changed+=before-savedTasks.length
     localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
+    // 清掉過去那個 bug 產生的重複專案／空殼（每次同步都跑，之後不會再長出來）
+    const dd=dedupeProjects()
+    if(dd.removed) toast(`🧹 已合併 ${dd.removed} 個重複的專案`)
     renderProjects()
     hideSyncOverlay()   // 專案列表已經畫出來了，遮罩可以收掉
     if(changed>0) toast(`☁️ 雲端同步完成`)
@@ -3998,10 +4074,14 @@ async function loadCalendarData(hostId, mineOnly){
   if(!_calYM || !sameView) _calYM=thisMonth()
   _calLoading=true
   renderSurveyCalendar()                 // ← 骨架（或舊資料）立刻上畫面
+  // 三個都用輕量模式：月曆只要「哪天、哪條路線、誰、幾趟」。
+  // 完整模式會連每筆調查的 gpsTrack、delayLog 和整條路線的節點/路段都搬回來，
+  // 資料一多就撞到 15 秒逾時（現場回報：載入失敗 signal timed out）。
+  // 逾時也拉長到 30 秒，Apps Script 冷啟動本來就慢。
   const [routes, surveys, projects] = await Promise.all([
-    cloudGet({ action:'getRoutes' }),
-    cloudGet({ action:'getSurveys' }),
-    cloudGet({ action:'getProjects' }).catch(()=>[])   // 舊環境沒有 projects 表也要能用
+    cloudGet({ action:'getRoutes', light:'1' }, 30000),
+    cloudGet({ action:'getSurveys', meta:'1' }, 30000),
+    cloudGet({ action:'getProjects' }, 30000).catch(()=>[])   // 舊環境沒有 projects 表也要能用
   ])
   if(seq!==_calLoadSeq) return            // 使用者已經切走或又點了一次，這批結果作廢
   _calRoutes={}; (routes||[]).forEach(r=>_calRoutes[r.id]=r)
