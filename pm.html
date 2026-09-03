@@ -530,7 +530,11 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
   font-size:15px;color:#475569;flex:none}
 .cal-mbody{padding:12px 16px 16px;overflow-y:auto}
 .cal-pjblock{margin-bottom:14px}
-.cal-pjhd{font-size:12px;font-weight:800;border-left:3px solid;padding-left:7px;margin-bottom:8px}
+.cal-pjhd{font-size:12px;font-weight:800;border-left:3px solid;padding-left:7px;margin-bottom:8px;
+  display:flex;align-items:center;gap:8px}
+.cal-del{flex:none;padding:4px 9px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;
+  border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;transition:.12s}
+.cal-del:hover{background:#dc2626;border-color:#dc2626;color:#fff}
 .cal-rrow{border:1px solid #e2e8f0;border-radius:9px;padding:10px 12px;margin-bottom:8px;cursor:pointer;
   display:flex;align-items:center;gap:10px;transition:.12s}
 .cal-rrow:hover{background:#f8fafc;border-color:#93c5fd}
@@ -637,6 +641,12 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
       <div class="login-field"><label>密碼</label><input id="li-pwd" type="password" placeholder="輸入密碼" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
       <button class="login-btn" onclick="doLogin()">登入</button>
       <div class="login-err" id="login-err"></div>
+      <!-- 個資告知。系統會記錄登入的帳號、時間、裝置與所在縣市，依法應讓當事人知道。
+           若決定不記錄這些資料，請連同 loginMeta() 一起移除。 -->
+      <div id="login-privacy" style="margin-top:14px;font-size:11px;line-height:1.6;color:#94a3b8;text-align:center">
+        登入時系統會記錄您的帳號、時間、裝置類型與所在縣市，供資安稽核使用。<br>
+        縣市由網路位址推估（不會儲存您的 IP），推估過程會將連線位址傳送至第三方查詢服務。
+      </div>
     </div>
   </div>
 </div>
@@ -672,6 +682,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     <button class="admin-tab" data-tab="routes" onclick="switchAdminTab('routes')">🗺 專案資料</button>
     <button class="admin-tab" data-tab="surveys" onclick="switchAdminTab('surveys')">📋 調查報告</button>
     <button class="admin-tab" data-tab="link" onclick="switchAdminTab('link')">🔗 監測連結</button>
+    <button class="admin-tab" data-tab="logins" onclick="switchAdminTab('logins')">🔐 稽核紀錄</button>
     <button class="admin-tab" data-tab="trash" onclick="switchAdminTab('trash')">🗑 垃圾桶</button>
   </div>
 
@@ -695,6 +706,11 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     <!-- 調查報告（月曆） -->
     <div id="atab-surveys" style="display:none">
       <div id="admin-surveys-table"><div class="admin-loading">載入中...</div></div>
+    </div>
+
+    <!-- 登入紀錄 -->
+    <div id="atab-logins" style="display:none">
+      <div id="admin-logins-table"><div class="admin-loading">載入中...</div></div>
     </div>
 
     <!-- 監測連結 -->
@@ -1107,13 +1123,54 @@ async function doLogin() {
   try {
     const hash = await hashPwd(pwd)
     const legacyHash = hashPwdLegacy(pwd)   // 供後端過渡期比對舊帳號
-    const res = await cloudAuth({ action: 'loginUser', name, hash, legacyHash })
+    const meta = await loginMeta()
+    const res = await cloudAuth({ action: 'loginUser', name, hash, legacyHash,
+                                  city: meta.city, device: meta.device })
     setSession(name, res.sessionToken, res.expiresAt, res.apiKey)
     enterApp(name)
   } catch(e) {
     err.textContent = e.message.includes('帳號') ? '姓名或密碼錯誤' : '連線失敗，請稍後再試'
     btn.disabled = false; btn.textContent = '登入'
   }
+}
+
+// 登入紀錄要用的兩個欄位。
+//
+// ⚠️ 這是會被記錄下來的個人資料，登入畫面上有一行告知文字（#login-privacy）。
+// 若之後決定不記錄，把那行文字和這個函式一起拿掉才算乾淨。
+//
+// 縣市：Apps Script 讀不到用戶端 IP，只能由前端查。這裡刻意只留下縣市字串，
+// IP 不回傳也不儲存（第三方服務本身仍看得到，這點在告知文字裡有寫）。
+// 查詢失敗、逾時、被擋都不能影響登入，所以整段包在 try 裡並限時 2.5 秒。
+async function loginMeta(){
+  const device=describeDevice()
+  let city=''
+  try{
+    const r=await fetch('https://ipapi.co/json/',{signal:AbortSignal.timeout(2500)})
+    if(r.ok){
+      const j=await r.json()
+      city=[j.city,j.region].filter(Boolean).join('、')||j.country_name||''
+    }
+  }catch(e){ /* 查不到就留空 */ }
+  return {city, device}
+}
+// user agent → 看得懂的裝置描述，不要把整串 UA 存進表裡
+function describeDevice(){
+  const ua=navigator.userAgent||''
+  let os='其他'
+  if(/iPhone/.test(ua)) os='iPhone'
+  else if(/iPad/.test(ua)) os='iPad'
+  else if(/Android/.test(ua)) os='Android'
+  else if(/Macintosh/.test(ua)) os=(navigator.maxTouchPoints>1?'iPad':'Mac')
+  else if(/Windows/.test(ua)) os='Windows'
+  else if(/Linux/.test(ua)) os='Linux'
+  let br='其他瀏覽器'
+  if(/Edg\//.test(ua)) br='Edge'
+  else if(/OPR\//.test(ua)) br='Opera'
+  else if(/Chrome\//.test(ua)&&!/Edg\//.test(ua)) br='Chrome'
+  else if(/Firefox\//.test(ua)) br='Firefox'
+  else if(/Safari\//.test(ua)) br='Safari'
+  return os+' · '+br
 }
 
 async function doRegister() {
@@ -3680,11 +3737,69 @@ function switchAdminTab(tab) {
   document.getElementById('atab-surveys').style.display = tab === 'surveys' ? '' : 'none'
   document.getElementById('atab-trash').style.display   = tab === 'trash'   ? '' : 'none'
   document.getElementById('atab-link').style.display    = tab === 'link'    ? '' : 'none'
+  document.getElementById('atab-logins').style.display  = tab === 'logins'  ? '' : 'none'
   if (tab === 'users')   loadAdminUsers()
   if (tab === 'routes')  loadAdminRoutes()
   if (tab === 'surveys') loadAdminSurveys()
   if (tab === 'trash')   loadAdminTrash()
   if (tab === 'link')    renderSelectUrl()
+  if (tab === 'logins')  loadAdminLogins()
+}
+
+// ── 稽核紀錄 ──────────────────────────────────────────────
+// 兩份紀錄放同一頁：上面是「誰做了什麼」（真正用來追刪除責任的），
+// 下面是登入紀錄（用來佐證「那個時間點是誰在用這個帳號」）。
+async function loadAdminLogins(){
+  const el=document.getElementById('admin-logins-table')
+  el.innerHTML='<div class="admin-loading">載入中...</div>'
+  try{
+    const [ops, logins]=await Promise.all([
+      cloudGet({action:'getAuditLogs', limit:'300'}, 30000).catch(()=>[]),
+      cloudGet({action:'getLoginLogs', limit:'300'}, 30000).catch(()=>[])
+    ])
+    adminCloudOk()
+    const DEL=/刪除|清空/
+    const opTable = ops.length ? `
+      <table class="admin-table">
+        <thead><tr><th style="width:170px">時間</th><th style="width:110px">操作者</th>
+          <th style="width:170px">動作</th><th>對象</th><th>備註</th></tr></thead>
+        <tbody>${ops.map(r=>`<tr${DEL.test(r.action)?' style="background:#fef2f2"':''}>
+          <td style="color:#475569;font-size:12px">${esc(r.at)}</td>
+          <td><strong>${esc(r.actor)||'—'}</strong></td>
+          <td style="${DEL.test(r.action)?'color:#dc2626;font-weight:700':'color:#475569'}">${esc(r.action)}</td>
+          <td style="color:#64748b;font-size:12px;word-break:break-all">${esc(r.target)||'—'}</td>
+          <td style="color:#64748b;font-size:12px">${esc(r.detail)||'—'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`
+      : '<div class="admin-empty">尚無操作紀錄（此功能上線後的操作才會被記錄）</div>'
+
+    const loginTable = logins.length ? `
+      <table class="admin-table">
+        <thead><tr><th style="width:170px">時間</th><th>帳號</th><th>所在縣市</th><th>裝置</th></tr></thead>
+        <tbody>${logins.map(r=>`<tr>
+          <td style="color:#475569;font-size:12px">${esc(r.at)}</td>
+          <td><strong>${esc(r.name)||'—'}</strong></td>
+          <td style="color:#475569">${esc(r.city)||'—'}</td>
+          <td style="color:#475569;font-size:12px">${esc(r.device)||'—'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`
+      : '<div class="admin-empty">尚無登入紀錄</div>'
+
+    el.innerHTML=`
+      <div style="font-size:14px;font-weight:800;margin:6px 0 4px">📝 操作紀錄</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:10px">
+        操作者一律由伺服器依 session 判定，前端無法偽造。刪除類動作以紅色標示。
+      </div>
+      ${opTable}
+      <div style="font-size:14px;font-weight:800;margin:22px 0 4px">🔐 登入紀錄</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:10px">
+        只記成功登入。縣市由網路位址推估，僅供參考；未儲存 IP。
+      </div>
+      ${loginTable}`
+  }catch(e){
+    adminCloudErr()
+    el.innerHTML=`<div style="color:#dc2626;padding:16px">載入失敗：${esc(e.message)}</div>`
+  }
 }
 
 function getSelectUrl() {
@@ -4372,9 +4487,14 @@ function openCalDay(dateStr, pid){
         <span class="cr-go">›</span>
       </div>`
     }).join('')
+    const nSv=[...g.routes.values()].reduce((n,r)=>n+r.items.length,0)
     return `<div class="cal-pjblock">
-      <div class="cal-pjhd" style="color:${col.c};border-color:${col.c}">${esc(g.name)}
-        <span style="color:#94a3b8;font-weight:600">・${g.routes.size} 條路線</span></div>
+      <div class="cal-pjhd" style="color:${col.c};border-color:${col.c}">
+        <span style="flex:1;min-width:0">${esc(g.name)}
+          <span style="color:#94a3b8;font-weight:600">・${g.routes.size} 條路線</span></span>
+        <button class="cal-del" title="刪除這天這個專案的全部調查紀錄"
+          onclick="calDeleteProjectDay(${jsArg(dateStr)},${jsArg(g.id)})">🗑 刪除當日</button>
+      </div>
       ${rows}</div>`
   }).join('')
   const nRoutes=gs.reduce((n,g)=>n+g.routes.size,0)
@@ -4385,6 +4505,41 @@ function openCalDay(dateStr, pid){
   document.getElementById('cal-mask').classList.add('on')
 }
 function closeCalModal(){ document.getElementById('cal-mask').classList.remove('on') }
+// 刪掉「這一天 × 這個專案」的全部調查紀錄。
+// 跟報告頁一樣採樂觀更新：先從畫面與快取移除、立刻重繪，雲端在背景刪；
+// 失敗再把那幾筆放回去。都是軟刪除，PM 端垃圾桶 3 天內可還原。
+async function calDeleteProjectDay(dateStr, pid){
+  const g=calGroups(dateStr).find(x=>x.id===pid)
+  if(!g) return
+  const ids=[...g.routes.values()].flatMap(r=>r.items.map(s=>s.id)).filter(Boolean)
+  if(!ids.length){ toast('這個專案這天沒有可刪除的紀錄'); return }
+  if(!confirm(`確定刪除「${g.name}」在 ${dateStr} 的全部 ${ids.length} 筆調查紀錄？\n`
+    +`（共 ${g.routes.size} 條路線）\n\n可在 3 天內於垃圾桶還原。`)) return
+
+  const idSet=new Set(ids)
+  const key=_ymKey(_calYM)
+  const backupMonth=(_calMonthCache[key]||[]).slice()
+  // 快取與目前畫面資料都要移除，否則翻月份回來又會冒出來
+  if(_calMonthCache[key]) _calMonthCache[key]=_calMonthCache[key].filter(s=>!idSet.has(s.id))
+  _calSurveys=_calSurveys.filter(s=>!idSet.has(s.id))
+  renderSurveyCalendar()
+  // 這一天還有別的專案就把彈窗重畫，全刪光才關掉
+  if(calGroups(dateStr).length) openCalDay(dateStr,'')
+  else closeCalModal()
+  toast(`🗑 已刪除 ${ids.length} 筆`)
+
+  const rs=await Promise.allSettled(
+    ids.map(id=>cloudPost({action:'deleteSurvey', surveyId:id, deletedBy:getCurrentUser()||'pm', note:''})))
+  const fail=rs.filter(r=>r.status==='rejected')
+  if(!fail.length) return
+  // 有失敗：只保留真的刪成功的，其餘放回畫面
+  const okIds=new Set(ids.filter((_,i)=>rs[i].status==='fulfilled'))
+  _calMonthCache[key]=backupMonth.filter(s=>!okIds.has(s.id))
+  _calSurveys=_filterMine(_calMonthCache[key])
+  renderSurveyCalendar()
+  alert(`有 ${fail.length}/${ids.length} 筆刪除失敗，已還原到畫面上：\n`
+    +fail.slice(0,3).map(f=>String(f.reason&&f.reason.message||f.reason)).join('\n'))
+}
 // 點路線 → 開報告頁（沿用既有的一次性 token 機制）
 function openCalReport(routeId, dateStr){
   const tok=crypto.randomUUID()
