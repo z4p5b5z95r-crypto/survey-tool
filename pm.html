@@ -449,6 +449,71 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .admin-tab:hover{color:#1e293b}
 .admin-tab.active{color:#2563eb;border-bottom-color:#2563eb}
 .admin-body{flex:1;overflow-y:auto;padding:20px;background:#f8fafc}
+/* ── 調查報告月曆 ───────────────────────────────────── */
+.cal-filters{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px;display:flex;
+  gap:10px;align-items:center;flex-wrap:wrap;margin:4px 0 14px;box-shadow:0 1px 5px rgba(0,0,0,.06)}
+.cal-fg{display:flex;flex-direction:column;gap:4px}
+.cal-fg label{font-size:11px;color:#64748b;font-weight:700;letter-spacing:.3px}
+.cal-fg select{padding:8px 11px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;
+  font-size:13px;color:#0f172a;min-width:150px;font-family:inherit;cursor:pointer}
+.cal-nav{display:flex;align-items:center;gap:6px;margin-left:auto}
+.cal-nav button{width:34px;height:34px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;
+  cursor:pointer;font-size:15px;color:#475569}
+.cal-nav button:hover{background:#f1f5f9}
+.cal-nav .cal-ml{font-size:16px;font-weight:800;min-width:112px;text-align:center;color:#0f172a}
+.cal-nav .cal-today{width:auto;padding:0 12px;font-size:12px;font-weight:700}
+.cal-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;
+  box-shadow:0 1px 5px rgba(0,0,0,.06)}
+.cal-dow{display:grid;grid-template-columns:repeat(7,1fr);background:#f8fafc;border-bottom:1px solid #e2e8f0}
+.cal-dow div{padding:9px 0;text-align:center;font-size:12px;font-weight:700;color:#64748b}
+.cal-dow div:first-child,.cal-dow div:last-child{color:#dc2626}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr)}
+.cal-cell{min-height:112px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:6px}
+.cal-cell:nth-child(7n){border-right:0}
+.cal-cell.blank{background:#fafbfc}
+.cal-cell.today{background:#eff6ff}
+.cal-dn{font-size:12px;font-weight:700;color:#475569;margin-bottom:5px}
+.cal-cell.today .cal-dn{color:#2563eb}
+.cal-cell.wknd .cal-dn{color:#dc2626}
+.cal-chip{border:1px solid;border-left-width:3px;border-radius:6px;padding:4px 6px;margin-bottom:4px;
+  cursor:pointer;transition:.12s}
+.cal-chip:hover{filter:brightness(.97);box-shadow:0 1px 5px rgba(15,23,42,.13)}
+.cc-top{display:flex;align-items:baseline;gap:5px}
+.cc-pj{flex:1;min-width:0;font-size:11px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-n{flex:none;font-size:10px;font-weight:800;color:#fff;border-radius:20px;padding:1px 6px;line-height:1.5}
+.cc-en{font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.cal-more{font-size:10px;color:#94a3b8;padding-left:3px;cursor:pointer;font-weight:700}
+.cal-more:hover{color:#2563eb}
+.cal-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;padding:10px 13px;background:#fff;
+  border:1px solid #e2e8f0;border-radius:10px;font-size:12px;color:#475569}
+.cal-lg{display:flex;align-items:center;gap:5px}
+.cal-lg i{width:9px;height:9px;border-radius:50%;display:block}
+.cal-mask{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;
+  align-items:center;justify-content:center;padding:16px}
+.cal-mask.on{display:flex}
+.cal-modal{background:#fff;border-radius:14px;width:100%;max-width:500px;max-height:82vh;
+  display:flex;flex-direction:column;overflow:hidden}
+.cal-mhead{padding:13px 16px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:10px}
+.cal-mhead h3{margin:0;font-size:16px;color:#0f172a}
+.cal-msub{font-size:12px;color:#64748b;margin-top:2px}
+.cal-x{border:0;background:#f1f5f9;width:30px;height:30px;border-radius:8px;cursor:pointer;
+  font-size:15px;color:#475569;flex:none}
+.cal-mbody{padding:12px 16px 16px;overflow-y:auto}
+.cal-pjblock{margin-bottom:14px}
+.cal-pjhd{font-size:12px;font-weight:800;border-left:3px solid;padding-left:7px;margin-bottom:8px}
+.cal-rrow{border:1px solid #e2e8f0;border-radius:9px;padding:10px 12px;margin-bottom:8px;cursor:pointer;
+  display:flex;align-items:center;gap:10px;transition:.12s}
+.cal-rrow:hover{background:#f8fafc;border-color:#93c5fd}
+.cr-n{font-size:13px;font-weight:800;color:#0f172a}
+.cr-m{font-size:11px;color:#64748b;margin-top:3px;display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.cr-t{flex:none;font-size:12px;font-weight:800;border:1px solid;border-radius:20px;padding:3px 10px;white-space:nowrap}
+.cr-go{flex:none;color:#cbd5e1;font-size:16px}
+@media(max-width:760px){
+  .cal-cell{min-height:88px;padding:4px}
+  .cc-pj{font-size:10px}
+  .cal-fg select{min-width:120px}
+  .cal-nav{margin-left:0;width:100%;justify-content:space-between}
+}
 .admin-table{width:100%;border-collapse:collapse;background:white;border-radius:12px;overflow:hidden;box-shadow:0 1px 5px rgba(0,0,0,.07);margin-top:4px}
 .admin-table th{background:#f1f5f9;color:#475569;padding:10px 14px;text-align:left;font-size:12px;font-weight:700;border-bottom:2px solid #e2e8f0}
 .admin-table td{padding:10px 14px;border-bottom:1px solid #f8fafc;font-size:13px;color:#1e293b;vertical-align:middle}
@@ -574,9 +639,22 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
       <div id="admin-routes-table"><div class="admin-loading">載入中...</div></div>
     </div>
 
-    <!-- 調查報告 -->
+    <!-- 調查報告（月曆） -->
     <div id="atab-surveys" style="display:none">
       <div id="admin-surveys-table"><div class="admin-loading">載入中...</div></div>
+    </div>
+    <!-- 月曆：點某天某專案後列出當天調查過的路線 -->
+    <div class="cal-mask" id="cal-mask" onclick="if(event.target===this)closeCalModal()">
+      <div class="cal-modal">
+        <div class="cal-mhead">
+          <div style="flex:1;min-width:0">
+            <h3 id="cal-mtitle"></h3>
+            <div class="cal-msub" id="cal-msub"></div>
+          </div>
+          <button class="cal-x" onclick="closeCalModal()">✕</button>
+        </div>
+        <div class="cal-mbody" id="cal-mbody"></div>
+      </div>
     </div>
 
     <!-- 監測連結 -->
@@ -3832,36 +3910,226 @@ async function adminDeleteRoute(id, name) {
   } catch(e) { toast('❌ ' + e.message) }
 }
 
-// ── 調查報告 ─────────────────────────────────────────────
+// ── 調查報告（月曆） ─────────────────────────────────────
+// 呈現規則：一天 × 一個專案 = 一個框。框上的數字是「當天調查過的路線條數」（不是趟次），
+// 只要有調查就算，不需要把該專案的路線跑完。點框 → 列出當天該專案的路線（趟次顯示在
+// 路線後面）→ 點路線才進報告頁。
+const SV_WZH = { sunny:'☀️', cloudy:'☁️', rainy:'🌧️' }
+// 路線／專案／帳號名稱都是使用者自己打的，直接塞進 innerHTML 會壞版（名稱裡有 & < > " 的話），
+// 而且這些字串同時也會被放進 onclick="..." 的參數裡，所以單引號也要一起處理。
+function esc(s){
+  return String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+}
+// 要放進 onclick="fn(...)" 當參數的字串專用。
+// 不能直接用 esc()：它把單引號變成 &#39;，而 HTML 解析器會先把實體還原成真正的單引號，
+// 反而把 JS 字串提早截斷。先用 JSON.stringify 產生合法的 JS 字面值，再整串做 HTML escape，
+// 解析器還原後剛好是一個完整的雙引號字串。
+function jsArg(s){ return esc(JSON.stringify(String(s==null?'':s))) }
+let _calSurveys=[], _calRoutes={}, _calProjects={}, _calReady=false
+let _calYM=null                                   // {y,m} 目前顯示的月份
+let _calFilt={ project:'', engineer:'' }
+
 async function loadAdminSurveys() {
   const el = document.getElementById('admin-surveys-table')
   el.innerHTML = '<div class="admin-loading">載入中...</div>'
   try {
-    const [routes, surveys] = await Promise.all([
+    const [routes, surveys, projects] = await Promise.all([
       cloudGet({ action: 'getRoutes' }),
-      cloudGet({ action: 'getSurveys' })
+      cloudGet({ action: 'getSurveys' }),
+      cloudGet({ action: 'getProjects' }).catch(()=>[])   // 舊環境沒有 projects 表也要能用
     ])
     adminCloudOk()
-    if (!surveys.length) { el.innerHTML = '<div class="admin-empty">尚無調查報告</div>'; return }
-    const routeMap = {}
-    routes.forEach(r => routeMap[r.id] = r.routeName)
-    const WZH = { sunny:'☀️', cloudy:'☁️', rainy:'🌧️' }
-    el.innerHTML = `<table class="admin-table">
-      <thead><tr><th>路線</th><th>調查員</th><th>日期</th><th>天氣</th><th style="text-align:center">旅次</th><th>提交時間</th><th style="width:90px">操作</th></tr></thead>
-      <tbody>${surveys.map(sv => `<tr>
-        <td><strong>${routeMap[sv.routeId] || '—'}</strong></td>
-        <td>${sv.surveyor || '—'}</td>
-        <td style="color:#64748b;font-size:12px">${sv.date ? String(sv.date).slice(0,10) : '—'}${svDateFlagBadge(sv,{block:true})}</td>
-        <td>${WZH[sv.weather] || sv.weather || '—'}</td>
-        <td style="text-align:center;color:#475569">${sv.tripCount || 0}</td>
-        <td style="color:#94a3b8;font-size:12px">${sv.submittedAt ? new Date(sv.submittedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</td>
-        <td><button class="adm-btn del" onclick="adminDeleteSurvey('${sv.id}')">🗑 刪除</button></td>
-      </tr>`).join('')}</tbody>
-    </table>`
+    _calRoutes={}; routes.forEach(r=>_calRoutes[r.id]=r)
+    _calProjects={}; (projects||[]).forEach(p=>_calProjects[p.id]=p)
+    _calSurveys=(surveys||[]).filter(sv=>sv.date)
+    _calReady=true
+    if(!_calSurveys.length){ el.innerHTML='<div class="admin-empty">尚無調查報告</div>'; return }
+    // 預設停在「最近一次有資料」的月份，而不是這個月——不然剛打開常常是空的
+    if(!_calYM){
+      const last=_calSurveys.map(s=>String(s.date).slice(0,10)).sort().pop()
+      _calYM={ y:+last.slice(0,4), m:+last.slice(5,7) }
+    }
+    renderSurveyCalendar()
   } catch(e) {
     adminCloudErr()
     el.innerHTML = `<div style="color:#dc2626;padding:16px">載入失敗：${e.message}</div>`
   }
+}
+
+// 一筆 survey 屬於哪個專案（查不到就歸到「未分類」，不要整筆消失）
+function svProject(sv){
+  const rt=_calRoutes[sv.routeId]
+  const pj=rt && _calProjects[rt.projectId]
+  if(pj) return { id:pj.id, name:pj.name }
+  if(rt && rt.projectId) return { id:rt.projectId, name:rt.routeName||'未命名專案' }
+  return { id:'__none__', name:'未分類' }
+}
+function svRouteName(sv){ const r=_calRoutes[sv.routeId]; return (r&&r.routeName)||'（已刪除的路線）' }
+// 「工程師」＝建立這條路線的帳號擁有者（routes.owner），不是現場的調查員（surveys.surveyor）。
+// 路線沒有 owner 時退回專案的 owner，兩者都沒有才顯示未指定。
+function svEng(sv){
+  const rt=_calRoutes[sv.routeId]
+  if(rt && rt.owner) return rt.owner
+  const pj=rt && _calProjects[rt.projectId]
+  if(pj && pj.owner) return pj.owner
+  return '未指定'
+}
+
+// 專案配色：同一個專案在整個月曆固定同一色
+const CAL_COLORS=[
+  {c:'#2563eb',bg:'#eff6ff',bd:'#bfdbfe'}, {c:'#16a34a',bg:'#f0fdf4',bd:'#bbf7d0'},
+  {c:'#ea580c',bg:'#fff7ed',bd:'#fed7aa'}, {c:'#7c3aed',bg:'#f5f3ff',bd:'#ddd6fe'},
+  {c:'#0891b2',bg:'#ecfeff',bd:'#a5f3fc'}, {c:'#db2777',bg:'#fdf2f8',bd:'#fbcfe8'},
+  {c:'#ca8a04',bg:'#fefce8',bd:'#fef08a'}, {c:'#475569',bg:'#f8fafc',bd:'#cbd5e1'}
+]
+function calColor(pid){
+  const ids=[...new Set(_calSurveys.map(s=>svProject(s).id))].sort()
+  return CAL_COLORS[Math.max(0,ids.indexOf(pid))%CAL_COLORS.length]
+}
+
+function calFiltered(){
+  return _calSurveys.filter(sv=>{
+    if(_calFilt.project && svProject(sv).id!==_calFilt.project) return false
+    if(_calFilt.engineer && svEng(sv)!==_calFilt.engineer) return false
+    return true
+  })
+}
+// 某一天 → 依專案彙整
+function calGroups(dateStr){
+  const m=new Map()
+  calFiltered().filter(sv=>String(sv.date).slice(0,10)===dateStr).forEach(sv=>{
+    const pj=svProject(sv)
+    if(!m.has(pj.id)) m.set(pj.id,{ id:pj.id, name:pj.name, routes:new Map(), engineers:new Set() })
+    const g=m.get(pj.id)
+    g.engineers.add(svEng(sv))
+    const rn=svRouteName(sv)
+    if(!g.routes.has(rn)) g.routes.set(rn,{ name:rn, routeId:sv.routeId, trips:0, items:[] })
+    const rr=g.routes.get(rn)
+    rr.trips += (+sv.tripCount||0)
+    rr.items.push(sv)
+  })
+  return [...m.values()].sort((a,b)=>a.name.localeCompare(b.name,'zh-TW'))
+}
+
+function renderSurveyCalendar(){
+  const el=document.getElementById('admin-surveys-table')
+  if(!el||!_calReady) return
+  const {y,m}=_calYM
+  const projIds=[...new Set(_calSurveys.map(s=>svProject(s).id))]
+  const projOpts=projIds.map(id=>({id,name:(_calSurveys.map(svProject).find(p=>p.id===id)||{}).name||id}))
+    .sort((a,b)=>a.name.localeCompare(b.name,'zh-TW'))
+  const engs=[...new Set(_calSurveys.map(svEng))].sort((a,b)=>a.localeCompare(b,'zh-TW'))
+
+  const first=new Date(y,m-1,1).getDay()
+  const days=new Date(y,m,0).getDate()
+  const todayStr=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'})
+
+  let cells=''
+  for(let i=0;i<first;i++) cells+='<div class="cal-cell blank"></div>'
+  for(let d=1;d<=days;d++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+    const gs=calGroups(ds)
+    const dw=(first+d-1)%7
+    const cls='cal-cell'+((dw===0||dw===6)?' wknd':'')+(ds===todayStr?' today':'')
+    const shown=gs.slice(0,3).map(g=>{
+      const col=calColor(g.id)
+      return `<div class="cal-chip" style="background:${col.bg};border-color:${col.bd};border-left-color:${col.c}"
+                onclick="openCalDay(${jsArg(ds)},${jsArg(g.id)})">
+        <div class="cc-top">
+          <span class="cc-pj" style="color:${col.c}" title="${esc(g.name)}">${esc(g.name)}</span>
+          <span class="cc-n" style="background:${col.c}">${g.routes.size} 條</span>
+        </div>
+        <div class="cc-en">${esc([...g.engineers].join('、'))}</div>
+      </div>`
+    }).join('')
+    const more=gs.length>3?`<div class="cal-more" onclick="openCalDay(${jsArg(ds)},'')">＋${gs.length-3} 個專案</div>`:''
+    cells+=`<div class="${cls}"><div class="cal-dn">${d}</div>${shown}${more}</div>`
+  }
+  const tail=(first+days)%7
+  if(tail) for(let i=tail;i<7;i++) cells+='<div class="cal-cell blank"></div>'
+
+  el.innerHTML=`
+    <div class="cal-filters">
+      <div class="cal-fg"><label>專案</label>
+        <select onchange="_calFilt.project=this.value;renderSurveyCalendar()">
+          <option value="">全部專案</option>
+          ${projOpts.map(p=>`<option value="${esc(p.id)}" ${_calFilt.project===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}
+        </select></div>
+      <div class="cal-fg"><label>工程師</label>
+        <select onchange="_calFilt.engineer=this.value;renderSurveyCalendar()">
+          <option value="">全部工程師</option>
+          ${engs.map(e=>`<option value="${esc(e)}" ${_calFilt.engineer===e?'selected':''}>${esc(e)}</option>`).join('')}
+        </select></div>
+      <div class="cal-nav">
+        <button onclick="calShiftMonth(-1)" title="上個月">‹</button>
+        <div class="cal-ml">${y}年 ${m}月</div>
+        <button onclick="calShiftMonth(1)" title="下個月">›</button>
+        <button class="cal-today" onclick="calGoToday()">本月</button>
+      </div>
+    </div>
+    <div class="cal-wrap">
+      <div class="cal-dow">${['日','一','二','三','四','五','六'].map(x=>`<div>${x}</div>`).join('')}</div>
+      <div class="cal-grid">${cells}</div>
+    </div>
+    <div class="cal-legend">${projOpts.map(p=>{
+      const col=calColor(p.id)
+      return `<span class="cal-lg"><i style="background:${col.c}"></i>${esc(p.name)}</span>`
+    }).join('')}</div>`
+}
+function calShiftMonth(n){
+  let {y,m}=_calYM; m+=n
+  if(m<1){ m=12; y-- } else if(m>12){ m=1; y++ }
+  _calYM={y,m}; renderSurveyCalendar()
+}
+function calGoToday(){
+  const t=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'})
+  _calYM={ y:+t.slice(0,4), m:+t.slice(5,7) }; renderSurveyCalendar()
+}
+
+// 點專案框 → 列出當天該專案調查過的路線；pid 空字串代表「顯示當天全部專案」
+function openCalDay(dateStr, pid){
+  const gs=calGroups(dateStr).filter(g=>!pid||g.id===pid)
+  if(!gs.length) return
+  const body=gs.map(g=>{
+    const col=calColor(g.id)
+    const rows=[...g.routes.values()].map(r=>{
+      const sv=r.items[0]
+      // 這裡兩個人要分清楚：工程師＝路線建立者、調查員＝現場實際跑的人
+      const engs=[...new Set(r.items.map(svEng))].join('、')
+      const surveyors=[...new Set(r.items.map(x=>x.surveyor).filter(Boolean))].join('、')
+      const wx=[...new Set(r.items.map(x=>SV_WZH[x.weather]||x.weather||''))].filter(Boolean).join(' ')
+      return `<div class="cal-rrow" onclick="openCalReport(${jsArg(r.routeId)},${jsArg(dateStr)})">
+        <div style="flex:1;min-width:0">
+          <div class="cr-n">${esc(r.name)}</div>
+          <div class="cr-m"><span>🛠 ${esc(engs)}</span>
+            ${surveyors?`<span>👷 ${esc(surveyors)}</span>`:''}${wx?`<span>${wx}</span>`:''}
+            ${svDateFlagBadge(sv,{block:false})||''}</div>
+        </div>
+        <span class="cr-t" style="color:${col.c};background:${col.bg};border-color:${col.bd}">${r.trips} 趟</span>
+        <span class="cr-go">›</span>
+      </div>`
+    }).join('')
+    return `<div class="cal-pjblock">
+      <div class="cal-pjhd" style="color:${col.c};border-color:${col.c}">${esc(g.name)}
+        <span style="color:#94a3b8;font-weight:600">・${g.routes.size} 條路線</span></div>
+      ${rows}</div>`
+  }).join('')
+  const nRoutes=gs.reduce((n,g)=>n+g.routes.size,0)
+  document.getElementById('cal-mtitle').textContent=dateStr.replace(/-/g,'/')
+  document.getElementById('cal-msub').textContent=
+    (pid?gs[0].name:`當天全部專案`)+`　共 ${nRoutes} 條路線`
+  document.getElementById('cal-mbody').innerHTML=body
+  document.getElementById('cal-mask').classList.add('on')
+}
+function closeCalModal(){ document.getElementById('cal-mask').classList.remove('on') }
+// 點路線 → 開報告頁（沿用既有的一次性 token 機制）
+function openCalReport(routeId, dateStr){
+  const tok=crypto.randomUUID()
+  localStorage.setItem('sr_tok_'+tok, JSON.stringify({ gs:gsUrl, sessionToken:getSessionToken() }))
+  setTimeout(()=>localStorage.removeItem('sr_tok_'+tok), 30000)
+  window.open(`survey-report.html?id=${encodeURIComponent(routeId)}&tok=${encodeURIComponent(tok)}&date=${encodeURIComponent(dateStr)}`,'_blank')
 }
 
 async function adminDeleteSurvey(id) {
