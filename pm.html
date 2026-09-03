@@ -4052,6 +4052,9 @@ let _calMineOnly=false                            // 工程師端：只看自己
 let _calLoading=false                             // 資料還在路上（月曆先出來，格子之後補）
 let _calLoadSeq=0                                 // 併發保護：只有最後一次載入可以寫入畫面
 let _calUserMovedMonth=false                      // 使用者自己翻過月份就別再自動跳月
+let _calMonthCache={}                             // 'YYYY-MM' -> 該月的調查（輕量欄位）
+let _calMonthPending={}                           // 同一個月不要重複發請求
+let _calMonths=[]                                 // 有資料的月份清單
 
 function thisMonth(){
   const t=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'})
@@ -4063,54 +4066,96 @@ function thisMonth(){
 // 三個雲端請求全部回來才畫面才出現的話，使用者會盯著一片空白好幾秒（現場回報：
 // 「格子都沒有」）。所以先把月曆骨架畫出來——月份、星期列、31 個格子都是純前端算得出來的，
 // 不需要等任何資料——只有格子裡的專案框要等雲端。
+const _ymKey = ym => `${ym.y}-${String(ym.m).padStart(2,'0')}`
+function _shiftYM(ym,n){
+  let y=ym.y, m=ym.m+n
+  while(m<1){ m+=12; y-- }
+  while(m>12){ m-=12; y++ }
+  return {y,m}
+}
+// 只留下屬於自己的調查（路線或其所屬專案的 owner 是本人）。
+// 兩層都比對是因為早期的路線沒有寫入 owner，只有專案那層有。
+function _filterMine(list){
+  if(!_calMineOnly) return list
+  const me=getCurrentUser()
+  return list.filter(sv=>{
+    const rt=_calRoutes[sv.routeId]; if(!rt) return false
+    const pj=_calProjects[rt.projectId]
+    return rt.owner===me || (pj && pj.owner===me)
+  })
+}
+// 抓某一個月的資料並寫進快取。已經抓過就直接用快取，不重打。
+async function _fetchMonth(key){
+  if(_calMonthCache[key]) return _calMonthCache[key]
+  if(_calMonthPending[key]) return _calMonthPending[key]
+  const p=cloudGet({ action:'getSurveys', meta:'1', month:key }, 30000)
+    .then(list=>{
+      const arr=(list||[]).filter(sv=>sv.date)
+      _calMonthCache[key]=arr
+      delete _calMonthPending[key]
+      return arr
+    })
+    .catch(e=>{ delete _calMonthPending[key]; throw e })
+  _calMonthPending[key]=p
+  return p
+}
+// 目前月份的資料上畫面（有快取就立刻，沒有就抓完再畫）
+async function _showMonth(seq){
+  const key=_ymKey(_calYM)
+  if(_calMonthCache[key]){
+    _calSurveys=_filterMine(_calMonthCache[key])
+    _calReady=true; _calLoading=false
+    renderSurveyCalendar()
+  }else{
+    _calLoading=true
+    renderSurveyCalendar()                 // 骨架先出來
+    const arr=await _fetchMonth(key)
+    if(seq!==_calLoadSeq) return
+    _calSurveys=_filterMine(arr)
+    _calReady=true; _calLoading=false
+    renderSurveyCalendar()
+  }
+  // 背景預抓前後各一個月，之後按 ‹ › 就是即時的
+  ;[-1,1].forEach(d=>{
+    const k=_ymKey(_shiftYM(_calYM,d))
+    if(!_calMonthCache[k]) _fetchMonth(k).catch(()=>{})
+  })
+}
+
 async function loadCalendarData(hostId, mineOnly){
   const seq=++_calLoadSeq
   const sameView=(_calHost===hostId && _calMineOnly===!!mineOnly)
   _calHost=hostId; _calMineOnly=!!mineOnly
-  // 同一個檢視重開時保留上次的資料，先秒開舊內容再背景更新；
-  // 換檢視（後台↔工程師）才清空，免得短暫看到別人的資料。
-  if(!sameView){ _calSurveys=[]; _calRoutes={}; _calProjects={}; _calReady=false }
+  // 換檢視（後台↔工程師）就把快取清掉，免得短暫看到別人的資料
+  if(!sameView){
+    _calSurveys=[]; _calRoutes={}; _calProjects={}; _calReady=false
+    _calMonthCache={}; _calMonthPending={}
+  }
   _calFilt={ project:'', engineer:'' }
   if(!_calYM || !sameView) _calYM=thisMonth()
   _calLoading=true
-  renderSurveyCalendar()                 // ← 骨架（或舊資料）立刻上畫面
-  // 三個都用輕量模式：月曆只要「哪天、哪條路線、誰、幾趟」。
-  // 完整模式會連每筆調查的 gpsTrack、delayLog 和整條路線的節點/路段都搬回來，
-  // 資料一多就撞到 15 秒逾時（現場回報：載入失敗 signal timed out）。
-  // 逾時也拉長到 30 秒，Apps Script 冷啟動本來就慢。
-  const [routes, surveys, projects] = await Promise.all([
-    cloudGet({ action:'getRoutes', light:'1' }, 30000),
-    cloudGet({ action:'getSurveys', meta:'1' }, 30000),
-    cloudGet({ action:'getProjects' }, 30000).catch(()=>[])   // 舊環境沒有 projects 表也要能用
-  ])
-  if(seq!==_calLoadSeq) return            // 使用者已經切走或又點了一次，這批結果作廢
-  _calRoutes={}; (routes||[]).forEach(r=>_calRoutes[r.id]=r)
-  _calProjects={}; (projects||[]).forEach(p=>_calProjects[p.id]=p)
-  let list=(surveys||[]).filter(sv=>sv.date)
-  if(mineOnly){
-    // 「自己的專案」＝路線或所屬專案的 owner 是目前登入的帳號。
-    // 兩邊都比對是因為早期的路線沒有寫入 owner，只有專案那層有。
-    const me=getCurrentUser()
-    list=list.filter(sv=>{
-      const rt=_calRoutes[sv.routeId]; if(!rt) return false
-      const pj=_calProjects[rt.projectId]
-      return rt.owner===me || (pj && pj.owner===me)
-    })
-  }
-  _calSurveys=list
-  _calReady=true
-  _calLoading=false
-  // 這個月沒有任何紀錄時，跳到最近一次有資料的月份——不然打開常常是空白的一頁。
-  // 但只在「使用者還沒自己翻過月份」時才跳，否則會把他翻到的月份搶走。
-  if(_calSurveys.length && !_calUserMovedMonth){
-    const cur=`${_calYM.y}-${String(_calYM.m).padStart(2,'0')}`
-    const hasThis=_calSurveys.some(s=>String(s.date).slice(0,7)===cur)
-    if(!hasThis){
-      const last=_calSurveys.map(s=>String(s.date).slice(0,10)).sort().pop()
+  renderSurveyCalendar()                 // ← 骨架立刻上畫面
+
+  // 路線與專案只抓一次（輕量模式，很小），之後翻月份都不用再抓。
+  // 月份清單也很輕，用來決定「當月沒資料時要跳到哪個月」——
+  // 以前是靠「把整批調查抓回來再挑最後一筆」，那正是逾時的主因。
+  if(!Object.keys(_calRoutes).length){
+    const [routes, projects, months] = await Promise.all([
+      cloudGet({ action:'getRoutes', light:'1' }, 30000),
+      cloudGet({ action:'getProjects' }, 30000).catch(()=>[]),
+      cloudGet({ action:'getSurveyMonths' }, 30000).catch(()=>[])
+    ])
+    if(seq!==_calLoadSeq) return
+    _calRoutes={}; (routes||[]).forEach(r=>_calRoutes[r.id]=r)
+    _calProjects={}; (projects||[]).forEach(p=>_calProjects[p.id]=p)
+    _calMonths=(months||[]).slice().sort()
+    // 當月沒有紀錄就跳到最近一個有資料的月份（使用者還沒自己翻過月份時才跳）
+    if(_calMonths.length && !_calUserMovedMonth && !_calMonths.includes(_ymKey(_calYM))){
+      const last=_calMonths[_calMonths.length-1]
       _calYM={ y:+last.slice(0,4), m:+last.slice(5,7) }
     }
   }
-  renderSurveyCalendar()
+  await _showMonth(seq)
 }
 
 async function loadAdminSurveys() {
@@ -4170,9 +4215,12 @@ const CAL_COLORS=[
   {c:'#0891b2',bg:'#ecfeff',bd:'#a5f3fc'}, {c:'#db2777',bg:'#fdf2f8',bd:'#fbcfe8'},
   {c:'#ca8a04',bg:'#fefce8',bd:'#fef08a'}, {c:'#475569',bg:'#f8fafc',bd:'#cbd5e1'}
 ]
+// 配色依「所有專案」的固定排序，不要用當月資料算——
+// 一次只抓一個月的話，同一個專案在不同月份會變成不同顏色。
 function calColor(pid){
-  const ids=[...new Set(_calSurveys.map(s=>svProject(s).id))].sort()
-  return CAL_COLORS[Math.max(0,ids.indexOf(pid))%CAL_COLORS.length]
+  const ids=[...new Set(Object.values(_calRoutes).map(rt=>rt.projectId||'__none__'))].sort()
+  const i=ids.indexOf(pid)
+  return CAL_COLORS[(i<0?0:i)%CAL_COLORS.length]
 }
 
 function calFiltered(){
@@ -4204,10 +4252,26 @@ function renderSurveyCalendar(){
   if(!el) return
   if(!_calYM) _calYM=thisMonth()
   const {y,m}=_calYM
-  const projIds=[...new Set(_calSurveys.map(s=>svProject(s).id))]
-  const projOpts=projIds.map(id=>({id,name:(_calSurveys.map(svProject).find(p=>p.id===id)||{}).name||id}))
+  // 篩選選項取自「所有路線／專案」而不是當月資料——現在一次只抓一個月，
+  // 若照當月算，選單內容會隨著翻月份跳來跳去，選到一半的條件也會失效。
+  const pjMap={}
+  Object.values(_calRoutes).forEach(rt=>{
+    const pj=_calProjects[rt.projectId]
+    if(_calMineOnly){
+      const me=getCurrentUser()
+      if(!(rt.owner===me || (pj&&pj.owner===me))) return
+    }
+    if(pj) pjMap[pj.id]=pj.name
+    else if(rt.projectId) pjMap[rt.projectId]=rt.routeName||'未命名專案'
+    else pjMap['__none__']='未分類'
+  })
+  const projOpts=Object.keys(pjMap).map(id=>({id,name:pjMap[id]}))
     .sort((a,b)=>a.name.localeCompare(b.name,'zh-TW'))
-  const engs=[...new Set(_calSurveys.map(svEng))].sort((a,b)=>a.localeCompare(b,'zh-TW'))
+  const engs=[...new Set(Object.values(_calRoutes).map(rt=>{
+    if(rt.owner) return rt.owner
+    const pj=_calProjects[rt.projectId]
+    return (pj&&pj.owner)||'未指定'
+  }))].sort((a,b)=>a.localeCompare(b,'zh-TW'))
 
   const first=new Date(y,m-1,1).getDay()
   const days=new Date(y,m,0).getDate()
@@ -4272,13 +4336,17 @@ function renderSurveyCalendar(){
     : (_calLoading?'':`<div class="cal-legend" style="color:#94a3b8">${
         _calMineOnly?'你的專案還沒有任何調查紀錄':'尚無調查報告'}</div>`)}`
 }
+// 翻月份：有預抓過就是即時切換，沒有才會短暫顯示骨架
 function calShiftMonth(n){
-  let {y,m}=_calYM; m+=n
-  if(m<1){ m=12; y-- } else if(m>12){ m=1; y++ }
-  _calYM={y,m}; _calUserMovedMonth=true; renderSurveyCalendar()
+  _calYM=_shiftYM(_calYM,n); _calUserMovedMonth=true
+  _showMonth(++_calLoadSeq).catch(e=>{
+    const el=document.getElementById(_calHost)
+    if(el) el.innerHTML=`<div style="color:#dc2626;padding:16px">載入失敗：${esc(e.message)}</div>`
+  })
 }
 function calGoToday(){
-  _calYM=thisMonth(); _calUserMovedMonth=true; renderSurveyCalendar()
+  _calYM=thisMonth(); _calUserMovedMonth=true
+  _showMonth(++_calLoadSeq).catch(()=>{})
 }
 
 // 點專案框 → 列出當天該專案調查過的路線；pid 空字串代表「顯示當天全部專案」

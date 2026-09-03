@@ -1699,19 +1699,59 @@ async function deleteWholeDay(){
   if(!confirm(`確定刪除 ${rn} 在 ${_filterDate} 的全部 ${ids.length} 筆紀錄？`)) return
   await _runDeleteSurveys(ids)
 }
-// 刪除全部平行送出（原本是一筆一筆等，10 筆就要來回 10 次，很慢）。
-// 都是軟刪除、互不相干，同時送沒有先後順序問題。
+// 樂觀刪除：先把紀錄從畫面上拿掉，雲端在背景刪。
+//
+// 原本是「跳遮罩 → 等每一筆 deleteSurvey 回來 → 再整頁重新載入」，
+// Apps Script 一筆就要一兩秒，加上重新載入整份報告，刪一天的紀錄要等很久。
+// 這裡改成：本機資料先移除、立刻重繪（applyFilters→calcAverages→renderPage 都是純前端），
+// 請求丟到背景。刪除本來就是軟刪除，失敗也只是沒刪掉，把資料放回去即可。
 async function _runDeleteSurveys(ids){
-  showDlOverlay('刪除紀錄中…', `共 ${ids.length} 筆`)
+  const idSet=new Set(ids)
+  // 先備份，萬一雲端失敗要放回去
+  const backupAll=allSurveys.slice()
+  const removed=allSurveys.filter(sv=>idSet.has(sv.id))
+  allSurveys=allSurveys.filter(sv=>!idSet.has(sv.id))
+  applyFilters(); calcAverages(); renderPage()
+  _syncDateOptionsAfterDelete()
+  toastSR(`🗑 已刪除 ${ids.length} 筆`)
+
   const rs=await Promise.allSettled(
     ids.map(id=>cloudPost({action:'deleteSurvey', surveyId:id, note:''})))
   const fail=rs.filter(r=>r.status==='rejected')
-  hideDlOverlay()
-  if(fail.length) alert(`完成 ${ids.length-fail.length}/${ids.length} 筆，有 ${fail.length} 筆失敗：\n`
+  if(!fail.length) return
+
+  // 有失敗：把那幾筆放回畫面，不要讓使用者以為已經刪掉了
+  const okIds=new Set(ids.filter((_,i)=>rs[i].status==='fulfilled'))
+  allSurveys=backupAll.filter(sv=>!okIds.has(sv.id))
+  applyFilters(); calcAverages(); renderPage()
+  alert(`有 ${fail.length}/${ids.length} 筆刪除失敗，已還原到畫面上：\n`
     +fail.slice(0,3).map(f=>String(f.reason&&f.reason.message||f.reason)).join('\n'))
-  // 成功就不再跳確認框，直接重新載入畫面
-  if(_pm) await refreshReportData()
-  else location.reload()
+}
+// 整天刪光後，日期下拉還留著那一天就會很怪（點進去是空的）。
+// 這裡只更新本機的清單，不回雲端問——下次重新整理自然會拿到正確的。
+function _syncDateOptionsAfterDelete(){
+  if(!_pm || !Array.isArray(_pm.dates) || !_filterDate) return
+  const left=allSurveys.filter(sv=>String(sv.date||'').slice(0,10)===_filterDate).length
+  const idx=_pm.dates.findIndex(d=>d.date===_filterDate)
+  if(idx<0) return
+  if(left>0){ _pm.dates[idx].surveys=left; renderDateOptions(); return }
+  _pm.dates.splice(idx,1)
+  renderDateOptions()
+}
+// 右下角的小提示，取代原本會擋住畫面的遮罩
+function toastSR(msg){
+  let el=document.getElementById('sr-toast')
+  if(!el){
+    el=document.createElement('div'); el.id='sr-toast'
+    el.style.cssText='position:fixed;right:16px;bottom:16px;z-index:9999;background:#0f172a;color:#fff;'
+      +'padding:10px 16px;border-radius:10px;font-size:13px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.3);'
+      +'opacity:0;transition:opacity .18s'
+    document.body.appendChild(el)
+  }
+  el.textContent=msg
+  requestAnimationFrame(()=>{ el.style.opacity='1' })
+  clearTimeout(el._t)
+  el._t=setTimeout(()=>{ el.style.opacity='0' }, 2200)
 }
 
 function renderComboRecords(combo){
