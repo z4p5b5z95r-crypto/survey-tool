@@ -4666,6 +4666,15 @@ function buildOneOfficialForm(trip,pt,dir){
 
   const segRows = segs.map((seg,i)=>{
     const sd=segD[i], st_=segT[i]||{}, ar=arrT[i]
+    // ⚠️ 這裡不能用 segTimes[i].runS。那個值是趟次結束時用
+    //   「該段旅行時間 × (總行駛時間/總旅行時間)」等比例攤出來的，
+    //   等於把延滯平均抹到每一段——連完全沒發生延滯的路段也被扣掉時間，
+    //   算出來的行駛速率整排都是錯的（現場比對：桌機報告 24/32/41/29/59/91/80，
+    //   手機卻是 18/31/30/21/130/67/59）。
+    // 正解跟 survey-report.html 一致：該段旅行時間扣掉「實際落在這一段的延滯」，
+    //   delayLog 已經帶了每筆延滯的發生時刻，segDelaysForIdx() 也已經分好段了。
+    const segDelayTotal=Object.values(sd).reduce((a,b)=>a+(b||0),0)
+    const runS = st_.travelS!=null ? Math.max(0, st_.travelS-segDelayTotal) : null
     return `<tr>
       <td colspan="2" class="sgs-seg">${segDisp(segLabel(i)||seg.name)}</td>
       <td class="sgs-t-time">${ar.h}</td><td class="sgs-t-time">${ar.m}</td><td class="sgs-t-time">${ar.s}</td>
@@ -4673,8 +4682,8 @@ function buildOneOfficialForm(trip,pt,dir){
       <td>${dl(sd.parking)}</td><td>${dl(sd.ped_cross)}</td><td>${dl(sd.road_other)}</td>
       <td>${dl(sd.red_light)}</td><td>${dl(sd.left_same)}</td><td>${dl(sd.left_opp)}</td>
       <td>${dl(sd.right_turn)}</td><td>${dl(sd.cross_veh)}</td><td>${dl(sd.ped_int)}</td><td>${dl(sd.int_other)}</td>
-      <td>${st_.travelS||''}</td><td>${seg.length||''}</td><td>${st_.runS||''}</td>
-      <td>${spd(seg.length,st_.travelS)}</td><td>${spd(seg.length,st_.runS)}</td>
+      <td>${st_.travelS||''}</td><td>${seg.length||''}</td><td>${runS??''}</td>
+      <td>${spd(seg.length,st_.travelS)}</td><td>${spd(seg.length,runS)}</td>
     </tr>`
   }).join('')
 
