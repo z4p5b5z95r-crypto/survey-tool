@@ -1864,23 +1864,10 @@ function renderComboRecords(combo){
 
     const delayCount=(trip.delayLog||[]).filter(d=>d.pos).length
 
-    return `<div class="sv-record" data-sv-key="${si}-${combo}">
-      <div class="sv-rec-header${isEdit?' editing':''}">
-        <div>
-          <div class="sv-num">調查 #${si+1} · 第${sv.round||1}次</div>
-          <div class="sv-info">👤 ${he(sv.surveyor||'未知')}
-            <button onclick="deleteOneSurvey(${si})" title="刪除這筆紀錄（可在 PM 端垃圾桶還原）"
-              style="margin-left:8px;background:rgba(255,255,255,.12);color:#fca5a5;border:1px solid rgba(252,165,165,.45);
-              border-radius:7px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🗑 刪除</button>
-          </div>
-        </div>
-        <div class="sv-meta">
-          📅 ${he(sv.date||'—')}<br>
-          🌤 ${he(sv.weather||'—')}
-          ${execFlagBadge(sv)}
-        </div>
-      </div>
-      <!-- GPS Track Map -->
+    // 地圖區塊抽成變數，好放到 SGS 表格「後面」。
+    // 表格是這頁的主角（要看數據、要修改、要匯出），地圖是輔助佐證，
+    // 所以順序是「表在上、圖在下」。
+    const mapBlock = `
       <div class="trip-map-section">
         <div class="trip-map-header">
           <div class="tmap-title">🗺 監測軌跡圖</div>
@@ -1897,8 +1884,25 @@ function renderComboRecords(combo){
         <div class="trip-map-note">
           <span>🖱 滑鼠滾輪縮放</span><span>✋ 拖曳移動</span><span>👆 點擊節點或延滯查看資訊</span>
         </div>
+      </div>`
+
+    return `<div class="sv-record" data-sv-key="${si}-${combo}">
+      <div class="sv-rec-header${isEdit?' editing':''}">
+        <div>
+          <div class="sv-num">調查 #${si+1} · 第${sv.round||1}次</div>
+          <div class="sv-info">👤 ${he(sv.surveyor||'未知')}
+            <button onclick="deleteOneSurvey(${si})" title="刪除這筆紀錄（可在 PM 端垃圾桶還原）"
+              style="margin-left:8px;background:rgba(255,255,255,.12);color:#fca5a5;border:1px solid rgba(252,165,165,.45);
+              border-radius:7px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🗑 刪除</button>
+          </div>
+        </div>
+        <div class="sv-meta">
+          📅 ${he(sv.date||'—')}<br>
+          🌤 ${he(sv.weather||'—')}
+          ${execFlagBadge(sv)}
+        </div>
       </div>
-      <!-- SGS Paper Form v2 深藍典雅 -->
+      <!-- SGS Paper Form v2 深藍典雅（表在上、圖在下，見下方 ${'$'}{mapBlock}） -->
       <div class="sgs-pf">
         <!-- ① Header -->
         <div class="sgs-pf-hdr">
@@ -2044,6 +2048,7 @@ function renderComboRecords(combo){
         </table>
         </div>
       </div>
+      ${mapBlock}
     </div>`
   })).join('')
 
