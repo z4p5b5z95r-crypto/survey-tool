@@ -126,11 +126,13 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
   transition:background .15s;
 }
 .btn-new:hover{background:#1d4ed8}
-.btn-cal{
-  padding:7px 11px;background:#fff;color:#334155;border:1px solid #cbd5e1;border-radius:9px;
+/* 頂端列的「調查行事曆」。頂端列是深色底，所以用半透明白框而不是淺色按鈕 */
+.tb-cal{
+  padding:7px 13px;background:rgba(255,255,255,.08);color:#e2e8f0;
+  border:1px solid rgba(255,255,255,.18);border-radius:8px;
   font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;transition:.15s;
 }
-.btn-cal:hover{background:#f1f5f9;border-color:#94a3b8}
+.tb-cal:hover{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.32);color:#fff}
 /* 工程師端的行事曆用全螢幕覆蓋層呈現（後台是內嵌在分頁裡） */
 .mycal-overlay{display:none;position:fixed;inset:0;z-index:2900;background:#f1f5f9;
   flex-direction:column;overflow:auto}
@@ -142,7 +144,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .mycal-top button{padding:8px 14px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;
   border-radius:9px;font-size:13px;font-weight:700;cursor:pointer}
 .mycal-top button:hover{background:#334155}
-.mycal-body{padding:16px;max-width:1180px;width:100%;margin:0 auto}
+/* 工程師端沒有後台的分頁列，可用高度比較多，所以 --cal-off 給小一點 */
+.mycal-body{padding:12px 16px;max-width:1180px;width:100%;margin:0 auto;--cal-off:186px}
 .lv-search{
   display:flex;align-items:center;background:#f8fafc;
   border:1.5px solid #e2e8f0;border-radius:9px;padding:7px 11px;gap:6px;
@@ -467,42 +470,52 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .admin-tab.active{color:#2563eb;border-bottom-color:#2563eb}
 .admin-body{flex:1;overflow-y:auto;padding:20px;background:#f8fafc}
 /* ── 調查報告月曆 ───────────────────────────────────── */
-.cal-filters{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px;display:flex;
-  gap:10px;align-items:center;flex-wrap:wrap;margin:4px 0 14px;box-shadow:0 1px 5px rgba(0,0,0,.06)}
-.cal-fg{display:flex;flex-direction:column;gap:4px}
+.cal-filters{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:8px 12px;display:flex;
+  gap:10px;align-items:center;flex-wrap:wrap;margin:2px 0 8px;box-shadow:0 1px 5px rgba(0,0,0,.06)}
+.cal-fg{display:flex;align-items:center;gap:6px}
 .cal-fg label{font-size:11px;color:#64748b;font-weight:700;letter-spacing:.3px}
-.cal-fg select{padding:8px 11px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;
-  font-size:13px;color:#0f172a;min-width:150px;font-family:inherit;cursor:pointer}
+.cal-fg select{padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;
+  font-size:13px;color:#0f172a;min-width:140px;font-family:inherit;cursor:pointer}
 .cal-nav{display:flex;align-items:center;gap:6px;margin-left:auto}
-.cal-nav button{width:34px;height:34px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;
+.cal-nav button{width:30px;height:30px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;
   cursor:pointer;font-size:15px;color:#475569}
 .cal-nav button:hover{background:#f1f5f9}
-.cal-nav .cal-ml{font-size:16px;font-weight:800;min-width:112px;text-align:center;color:#0f172a}
-.cal-nav .cal-today{width:auto;padding:0 12px;font-size:12px;font-weight:700}
+/* 骨架先出來、資料後補時的提示。放在月份切換旁邊，不佔額外空間 */
+.cal-loading-pill{font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;
+  border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;margin-right:4px}
+.cal-nav .cal-ml{font-size:15px;font-weight:800;min-width:104px;text-align:center;color:#0f172a}
+.cal-nav .cal-today{width:auto;padding:0 11px;font-size:12px;font-weight:700}
+/* 整個月要一眼看完，不能靠捲動。所以月曆本體吃滿剩餘的可視高度，
+   六列平分（grid-auto-rows:1fr），格子內容溢出就裁掉而不是把格子撐高。
+   --cal-off 是「月曆以外的東西」佔掉的高度，後台和工程師端各自不同。 */
 .cal-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;
-  box-shadow:0 1px 5px rgba(0,0,0,.06)}
-.cal-dow{display:grid;grid-template-columns:repeat(7,1fr);background:#f8fafc;border-bottom:1px solid #e2e8f0}
-.cal-dow div{padding:9px 0;text-align:center;font-size:12px;font-weight:700;color:#64748b}
+  box-shadow:0 1px 5px rgba(0,0,0,.06);
+  display:flex;flex-direction:column;
+  height:calc(100vh - var(--cal-off,232px));min-height:392px}
+.cal-dow{display:grid;grid-template-columns:repeat(7,1fr);background:#f8fafc;border-bottom:1px solid #e2e8f0;flex:none}
+.cal-dow div{padding:6px 0;text-align:center;font-size:11px;font-weight:700;color:#64748b}
 .cal-dow div:first-child,.cal-dow div:last-child{color:#dc2626}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr)}
-.cal-cell{min-height:112px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:6px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;flex:1;min-height:0}
+.cal-cell{min-height:0;overflow:hidden;border-right:1px solid #e2e8f0;
+  border-bottom:1px solid #e2e8f0;padding:3px 4px}
 .cal-cell:nth-child(7n){border-right:0}
 .cal-cell.blank{background:#fafbfc}
 .cal-cell.today{background:#eff6ff}
-.cal-dn{font-size:12px;font-weight:700;color:#475569;margin-bottom:5px}
+.cal-dn{font-size:11px;font-weight:700;color:#475569;margin-bottom:2px;line-height:1.25}
 .cal-cell.today .cal-dn{color:#2563eb}
 .cal-cell.wknd .cal-dn{color:#dc2626}
-.cal-chip{border:1px solid;border-left-width:3px;border-radius:6px;padding:4px 6px;margin-bottom:4px;
+.cal-chip{border:1px solid;border-left-width:3px;border-radius:5px;padding:2px 4px;margin-bottom:2px;
   cursor:pointer;transition:.12s}
 .cal-chip:hover{filter:brightness(.97);box-shadow:0 1px 5px rgba(15,23,42,.13)}
-.cc-top{display:flex;align-items:baseline;gap:5px}
-.cc-pj{flex:1;min-width:0;font-size:11px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cc-n{flex:none;font-size:10px;font-weight:800;color:#fff;border-radius:20px;padding:1px 6px;line-height:1.5}
-.cc-en{font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
-.cal-more{font-size:10px;color:#94a3b8;padding-left:3px;cursor:pointer;font-weight:700}
+.cc-top{display:flex;align-items:baseline;gap:4px}
+.cc-pj{flex:1;min-width:0;font-size:10px;font-weight:800;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;line-height:1.4}
+.cc-n{flex:none;font-size:9px;font-weight:800;color:#fff;border-radius:20px;padding:0 5px;line-height:1.6}
+.cc-en{font-size:9px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+.cal-more{font-size:9px;color:#94a3b8;padding-left:2px;cursor:pointer;font-weight:700;line-height:1.4}
 .cal-more:hover{color:#2563eb}
-.cal-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;padding:10px 13px;background:#fff;
-  border:1px solid #e2e8f0;border-radius:10px;font-size:12px;color:#475569}
+.cal-legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;padding:7px 11px;background:#fff;
+  border:1px solid #e2e8f0;border-radius:10px;font-size:11px;color:#475569}
 .cal-lg{display:flex;align-items:center;gap:5px}
 .cal-lg i{width:9px;height:9px;border-radius:50%;display:block}
 .cal-mask{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;
@@ -525,7 +538,30 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .cr-m{font-size:11px;color:#64748b;margin-top:3px;display:flex;gap:9px;flex-wrap:wrap;align-items:center}
 .cr-t{flex:none;font-size:12px;font-weight:800;border:1px solid;border-radius:20px;padding:3px 10px;white-space:nowrap}
 .cr-go{flex:none;color:#cbd5e1;font-size:16px}
+/* 矮螢幕（1366×768 這類筆電）：一格只剩約 85px，用預設尺寸連 2 個專案框都會被裁掉
+   約 20px。這裡把字級與行高再收一階，讓 2 個框＋「＋N」仍然完整顯示。 */
+@media(max-height:820px){
+  .cal-dow div{padding:4px 0;font-size:10px}
+  .cal-dn{font-size:10px;margin-bottom:1px;line-height:1.15}
+  .cal-chip{padding:1px 4px;margin-bottom:2px}
+  .cc-pj{font-size:9px;line-height:1.25}
+  .cc-n{font-size:8px;padding:0 4px;line-height:1.5}
+  .cc-en{font-size:8px;line-height:1.2}
+  .cal-more{font-size:8px;line-height:1.2}
+  .cal-filters{padding:6px 10px;margin-bottom:6px}
+  .cal-legend{margin-top:6px;padding:5px 10px;font-size:10px}
+}
+/* 720p 筆電再收一階：格子只剩約 78px */
+@media(max-height:740px){
+  .cal-dn{margin-bottom:0;line-height:1.1}
+  .cal-chip{margin-bottom:1px;border-radius:4px}
+  .cc-pj{line-height:1.2}
+  .cc-en{line-height:1.1}
+  .cal-more{line-height:1.1}
+}
 @media(max-width:760px){
+  .cal-wrap{height:auto}
+  .cal-grid{grid-auto-rows:auto}
   .cal-cell{min-height:88px;padding:4px}
   .cc-pj{font-size:10px}
   .cal-fg select{min-width:120px}
@@ -660,29 +696,6 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     <div id="atab-surveys" style="display:none">
       <div id="admin-surveys-table"><div class="admin-loading">載入中...</div></div>
     </div>
-    <!-- 工程師端行事曆：跟後台同一套渲染，但只放自己的專案 -->
-    <div class="mycal-overlay" id="mycal-overlay">
-      <div class="mycal-top">
-        <h2>📅 調查行事曆</h2>
-        <span class="who" id="mycal-who"></span>
-        <button onclick="closeMyCalendar()">✕ 關閉</button>
-      </div>
-      <div class="mycal-body"><div id="mycal-host"><div class="admin-loading">載入中...</div></div></div>
-    </div>
-
-    <!-- 月曆：點某天某專案後列出當天調查過的路線 -->
-    <div class="cal-mask" id="cal-mask" onclick="if(event.target===this)closeCalModal()">
-      <div class="cal-modal">
-        <div class="cal-mhead">
-          <div style="flex:1;min-width:0">
-            <h3 id="cal-mtitle"></h3>
-            <div class="cal-msub" id="cal-msub"></div>
-          </div>
-          <button class="cal-x" onclick="closeCalModal()">✕</button>
-        </div>
-        <div class="cal-mbody" id="cal-mbody"></div>
-      </div>
-    </div>
 
     <!-- 監測連結 -->
     <div id="atab-trash" style="display:none">
@@ -739,6 +752,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     </div>
     <div class="tb-right">
       <button class="tb-save" id="tb-save" onclick="saveTask()">💾 儲存</button>
+      <button class="tb-cal" onclick="openMyCalendar()">🗓 調查行事曆</button>
       <div class="tb-cloud" title="雲端同步狀態">
         <div class="cloud-icon idle" id="cloud-icon">
           <svg width="22" height="17" viewBox="0 0 22 17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -767,7 +781,6 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
         <div class="lv-header">
           <div class="lv-header-top">
             <span class="lv-title">專案列表</span>
-            <button class="btn-cal" onclick="openMyCalendar()" title="調查行事曆">📅 行事曆</button>
             <button class="btn-new" onclick="newProject()">＋ 新建專案</button>
           </div>
           <div class="lv-search">
@@ -3960,19 +3973,37 @@ let _calYM=null                                   // {y,m} 目前顯示的月份
 let _calFilt={ project:'', engineer:'' }
 let _calHost='admin-surveys-table'                // 渲染目標：後台分頁 or 工程師覆蓋層
 let _calMineOnly=false                            // 工程師端：只看自己建立的專案
+let _calLoading=false                             // 資料還在路上（月曆先出來，格子之後補）
+let _calLoadSeq=0                                 // 併發保護：只有最後一次載入可以寫入畫面
+let _calUserMovedMonth=false                      // 使用者自己翻過月份就別再自動跳月
+
+function thisMonth(){
+  const t=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'})
+  return { y:+t.slice(0,4), m:+t.slice(5,7) }
+}
 
 // 後台與工程師端共用的載入流程。mineOnly=true 時只留下自己是建立者的路線。
+//
+// 三個雲端請求全部回來才畫面才出現的話，使用者會盯著一片空白好幾秒（現場回報：
+// 「格子都沒有」）。所以先把月曆骨架畫出來——月份、星期列、31 個格子都是純前端算得出來的，
+// 不需要等任何資料——只有格子裡的專案框要等雲端。
 async function loadCalendarData(hostId, mineOnly){
+  const seq=++_calLoadSeq
+  const sameView=(_calHost===hostId && _calMineOnly===!!mineOnly)
   _calHost=hostId; _calMineOnly=!!mineOnly
+  // 同一個檢視重開時保留上次的資料，先秒開舊內容再背景更新；
+  // 換檢視（後台↔工程師）才清空，免得短暫看到別人的資料。
+  if(!sameView){ _calSurveys=[]; _calRoutes={}; _calProjects={}; _calReady=false }
   _calFilt={ project:'', engineer:'' }
-  _calYM=null
-  const el=document.getElementById(hostId)
-  el.innerHTML='<div class="admin-loading">載入中...</div>'
+  if(!_calYM || !sameView) _calYM=thisMonth()
+  _calLoading=true
+  renderSurveyCalendar()                 // ← 骨架（或舊資料）立刻上畫面
   const [routes, surveys, projects] = await Promise.all([
     cloudGet({ action:'getRoutes' }),
     cloudGet({ action:'getSurveys' }),
     cloudGet({ action:'getProjects' }).catch(()=>[])   // 舊環境沒有 projects 表也要能用
   ])
+  if(seq!==_calLoadSeq) return            // 使用者已經切走或又點了一次，這批結果作廢
   _calRoutes={}; (routes||[]).forEach(r=>_calRoutes[r.id]=r)
   _calProjects={}; (projects||[]).forEach(p=>_calProjects[p.id]=p)
   let list=(surveys||[]).filter(sv=>sv.date)
@@ -3988,13 +4019,17 @@ async function loadCalendarData(hostId, mineOnly){
   }
   _calSurveys=list
   _calReady=true
-  if(!_calSurveys.length){
-    el.innerHTML=`<div class="admin-empty">${mineOnly?'你的專案還沒有任何調查紀錄':'尚無調查報告'}</div>`
-    return
+  _calLoading=false
+  // 這個月沒有任何紀錄時，跳到最近一次有資料的月份——不然打開常常是空白的一頁。
+  // 但只在「使用者還沒自己翻過月份」時才跳，否則會把他翻到的月份搶走。
+  if(_calSurveys.length && !_calUserMovedMonth){
+    const cur=`${_calYM.y}-${String(_calYM.m).padStart(2,'0')}`
+    const hasThis=_calSurveys.some(s=>String(s.date).slice(0,7)===cur)
+    if(!hasThis){
+      const last=_calSurveys.map(s=>String(s.date).slice(0,10)).sort().pop()
+      _calYM={ y:+last.slice(0,4), m:+last.slice(5,7) }
+    }
   }
-  // 預設停在「最近一次有資料」的月份，而不是這個月——不然剛打開常常是空的
-  const last=_calSurveys.map(s=>String(s.date).slice(0,10)).sort().pop()
-  _calYM={ y:+last.slice(0,4), m:+last.slice(5,7) }
   renderSurveyCalendar()
 }
 
@@ -4086,7 +4121,8 @@ function calGroups(dateStr){
 
 function renderSurveyCalendar(){
   const el=document.getElementById(_calHost)
-  if(!el||!_calReady) return
+  if(!el) return
+  if(!_calYM) _calYM=thisMonth()
   const {y,m}=_calYM
   const projIds=[...new Set(_calSurveys.map(s=>svProject(s).id))]
   const projOpts=projIds.map(id=>({id,name:(_calSurveys.map(svProject).find(p=>p.id===id)||{}).name||id}))
@@ -4104,7 +4140,10 @@ function renderSurveyCalendar(){
     const gs=calGroups(ds)
     const dw=(first+d-1)%7
     const cls='cal-cell'+((dw===0||dw===6)?' wknd':'')+(ds===todayStr?' today':'')
-    const shown=gs.slice(0,3).map(g=>{
+    // 一格最多放 2 個專案框。格子高度是「可視高度 ÷ 6 列」算出來的，實測 1440×900
+    // 大約 107px，放 3 個會被裁掉約 20px（看起來像資料不見了）。放 2 個 ＋「＋N」
+    // 提示，資訊不會消失、點下去照樣看得到全部。
+    const shown=gs.slice(0,2).map(g=>{
       const col=calColor(g.id)
       return `<div class="cal-chip" style="background:${col.bg};border-color:${col.bd};border-left-color:${col.c}"
                 onclick="openCalDay(${jsArg(ds)},${jsArg(g.id)})">
@@ -4115,7 +4154,7 @@ function renderSurveyCalendar(){
         <div class="cc-en">${esc([...g.engineers].join('、'))}</div>
       </div>`
     }).join('')
-    const more=gs.length>3?`<div class="cal-more" onclick="openCalDay(${jsArg(ds)},'')">＋${gs.length-3} 個專案</div>`:''
+    const more=gs.length>2?`<div class="cal-more" onclick="openCalDay(${jsArg(ds)},'')">＋${gs.length-2} 個專案</div>`:''
     cells+=`<div class="${cls}"><div class="cal-dn">${d}</div>${shown}${more}</div>`
   }
   const tail=(first+days)%7
@@ -4135,6 +4174,7 @@ function renderSurveyCalendar(){
           ${engs.map(e=>`<option value="${esc(e)}" ${_calFilt.engineer===e?'selected':''}>${esc(e)}</option>`).join('')}
         </select></div>`}
       <div class="cal-nav">
+        ${_calLoading?'<span class="cal-loading-pill">資料載入中…</span>':''}
         <button onclick="calShiftMonth(-1)" title="上個月">‹</button>
         <div class="cal-ml">${y}年 ${m}月</div>
         <button onclick="calShiftMonth(1)" title="下個月">›</button>
@@ -4145,19 +4185,20 @@ function renderSurveyCalendar(){
       <div class="cal-dow">${['日','一','二','三','四','五','六'].map(x=>`<div>${x}</div>`).join('')}</div>
       <div class="cal-grid">${cells}</div>
     </div>
-    <div class="cal-legend">${projOpts.map(p=>{
+    ${projOpts.length?`<div class="cal-legend">${projOpts.map(p=>{
       const col=calColor(p.id)
       return `<span class="cal-lg"><i style="background:${col.c}"></i>${esc(p.name)}</span>`
     }).join('')}</div>`
+    : (_calLoading?'':`<div class="cal-legend" style="color:#94a3b8">${
+        _calMineOnly?'你的專案還沒有任何調查紀錄':'尚無調查報告'}</div>`)}`
 }
 function calShiftMonth(n){
   let {y,m}=_calYM; m+=n
   if(m<1){ m=12; y-- } else if(m>12){ m=1; y++ }
-  _calYM={y,m}; renderSurveyCalendar()
+  _calYM={y,m}; _calUserMovedMonth=true; renderSurveyCalendar()
 }
 function calGoToday(){
-  const t=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'})
-  _calYM={ y:+t.slice(0,4), m:+t.slice(5,7) }; renderSurveyCalendar()
+  _calYM=thisMonth(); _calUserMovedMonth=true; renderSurveyCalendar()
 }
 
 // 點專案框 → 列出當天該專案調查過的路線；pid 空字串代表「顯示當天全部專案」
@@ -4377,6 +4418,33 @@ function downloadSGS() {
     </svg>
   </div>
   <div class="so-txt">專案資料下載中…</div>
+</div>
+
+<!-- ⚠️ 這兩層一定要放在 <body> 最外層，不能塞在 #screen-admin 裡面。
+     #screen-admin 預設是 display:none，工程師畫面下整塊都是隱藏的——
+     放在裡面的話 .mycal-overlay.on{display:flex} 完全沒用，
+     點「調查行事曆」會像沒反應一樣。 -->
+<div class="mycal-overlay" id="mycal-overlay">
+  <div class="mycal-top">
+    <h2>🗓 調查行事曆</h2>
+    <span class="who" id="mycal-who"></span>
+    <button onclick="closeMyCalendar()">✕ 關閉</button>
+  </div>
+  <div class="mycal-body"><div id="mycal-host"></div></div>
+</div>
+
+<!-- 點某天某專案後列出當天調查過的路線 -->
+<div class="cal-mask" id="cal-mask" onclick="if(event.target===this)closeCalModal()">
+  <div class="cal-modal">
+    <div class="cal-mhead">
+      <div style="flex:1;min-width:0">
+        <h3 id="cal-mtitle"></h3>
+        <div class="cal-msub" id="cal-msub"></div>
+      </div>
+      <button class="cal-x" onclick="closeCalModal()">✕</button>
+    </div>
+    <div class="cal-mbody" id="cal-mbody"></div>
+  </div>
 </div>
 </body>
 </html>
