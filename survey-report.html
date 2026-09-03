@@ -1457,17 +1457,39 @@ function _withRoute(sv, fn){
   try{ return fn() } finally{ _rtCtx=prev }
 }
 
+// 假節點索引的單一判定來源。三個地方（節點清單、路段合併、SGS 表）本來各寫一份，
+// 規則不一致就會出現「地圖上的節點數跟表格的路段數對不起來」。
+//
+// ⚠️ 這裡有個踩過的坑：名稱式的推測會誤傷「節點沒有另外命名」的正常路線。
+// PM 端遇到沒名字的假節點時，會把該段名稱寫成「節點N ～ ○○」，所以原本用
+// 「路段名稱開頭是節點N」來反推假節點。但使用者若直接沿用預設名稱把節點取名為
+// 節點1…節點8，每一段都長這樣，結果 8 個節點被砍到只剩頭尾 2 個，
+// 地圖沒有節點標記、SGS 表也只剩一列。
+// 所以名稱式推測只在「明確的假節點資訊完全不存在」時才啟用，而且加上防呆：
+// 一旦它會把幾乎所有中間節點都吃掉，就判定為誤判、整組不採用。
+function _ghostIdxSet(route){
+  const nodes   = route.nodes||[]
+  const rawSegs = route.segments||[]
+  const explicit = new Set(route.ghostNodeIndices||[])
+  nodes.forEach((n,i)=>{ if(n&&(n.ghost||n.gh)) explicit.add(i) })
+  if(explicit.size) return explicit          // 有明確資訊就信它，不要再猜
+
+  const guess = new Set()
+  for(let k=1;k<rawSegs.length;k++){
+    const nm = String(rawSegs[k].name||'')
+    const segStart = nm.split(SEG_SEP)[0]?.trim()||''
+    if(/^節點\d/.test(segStart)) guess.add(k)
+    if(!nm.trim()) guess.add(k)              // 合併後其餘各段名稱留空
+  }
+  // 防呆：中間節點若被吃掉九成以上，這組推測一定是錯的（正常路線不可能整條都是假節點）
+  const interior = Math.max(0, nodes.length-2)
+  if(interior>=2 && guess.size>=interior) return new Set()
+  return guess
+}
 function _realNodes(){
   const route=_rt()
   const nodes = route.nodes||[]
-  const ghostIdxSet = new Set(route.ghostNodeIndices||[])
-  nodes.forEach((n,i)=>{ if(n&&(n.ghost||n.gh)) ghostIdxSet.add(i) })
-  const rawSegs = route.segments||[]
-  for(let k=1;k<rawSegs.length;k++){
-    const segStart=String(rawSegs[k].name||'').split(SEG_SEP)[0]?.trim()||''
-    if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
-    if(!String(rawSegs[k].name||'').trim()) ghostIdxSet.add(k)
-  }
+  const ghostIdxSet=_ghostIdxSet(route)
   return nodes.filter((n,i)=>!ghostIdxSet.has(i))
 }
 // 合併後的路段名稱若是空的或結尾斷掉（例如「歸仁1路 ～ 」——PM 端產生名稱時
@@ -1492,12 +1514,7 @@ function _mergeGhostSegs(){
   const route=_rt()
   const rawSegs = route.segments||[]
   const nodes   = route.nodes||[]
-  const ghostIdxSet = new Set(route.ghostNodeIndices||[])
-  nodes.forEach((n,i)=>{ if(n&&(n.ghost||n.gh)) ghostIdxSet.add(i) })
-  for(let k=1;k<rawSegs.length;k++){
-    const segStart=(rawSegs[k].name||'').split(SEG_SEP)[0].trim()
-    if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
-  }
+  const ghostIdxSet = _ghostIdxSet(route)
   if(!ghostIdxSet.size) return _fixSegNames(rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]})))
   const out=[]; let i=0
   while(i<rawSegs.length){
@@ -2636,26 +2653,10 @@ function downloadSGSPdf(returnOnly){
   const off = route.offPeakLabel||'14:00~16:00', pk = route.peakLabel||'17:00~19:00'
   const rawSegs = route.segments||[], TL = route.totalLength||0
   const nodes = route.nodes||[]
-  // Build ghost node index set.
-  // Primary: route.ghostNodeIndices (explicit DB field saved by GAS since 2026-06).
-  // Fallback A: nodes[i].ghost / nodes[i].gh metadata.
-  // Fallback B: segment name pattern "X→節點N" + "節點N→Y".
+  // 假節點判定統一走 _ghostIdxSet()，不要在這裡另外寫一份——
+  // 三處規則各自演化的結果，就是地圖節點數和這張表的路段數對不起來。
   const segs=(function(){
-    const ghostIdxSet=new Set(route.ghostNodeIndices||[])
-    // Fallback A
-    nodes.forEach((n,i)=>{ if(n?.ghost||n?.gh) ghostIdxSet.add(i) })
-    // Fallback B — if rawSegs[k].name starts with "節點N", nodes[k] is the ghost node.
-    // (pm.html renames seg[k-1] to the merged auto-name, so endpoint matching fails;
-    //  the ghost node's name survives only as the *start* of the outgoing segment.)
-    for(let k=1;k<rawSegs.length;k++){
-      const segStart=(rawSegs[k].name||'').split(SEG_SEP)[0]?.trim()||''
-      if(/^節點\d/.test(segStart)) ghostIdxSet.add(k)
-      // Fallback C：假節點後面那一段的名稱是空的。
-      // pm.html 只會把合併後的名稱寫在該串的第一段，其餘各段名稱留空，
-      // 所以「名稱空白的路段」代表它前面那個節點是假節點。
-      // 舊路線沒有 ghost 旗標也沒有「節點N」命名時，這是唯一還抓得到的特徵。
-      if(!String(rawSegs[k].name||'').trim()) ghostIdxSet.add(k)
-    }
+    const ghostIdxSet=_ghostIdxSet(route)
     if(!ghostIdxSet.size) return rawSegs.map((s,i)=>Object.assign({},s,{_origIdx:[i]}))
     // Merge: rawSegs[i] connects nodes[i]→nodes[i+1].
     // If nodes[i+1] is ghost, rawSegs[i] and rawSegs[i+1] must be merged.
