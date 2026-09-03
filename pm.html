@@ -126,6 +126,23 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
   transition:background .15s;
 }
 .btn-new:hover{background:#1d4ed8}
+.btn-cal{
+  padding:7px 11px;background:#fff;color:#334155;border:1px solid #cbd5e1;border-radius:9px;
+  font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;transition:.15s;
+}
+.btn-cal:hover{background:#f1f5f9;border-color:#94a3b8}
+/* 工程師端的行事曆用全螢幕覆蓋層呈現（後台是內嵌在分頁裡） */
+.mycal-overlay{display:none;position:fixed;inset:0;z-index:2900;background:#f1f5f9;
+  flex-direction:column;overflow:auto}
+.mycal-overlay.on{display:flex}
+.mycal-top{position:sticky;top:0;z-index:5;background:#0f172a;color:#fff;padding:12px 16px;
+  display:flex;align-items:center;gap:12px}
+.mycal-top h2{margin:0;font-size:16px;flex:1}
+.mycal-top .who{font-size:12px;color:#94a3b8}
+.mycal-top button{padding:8px 14px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;
+  border-radius:9px;font-size:13px;font-weight:700;cursor:pointer}
+.mycal-top button:hover{background:#334155}
+.mycal-body{padding:16px;max-width:1180px;width:100%;margin:0 auto}
 .lv-search{
   display:flex;align-items:center;background:#f8fafc;
   border:1.5px solid #e2e8f0;border-radius:9px;padding:7px 11px;gap:6px;
@@ -643,6 +660,16 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     <div id="atab-surveys" style="display:none">
       <div id="admin-surveys-table"><div class="admin-loading">載入中...</div></div>
     </div>
+    <!-- 工程師端行事曆：跟後台同一套渲染，但只放自己的專案 -->
+    <div class="mycal-overlay" id="mycal-overlay">
+      <div class="mycal-top">
+        <h2>📅 調查行事曆</h2>
+        <span class="who" id="mycal-who"></span>
+        <button onclick="closeMyCalendar()">✕ 關閉</button>
+      </div>
+      <div class="mycal-body"><div id="mycal-host"><div class="admin-loading">載入中...</div></div></div>
+    </div>
+
     <!-- 月曆：點某天某專案後列出當天調查過的路線 -->
     <div class="cal-mask" id="cal-mask" onclick="if(event.target===this)closeCalModal()">
       <div class="cal-modal">
@@ -740,6 +767,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
         <div class="lv-header">
           <div class="lv-header-top">
             <span class="lv-title">專案列表</span>
+            <button class="btn-cal" onclick="openMyCalendar()" title="調查行事曆">📅 行事曆</button>
             <button class="btn-new" onclick="newProject()">＋ 新建專案</button>
           </div>
           <div class="lv-search">
@@ -3930,32 +3958,75 @@ function jsArg(s){ return esc(JSON.stringify(String(s==null?'':s))) }
 let _calSurveys=[], _calRoutes={}, _calProjects={}, _calReady=false
 let _calYM=null                                   // {y,m} 目前顯示的月份
 let _calFilt={ project:'', engineer:'' }
+let _calHost='admin-surveys-table'                // 渲染目標：後台分頁 or 工程師覆蓋層
+let _calMineOnly=false                            // 工程師端：只看自己建立的專案
+
+// 後台與工程師端共用的載入流程。mineOnly=true 時只留下自己是建立者的路線。
+async function loadCalendarData(hostId, mineOnly){
+  _calHost=hostId; _calMineOnly=!!mineOnly
+  _calFilt={ project:'', engineer:'' }
+  _calYM=null
+  const el=document.getElementById(hostId)
+  el.innerHTML='<div class="admin-loading">載入中...</div>'
+  const [routes, surveys, projects] = await Promise.all([
+    cloudGet({ action:'getRoutes' }),
+    cloudGet({ action:'getSurveys' }),
+    cloudGet({ action:'getProjects' }).catch(()=>[])   // 舊環境沒有 projects 表也要能用
+  ])
+  _calRoutes={}; (routes||[]).forEach(r=>_calRoutes[r.id]=r)
+  _calProjects={}; (projects||[]).forEach(p=>_calProjects[p.id]=p)
+  let list=(surveys||[]).filter(sv=>sv.date)
+  if(mineOnly){
+    // 「自己的專案」＝路線或所屬專案的 owner 是目前登入的帳號。
+    // 兩邊都比對是因為早期的路線沒有寫入 owner，只有專案那層有。
+    const me=getCurrentUser()
+    list=list.filter(sv=>{
+      const rt=_calRoutes[sv.routeId]; if(!rt) return false
+      const pj=_calProjects[rt.projectId]
+      return rt.owner===me || (pj && pj.owner===me)
+    })
+  }
+  _calSurveys=list
+  _calReady=true
+  if(!_calSurveys.length){
+    el.innerHTML=`<div class="admin-empty">${mineOnly?'你的專案還沒有任何調查紀錄':'尚無調查報告'}</div>`
+    return
+  }
+  // 預設停在「最近一次有資料」的月份，而不是這個月——不然剛打開常常是空的
+  const last=_calSurveys.map(s=>String(s.date).slice(0,10)).sort().pop()
+  _calYM={ y:+last.slice(0,4), m:+last.slice(5,7) }
+  renderSurveyCalendar()
+}
 
 async function loadAdminSurveys() {
-  const el = document.getElementById('admin-surveys-table')
-  el.innerHTML = '<div class="admin-loading">載入中...</div>'
   try {
-    const [routes, surveys, projects] = await Promise.all([
-      cloudGet({ action: 'getRoutes' }),
-      cloudGet({ action: 'getSurveys' }),
-      cloudGet({ action: 'getProjects' }).catch(()=>[])   // 舊環境沒有 projects 表也要能用
-    ])
+    await loadCalendarData('admin-surveys-table', false)
     adminCloudOk()
-    _calRoutes={}; routes.forEach(r=>_calRoutes[r.id]=r)
-    _calProjects={}; (projects||[]).forEach(p=>_calProjects[p.id]=p)
-    _calSurveys=(surveys||[]).filter(sv=>sv.date)
-    _calReady=true
-    if(!_calSurveys.length){ el.innerHTML='<div class="admin-empty">尚無調查報告</div>'; return }
-    // 預設停在「最近一次有資料」的月份，而不是這個月——不然剛打開常常是空的
-    if(!_calYM){
-      const last=_calSurveys.map(s=>String(s.date).slice(0,10)).sort().pop()
-      _calYM={ y:+last.slice(0,4), m:+last.slice(5,7) }
-    }
-    renderSurveyCalendar()
   } catch(e) {
     adminCloudErr()
-    el.innerHTML = `<div style="color:#dc2626;padding:16px">載入失敗：${e.message}</div>`
+    document.getElementById('admin-surveys-table').innerHTML =
+      `<div style="color:#dc2626;padding:16px">載入失敗：${e.message}</div>`
   }
+}
+
+// ── 工程師端：只看自己的專案 ──
+async function openMyCalendar(){
+  const ov=document.getElementById('mycal-overlay')
+  const who=document.getElementById('mycal-who')
+  if(who) who.textContent=(getCurrentUser()||'')+'　只顯示你建立的專案'
+  ov.classList.add('on')
+  try{
+    await loadCalendarData('mycal-host', true)
+  }catch(e){
+    document.getElementById('mycal-host').innerHTML=
+      `<div style="color:#dc2626;padding:16px">載入失敗：${e.message}</div>`
+  }
+}
+function closeMyCalendar(){
+  document.getElementById('mycal-overlay').classList.remove('on')
+  closeCalModal()
+  // 關掉後把渲染目標交還給後台，避免下次後台重整時寫到已隱藏的容器
+  _calHost='admin-surveys-table'; _calMineOnly=false
 }
 
 // 一筆 survey 屬於哪個專案（查不到就歸到「未分類」，不要整筆消失）
@@ -4014,7 +4085,7 @@ function calGroups(dateStr){
 }
 
 function renderSurveyCalendar(){
-  const el=document.getElementById('admin-surveys-table')
+  const el=document.getElementById(_calHost)
   if(!el||!_calReady) return
   const {y,m}=_calYM
   const projIds=[...new Set(_calSurveys.map(s=>svProject(s).id))]
@@ -4057,11 +4128,12 @@ function renderSurveyCalendar(){
           <option value="">全部專案</option>
           ${projOpts.map(p=>`<option value="${esc(p.id)}" ${_calFilt.project===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}
         </select></div>
+      ${_calMineOnly?'':`
       <div class="cal-fg"><label>工程師</label>
         <select onchange="_calFilt.engineer=this.value;renderSurveyCalendar()">
           <option value="">全部工程師</option>
           ${engs.map(e=>`<option value="${esc(e)}" ${_calFilt.engineer===e?'selected':''}>${esc(e)}</option>`).join('')}
-        </select></div>
+        </select></div>`}
       <div class="cal-nav">
         <button onclick="calShiftMonth(-1)" title="上個月">‹</button>
         <div class="cal-ml">${y}年 ${m}月</div>
