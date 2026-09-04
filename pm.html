@@ -151,6 +151,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .mycal-top button:hover{background:#334155}
 /* 工程師端沒有後台的分頁列，可用高度比較多，所以 --cal-off 給小一點 */
 .mycal-body{padding:12px 16px;max-width:1180px;width:100%;margin:0 auto;--cal-off:186px}
+/* 工程師端的月曆同樣是白底格線，載入遮罩沿用淺色即可，這裡只微調文字對比 */
+.mycal-body .cal-loading .so-txt{color:#334155}
 .lv-search{
   display:flex;align-items:center;background:#f8fafc;
   border:1.5px solid #e2e8f0;border-radius:9px;padding:7px 11px;gap:6px;
@@ -485,9 +487,17 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .cal-nav button{width:30px;height:30px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;
   cursor:pointer;font-size:15px;color:#475569}
 .cal-nav button:hover{background:#f1f5f9}
-/* 骨架先出來、資料後補時的提示。放在月份切換旁邊，不佔額外空間 */
-.cal-loading-pill{font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;
-  border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;margin-right:4px}
+/* 資料載入中的提示。沿用 PM 首頁「專案資料下載中…」那套雲朵下載動畫，
+   但只蓋在月曆格線上（不是整個螢幕），上方的月份切換與篩選仍可操作。 */
+.cal-wrap{position:relative}
+.cal-loading{position:absolute;inset:0;z-index:5;background:rgba(248,250,252,.86);
+  display:none;align-items:center;justify-content:center;flex-direction:column;gap:13px}
+.cal-loading.on{display:flex}
+.cal-loading .so-card{width:74px;height:74px;border-radius:16px;background:#1e293b;
+  display:flex;align-items:center;justify-content:center;overflow:hidden}
+.cal-loading .so-card svg{width:32px;height:32px;color:#4ade80;
+  animation:so-bob 1.3s ease-in-out infinite}
+.cal-loading .so-txt{font-size:13px;color:#475569;font-weight:600}
 .cal-nav .cal-ml{font-size:15px;font-weight:800;min-width:104px;text-align:center;color:#0f172a}
 .cal-nav .cal-today{width:auto;padding:0 11px;font-size:12px;font-weight:700}
 /* 整個月要一眼看完，不能靠捲動。所以月曆本體吃滿剩餘的可視高度，
@@ -4491,7 +4501,6 @@ function renderSurveyCalendar(){
           ${engs.map(e=>`<option value="${esc(e)}" ${_calFilt.engineer===e?'selected':''}>${esc(e)}</option>`).join('')}
         </select></div>`}
       <div class="cal-nav">
-        ${_calLoading?'<span class="cal-loading-pill">資料載入中…</span>':''}
         <button onclick="calShiftMonth(-1)" title="上個月">‹</button>
         <div class="cal-ml">${y}年 ${m}月</div>
         <button onclick="calShiftMonth(1)" title="下個月">›</button>
@@ -4501,6 +4510,18 @@ function renderSurveyCalendar(){
     <div class="cal-wrap">
       <div class="cal-dow">${['日','一','二','三','四','五','六'].map(x=>`<div>${x}</div>`).join('')}</div>
       <div class="cal-grid">${cells}</div>
+      <!-- 跟 PM 首頁「專案資料下載中…」同一套雲朵下載動畫 -->
+      <div class="cal-loading${_calLoading?' on':''}">
+        <div class="so-card">
+          <svg viewBox="0 0 22 17" fill="none" stroke="currentColor" stroke-width="1.7"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M16.5 12H5.5a4 4 0 0 1-.2-8 5 5 0 0 1 9.8 1H16a3 3 0 0 1 .5 7z"/>
+            <line x1="11" y1="9" x2="11" y2="15.5"/>
+            <polyline points="8.5,13 11,15.5 13.5,13"/>
+          </svg>
+        </div>
+        <div class="so-txt">調查資料下載中…</div>
+      </div>
     </div>
     ${projOpts.length?`<div class="cal-legend">${projOpts.map(p=>{
       const col=calColor(p.id)
