@@ -1345,60 +1345,91 @@ function applyConfig(cfg){
 // ════════════════════════════════════
 //  CLOUD FETCH HELPERS
 // ════════════════════════════════════
-// Apps Script 剛部署新版本時，第一次呼叫常有「冷啟動」延遲（可能超過15秒）。
-// 逾時拉長到45秒，並在逾時/網路錯誤時自動重試一次，避免現場人員一開頁就看到「任務下載失敗」。
+// ⚠️ 絕對不要直接 res.json()。
+// Apps Script 忙碌、超過並行上限、或 Google 端暫時出錯時，回來的是一頁 HTML 錯誤頁
+// （或登入／中繼頁），這時 res.json() 會丟出
+//   Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+// 現場看到的就是「載入失敗」加一串看不懂的英文，而且過幾分鐘自己又好了——
+// 因為那是伺服器端的暫時性狀況，不是資料壞掉。
+//
+// 所以統一走 gsJson()：先讀成文字判斷是不是 JSON，是暫時性問題就自動重試，
+// 重試完仍失敗才丟出看得懂的訊息。
+const GS_RETRY_DELAYS=[1200, 3000, 6000]   // 重試間隔，總共嘗試 4 次
+function _isTransient(msg){
+  return /忙碌|逾時|timed out|timeout|Failed to fetch|NetworkError|載入中斷/i.test(msg||'')
+}
+async function gsJson(url, opts, onRetry){
+  let lastErr
+  for(let attempt=0; attempt<=GS_RETRY_DELAYS.length; attempt++){
+    try{
+      const res=await fetch(url, opts)
+      const text=await res.text()
+      const head=text.trim().slice(0,1)
+      if(head==='<'){
+        // 拿到 HTML＝伺服器沒有正常回應這支 API
+        throw new Error(res.status>=500||res.status===429
+          ? '雲端伺服器忙碌中'
+          : '雲端伺服器忙碌中（回應非預期格式）')
+      }
+      let json
+      try{ json=JSON.parse(text) }
+      catch(e){ throw new Error('雲端回應無法解析') }
+      if(!json.ok && json.error) throw new Error(json.error)
+      if(!json.ok) throw new Error('cloud error')
+      return json.data
+    }catch(e){
+      lastErr=e
+      const msg=String(e&&e.message||e)
+      // 資料面的錯誤（例如找不到路線）重試也沒用，直接往外丟
+      if(!_isTransient(msg) && !/忙碌|無法解析/.test(msg)) throw e
+      if(attempt===GS_RETRY_DELAYS.length) break
+      if(onRetry) onRetry(attempt+1, GS_RETRY_DELAYS.length+1)
+      await new Promise(r=>setTimeout(r, GS_RETRY_DELAYS[attempt]))
+    }
+  }
+  throw new Error('雲端連線不穩定，已重試多次仍失敗。請確認網路後再試一次。'
+    +'（原因：'+String(lastErr&&lastErr.message||lastErr)+'）')
+}
+// 重試時把狀況寫在載入畫面上，讓現場知道程式還在努力、不是當掉了
+function _loadingRetryNote(n, total){
+  const sub=document.getElementById('loading-sub')
+  if(sub) sub.textContent=`雲端忙碌，重試中… (${n}/${total})`
+}
+
+// Apps Script 剛部署新版本時，第一次呼叫常有「冷啟動」延遲（可能超過15秒），
+// 所以逾時拉長到 45 秒。
 async function cloudFetchProject(pid, gsUrl, apiKey){
   const p=new URLSearchParams({action:'getProject',pid,key:apiKey,t:Date.now()})
-  const res=await fetch(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(45000),cache:'no-store'})
-  const json=await res.json()
-  if(!json.ok) throw new Error(json.error||'cloud error')
-  return json.data
+  return gsJson(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(45000),cache:'no-store'},_loadingRetryNote)
 }
 async function cloudFetchProjectRoutes(pid, gsUrl, apiKey){
   const p=new URLSearchParams({action:'getProjectRoutes',pid,key:apiKey,t:Date.now()})
-  const res=await fetch(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(45000),cache:'no-store'})
-  const json=await res.json()
-  if(!json.ok) throw new Error(json.error||'cloud error')
-  return json.data
+  return gsJson(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(45000),cache:'no-store'},_loadingRetryNote)
 }
 // 今日各路線的調查進度（每回合完成／進行中／尚未）。
 // 拿不到時不影響選路線，畫面就不顯示進度而已，所以呼叫端一律 catch 掉。
 async function cloudFetchProjectProgress(pid, gsUrl, apiKey){
   const p=new URLSearchParams({action:'getProjectProgress',pid,date:todayStr(),key:apiKey,t:Date.now()})
-  const res=await fetch(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(20000),cache:'no-store'})
-  const json=await res.json()
-  if(!json.ok) throw new Error(json.error||'cloud error')
-  return json.data
+  return gsJson(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(20000),cache:'no-store'})
 }
-async function cloudFetchRoute(id, gsUrl, apiKey, _retried){
+async function cloudFetchRoute(id, gsUrl, apiKey){
   const p=new URLSearchParams({action:'getRoute',id,key:apiKey,t:Date.now()})
-  try{
-    const res=await fetch(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(45000),cache:'no-store'})
-    const json=await res.json()
-    if(!json.ok) throw new Error(json.error||'cloud error')
-    return json.data
-  }catch(e){
-    if(!_retried){
-      const sub=document.getElementById('loading-sub')
-      if(sub) sub.textContent='連線逾時，重試中...（伺服器剛部署，首次載入較慢）'
-      await new Promise(r=>setTimeout(r,1500))
-      return cloudFetchRoute(id, gsUrl, apiKey, true)
-    }
-    throw e
-  }
+  return gsJson(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(45000),cache:'no-store'},_loadingRetryNote)
 }
 
 async function cloudPostSurvey(gsUrl, apiKey, body){
   // text/plain avoids CORS preflight (OPTIONS) that Apps Script doesn't handle
-  const res=await fetch(gsUrl,{
+  //
+  // 上傳同樣走 gsJson()：雲端忙碌時回的是 HTML 錯誤頁，舊寫法會被 res.json() 擋下來
+  // 變成「上傳失敗」，資料只能留在離線佇列等下一次。自動重試幾次就能救回大部分情況。
+  // 後端是以「路線＋日期＋回合＋組合」為鍵覆寫，重複送同一筆不會產生兩筆資料，
+  // 所以重試是安全的。
+  return gsJson(gsUrl,{
     method:'POST',
     headers:{'Content-Type':'text/plain'},
     body:JSON.stringify({...body,key:apiKey}),
     signal:AbortSignal.timeout(20000)
   })
-  const json=await res.json()
-  if(!json.ok) throw new Error(json.error||'cloud error')
-  return json.data
 }
 
 // Offline queue — save failed submissions so retry is possible
@@ -1594,9 +1625,10 @@ async function ensureHistoryForDate(day){
   _histDateFetched.add(d)
   try{
     const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey,date:d,t:Date.now()})
-    const res=await fetch(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(20000)})
-    const json=await res.json()
-    if(!json.ok||!Array.isArray(json.data)) return false
+    // gsJson 會擋掉「伺服器回 HTML 錯誤頁」的情況並自動重試（見上方註解）
+    const data=await gsJson(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(20000)})
+    if(!Array.isArray(data)) return false
+    const json={ok:true,data}
     // 合併而不是取代——記錄視窗與日期下拉還要靠原本那批涵蓋其他日期
     const seen=new Set(cache.map(h=>(h.date||'').slice(0,10)+'|'+(h.round||1)+'|'+(h.submittedAt||'')))
     const add=json.data.filter(h=>!seen.has((h.date||'').slice(0,10)+'|'+(h.round||1)+'|'+(h.submittedAt||'')))
@@ -1628,8 +1660,7 @@ async function loadCloudHistory(){
   if(!cloudRouteId||!cloudScriptUrl||!cloudApiKey) return
   try{
     const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey})
-    const res=await fetch(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(10000)})
-    const json=await res.json()
+    const json={ok:true,data:await gsJson(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(20000)})}
     if(json.ok){
       _histCache=json.data; renderHistModal(); renderDateSelectOptions()
       // 目前這個調查日期若不在這 30 筆裡（補調查舊日期時很常見），先單獨補抓那一天，
@@ -5525,9 +5556,7 @@ async function cloudFetchProgressFallback(routes, gsUrl, apiKey){
   return Promise.all(routes.map(async r=>{
     try{
       const p=new URLSearchParams({action:'getHistory',routeId:r.id,key:apiKey,t:Date.now()})
-      const res=await fetch(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(20000),cache:'no-store'})
-      const json=await res.json()
-      if(!json.ok) throw new Error(json.error||'cloud error')
+      const json={ok:true,data:await gsJson(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(20000),cache:'no-store'})}
       const plan=Math.min(5,Math.max(1,parseInt(r.roundCount)||3))
       const byRound={}
       ;(json.data||[]).forEach(sv=>{

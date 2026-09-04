@@ -205,13 +205,37 @@ let selectedProject = null   // 選到的專案 → 進 index.html 的專案選�
 let selectedRoute = null     // 沒有歸到任何專案的零散路線，才會直接選單一路線
 
 // ════════════════ CLOUD ════════════════
+// ⚠️ 不要直接 res.json()。Apps Script 忙碌或 Google 端暫時出錯時會回一頁 HTML，
+// res.json() 會丟出「Unexpected token '<', "<!DOCTYPE "...」，現場只看得到一串英文，
+// 而且過一陣子自己又好了——那是伺服器暫時性狀況，不是資料有問題。
+// 這裡先讀成文字判斷，暫時性問題就自動重試；原本連逾時都沒設，網路差時會一直卡著。
+const SEL_RETRY_DELAYS=[1200, 3000, 6000]
 async function cloudGet(params){
   const url = new URL(GS_URL)
   Object.entries({...params, key: GS_KEY}).forEach(([k,v])=>url.searchParams.set(k,v))
-  const res = await fetch(url)
-  const data = await res.json()
-  if(data.error) throw new Error(data.error)
-  return data
+  let lastErr
+  for(let attempt=0; attempt<=SEL_RETRY_DELAYS.length; attempt++){
+    try{
+      const res = await fetch(url,{signal:AbortSignal.timeout(45000),cache:'no-store'})
+      const text = await res.text()
+      if(text.trim().slice(0,1)==='<') throw new Error('雲端伺服器忙碌中')
+      let data
+      try{ data=JSON.parse(text) }catch(e){ throw new Error('雲端回應無法解析') }
+      if(data.error) throw new Error(data.error)
+      return data
+    }catch(e){
+      lastErr=e
+      const msg=String(e&&e.message||e)
+      const transient=/忙碌|無法解析|timed out|timeout|Failed to fetch|NetworkError/i.test(msg)
+      if(!transient) throw e
+      if(attempt===SEL_RETRY_DELAYS.length) break
+      const sub=document.getElementById('loading-sub')
+      if(sub) sub.textContent=`雲端忙碌，重試中… (${attempt+1}/${SEL_RETRY_DELAYS.length+1})`
+      await new Promise(r=>setTimeout(r, SEL_RETRY_DELAYS[attempt]))
+    }
+  }
+  throw new Error('雲端連線不穩定，已重試多次仍失敗。請確認網路後再試一次。'
+    +'（原因：'+String(lastErr&&lastErr.message||lastErr)+'）')
 }
 
 // ════════════════ LOAD PROGRESS ════════════════
