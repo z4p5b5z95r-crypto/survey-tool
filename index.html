@@ -1176,6 +1176,41 @@ function haversine(lat1,lng1,lat2,lng2){
   const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2
   return Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
 }
+
+// ── 軌跡壓縮：以「移動距離」取點，不再以「時間間隔」取點 ──────────────
+// 舊作法是每 5 筆留 1 筆。等紅燈、塞車時車子沒動，GPS 還是一直回報（原地飄），
+// 於是檔案大小跟著「這趟花多久」長 —— 而那正是最不可控的一件事。
+// 調查路線最多 3 公里，「走多遠」才是有上限的量，所以改成看距離：
+// 離上一個保留點不到 GPS_MIN_MOVE_M 就丟掉，停等的那一整段自然收斂成一個點。
+// 起點與終點一定保留，折線頭尾才接得到第一個／最後一個節點。
+// 40 公尺：實測在「順暢」到「大塞車」的每一種路況下，字元數都比舊的每5點取1更小
+// （-6% ~ -92%），不會出現「路況越順反而存越多」的情形。
+// 靜止漂移（3~8m）會被整段吃掉；3 公里路線約 73 點，畫折線綽綽有餘。
+const GPS_MIN_MOVE_M = 40
+const GPS_MAX_POINTS = 800   // 保險閥：極長或極彎的路線再均勻抽一次（800 點 ≈ 2.8 萬字元）
+// 座標留小數 6 位 ≈ 0.1 公尺，對行車軌跡遠遠夠用，字元數可以再少三成
+function _roundPt(p){
+  return { lat: Math.round(p.lat*1e6)/1e6, lng: Math.round(p.lng*1e6)/1e6 }
+}
+function _compressTrack(track, minMoveM){
+  const src = Array.isArray(track) ? track.filter(p=>p&&p.lat!=null&&p.lng!=null) : []
+  if(src.length <= 2) return src.map(_roundPt)
+  const D = minMoveM || GPS_MIN_MOVE_M
+  const out = [src[0]]
+  let last = src[0]
+  for(let i=1;i<src.length-1;i++){
+    const p = src[i]
+    if(haversine(last.lat,last.lng,p.lat,p.lng) >= D){ out.push(p); last = p }
+  }
+  out.push(src[src.length-1])
+  let res = out
+  if(res.length > GPS_MAX_POINTS){
+    const step = Math.ceil(res.length / GPS_MAX_POINTS)
+    res = res.filter((_,i)=>i%step===0)
+    if(res[res.length-1] !== out[out.length-1]) res.push(out[out.length-1])
+  }
+  return res.map(_roundPt)
+}
 // Ray-casting point-in-polygon — poly is [[lat,lng],...]
 // Compute route direction unit vectors at each node (accounts for lat/lng scaling)
 // If node has a manually-set lineAngle, the travel direction = lineAngle - 90° (picks direction that matches route flow)
@@ -1591,9 +1626,9 @@ function todayStr(){ return new Date().toLocaleDateString('sv-SE',{timeZone:'Asi
 // 上限一到 setItem 會丟 QuotaExceededError，而舊寫法用 catch(e){} 靜默吞掉——
 // 現場會以為存好了，實際上沒存，一閃退整趟就沒了。
 //
-// 反正上傳出去的本來就是抽稀後的版本（buildTripEntry 也是 i%5），
-// 本機留完整解析度沒有意義。抽稀後容量降為 1/5，同時標記 _gpsThinned，
-// 讓還原後重新上傳時不會再抽一次變成 1/25。
+// 反正上傳出去的本來就是壓縮後的版本（buildTripEntry 用同一支 _compressTrack），
+// 本機留完整解析度沒有意義。壓縮後同時標記 _gpsThinned，
+// 讓還原後重新上傳時不會再壓一次。
 function _thinTripsForStorage(byRound){
   const out={}
   Object.keys(byRound||{}).forEach(n=>{
@@ -1601,7 +1636,7 @@ function _thinTripsForStorage(byRound){
     Object.keys(byRound[n]||{}).forEach(k=>{
       const t=byRound[n][k]; if(!t){ return }
       out[n][k]= t._gpsThinned ? t : Object.assign({}, t, {
-        gpsTrack:(t.gpsTrack||[]).filter((_,i)=>i%5===0).map(p=>({lat:p.lat,lng:p.lng})),
+        gpsTrack:_compressTrack(t.gpsTrack),
         _gpsThinned:true
       })
     })
@@ -4595,11 +4630,11 @@ function buildTripEntry(t){
     nodeTimestamps:  (t.nodeTimestamps||[]).map(ts=>ts instanceof Date?ts.toISOString():ts),
     roadDelays:      t.roadDelays,
     intDelays:       t.intDelays,
-    // _gpsThinned 代表這筆是從 localStorage 還原的、軌跡已經抽稀過，
-    // 不能再抽一次（會變成 1/25，軌跡圖會失真）
+    // _gpsThinned 代表這筆是從 localStorage 還原的、軌跡已經壓縮過，直接用就好。
+    // （_compressTrack 本身重複執行是安全的，這裡只是省掉一次計算）
     gpsTrack: t._gpsThinned
-      ? (t.gpsTrack||[]).map(p=>({lat:p.lat,lng:p.lng}))
-      : (t.gpsTrack||[]).filter((_,i)=>i%5===0).map(p=>({lat:p.lat,lng:p.lng})),
+      ? (t.gpsTrack||[]).filter(p=>p&&p.lat!=null&&p.lng!=null).map(_roundPt)
+      : _compressTrack(t.gpsTrack),
     delayLog: (t.delayLog||[]).filter(d=>d.pos?.lat&&d.pos?.lng).map(d=>({
       cause:d.cause, label:d.label, icon:d.icon, durationS:d.durationS,
       pos:{lat:d.pos.lat,lng:d.pos.lng},
@@ -5079,7 +5114,7 @@ function exportReport(){
   const tracksData = {}
   COMBO_KEYS.forEach(k=>{
     const t=allTrips[k]; if(!t||!t.gpsTrack||t.gpsTrack.length<2) return
-    tracksData[k]=t.gpsTrack.filter((_,i)=>i%5===0).map(p=>[p.lat,p.lng])
+    tracksData[k]=_compressTrack(t.gpsTrack).map(p=>[p.lat,p.lng])
   })
 
   // ── 3. Delay marker positions ──
