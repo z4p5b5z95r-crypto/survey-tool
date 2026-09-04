@@ -661,7 +661,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
          GitHub Pages ＋ 瀏覽器快取常常讓人分不清看到的是新版還是舊版，
          有這行就不必再猜。不需要時整段刪掉即可，沒有其他程式依賴它。 -->
     <div style="text-align:center;margin-top:18px;font-size:10px;color:#cbd5e1;letter-spacing:.5px">
-      build 2026-09-04c
+      build 2026-09-04d
     </div>
   </div>
 </div>
@@ -1135,16 +1135,43 @@ async function doLogin() {
 
   btn.disabled = true; btn.textContent = '驗證中...'
   err.textContent = ''
+
+  // ⚠️ 這裡刻意拆成兩段 try。
+  // 舊寫法把「驗證」和「進入主畫面」包在同一個 try，然後用
+  //   e.message.includes('帳號') ? '姓名或密碼錯誤' : '連線失敗'
+  // 判斷。這有兩個問題，而且兩個都會讓人查不出真正原因：
+  //  ① 後端的「此帳號已停用，請聯絡管理員」也含「帳號」兩個字，
+  //     於是停用的帳號會被顯示成「姓名或密碼錯誤」——密碼明明是對的。
+  //  ② enterApp() 也在 try 裡面。它只要丟出任何例外（地圖沒載到、
+  //     專案清單壞掉…），畫面一樣顯示登入失敗，但其實已經登入成功了。
+  let res
+  // ── ① 驗證：只有這一段的錯誤才真的是「登入失敗」 ──
   try {
     const hash = await hashPwd(pwd)
     const legacyHash = hashPwdLegacy(pwd)   // 供後端過渡期比對舊帳號
     const meta = loginMeta()   // 取現成的，不等網路
-    const res = await cloudAuth({ action: 'loginUser', name, hash, legacyHash,
-                                  city: meta.city, device: meta.device })
+    res = await cloudAuth({ action: 'loginUser', name, hash, legacyHash,
+                            city: meta.city, device: meta.device })
+  } catch(e) {
+    const m = String((e && e.message) || e)
+    console.error('登入驗證失敗：', m)
+    err.textContent =
+        /停用/.test(m)            ? '此帳號已停用，請聯絡管理員'
+      : /帳號或密碼/.test(m)      ? '姓名或密碼錯誤'
+      : /找不到使用者/.test(m)    ? '查無此帳號'
+      : /Unexpected token|JSON/i.test(m) ? '伺服器回應異常，請稍後再試'
+      : ('連線失敗：' + m)
+    btn.disabled = false; btn.textContent = '登入'
+    return
+  }
+
+  // ── ② 進入主畫面：這裡出錯跟帳號密碼無關，訊息要講實話 ──
+  try {
     setSession(name, res.sessionToken, res.expiresAt, res.apiKey)
     enterApp(name)
   } catch(e) {
-    err.textContent = e.message.includes('帳號') ? '姓名或密碼錯誤' : '連線失敗，請稍後再試'
+    console.error('enterApp 失敗：', e)
+    err.textContent = '登入成功，但載入主畫面失敗：' + ((e && e.message) || e)
     btn.disabled = false; btn.textContent = '登入'
   }
 }
