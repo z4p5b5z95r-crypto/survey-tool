@@ -651,7 +651,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
          GitHub Pages ＋ 瀏覽器快取常常讓人分不清看到的是新版還是舊版，
          有這行就不必再猜。不需要時整段刪掉即可，沒有其他程式依賴它。 -->
     <div style="text-align:center;margin-top:18px;font-size:10px;color:#cbd5e1;letter-spacing:.5px">
-      build 2026-09-04b
+      build 2026-09-04c
     </div>
   </div>
 </div>
@@ -1415,8 +1415,15 @@ function initMainMap(){
   L.control.zoom({ position:'bottomright' }).addTo(map)
   osmLayer.addTo(map)
   map.setView([25.04776, 121.51755], 14)
-  bindMapEvents()          // 地圖事件一律等地圖建立好才綁
-  setMode('browse')        // 這一步會碰 map.getContainer()，同樣要等地圖就緒
+  // ⚠️ 這兩步要延到「整份腳本跑完」才做，不能在這裡直接呼叫。
+  // initMainMap() 位在檔案偏前面（約 1400 行）就會執行，但 setMode() 內部用到的
+  // measuring / mode 這些 let 變數宣告在 1578 行之後——在那之前碰它們就是
+  //   Cannot access 'measuring' before initialization（暫時性死區 TDZ）。
+  // setTimeout 0 會排到目前這輪腳本執行完之後，那時所有宣告都已就緒。
+  setTimeout(()=>{
+    bindMapEvents()        // 地圖事件一律等地圖建立好才綁
+    setMode('browse')      // 會碰 map.getContainer()，也要等地圖就緒
+  }, 0)
   return map
 }
 ;(function waitLeaflet(tries){
