@@ -213,8 +213,12 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 .pr-bar{width:5px;flex-shrink:0;background:#cbd5e1}
 .pr-item-inner{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:11px 13px}
 .pr-item-body{flex:1;min-width:0}
-.pr-item-name{font-size:15px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pr-item-sub{font-size:12px;color:#94a3b8;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ⚠️ display:block 是必要的，不是裝飾。
+   這兩個是 <span>，預設 display:inline，而 inline 元素的 overflow:hidden 與
+   text-overflow:ellipsis 完全不生效 —— 名稱不會被截斷，而是直接溢出去
+   壓在右邊的進度圓圈上（現場看到的就是這個）。 */
+.pr-item-name{display:block;font-size:15px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr-item-sub{display:block;font-size:12px;color:#94a3b8;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 每一次調查＝一個圓環，橘色依完成趟數填 1/4、2/4、3/4，四趟做完整圈轉綠 */
 /* 一條路線最多 5 次，寬度固定預留 5 個圓的空間（5×13 + 4×4 = 81px），
    圓靠右對齊。這樣不論路線設幾次，所有卡片的圓都在同一條垂直線上，
@@ -222,7 +226,13 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 /* 語音聆聽中的呼吸紅點 */
 .vh-dot{width:8px;height:8px;border-radius:999px;background:#f87171;flex-shrink:0;animation:vhPulse 1.2s ease-in-out infinite}
 @keyframes vhPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
-.pr-rings{display:flex;gap:4px;flex-shrink:0;align-items:center;justify-content:flex-end;width:81px}
+/* 進度圓圈改放在名稱下方自成一列（版型 B）。
+   原本圓圈是卡片右側的固定 81px 欄位，名稱一長就被壓到看不完
+   （現場的路線名稱像「05-2 鳳北路與南星路-鳳北路路段」幾乎都超過寬度）。
+   改成獨立一列之後，名稱可以用滿整個卡片寬度。 */
+.pr-progress{display:flex;align-items:center;gap:8px;margin-top:7px}
+.pr-rings{display:flex;gap:4px;flex-shrink:0;align-items:center}
+.pr-done-cnt{font-size:11px;color:#64748b;font-weight:700;flex-shrink:0}
 .pr-ring{width:13px;height:13px;border-radius:999px;flex-shrink:0;display:grid;place-items:center;background:#e2e8f0}
 .pr-ring::after{content:"";width:6px;height:6px;border-radius:999px;background:#fff}
 .pr-item-arrow{flex-shrink:0;color:#cbd5e1}
@@ -5530,8 +5540,12 @@ async function showProjectRoutePicker(pid, gsParam, kParam){
             <span class="pr-item-body">
               <span class="pr-item-name">${i+1}. ${r.routeName||'未命名路線'}</span>
               <span class="pr-item-sub">${segDisp(r.routeFromTo||'未設定起訖點')}</span>
+              <!-- 進度圓圈自成一列（版型 B）：名稱才能用滿整個卡片寬度不被壓到 -->
+              <span class="pr-progress">
+                <span class="pr-rings" id="pr-state-${i}"></span>
+                <span class="pr-done-cnt" id="pr-cnt-${i}"></span>
+              </span>
             </span>
-            <span class="pr-rings" id="pr-state-${i}"></span>
             <svg class="pr-item-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
           </span>
         </button>
@@ -5698,7 +5712,10 @@ function applyTodayProgress(routes, list){
   if(!list || !list.length){
     // 真的查不到就把「查詢中」字樣拿掉，不要一直卡在載入文字上誤導現場人員；
     // 上方三格保留破折號，代表「查不到」而不是「都是 0」
-    routes.forEach((r,i)=>{ const el=document.getElementById(`pr-state-${i}`); if(el) el.innerHTML='' })
+    routes.forEach((r,i)=>{
+      const el=document.getElementById(`pr-state-${i}`); if(el) el.innerHTML=''
+      const c=document.getElementById(`pr-cnt-${i}`);   if(c)  c.textContent=''
+    })
     return
   }
   const byId = {}
@@ -5712,6 +5729,14 @@ function applyTodayProgress(routes, list){
     // 完成狀態改由右側文字的顏色表示，這裡不覆蓋色帶
     const el = document.getElementById(`pr-state-${i}`)
     if(el){ el.className = 'pr-rings'; el.innerHTML = renderRouteRings(p, p && p.comboTotal) }
+    // 圓圈移到下一行之後右邊空出位置，順便把「幾次完成」寫出來——
+    // 光看圓圈要數，寫成數字現場一眼就知道還剩幾次
+    const cEl = document.getElementById(`pr-cnt-${i}`)
+    if(cEl){
+      const states = (p && p.roundStates) || []
+      const doneN = states.filter(s=>s==='done').length
+      cEl.textContent = states.length ? `${doneN}/${states.length} 完成` : ''
+    }
     if(st.cls==='done') nDone++
     else if(st.cls==='part') nPart++
     else nTodo++
