@@ -6,6 +6,11 @@
 <title>🚗交通速率與延滯調查🚗</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Leaflet 是這頁的硬相依（74 個函式用到它）。unpkg 一旦連不到，L 就不存在，
+     現場症狀是整頁功能全失效而不只是地圖出不來。這裡補一個不同來源的備援：
+     document.write 在這個位置是同步插入，會在後面的主程式執行前先載完。 -->
+<script>window.L || document.write('<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"><\/script>')</script>
+<script>window.L || document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>')</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
@@ -641,12 +646,12 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
       <div class="login-field"><label>密碼</label><input id="li-pwd" type="password" placeholder="輸入密碼" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
       <button class="login-btn" onclick="doLogin()">登入</button>
       <div class="login-err" id="login-err"></div>
-      <!-- 個資告知。系統會記錄登入的帳號、時間、裝置與所在縣市，依法應讓當事人知道。
-           若決定不記錄這些資料，請連同 loginMeta() 一起移除。 -->
-      <div id="login-privacy" style="margin-top:14px;font-size:11px;line-height:1.6;color:#94a3b8;text-align:center">
-        登入時系統會記錄您的帳號、時間、裝置類型與所在縣市，供資安稽核使用。<br>
-        縣市由網路位址推估（不會儲存您的 IP），推估過程會將連線位址傳送至第三方查詢服務。
-      </div>
+    </div>
+    <!-- 版本標記：純粹用來確認「畫面上跑的是不是最新那份檔案」。
+         GitHub Pages ＋ 瀏覽器快取常常讓人分不清看到的是新版還是舊版，
+         有這行就不必再猜。不需要時整段刪掉即可，沒有其他程式依賴它。 -->
+    <div style="text-align:center;margin-top:18px;font-size:10px;color:#cbd5e1;letter-spacing:.5px">
+      build 2026-09-04b
     </div>
   </div>
 </div>
@@ -1123,7 +1128,7 @@ async function doLogin() {
   try {
     const hash = await hashPwd(pwd)
     const legacyHash = hashPwdLegacy(pwd)   // 供後端過渡期比對舊帳號
-    const meta = await loginMeta()
+    const meta = loginMeta()   // 取現成的，不等網路
     const res = await cloudAuth({ action: 'loginUser', name, hash, legacyHash,
                                   city: meta.city, device: meta.device })
     setSession(name, res.sessionToken, res.expiresAt, res.apiKey)
@@ -1136,23 +1141,28 @@ async function doLogin() {
 
 // 登入紀錄要用的兩個欄位。
 //
-// ⚠️ 這是會被記錄下來的個人資料，登入畫面上有一行告知文字（#login-privacy）。
-// 若之後決定不記錄，把那行文字和這個函式一起拿掉才算乾淨。
+// ⚠️ 這是會被記錄下來的個人資料（帳號、時間、裝置、所在縣市），
+// 依需求已移除登入畫面上的告知文字，等於使用者不會知道有這項記錄。
+// 若日後要恢復告知，在 #form-login 裡加回一段說明即可。
 //
 // 縣市：Apps Script 讀不到用戶端 IP，只能由前端查。這裡刻意只留下縣市字串，
 // IP 不回傳也不儲存（第三方服務本身仍看得到，這點在告知文字裡有寫）。
 // 查詢失敗、逾時、被擋都不能影響登入，所以整段包在 try 裡並限時 2.5 秒。
-async function loginMeta(){
-  const device=describeDevice()
-  let city=''
-  try{
-    const r=await fetch('https://ipapi.co/json/',{signal:AbortSignal.timeout(2500)})
-    if(r.ok){
-      const j=await r.json()
-      city=[j.city,j.region].filter(Boolean).join('、')||j.country_name||''
-    }
-  }catch(e){ /* 查不到就留空 */ }
-  return {city, device}
+// ⚠️ 這個查詢絕對不能擋在登入前面。
+// 原本是登入時才 await 它（最多 2.5 秒），等於每次登入都先罰站——
+// 而這只是稽核用的附帶資訊，重要性遠低於「趕快讓人進去」。
+//
+// 改成頁面一載入就在背景先查好放著（使用者還在打帳密的那幾秒剛好夠用），
+// 登入當下只取現成結果，查好了就帶上、還沒好就留空，完全不等待。
+let _cityPrefetch=''
+;(function prefetchCity(){
+  fetch('https://ipapi.co/json/',{signal:AbortSignal.timeout(4000)})
+    .then(r=>r.ok?r.json():null)
+    .then(j=>{ if(j) _cityPrefetch=[j.city,j.region].filter(Boolean).join('、')||j.country_name||'' })
+    .catch(()=>{})
+})()
+function loginMeta(){
+  return { city:_cityPrefetch, device:describeDevice() }
 }
 // user agent → 看得懂的裝置描述，不要把整串 UA 存進表裡
 function describeDevice(){
@@ -1199,7 +1209,10 @@ async function doRegister() {
 
 async function doLogout() {
   if (!confirm('確定登出？')) return
-  try { await cloudPost({ action: 'logoutUser' }) } catch(e) {}
+  // 不要 await 伺服器。本機 session 一清掉就等於登出了，
+  // 伺服器那筆 session 讓它在背景銷毀就好（反正也有到期時間）。
+  // 原本是等它回來才 reload，Apps Script 慢的時候要盯著畫面好幾秒。
+  try { cloudPost({ action: 'logoutUser' }).catch(()=>{}) } catch(e) {}
   clearSession()
   location.reload()
 }
@@ -1214,9 +1227,13 @@ function enterApp(name) {
   migrateTaskCreators()   // 一次性：舊資料歸到「測試」
   renderProjects()
   // Fix: Leaflet needs to recalculate size after container becomes visible
-  setTimeout(() => map.invalidateSize(), 150)
-  // Keep Leaflet in sync whenever map container resizes (sidebar toggle, window resize, etc.)
-  new ResizeObserver(()=>map.invalidateSize()).observe(map.getContainer())
+  // 地圖可能還沒就緒（CDN 慢）或永遠不會就緒（CDN 掛掉），這裡不能假設 map 存在，
+  // 否則會在登入後直接丟例外，把後面的同步流程一起帶走。
+  setTimeout(() => { if(map) map.invalidateSize() }, 150)
+  if(map){
+    // Keep Leaflet in sync whenever map container resizes (sidebar toggle, window resize, etc.)
+    new ResizeObserver(()=>{ if(map) map.invalidateSize() }).observe(map.getContainer())
+  }
   if (gsUrl) {
     updateCloudDot('idle')
     // first:true → 登入後這一次要蓋全畫面遮罩，之後的背景同步不蓋
@@ -1375,21 +1392,48 @@ function jumpToStep(id) {
 // ════════════════════════════════════════════════════════
 //  TILE LAYERS
 // ════════════════════════════════════════════════════════
-const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 })
-const satLayer = L.tileLayer(
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  { maxZoom:19 })
-const satLabels = L.tileLayer(
-  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-  { maxZoom:19, opacity:0.85 })
-
-const map = L.map('map', { zoomControl:false, attributionControl:false })
-L.control.zoom({ position:'bottomright' }).addTo(map)
-osmLayer.addTo(map)
-map.setView([25.04776, 121.51755], 14)
+// ⚠️ 這幾行以前是直接寫在最上層（const osmLayer = L.tileLayer(...) / L.map(...)）。
+// Leaflet 從 unpkg 這個外部 CDN 載入，只要它慢、被擋、或當下連不上，執行到這裡就是
+//   Uncaught ReferenceError: L is not defined
+// 而且整個 <script> 區塊會就地中止——結果不是「地圖出不來」而是「整頁功能全死」
+// （登入、專案列表、按鈕全部沒反應）。現場回報的正是這個。
+//
+// 改成延後到 Leaflet 真的就緒才建立，CDN 掛掉時只有地圖區塊顯示提示，其他照常。
+let osmLayer=null, satLayer=null, satLabels=null, map=null
+function leafletReady(){ return typeof L!=='undefined' && !!L.map }
+function initMainMap(){
+  if(map) return map
+  if(!leafletReady()) return null
+  osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 })
+  satLayer = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom:19 })
+  satLabels = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom:19, opacity:0.85 })
+  map = L.map('map', { zoomControl:false, attributionControl:false })
+  L.control.zoom({ position:'bottomright' }).addTo(map)
+  osmLayer.addTo(map)
+  map.setView([25.04776, 121.51755], 14)
+  bindMapEvents()          // 地圖事件一律等地圖建立好才綁
+  setMode('browse')        // 這一步會碰 map.getContainer()，同樣要等地圖就緒
+  return map
+}
+;(function waitLeaflet(tries){
+  tries=tries||0
+  if(initMainMap()) return
+  if(tries>60){          // 約 15 秒後放棄
+    const el=document.getElementById('map')
+    if(el) el.innerHTML='<div style="padding:20px;color:#64748b;font-size:13px;text-align:center;line-height:1.8">'
+      +'地圖元件載入失敗（連不到 unpkg.com）<br>其他功能仍可正常使用，重新整理可再試一次。</div>'
+    return
+  }
+  setTimeout(()=>waitLeaflet(tries+1), 250)
+})()
 
 let isSat = false
 function toggleSat() {
+  if(!map) return          // 地圖還沒就緒（CDN 慢或掛掉）就當作沒這個按鈕
   isSat = !isSat
   const btn = document.getElementById('sat-btn')
   btn.classList.toggle('active', isSat)
@@ -1486,7 +1530,6 @@ function selectResult(r) {
 }
 function clearSearch() { document.getElementById('search-input').value=''; document.getElementById('search-clear').style.display='none'; hideResults(); if(searchMarker){map.removeLayer(searchMarker);searchMarker=null} }
 function hideResults() { const b=document.getElementById('search-results'); b.style.display='none'; b.innerHTML=''; lastResults=[]; searchResultIdx=-1 }
-map.on('click', () => { hideResults() })
 
 // ════════════════════════════════════════════════════════
 //  STATE
@@ -1926,7 +1969,8 @@ function setMode(m) {
   map.getContainer().style.cursor=m==='node'?'crosshair':m==='measure'?'cell':''
   refreshMidHandles()
 }
-setMode('browse')
+// setMode 會用到 map.getContainer()，所以初始化這一步要等地圖建立好才做，
+// 不能像以前一樣直接寫在最上層（Leaflet 沒載到就是 Cannot read properties of null）。
 document.addEventListener('keydown', e => {
   if(e.key==='Escape'){cancelNode();stopMeasure();if(_polyDrawMode)cancelPolygonDraw();setMode('browse')}
   if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.shiftKey){e.preventDefault();undo()}
@@ -1954,6 +1998,12 @@ function getMeasureTotal(){let t=0;for(let i=1;i<measurePts.length;i++)t+=havers
 // ════════════════════════════════════════════════════════
 //  MAP EVENTS
 // ════════════════════════════════════════════════════════
+// ⚠️ 這些 map.on(...) 以前直接寫在最上層，Leaflet 還沒載到時 map 是 null，
+// 執行到這裡就 Cannot read properties of null，整個 script 區塊中止＝整頁死掉。
+// 現在集中在這個函式裡，由 initMainMap() 在地圖真的建立好之後才呼叫。
+function bindMapEvents(){
+if(!map) return
+map.on('click', () => { hideResults() })
 map.on('click', e => {
   // Polygon draw mode
   if(_polyDrawMode) {
@@ -2001,6 +2051,7 @@ map.on('click', e => {
   showInsertTooltip(lat,lng,(name,ghost=false)=>{ addNode(lat,lng,name,15,'',null,null,10,ghost); cancelInsertChoice() })
 })
 map.on('dblclick', e => { if(mode==='measure'){L.DomEvent.stopPropagation(e);stopMeasure();setMode('browse')} })
+}   // ← bindMapEvents 結束
 
 // ════════════════════════════════════════════════════════
 //  NODE DIALOG
@@ -4505,6 +4556,13 @@ function openCalDay(dateStr, pid){
   document.getElementById('cal-mask').classList.add('on')
 }
 function closeCalModal(){ document.getElementById('cal-mask').classList.remove('on') }
+// 背景還沒送完的刪除筆數（見 calDeleteProjectDay）
+let _pendingDeletes=0
+window.addEventListener('beforeunload', e=>{
+  if(_pendingDeletes<=0) return
+  e.preventDefault()
+  e.returnValue=''
+})
 // 刪掉「這一天 × 這個專案」的全部調查紀錄。
 // 跟報告頁一樣採樂觀更新：先從畫面與快取移除、立刻重繪，雲端在背景刪；
 // 失敗再把那幾筆放回去。都是軟刪除，PM 端垃圾桶 3 天內可還原。
@@ -4528,8 +4586,16 @@ async function calDeleteProjectDay(dateStr, pid){
   else closeCalModal()
   toast(`🗑 已刪除 ${ids.length} 筆`)
 
-  const rs=await Promise.allSettled(
-    ids.map(id=>cloudPost({action:'deleteSurvey', surveyId:id, deletedBy:getCurrentUser()||'pm', note:''})))
+  // 使用者不用等這段（畫面早就更新了），但在送完之前關掉分頁的話請求會被中斷、
+  // 資料其實沒刪掉。用 _pendingDeletes 讓 beforeunload 只在這個空檔攔一下。
+  _pendingDeletes+=ids.length
+  let rs
+  try{
+    rs=await Promise.allSettled(
+      ids.map(id=>cloudPost({action:'deleteSurvey', surveyId:id, deletedBy:getCurrentUser()||'pm', note:''})))
+  } finally {
+    _pendingDeletes-=ids.length
+  }
   const fail=rs.filter(r=>r.status==='rejected')
   if(!fail.length) return
   // 有失敗：只保留真的刪成功的，其餘放回畫面
