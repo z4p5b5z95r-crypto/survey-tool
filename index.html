@@ -1445,9 +1445,50 @@ function enqueueOffline(payload){
       return [ob.routeId,ob.date,ob.round,Object.keys(ob.trips||{}).sort().join(',')].join('|')!==sig
     })
     kept.push({ts:Date.now(),...payload})
-    localStorage.setItem(OFFLINE_QUEUE_KEY,JSON.stringify(kept))
-  }catch(e){}
+    try{
+      localStorage.setItem(OFFLINE_QUEUE_KEY,JSON.stringify(kept))
+    }catch(e1){
+      // ⚠️ 這是整條鏈路最不能失敗的一步。
+      // 走到 enqueueOffline 就代表「上傳已經失敗了」，佇列是最後一道保險；
+      // 佇列再寫不進去，這趟調查就真的消失了。舊寫法用 catch(e){} 吞掉，
+      // 現場只會看到「已存入離線佇列」的假訊息。
+      // 先清掉其他日期的本機暫存騰出空間再試一次，仍失敗就大聲警告。
+      try{
+        _pruneOldStorage(storageKey())
+        localStorage.setItem(OFFLINE_QUEUE_KEY,JSON.stringify(kept))
+      }catch(e2){
+        _queueFailWarn()
+        try{ renderPendingBar() }catch(e){}
+        return false
+      }
+    }
+  }catch(e){
+    _queueFailWarn()
+    return false
+  }
   try{ renderPendingBar() }catch(e){}
+  return true
+}
+// 佇列寫入失敗＝這趟隨時可能不見，必須讓調查員當下就知道並採取行動
+let _queueWarnShown=false
+function _queueFailWarn(){
+  if(_queueWarnShown) return
+  _queueWarnShown=true
+  try{
+    const d=document.createElement('div')
+    d.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(69,10,10,.96);color:#fff;'
+      +'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:26px;'
+      +'font-size:15px;line-height:1.75;text-align:center'
+    d.innerHTML='<div style="font-size:40px">⚠️</div>'
+      +'<div style="font-size:18px;font-weight:800">這趟調查尚未存檔成功</div>'
+      +'<div>上傳失敗，而且裝置空間不足、無法暫存。<br>'
+      +'<b>請不要關閉此頁面。</b></div>'
+      +'<div style="font-size:13px;opacity:.9">請移動到有訊號的位置，然後按下方按鈕重新上傳。</div>'
+      +'<button style="width:100%;max-width:320px;padding:14px;border:0;border-radius:12px;'
+      +'background:#fff;color:#7f1d1d;font-size:16px;font-weight:800" '
+      +'onclick="this.parentNode.remove();_queueWarnShown=false;flushOfflineQueue()">🔄 立即重新上傳</button>'
+    document.body.appendChild(d)
+  }catch(e){ alert('⚠️ 這趟調查尚未存檔成功，請不要關閉頁面，移動到有訊號處後重新上傳') }
 }
 function offlineQueue(){
   try{ const q=JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY)||'[]'); return Array.isArray(q)?q:[] }catch(e){ return [] }
@@ -1533,10 +1574,79 @@ const HIST_PREFIX = 'survey_hist_'
 
 function todayStr(){ return new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}) }  // YYYY-MM-DD Taipei time
 
+// 寫進 localStorage 的軌跡先抽稀成「跟上傳一樣的密度」（每 5 點取 1）。
+//
+// 為什麼要這樣：完整軌跡約每秒 1 點、每點 97 bytes，一趟 40 分鐘就 227 KB。
+// 4 個組合 × 5 回合 = 4.4 MB，已經逼近 localStorage 約 5 MB 的上限；
+// 上限一到 setItem 會丟 QuotaExceededError，而舊寫法用 catch(e){} 靜默吞掉——
+// 現場會以為存好了，實際上沒存，一閃退整趟就沒了。
+//
+// 反正上傳出去的本來就是抽稀後的版本（buildTripEntry 也是 i%5），
+// 本機留完整解析度沒有意義。抽稀後容量降為 1/5，同時標記 _gpsThinned，
+// 讓還原後重新上傳時不會再抽一次變成 1/25。
+function _thinTripsForStorage(byRound){
+  const out={}
+  Object.keys(byRound||{}).forEach(n=>{
+    out[n]={}
+    Object.keys(byRound[n]||{}).forEach(k=>{
+      const t=byRound[n][k]; if(!t){ return }
+      out[n][k]= t._gpsThinned ? t : Object.assign({}, t, {
+        gpsTrack:(t.gpsTrack||[]).filter((_,i)=>i%5===0).map(p=>({lat:p.lat,lng:p.lng})),
+        _gpsThinned:true
+      })
+    })
+  })
+  return out
+}
 function saveTripsToStorage(){
   const k=storageKey(); if(!k) return
   // 存的是「目前選擇的調查日期」（不是系統今天），這樣切換到補調查某一天時，本地暫存才對得起來
-  try{ localStorage.setItem(k, JSON.stringify({date:(config.date||todayStr()).slice(0,10), tripsByRound:allTripsByRound})) }catch(e){}
+  const payload={date:(config.date||todayStr()).slice(0,10), tripsByRound:_thinTripsForStorage(allTripsByRound)}
+  try{
+    localStorage.setItem(k, JSON.stringify(payload))
+    return true
+  }catch(e){
+    // 空間不足：先把離線佇列以外的舊備份清掉再試一次
+    try{
+      _pruneOldStorage(k)
+      localStorage.setItem(k, JSON.stringify(payload))
+      return true
+    }catch(e2){
+      // 還是存不下 → 這是「資料可能遺失」等級的狀況，絕不能靜默
+      _storageFullWarn()
+      return false
+    }
+  }
+}
+// 清掉其他日期／其他路線的本機暫存（那些不是當下要用的），保留離線佇列
+function _pruneOldStorage(keepKey){
+  const drop=[]
+  for(let i=0;i<localStorage.length;i++){
+    const key=localStorage.key(i)
+    if(!key) continue
+    if(key===keepKey || key===OFFLINE_QUEUE_KEY) continue
+    if(/^trips_|^svy_/.test(key)) drop.push(key)
+  }
+  drop.forEach(key=>{ try{ localStorage.removeItem(key) }catch(e){} })
+  return drop.length
+}
+// 儲存空間不足的警告。這會讓調查白工，所以用最顯眼的方式講，而且不自動消失。
+let _storageWarnShown=false
+function _storageFullWarn(){
+  if(_storageWarnShown) return
+  _storageWarnShown=true
+  try{
+    const d=document.createElement('div')
+    d.style.cssText='position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));'
+      +'z-index:99999;background:#7f1d1d;color:#fff;padding:12px 14px;border-radius:12px;'
+      +'font-size:13px;line-height:1.6;box-shadow:0 6px 24px rgba(0,0,0,.45)'
+    d.innerHTML='⚠️ <b>裝置儲存空間不足，本機備份失敗</b><br>'
+      +'請盡快確認調查已上傳雲端（上方組合按鈕要是綠勾）。<br>'
+      +'<span style="opacity:.85">在上傳成功前請不要關閉此頁面。</span>'
+      +'<button style="margin-top:8px;width:100%;padding:8px;border:0;border-radius:8px;'
+      +'background:#fca5a5;color:#7f1d1d;font-weight:800" onclick="this.parentNode.remove()">知道了</button>'
+    document.body.appendChild(d)
+  }catch(e){ alert('裝置儲存空間不足，本機備份失敗，請確認調查已上傳雲端') }
 }
 
 // Returns number of trips restored (skips if a different working date — 不同的調查日期 = 重新開始)
@@ -4453,7 +4563,11 @@ function buildTripEntry(t){
     nodeTimestamps:  (t.nodeTimestamps||[]).map(ts=>ts instanceof Date?ts.toISOString():ts),
     roadDelays:      t.roadDelays,
     intDelays:       t.intDelays,
-    gpsTrack: (t.gpsTrack||[]).filter((_,i)=>i%5===0).map(p=>({lat:p.lat,lng:p.lng})),
+    // _gpsThinned 代表這筆是從 localStorage 還原的、軌跡已經抽稀過，
+    // 不能再抽一次（會變成 1/25，軌跡圖會失真）
+    gpsTrack: t._gpsThinned
+      ? (t.gpsTrack||[]).map(p=>({lat:p.lat,lng:p.lng}))
+      : (t.gpsTrack||[]).filter((_,i)=>i%5===0).map(p=>({lat:p.lat,lng:p.lng})),
     delayLog: (t.delayLog||[]).filter(d=>d.pos?.lat&&d.pos?.lng).map(d=>({
       cause:d.cause, label:d.label, icon:d.icon, durationS:d.durationS,
       pos:{lat:d.pos.lat,lng:d.pos.lng},
