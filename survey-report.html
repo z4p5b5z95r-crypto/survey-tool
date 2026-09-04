@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>旅行時間調查 — 監測報告</title>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- xlsx（930KB）改為按下匯出時才載入，開啟報告不再等它 -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -1705,6 +1705,15 @@ async function deleteWholeDay(){
 // Apps Script 一筆就要一兩秒，加上重新載入整份報告，刪一天的紀錄要等很久。
 // 這裡改成：本機資料先移除、立刻重繪（applyFilters→calcAverages→renderPage 都是純前端），
 // 請求丟到背景。刪除本來就是軟刪除，失敗也只是沒刪掉，把資料放回去即可。
+// 還在背景刪除的筆數。使用者不必為此等待（畫面早就更新了），
+// 但如果他在請求送完之前就關掉分頁，請求會被瀏覽器中斷、資料其實沒刪掉，
+// 下次打開報告又會冒出來。所以只在「真的還沒送完」時攔一下離開動作。
+let _pendingDeletes=0
+window.addEventListener('beforeunload', e=>{
+  if(_pendingDeletes<=0) return
+  e.preventDefault()
+  e.returnValue=''   // 瀏覽器會顯示自己的制式確認訊息
+})
 async function _runDeleteSurveys(ids){
   const idSet=new Set(ids)
   // 先備份，萬一雲端失敗要放回去
@@ -1715,8 +1724,14 @@ async function _runDeleteSurveys(ids){
   _syncDateOptionsAfterDelete()
   toastSR(`🗑 已刪除 ${ids.length} 筆`)
 
-  const rs=await Promise.allSettled(
-    ids.map(id=>cloudPost({action:'deleteSurvey', surveyId:id, note:''})))
+  _pendingDeletes+=ids.length
+  let rs
+  try{
+    rs=await Promise.allSettled(
+      ids.map(id=>cloudPost({action:'deleteSurvey', surveyId:id, note:''})))
+  } finally {
+    _pendingDeletes-=ids.length
+  }
   const fail=rs.filter(r=>r.status==='rejected')
   if(!fail.length) return
 
@@ -1886,7 +1901,11 @@ function renderComboRecords(combo){
         </div>
       </div>`
 
-    return `<div class="sv-record" data-sv-key="${si}-${combo}">
+    // 這筆紀錄的資訊列（調查次別／調查員／刪除／日期／天氣）。
+    // 位置刻意放在地圖正上方而不是整張卡片的最上面：卡片開頭是 SGS 調查表，
+    // 那張表自己有完整表頭（站名、日期、天氣、調查員），再放一條同樣資訊的深色列
+    // 只是重複；擺在地圖上方才是在標示「底下這張軌跡圖是誰、哪一天跑的」。
+    const recHeader = `
       <div class="sv-rec-header${isEdit?' editing':''}">
         <div>
           <div class="sv-num">調查 #${si+1} · 第${sv.round||1}次</div>
@@ -1901,8 +1920,10 @@ function renderComboRecords(combo){
           🌤 ${he(sv.weather||'—')}
           ${execFlagBadge(sv)}
         </div>
-      </div>
-      <!-- SGS Paper Form v2 深藍典雅（表在上、圖在下，見下方 ${'$'}{mapBlock}） -->
+      </div>`
+
+    return `<div class="sv-record" data-sv-key="${si}-${combo}">
+      <!-- 順序：SGS 調查表 → 紀錄資訊列 → 監測軌跡圖 -->
       <div class="sgs-pf">
         <!-- ① Header -->
         <div class="sgs-pf-hdr">
@@ -2048,6 +2069,7 @@ function renderComboRecords(combo){
         </table>
         </div>
       </div>
+      ${recHeader}
       ${mapBlock}
     </div>`
   })).join('')
@@ -2268,8 +2290,31 @@ async function withDlAnim(msg, sub, fn){
 }
 
 // ════════════════ XLSX DOWNLOAD ════════════════
-function downloadSGS(){
+// xlsx 是 930KB，只有匯出 Excel 時才需要。改成第一次按匯出才下載，之後快取重用。
+let _xlsxLoading = null
+function ensureXLSX(){
+  if(window.XLSX) return Promise.resolve()
+  if(_xlsxLoading) return _xlsxLoading
+  _xlsxLoading = new Promise((res, rej)=>{
+    const s = document.createElement('script')
+    s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'
+    s.onload = ()=>{ window.XLSX ? res() : (_xlsxLoading=null, rej(new Error('xlsx 未定義'))) }
+    s.onerror = ()=>{ _xlsxLoading = null; rej(new Error('xlsx 載入失敗')) }
+    document.head.appendChild(s)
+  })
+  return _xlsxLoading
+}
+async function _prepXLSX(){
+  if(window.XLSX) return true
+  showDlOverlay('準備 Excel 元件...','第一次匯出需先下載，約需數秒')
+  try{ await ensureXLSX(); return true }
+  catch(e){ alert('Excel 元件載入失敗，請確認網路後再試一次'); return false }
+  finally{ hideDlOverlay() }
+}
+
+async function downloadSGS(){
   if(!route||!surveys.length){ alert('尚無資料'); return }
+  if(!await _prepXLSX()) return
   withDlAnim('產生 SGS Excel 中...','正在計算各路段數據', ()=>{
   const wb = XLSX.utils.book_new()
 
@@ -2551,6 +2596,7 @@ function _wgs84ToTM2(lat,lng){
 
 async function downloadRawTimeline(){
   if(!route||!surveys.length){alert('尚無資料');return}
+  if(!await _prepXLSX()) return
   // 這份匯出要帶每個事件的 GPS 座標，輕量資料裡沒有軌跡，先確保補齊
   if(_pm){
     const k=_rkey(_pm.routeId, _pm.date||'')

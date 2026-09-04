@@ -2842,6 +2842,9 @@ function onPos(p){
                           && (_gpsNow2 - _gpsLastHeavyTs) > 0  // 與上方同步節流狀態
       if(!_gpsThrottled2){
         cur.gpsTrack.push({lat,lng,speed_ms:speed,accuracy_m:accuracy,ts:new Date().toISOString()})
+        // 還沒通過第一個節點＝還沒進調查路段，這段軌跡不會上傳（收單時會裁掉）。
+        // 在這裡只留最近 30 點，避免在起點空等很久時白白吃記憶體。
+        if(!cur.startTime && cur.gpsTrack.length > 30) cur.gpsTrack.splice(0, cur.gpsTrack.length - 30)
       }
       // 節點感應用原始 GPS 座標（rl,ro），不用平滑後的座標，避免平滑延遲造成漏判
       // 永遠執行：停在節點附近時必須持續偵測
@@ -4419,6 +4422,25 @@ function svyDismissEndPrompt(){
   svyShowPanel('idle');svySheetCollapse()
 }
 
+// ── GPS 軌跡裁切 ──────────────────────────────────────────
+// 定位在按下「開始」就啟動（要靠它偵測第一個節點），最後一個節點之後也還在跑，
+// 所以軌跡頭尾會多出「還沒進調查路段」和「已經離開路段」的點。
+// 這些點對報告與統計都沒有用，卻佔上傳量，在收單這一刻直接裁掉。
+// 保留區間＝第一個節點時間 ~ 最後一個節點時間（含端點）。
+function _trimTrackToSurvey(track, t0, t1){
+  if(!Array.isArray(track) || track.length < 2) return [...(track||[])]
+  const a = t0 ? +new Date(t0) : NaN
+  const b = t1 ? +new Date(t1) : NaN
+  if(!isFinite(a) || !isFinite(b) || b <= a) return [...track]   // 時間不完整就不動它
+  const out = track.filter(p=>{
+    const t = +new Date(p && p.ts)
+    if(!isFinite(t)) return true          // 沒有時戳的點保留，寧可多存也不要弄破折線
+    return t >= a && t <= b
+  })
+  // 裁完剩不到兩點代表時間對不上（例如沒按到第一個節點），退回原始軌跡比較安全
+  return out.length >= 2 ? out : [...track]
+}
+
 // auto=true：通過最後一個節點自動結束，不跳確認框（畫面上的「🔴 結束調查」按鈕仍會確認）
 function endSurvey(auto){
   if(!auto && !confirm('確定結束調查？'))return
@@ -4452,7 +4474,7 @@ function endSurvey(auto){
     travelS,runS,totalDelayS,roadTotalS,intTotalS,
     roadDelays:{...cur.roadDelays},intDelays:{...cur.intDelays},
     segTimes:segsForTable,delayLog:[...delayLog],
-    gpsTrack:[...cur.gpsTrack],startTime:cur.startTime,endTime:cur.endTime,
+    gpsTrack:_trimTrackToSurvey(cur.gpsTrack,cur.startTime,cur.endTime),startTime:cur.startTime,endTime:cur.endTime,
     nodeTimestamps:[...nodeTimestamps],
   }
   saveTripsToStorage()   // persist so page-close won't lose this trip
