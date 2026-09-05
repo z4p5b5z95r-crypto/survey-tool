@@ -469,7 +469,56 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .rml-node{width:16px;height:16px;border-radius:50%;background:#22c55e;border:2px solid #fff;display:inline-flex;align-items:center;justify-content:center;font-size:7px;color:#fff;font-weight:700}
 .result-map-note{padding:7px 14px;font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;display:flex;gap:14px;flex-wrap:wrap;background:#fafafa}
 
-/* ── SGS Official Form ── */
+/* ── 逐段明細（手機主要判讀方式）──────────────────────────────
+   SGS 表格有 23 欄、min-width 680px，手機一定要橫滑，欄位一多就對錯行。
+   這裡把「一段一列」轉成「一段一塊、欄名與數值上下對照」，欄位一個都不省，
+   只是零值淡化處理，讓有記錄到的數字自己跳出來。 */
+.rpt-view-sw{display:flex;gap:6px;margin-bottom:10px}
+.rvs-btn{flex:1;padding:8px 4px;border:1.5px solid #e2e8f0;border-radius:10px;background:white;
+  color:#64748b;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
+.rvs-btn.active{border-color:#1e293b;background:#1e293b;color:white}
+.sd-card{background:white;border:2px solid #1e293b;border-radius:10px;overflow:hidden;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.sd-hd{background:#1e293b;color:white;padding:8px 11px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.sd-hd-t{font-size:11px;font-weight:600;color:#cbd5e1;flex-shrink:0}
+.sd-sub{background:#eef2f7;color:#475569;padding:5px 11px;font-size:11px;font-weight:700;border-top:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;letter-spacing:.5px}
+.sd-rows{display:grid;grid-template-columns:1fr 1fr}
+.sd-k,.sd-v{padding:7px 11px;font-size:13px;border-bottom:1px solid #e2e8f0}
+.sd-k{color:#64748b;border-right:1px solid #e2e8f0}
+.sd-v{text-align:right;color:#0f172a;font-weight:700;font-variant-numeric:tabular-nums}
+.sd-rows>.sd-k:nth-last-child(2),.sd-rows>.sd-v:last-child{border-bottom:none}
+/* 零值淡化：欄位還在（不省略），但不跟有數字的搶注意力 */
+.sd-k.z{color:#cbd5e1}
+.sd-v.z{color:#cbd5e1;font-weight:400}
+.sd-tot{border-color:#0369a1}
+.sd-tot .sd-hd{background:#0369a1}
+
+/* ── SGS 表格：與桌機報告頁（survey-report.html）逐項對齊 ──────────
+   樣式與算式都直接沿用桌機那份，兩邊看到的必須是同一張表。
+   注意兩個容易被改壞的算式：
+   ① 上半部「總旅行時間百分比」分母＝該趟旅行時間，取到小數 2 位
+   ② 下半部「延滯時間百分比」分母＝該趟延滯合計（路段＋路口），不是旅行時間
+   兩處都用 toFixed(2)，不可以改成四捨五入到整數。 */
+.sgs-pf{background:#fff;border:1.5px solid #1e3a5f;border-radius:10px;overflow:hidden;margin:0 0 16px}
+.sgs-pf-hdr{display:flex;align-items:stretch;background:#1e3a5f;border-bottom:1.5px solid #2c4a6e}
+.sgs-pf-title-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:8px 12px}
+.sgs-pf-title-wrap h2{font-size:15px;font-weight:700;color:#fff;letter-spacing:2px;white-space:nowrap}
+.sgs-pf-meta{display:flex;background:#eef3fa;border-bottom:1.5px solid #1e3a5f;flex-wrap:wrap}
+.sgs-pf-ml{flex:1;min-width:180px;padding:7px 14px;border-right:1px solid #94a3b8;font-size:11px;line-height:1.9;color:#1e3a5f}
+.sgs-pf-ml u,.sgs-pf-mr u{text-decoration-color:#3d6490}
+.sgs-pf-mr{width:200px;padding:7px 14px;font-size:11px;line-height:2.2;color:#1e3a5f;text-align:left}
+.sgs-pf-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.sgs-pf-tbl td{border:1px solid #b0bec5;padding:4px 6px;vertical-align:middle;text-align:center;white-space:nowrap;background:#fff;color:#1a1a2e}
+.pfth1{background:#4a6fa5!important;color:#fff!important;font-weight:700;font-size:11px}
+.pfth2{background:#4a6fa5!important;color:#fff!important;font-weight:600;font-size:10.5px}
+.pfth3{background:#4a6fa5!important;color:#fff!important;font-weight:500;font-size:10px}
+.pfth-road,.pfth-int{background:#4a6fa5!important;color:#fff!important;font-weight:600;font-size:11px;letter-spacing:.5px}
+.pf-seg{text-align:left!important;font-weight:600;color:#1e3a5f;background:#f0f4fa!important}
+.pf-time{color:#1565c0;font-weight:800;font-size:12px}
+.pf-arrive{background:#c8f7d0!important;color:#1b5e20;font-weight:800}
+.pf-spd{font-size:15px;font-weight:800;color:#1e3a5f}
+.pf-pct{font-size:9.5px;background:#f0f4fa!important;color:#374151}
+.pf-fl{background:#dde3ed!important;font-weight:700;text-align:left!important;color:#1e3a5f;font-size:10.5px}
+.pf-fv{background:#f5f7fa!important;color:#1a1a2e;font-size:11px;font-weight:600}
 .sgs-form{background:white;border-radius:10px;overflow-x:auto;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.1);border:2px solid #1e293b}
 .sgs-t{width:100%;border-collapse:collapse;font-size:10px;min-width:680px}
 .sgs-t td,.sgs-t th{border:1px solid #475569;padding:2px 3px;vertical-align:middle;text-align:center;white-space:nowrap}
@@ -4883,187 +4932,287 @@ function showComboTab(key){
   box.innerHTML=''
   const trip=allTrips[key]; if(!trip) return
   const[pt,dir]=parseComboKey(key)
-  box.appendChild(buildOneOfficialForm(trip,pt,dir))
+  box.appendChild(buildRptViewToggle())
+  box.appendChild(_rptView==='sgs'
+    ? buildOneOfficialForm(trip,pt,dir)
+    : buildSegmentCards(trip,pt,dir))
   // Update GPS track on result map
   if(mapResult) updateResultMapTrack(key)
 }
 
-function buildOneOfficialForm(trip,pt,dir){
+// 手機預設看「逐段明細」；要照 SGS 原格式核對時再切過去。
+// 選擇記在 localStorage，習慣看哪一種就固定哪一種，不用每次切。
+let _rptView = (()=>{ try{ return localStorage.getItem('rpt_view')==='sgs'?'sgs':'cards' }catch(e){ return 'cards' } })()
+function buildRptViewToggle(){
+  const d=document.createElement('div')
+  d.className='rpt-view-sw'
+  d.innerHTML=`<button class="rvs-btn${_rptView==='cards'?' active':''}" onclick="setRptView('cards')">逐段明細</button>`
+             +`<button class="rvs-btn${_rptView==='sgs'?' active':''}" onclick="setRptView('sgs')">SGS 表格</button>`
+  return d
+}
+function setRptView(v){
+  _rptView = v==='sgs' ? 'sgs' : 'cards'
+  try{ localStorage.setItem('rpt_view',_rptView) }catch(e){}
+  if(_activeComboTab) showComboTab(_activeComboTab)
+}
+
+// 路線名稱、路段名稱、調查員都是 PM／現場自己打的字，直接塞進 innerHTML
+// 遇到 < & " 會把版面弄壞，這裡統一逃逸過再輸出。
+function he(s){
+  return String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+}
+
+// 版型 D：逐段展開。欄位與 SGS 表格完全相同、一個都不少，
+// 只是把「橫著排的 23 欄」改成「直著排的欄名／數值對照」。
+function buildSegmentCards(trip,pt,dir){
   const segs = dir==='return' ? [...config.segments].reverse() : config.segments
   const nodes= dir==='return' ? [...config.nodes].reverse() : config.nodes
   const len  = config.totalLength
-  const dl   = v => v>0?v:''
-  const spd  = (d,s) => (d>0&&s>0)?(d/s*3.6).toFixed(1):''
+  const spd  = (d,s) => (d>0&&s>0)?(d/s*3.6).toFixed(1):'—'
   const pct  = (v,t) => t>0?Math.round(v/t*100)+'%':'0%'
+  const LBL={}; ;[...ROAD_DELAYS,...INT_DELAYS].forEach(d=>LBL[d.cause]=d.label)
+  // 零值不隱藏，只淡化——「沒有記錄到」跟「欄位不存在」是兩回事，現場要分得出來
+  const row=(k,v,zero)=>`<div class="sd-k${zero?' z':''}">${he(k)}</div><div class="sd-v${zero?' z':''}">${he(String(v))}</div>`
+
+  const segD = segs.map((_,i)=>segDelaysForIdx(trip,i))
+  const segT = trip.segTimes||[]
+
+  const cards = segs.map((seg,i)=>{
+    const sd=segD[i], st_=segT[i]||{}
+    const ts=trip.nodeTimestamps?.[i+1]
+    const arr = ts ? tpHMS(new Date(ts)).join(':') : '—'
+    const segDelayTotal=Object.values(sd).reduce((a,b)=>a+(b||0),0)
+    const runS = st_.travelS!=null ? Math.max(0, st_.travelS-segDelayTotal) : null
+    const roadSub=SGS_ROAD_COLS.reduce((s,c)=>s+(sd[c]||0),0)
+    const intSub =SGS_INT_COLS.reduce((s,c)=>s+(sd[c]||0),0)
+    return `<div class="sd-card">
+      <div class="sd-hd"><span>${i+1}. ${he(segDisp(segLabel(i)||seg.name||''))}</span><span class="sd-hd-t">${arr}</span></div>
+      <div class="sd-rows">
+        ${row('旅行時間', st_.travelS!=null?st_.travelS+' 秒':'—')}
+        ${row('距離', seg.length?seg.length+' 公尺':'—')}
+        ${row('行駛時間', runS!=null?runS+' 秒':'—')}
+        ${row('旅行速率', spd(seg.length,st_.travelS)+' km/h')}
+        ${row('行駛速率', spd(seg.length,runS)+' km/h')}
+      </div>
+      <div class="sd-sub">路段中延滯　小計 ${roadSub} 秒</div>
+      <div class="sd-rows">${SGS_ROAD_COLS.map(c=>row(LBL[c]||c,(sd[c]||0)+' 秒',!(sd[c]>0))).join('')}</div>
+      <div class="sd-sub">交叉口延滯　小計 ${intSub} 秒</div>
+      <div class="sd-rows">${SGS_INT_COLS.map(c=>row(LBL[c]||c,(sd[c]||0)+' 秒',!(sd[c]>0))).join('')}</div>
+    </div>`
+  }).join('')
+
+  // 全趟合計：欄位對應 SGS 表格右上角那一塊與最下面的小計列
+  const colT={}; ;[...SGS_ROAD_COLS,...SGS_INT_COLS].forEach(c=>colT[c]=segD.reduce((s,d)=>s+(d[c]||0),0))
+  const _st=trip.startTime?new Date(trip.startTime):null
+  const _et=trip.endTime?new Date(trip.endTime):null
+  const _ok=d=>d&&!isNaN(d.getTime())
+  const head=`<div class="sd-card sd-tot">
+    <div class="sd-hd"><span>全趟合計</span><span class="sd-hd-t">${he(PEAK_LABEL[pt]||'')}${he(DIR_LABEL[dir]||'')}</span></div>
+    <div class="sd-rows">
+      ${row('站名', config.routeName||'—')}
+      ${row('日期', config.date||'—')}
+      ${row('天氣', WEATHER_ZH[config.weather]||'—')}
+      ${row('調查員', config.surveyor||'—')}
+      ${row('起點時刻', _ok(_st)?tpHMS(_st).join(':'):'—')}
+      ${row('終點時刻', _ok(_et)?tpHMS(_et).join(':'):'—')}
+      ${row('總旅行時間', (trip.travelS||0)+' 秒')}
+      ${row('交叉口延滯', (trip.intTotalS||0)+' 秒　'+pct(trip.intTotalS,trip.travelS))}
+      ${row('路段中延滯', (trip.roadTotalS||0)+' 秒　'+pct(trip.roadTotalS,trip.travelS))}
+      ${row('行駛時間', (trip.runS||0)+' 秒　'+pct(trip.runS,trip.travelS))}
+      ${row('總距離', len?len+' 公尺':'—')}
+      ${row('總旅行速率', spd(len,trip.travelS)+' km/h')}
+      ${row('總行駛速率', spd(len,trip.runS)+' km/h')}
+    </div>
+    <div class="sd-sub">路段中延滯　各項小計</div>
+    <div class="sd-rows">${SGS_ROAD_COLS.map(c=>row(LBL[c]||c,(colT[c]||0)+' 秒　'+pct(colT[c],trip.travelS),!(colT[c]>0))).join('')}</div>
+    <div class="sd-sub">交叉口延滯　各項小計</div>
+    <div class="sd-rows">${SGS_INT_COLS.map(c=>row(LBL[c]||c,(colT[c]||0)+' 秒　'+pct(colT[c],trip.travelS),!(colT[c]>0))).join('')}</div>
+  </div>`
+
+  const wrap=document.createElement('div')
+  wrap.innerHTML=head+cards
+  return wrap
+}
+
+// SGS 表格：版面與算式全部比照桌機報告頁（survey-report.html），兩邊必須是同一張表。
+// 現場 App 沒有「修改」模式，所以只取桌機的唯讀分支，其餘結構逐格對齊。
+function buildOneOfficialForm(trip,pt,dir){
+  const isReturn = dir==='return'
+  const isPeak   = pt==='peak'
+  const segs  = isReturn ? [...config.segments].reverse() : config.segments
+  const nodes = isReturn ? [...config.nodes].reverse()    : config.nodes
+  const TL    = config.totalLength||0
+
+  // ── 三個算式，與桌機完全一致 ──
+  const spdFn = (d,s) => (d>0&&s>0)?(d/s*3.6).toFixed(1):''
+  // ⚠️ 小數 2 位，不是四捨五入到整數
+  const pct   = (v,t) => t>0?(v/t*100).toFixed(2)+'%':'0.00%'
+  const dv    = v => v>0 ? `<b style="color:#1d4ed8">${v}</b>` : ''
 
   const _st=trip.startTime?new Date(trip.startTime):null
   const _et=trip.endTime?new Date(trip.endTime):null
   const _ok=d=>d&&!isNaN(d.getTime())
-  const [tH,tM,tS]=_ok(_st)?tpHMS(_st):['—','—','—']
+  const [sH,sM,sS]=_ok(_st)?tpHMS(_st):['—','—','—']
   const [eH,eM,eS]=_ok(_et)?tpHMS(_et):['—','—','—']
 
-  const travelSpd = spd(len,trip.travelS)
-  const runSpd    = spd(len,trip.runS)
+  const fromNode=nodes[0], toNode=nodes[nodes.length-1]
 
-  // Per-segment delays & times
   const segD = segs.map((_,i)=>segDelaysForIdx(trip,i))
   const segT = trip.segTimes||[]
-  const arrT = segs.map((_,i)=>{
-    const ts=trip.nodeTimestamps?.[i+1]; if(!ts) return{h:'',m:'',s:''}
-    const [h,m,s]=tpHMS(new Date(ts)); return{h,m,s}
-  })
+  // 欄位順序一律用 SGS 表格規定的順序，不能用 ROAD_DELAYS/INT_DELAYS 的陣列順序
+  const colT={}; ;[...SGS_ROAD_COLS,...SGS_INT_COLS].forEach(c=>colT[c]=segD.reduce((s,d)=>s+(d[c]||0),0))
+  const roadT=SGS_ROAD_COLS.reduce((s,c)=>s+colT[c],0)
+  const intT =SGS_INT_COLS.reduce((s,c)=>s+colT[c],0)
+  const dBase=roadT+intT
+  const travelSpd=spdFn(TL,trip.travelS), runSpd=spdFn(TL,trip.runS)
 
-  // Column totals
-  const RC=ROAD_DELAYS.map(d=>d.cause), IC=INT_DELAYS.map(d=>d.cause)
-  const colT={}; ;[...RC,...IC].forEach(c=>colT[c]=segD.reduce((s,d)=>s+(d[c]||0),0))
-  const roadT=RC.reduce((s,c)=>s+colT[c],0), intT=IC.reduce((s,c)=>s+colT[c],0)
-
-  const startN=nodes[0]?.name||'起點', endN=nodes[nodes.length-1]?.name||'終點'
-
-  const segRows = segs.map((seg,i)=>{
-    const sd=segD[i], st_=segT[i]||{}, ar=arrT[i]
-    // ⚠️ 這裡不能用 segTimes[i].runS。那個值是趟次結束時用
-    //   「該段旅行時間 × (總行駛時間/總旅行時間)」等比例攤出來的，
-    //   等於把延滯平均抹到每一段——連完全沒發生延滯的路段也被扣掉時間，
-    //   算出來的行駛速率整排都是錯的（現場比對：桌機報告 24/32/41/29/59/91/80，
-    //   手機卻是 18/31/30/21/130/67/59）。
-    // 正解跟 survey-report.html 一致：該段旅行時間扣掉「實際落在這一段的延滯」，
-    //   delayLog 已經帶了每筆延滯的發生時刻，segDelaysForIdx() 也已經分好段了。
-    const segDelayTotal=Object.values(sd).reduce((a,b)=>a+(b||0),0)
-    const runS = st_.travelS!=null ? Math.max(0, st_.travelS-segDelayTotal) : null
+  const segRows=segs.map((seg,i)=>{
+    const sd=segD[i], st_=segT[i]||{}
+    const ts=trip.nodeTimestamps?.[i+1]
+    const [fH,fM,fS]= ts ? tpHMS(new Date(ts)) : ['','','']
+    // 該段行駛時間 = 該段旅行時間 − 實際落在這一段的延滯（與桌機同一套）
+    const segDelayTotal=Object.values(sd).reduce((a,v)=>a+(v||0),0)
+    const calcRunS = st_.travelS!=null ? Math.max(0, st_.travelS-segDelayTotal) : null
+    // 路段名稱由「行進方向的節點」直接組出來，去程回程都讀得順
+    const nm = (nodes[i] && nodes[i+1])
+      ? `${nodes[i].exitName||nodes[i].name||''} ～ ${nodes[i+1].name||''}`
+      : (seg.name||'')
     return `<tr>
-      <td colspan="2" class="sgs-seg">${segDisp(segLabel(i)||seg.name)}</td>
-      <td class="sgs-t-time">${ar.h}</td><td class="sgs-t-time">${ar.m}</td><td class="sgs-t-time">${ar.s}</td>
-      <td>${dl(sd.congestion)}</td><td>${dl(sd.bus_stop)}</td><td>${dl(sd.taxi_stop)}</td>
-      <td>${dl(sd.parking)}</td><td>${dl(sd.ped_cross)}</td><td>${dl(sd.road_other)}</td>
-      <td>${dl(sd.red_light)}</td><td>${dl(sd.left_same)}</td><td>${dl(sd.left_opp)}</td>
-      <td>${dl(sd.right_turn)}</td><td>${dl(sd.cross_veh)}</td><td>${dl(sd.ped_int)}</td><td>${dl(sd.int_other)}</td>
-      <td>${st_.travelS||''}</td><td>${seg.length||''}</td><td>${runS??''}</td>
-      <td>${spd(seg.length,st_.travelS)}</td><td>${spd(seg.length,runS)}</td>
+      <td colspan="2" class="pf-seg">${he(segDisp(nm))}</td>
+      <td class="pf-time">${fH}</td><td class="pf-time">${fM}</td><td class="pf-time">${fS}</td>
+      ${SGS_ROAD_COLS.map(c=>`<td>${dv(sd[c])}</td>`).join('')}
+      ${SGS_INT_COLS.map(c=>`<td>${dv(sd[c])}</td>`).join('')}
+      <td style="font-weight:600">${st_.travelS??''}</td>
+      <td>${seg.length||''}</td>
+      <td style="font-weight:600">${calcRunS??''}</td>
+      <td>${spdFn(seg.length,st_.travelS)}</td>
+      <td>${spdFn(seg.length,calcRunS)}</td>
     </tr>`
   }).join('')
-
-  const emptyRows = Array(Math.max(0,7-segs.length)).fill(
-    `<tr>${'<td></td>'.repeat(23)}</tr>`).join('')
+  const emptyRows=Array(Math.max(0,7-segs.length)).fill(`<tr>${'<td></td>'.repeat(23)}</tr>`).join('')
 
   const html=`
-  <div class="sgs-form">
-  <table class="sgs-t">
-    <tr>
-      <td colspan="20" class="sgs-title">主次要幹道行駛時間及延滯調查表</td>
-      <td colspan="2" class="sgs-meta-l">日　期：</td>
-      <td class="sgs-meta-v" style="color:#dc2626;font-weight:700;white-space:nowrap">${config.date||''}</td>
-    </tr>
-    <tr>
-      <td colspan="4" class="sgs-meta-l">站　名：</td>
-      <td colspan="10" class="sgs-meta-v" style="text-decoration:underline">${config.routeName||''}</td>
-      <td colspan="5"></td>
-      <td colspan="2" class="sgs-meta-l" rowspan="2">天　氣：</td>
-      <td class="sgs-meta-v" rowspan="2">${WEATHER_ZH[config.weather]||'—'}</td>
-    </tr>
-    <tr>
-      <td colspan="4" class="sgs-meta-l">旅次編號：</td>
-      <td colspan="16" class="sgs-meta-v"></td>
-    </tr>
-    <tr>
-      <td colspan="4" class="sgs-meta-l">方向往：</td>
-      <td colspan="8" class="sgs-meta-v">${dir==='bound'?'■':'□'} 去　　　${dir==='return'?'■':'□'} 回</td>
-      <td colspan="7"></td>
-      <td colspan="2" class="sgs-meta-l">調查員：</td>
-      <td class="sgs-meta-v" style="text-decoration:underline">${config.surveyor||'—'}</td>
-    </tr>
-    <tr>
-      <td colspan="4" class="sgs-meta-l">時　間：</td>
-      <td colspan="19" class="sgs-meta-v">
-        ${pt==='off_peak'?'■':'□'} ${config.offPeakName||'離峰'}（${config.offPeakLabel}）　　${pt==='peak'?'■':'□'} ${config.peakName||'尖峰'}（${config.peakLabel}）
-      </td>
-    </tr>
-    <tr class="sgs-th">
-      <td colspan="2" rowspan="3">路<br><small>起點位置</small></td>
-      <td colspan="2" rowspan="3">線<br><small>終點位置</small></td>
-      <td rowspan="3">距離<br>(公尺)</td>
-      <td colspan="6">時　　　　　　刻</td>
-      <td colspan="4">總旅行時間(秒)及百分比</td>
-      <td colspan="4" rowspan="3">總旅行速率<br>(公里/時)</td>
-      <td colspan="4" rowspan="3">總行駛速率<br>(公里/時)</td>
-    </tr>
-    <tr class="sgs-th">
-      <td colspan="3">起　點</td>
-      <td colspan="3">終　點</td>
-      <td rowspan="2">合計</td>
-      <td rowspan="2">交叉口<br>延　滯</td>
-      <td rowspan="2">路段中<br>延　滯</td>
-      <td rowspan="2">行　駛<br>時　間</td>
-    </tr>
-    <tr class="sgs-th">
-      <td>時</td><td>分</td><td>秒</td>
-      <td>時</td><td>分</td><td>秒</td>
-    </tr>
-    <tr>
-      <td colspan="2" rowspan="2" class="sgs-seg">${startN}</td>
-      <td colspan="2" rowspan="2" class="sgs-seg">${endN}</td>
-      <td rowspan="2">${len}</td>
-      <td>${tH}</td><td>${tM}</td><td>${tS}</td>
-      <td>${eH}</td><td>${eM}</td><td style="background:#dcfce7;font-weight:700">${eS}</td>
-      <td>${trip.travelS||0}</td><td>${trip.intTotalS||0}</td><td>${trip.roadTotalS||0}</td><td>${trip.runS||0}</td>
-      <td colspan="4" rowspan="2" style="font-size:13px;font-weight:800">${travelSpd}</td>
-      <td colspan="4" rowspan="2" style="font-size:13px;font-weight:800">${runSpd}</td>
-    </tr>
-    <tr>
-      <td colspan="3" class="sgs-meta-l" style="font-size:9px">百分比</td>
-      <td colspan="3"></td>
-      <td style="font-size:9px">100%</td>
-      <td style="font-size:9px">${pct(trip.intTotalS||0,trip.travelS)}</td>
-      <td style="font-size:9px">${pct(trip.roadTotalS||0,trip.travelS)}</td>
-      <td style="font-size:9px">${pct(trip.runS||0,trip.travelS)}</td>
-    </tr>
-    <tr class="sgs-th">
-      <td colspan="2" rowspan="2">經過路口</td>
-      <td colspan="3" rowspan="2">經過時刻</td>
-      <td colspan="6">路　段　中</td>
-      <td colspan="7">交　叉　口</td>
-      <td rowspan="2">旅行<br>時間<br>(秒)</td>
-      <td rowspan="2">距離<br>(公尺)</td>
-      <td rowspan="2">行駛<br>時間<br>(秒)</td>
-      <td rowspan="2">旅行<br>速率</td>
-      <td rowspan="2">行駛<br>速率</td>
-    </tr>
-    <tr class="sgs-th">
-      <td>阻塞</td><td>公車<br>停靠</td><td>計程<br>車靠</td><td>路邊<br>停車</td><td>行人<br>穿越</td><td>其他</td>
-      <td>紅燈</td><td>左轉<br>同向</td><td>左轉<br>對向</td><td>右轉</td><td>橫越<br>車輛</td><td>行人</td><td>其他</td>
-    </tr>
-    ${segRows}${emptyRows}
-    <tr>
-      <td rowspan="2" class="sgs-footer-l">延滯時間<br>(秒)</td>
-      <td class="sgs-footer-l">小計</td>
-      <td colspan="3" class="sgs-footer-v"></td>
-      ${SGS_ROAD_COLS.map(c=>`<td class="sgs-footer-v">${colT[c]||0}</td>`).join('')}
-      ${SGS_INT_COLS.map(c=>`<td class="sgs-footer-v">${colT[c]||0}</td>`).join('')}
-      <td colspan="5"></td>
-    </tr>
-    <tr>
-      <td class="sgs-footer-l">合計</td>
-      <td colspan="3"></td>
-      <td colspan="6" class="sgs-footer-v">${roadT}</td>
-      <td colspan="7" class="sgs-footer-v">${intT}</td>
-      <td colspan="5"></td>
-    </tr>
-    <tr>
-      <td rowspan="2" class="sgs-footer-l">延滯時間<br>百分比</td>
-      <td class="sgs-footer-l">小計</td>
-      <td colspan="3" class="sgs-footer-v"></td>
-      ${SGS_ROAD_COLS.map(c=>`<td class="sgs-footer-v" style="font-size:9px">${pct(colT[c],trip.travelS)}</td>`).join('')}
-      ${SGS_INT_COLS.map(c=>`<td class="sgs-footer-v" style="font-size:9px">${pct(colT[c],trip.travelS)}</td>`).join('')}
-      <td colspan="5"></td>
-    </tr>
-    <tr>
-      <td class="sgs-footer-l">合計</td>
-      <td colspan="3"></td>
-      <td colspan="6" class="sgs-footer-v" style="font-size:9px">${pct(roadT,trip.travelS)}</td>
-      <td colspan="7" class="sgs-footer-v" style="font-size:9px">${pct(intT,trip.travelS)}</td>
-      <td colspan="5"></td>
-    </tr>
-  </table>
+  <div class="sgs-pf">
+    <div class="sgs-pf-hdr">
+      <div class="sgs-pf-title-wrap"><h2>主次要幹道行駛時間及延滯調查表</h2></div>
+    </div>
+    <div class="sgs-pf-meta">
+      <div class="sgs-pf-ml">
+        <div>站　名：&nbsp;<u>${he(config.routeName||'')}</u></div>
+        <div>旅次編號：&nbsp;${he(trip.tripNo||'')}</div>
+        <div>方向往：&nbsp;${!isReturn?'■':'□'} 去　　${isReturn?'■':'□'} 回</div>
+        <div>時　間：&nbsp;${!isPeak?'■':'□'} ${he(config.offPeakName||'離峰')}（${he(config.offPeakLabel||'')}）　&nbsp;${isPeak?'■':'□'} ${he(config.peakName||'尖峰')}（${he(config.peakLabel||'')}）</div>
+      </div>
+      <div class="sgs-pf-mr">
+        <div>日　期：&nbsp;<span style="color:#dc2626;font-weight:700">${he(config.date||'')}</span></div>
+        <div>天　氣：&nbsp;${he(config.weather||'—')}</div>
+        <div>調查員：&nbsp;<u>${he(config.surveyor||'—')}</u></div>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="sgs-pf-tbl">
+      <tr>
+        <td class="pfth1" rowspan="2">路<br><small>起點位置</small></td>
+        <td class="pfth1" rowspan="2">線<br><small>終點位置</small></td>
+        <td class="pfth1" rowspan="2">距離<br>(公尺)</td>
+        <td class="pfth1" colspan="3">起　點</td>
+        <td class="pfth1" colspan="3">終　點</td>
+        <td class="pfth1" colspan="4">總旅行時間(秒)及百分比</td>
+        <td class="pfth1" rowspan="2">總旅行速率<br>(公里/時)</td>
+        <td class="pfth1" rowspan="2">總行駛速率<br>(公里/時)</td>
+      </tr>
+      <tr>
+        <td class="pfth2">時</td><td class="pfth2">分</td><td class="pfth2">秒</td>
+        <td class="pfth2">時</td><td class="pfth2">分</td><td class="pfth2">秒</td>
+        <td class="pfth2">合計</td>
+        <td class="pfth2">交叉口<br>延滯</td>
+        <td class="pfth2">路段中<br>延滯</td>
+        <td class="pfth2">行駛<br>時間</td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="pf-seg">${he(fromNode?.name||'起點')}</td>
+        <td rowspan="2" class="pf-seg">${he(toNode?.name||'終點')}</td>
+        <td rowspan="2">${TL}</td>
+        <td class="pf-time">${sH}</td><td class="pf-time">${sM}</td><td class="pf-time">${sS}</td>
+        <td class="pf-time">${eH}</td><td class="pf-time">${eM}</td><td class="pf-arrive">${eS}</td>
+        <td style="font-weight:700">${trip.travelS||0}</td>
+        <td>${trip.intTotalS||0}</td>
+        <td>${trip.roadTotalS||0}</td>
+        <td>${trip.runS||0}</td>
+        <td rowspan="2" class="pf-spd">${travelSpd}</td>
+        <td rowspan="2" class="pf-spd">${runSpd}</td>
+      </tr>
+      <tr>
+        <td colspan="3" class="pf-pct"></td>
+        <td colspan="3" class="pf-pct"></td>
+        <td class="pf-pct" style="color:#1d6fbd;font-weight:600">百分比</td>
+        <td class="pf-pct">${pct(trip.intTotalS||0,trip.travelS)}</td>
+        <td class="pf-pct">${pct(trip.roadTotalS||0,trip.travelS)}</td>
+        <td class="pf-pct">${pct(trip.runS||0,trip.travelS)}</td>
+      </tr>
+    </table>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="sgs-pf-tbl">
+      <tr>
+        <td class="pfth1" colspan="2" rowspan="3">經過路口</td>
+        <td class="pfth1" colspan="3" rowspan="2">經過時刻</td>
+        <td class="pfth-road" colspan="6">路　段　中　延　滯　時　間（秒）</td>
+        <td class="pfth-int" colspan="7">交　叉　口　延　滯　時　間（秒）</td>
+        <td class="pfth1" rowspan="3">旅行<br>時間<br>(秒)</td>
+        <td class="pfth1" rowspan="3">距離<br>(公尺)</td>
+        <td class="pfth1" rowspan="3">行駛<br>時間<br>(秒)</td>
+        <td class="pfth1" rowspan="3">旅行<br>速率</td>
+        <td class="pfth1" rowspan="3">行駛<br>速率</td>
+      </tr>
+      <tr>
+        <td class="pfth2">阻塞</td><td class="pfth2">公車<br>停靠</td>
+        <td class="pfth2">計程<br>車靠</td><td class="pfth2">路邊<br>停車</td>
+        <td class="pfth2">行人<br>穿越</td><td class="pfth2">其他</td>
+        <td class="pfth3">紅燈</td><td class="pfth3">左轉<br>同向</td>
+        <td class="pfth3">左轉<br>對向</td><td class="pfth3">右轉</td>
+        <td class="pfth3">橫越<br>車輛</td><td class="pfth3">行人</td><td class="pfth3">其他</td>
+      </tr>
+      <tr>
+        <td class="pfth3">時</td><td class="pfth3">分</td><td class="pfth3">秒</td>
+        <td class="pfth2" colspan="6"></td>
+        <td class="pfth3" colspan="7"></td>
+      </tr>
+      ${segRows}${emptyRows}
+      <tr>
+        <td rowspan="2" class="pf-fl">延滯時間<br>(秒)</td>
+        <td class="pf-fl">小計</td>
+        <td colspan="3" class="pf-fv"></td>
+        ${SGS_ROAD_COLS.map(c=>`<td class="pf-fv">${colT[c]||0}</td>`).join('')}
+        ${SGS_INT_COLS.map(c=>`<td class="pf-fv">${colT[c]||0}</td>`).join('')}
+        <td colspan="5"></td>
+      </tr>
+      <tr>
+        <td class="pf-fl">合計</td>
+        <td colspan="3"></td>
+        <td colspan="6" class="pf-fv">${roadT}</td>
+        <td colspan="7" class="pf-fv">${intT}</td>
+        <td colspan="5"></td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="pf-fl">延滯時間<br>百分比</td>
+        <td class="pf-fl">小計</td>
+        <td colspan="3" class="pf-fv"></td>
+        ${SGS_ROAD_COLS.map(c=>`<td class="pf-fv">${pct(colT[c],dBase)}</td>`).join('')}
+        ${SGS_INT_COLS.map(c=>`<td class="pf-fv">${pct(colT[c],dBase)}</td>`).join('')}
+        <td colspan="5"></td>
+      </tr>
+      <tr>
+        <td class="pf-fl">合計</td>
+        <td colspan="3"></td>
+        <td colspan="6" class="pf-fv">${pct(roadT,dBase)}</td>
+        <td colspan="7" class="pf-fv">${pct(intT,dBase)}</td>
+        <td colspan="5"></td>
+      </tr>
+    </table>
+    </div>
   </div>`
 
   const wrapper=document.createElement('div')
