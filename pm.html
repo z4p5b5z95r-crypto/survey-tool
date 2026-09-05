@@ -615,6 +615,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .act-dot.red{background:#ef4444;border-color:#b91c1c;box-shadow:0 0 0 3px rgba(239,68,68,.18);animation:actPulse 1.6s ease-in-out infinite}
 .act-dot.orange{background:#f59e0b;border-color:#b45309;box-shadow:0 0 0 3px rgba(245,158,11,.16)}
 .act-dot.gray{background:#cbd5e1;border-color:#94a3b8}
+/* 讀不到狀態（多半是後端還沒重新部署）：空心問號燈，跟「真的沒活動」的灰燈區分開 */
+.act-dot.err{background:transparent;border:1px dashed #94a3b8}
 @keyframes actPulse{0%,100%{opacity:1}50%{opacity:.45}}
 .admin-loading{padding:20px;color:#64748b;font-size:13px}
 /* 帳號狀態 */
@@ -700,12 +702,12 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
   </div>
 
   <div class="admin-tabs">
-    <button class="admin-tab active" data-tab="users" onclick="switchAdminTab('users')">👤 帳號管理</button>
+    <button class="admin-tab active" data-tab="surveys" onclick="switchAdminTab('surveys')">📋 調查報告</button>
     <button class="admin-tab" data-tab="routes" onclick="switchAdminTab('routes')">🗺 專案資料</button>
-    <button class="admin-tab" data-tab="surveys" onclick="switchAdminTab('surveys')">📋 調查報告</button>
     <button class="admin-tab" data-tab="link" onclick="switchAdminTab('link')">🔗 監測連結</button>
     <button class="admin-tab" data-tab="logins" onclick="switchAdminTab('logins')">🔐 稽核紀錄</button>
     <button class="admin-tab" data-tab="trash" onclick="switchAdminTab('trash')">🗑 垃圾桶</button>
+    <button class="admin-tab" data-tab="users" onclick="switchAdminTab('users')">👤 帳號管理</button>
   </div>
 
   <div class="admin-body">
@@ -3829,7 +3831,7 @@ function migrateTaskCreators() {
 function enterAdminPanel() {
   document.getElementById('screen-admin').classList.add('visible')
   document.getElementById('admin-cloud-dot').className = 'cloud-icon idle'
-  loadAdminUsers()
+  switchAdminTab('surveys')   // 預設落在第一個頁籤「調查報告」
 }
 
 function switchAdminTab(tab) {
@@ -4192,12 +4194,33 @@ function _actLevel(a){
   if(d<ACT_ORANGE_MS) return {cls:'orange', tip:`結束調查 ${mins} 分鐘，尚無後續`+who}
   return {cls:'gray', tip:`已 ${mins} 分鐘沒有調查活動`+who}
 }
+let _actErrToasted=false
 async function refreshActivityDots(){
   const dots=document.querySelectorAll('.act-dot')
   if(!dots.length) return
-  let act={}
+  let act
   try{ act = await cloudGet({action:'getProjectActivity'}) || {} }
-  catch(e){ return }   // 查不到就維持現況，不要把燈洗成灰的誤導人
+  catch(e){
+    // ⚠️ 最常見的原因是「後端還沒重新部署」——舊版沒有 getProjectActivity 這個 action，
+    // 會回 unknown action。以前這裡靜靜 return，燈就一直是灰的，看起來像「沒人在跑」，
+    // 分不出到底是真的沒活動還是根本沒接上。現在講明白。
+    const msg=String((e&&e.message)||e)
+    console.error('[狀態燈] 取得失敗：', msg)
+    dots.forEach(d=>{
+      d.className='act-dot err'
+      d.title = /unknown action/i.test(msg)
+        ? '後端尚未更新：請重新部署 Apps Script 後才會顯示狀態'
+        : '無法取得調查狀態：'+msg
+    })
+    if(!_actErrToasted){
+      _actErrToasted=true
+      toast(/unknown action/i.test(msg)
+        ? '⚠️ 狀態燈需要重新部署後端才會運作'
+        : '⚠️ 狀態燈讀取失敗：'+msg)
+    }
+    return
+  }
+  _actErrToasted=false
   dots.forEach(d=>{
     const key=d.id.replace('act-dot-','')
     const lv=_actLevel(act[key])
