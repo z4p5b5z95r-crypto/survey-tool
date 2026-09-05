@@ -1005,6 +1005,23 @@ const INT_DELAYS = [
   {cause:'right_turn', label:'右轉',    icon:'↱'},
   {cause:'int_other',  label:'其他',    icon:'❓'},
 ]
+// ⚠️ SGS 調查表的欄位順序，跟上面兩個陣列的順序【不一樣】，而且不能混用。
+//
+// ROAD_DELAYS / INT_DELAYS 的排列是「現場按鈕格子」的排法（以好按為主）；
+// SGS 表格的欄位順序則是表單規定的。直接拿前者去產生表格的小計列，
+// 數字就會整排位移到隔壁欄——現場實例：行人 22 秒被加總進「左轉同向」那一格。
+//
+// 明細列是照欄位名稱一格一格寫死的（見 segRows），所以只有「小計 / 百分比」兩列出錯，
+// 看起來就像「明細有數字、下面加總卻是 0」。
+const SGS_ROAD_COLS = ['congestion','bus_stop','taxi_stop','parking','ped_cross','road_other']
+const SGS_INT_COLS  = ['red_light','left_same','left_opp','right_turn','cross_veh','ped_int','int_other']
+// 保險：日後有人在上面兩個陣列加新的延滯種類，卻忘了加進表格欄位順序時，
+// 主控台會直接講出來，不會靜悄悄地少一欄
+;(function(){
+  const miss=[...ROAD_DELAYS.map(d=>d.cause).filter(c=>!SGS_ROAD_COLS.includes(c)),
+              ...INT_DELAYS.map(d=>d.cause).filter(c=>!SGS_INT_COLS.includes(c))]
+  if(miss.length) console.error('[SGS] 這些延滯種類沒有對應的表格欄位：',miss)
+})()
 function PEAK_LABEL_(key){ return {peak:config.peakName||'尖峰', off_peak:config.offPeakName||'離峰'}[key] }
 const PEAK_LABEL  = new Proxy({}, {get:(_,key)=>PEAK_LABEL_(key)})   // 保留 PEAK_LABEL[key] 既有用法，但每次讀取都即時反映 PM 自訂名稱
 const DIR_LABEL   = {bound:'去程', return:'回程'}
@@ -5020,8 +5037,8 @@ function buildOneOfficialForm(trip,pt,dir){
       <td rowspan="2" class="sgs-footer-l">延滯時間<br>(秒)</td>
       <td class="sgs-footer-l">小計</td>
       <td colspan="3" class="sgs-footer-v"></td>
-      ${RC.map(c=>`<td class="sgs-footer-v">${colT[c]||0}</td>`).join('')}
-      ${IC.map(c=>`<td class="sgs-footer-v">${colT[c]||0}</td>`).join('')}
+      ${SGS_ROAD_COLS.map(c=>`<td class="sgs-footer-v">${colT[c]||0}</td>`).join('')}
+      ${SGS_INT_COLS.map(c=>`<td class="sgs-footer-v">${colT[c]||0}</td>`).join('')}
       <td colspan="5"></td>
     </tr>
     <tr>
@@ -5035,8 +5052,8 @@ function buildOneOfficialForm(trip,pt,dir){
       <td rowspan="2" class="sgs-footer-l">延滯時間<br>百分比</td>
       <td class="sgs-footer-l">小計</td>
       <td colspan="3" class="sgs-footer-v"></td>
-      ${RC.map(c=>`<td class="sgs-footer-v" style="font-size:9px">${pct(colT[c],trip.travelS)}</td>`).join('')}
-      ${IC.map(c=>`<td class="sgs-footer-v" style="font-size:9px">${pct(colT[c],trip.travelS)}</td>`).join('')}
+      ${SGS_ROAD_COLS.map(c=>`<td class="sgs-footer-v" style="font-size:9px">${pct(colT[c],trip.travelS)}</td>`).join('')}
+      ${SGS_INT_COLS.map(c=>`<td class="sgs-footer-v" style="font-size:9px">${pct(colT[c],trip.travelS)}</td>`).join('')}
       <td colspan="5"></td>
     </tr>
     <tr>
@@ -5320,8 +5337,11 @@ function exportReport(){
 '<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"><\\/script>\n' +
 
 '<script>\n' +
-'var ROAD_D=[{c:"congestion",l:"阻塞"},{c:"bus_stop",l:"公車停靠"},{c:"ped_cross",l:"行人穿越"},{c:"taxi_stop",l:"計程車停靠"},{c:"parking",l:"路邊停靠"},{c:"road_other",l:"其他"}];\n' +
-'var INT_D=[{c:"red_light",l:"紅燈"},{c:"ped_int",l:"行人"},{c:"cross_veh",l:"橫越車輛"},{c:"left_same",l:"左轉同向"},{c:"left_opp",l:"左轉對向"},{c:"right_turn",l:"右轉"},{c:"int_other",l:"其他"}];\n' +
+// 匯出的報告檔裡，這兩個陣列【只】用來產生 SGS 表格與 Excel 的欄位，
+// 沒有現場按鈕格子的問題，所以直接照表格規定的欄位順序排。
+// （主程式那邊不能這樣改——那兩個陣列同時決定畫面上按鈕的排列。）
+'var ROAD_D=[{c:"congestion",l:"阻塞"},{c:"bus_stop",l:"公車停靠"},{c:"taxi_stop",l:"計程車停靠"},{c:"parking",l:"路邊停靠"},{c:"ped_cross",l:"行人穿越"},{c:"road_other",l:"其他"}];\n' +
+'var INT_D=[{c:"red_light",l:"紅燈"},{c:"left_same",l:"左轉同向"},{c:"left_opp",l:"左轉對向"},{c:"right_turn",l:"右轉"},{c:"cross_veh",l:"橫越車輛"},{c:"ped_int",l:"行人"},{c:"int_other",l:"其他"}];\n' +
 'var KEYS=["off_peak_bound","off_peak_return","peak_bound","peak_return"];\n' +
 'var CFG=' + JSON.stringify(eCfg) + ';\n' +
 'var TRIPS=' + JSON.stringify(eTrips) + ';\n' +
