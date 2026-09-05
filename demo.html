@@ -1383,6 +1383,8 @@ function loadFromHash(){
 }
 
 function applyConfig(cfg){
+  // 後台的「調查狀態燈」是以專案為單位，這裡要把路線所屬的專案記下來
+  config.projectId   =cfg.projectId   ||cfg.pid||''
   config.routeName   =cfg.routeName   ||cfg.rn||''
   config.routeFromTo =cfg.routeFromTo ||cfg.ft||''
   config.totalLength =cfg.totalLength ||cfg.tl||0
@@ -4261,7 +4263,24 @@ function doConfirmRedo(){
 // ════════════════════════════════════
 //  START SURVEY
 // ════════════════════════════════════
+// 後台專案列表的「調查狀態燈」訊號。
+// 只是報備用的，成敗都不能影響現場調查——所以不 await、不擋流程、失敗完全吞掉。
+// 沒有網路時這一則就掉了，燈不會亮；這是刻意的取捨，總比讓調查卡住好。
+function pingActivity(event){
+  try{
+    const pid=config.projectId
+    if(!pid || !cloudScriptUrl || !cloudApiKey) return
+    fetch(cloudScriptUrl,{
+      method:'POST', headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'pingActivity', key:cloudApiKey, projectId:pid,
+                           routeId:cloudRouteId, surveyor:config.surveyor||'', event}),
+      signal:AbortSignal.timeout(8000), keepalive:true
+    }).catch(()=>{})
+  }catch(e){}
+}
+
 function startSurvey(){
+  pingActivity('start')
   const key=`${selPeakType}_${selDirection}`
   cur={peakType:selPeakType,direction:selDirection,round:selRound,key,
     startTime:null,endTime:null,gpsTrack:[],
@@ -4640,6 +4659,7 @@ function _trimTrackToSurvey(track, t0, t1){
 function endSurvey(auto){
   if(!auto && !confirm('確定結束調查？'))return
   if(!cur) return
+  pingActivity('end')   // 後台狀態燈：從這一刻起算 10 分鐘
   clearTimeout(_autoEndTimer); _autoEndTimer=null   // 手動先按了結束，就別再自動結算一次
   // 自動結束時面板可能還停在「已記錄最後一個節點」的提示，先收掉
   const _ep=$('end-survey-prompt'); if(_ep) _ep.style.display='none'

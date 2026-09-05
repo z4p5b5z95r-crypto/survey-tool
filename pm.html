@@ -609,6 +609,13 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .admin-add-btn{padding:9px 18px;background:#2563eb;color:white;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s;flex-shrink:0}
 .admin-add-btn:hover{background:#1d4ed8}
 .admin-empty{text-align:center;padding:40px 20px;color:#94a3b8;font-size:14px}
+/* 調查狀態燈：紅＝進行中或剛結束 10 分鐘內、橘＝10~15 分鐘、灰＝15 分鐘以上沒動靜 */
+.act-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 7px 0 2px;
+  vertical-align:middle;flex-shrink:0;background:#cbd5e1;border:1px solid rgba(0,0,0,.12)}
+.act-dot.red{background:#ef4444;border-color:#b91c1c;box-shadow:0 0 0 3px rgba(239,68,68,.18);animation:actPulse 1.6s ease-in-out infinite}
+.act-dot.orange{background:#f59e0b;border-color:#b45309;box-shadow:0 0 0 3px rgba(245,158,11,.16)}
+.act-dot.gray{background:#cbd5e1;border-color:#94a3b8}
+@keyframes actPulse{0%,100%{opacity:1}50%{opacity:.45}}
 .admin-loading{padding:20px;color:#64748b;font-size:13px}
 /* 帳號狀態 */
 .status-badge{display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700}
@@ -4134,6 +4141,7 @@ async function loadAdminRoutes() {
       return `<tr class="adm-grp" data-key="${g.key}" onclick="adminToggleGroup('${String(g.key).replace(/'/g,"\\'")}')">
         <td colspan="3">
           <span class="adm-grp-caret" id="adm-caret-${g.key}">▸</span>
+          <span class="act-dot gray" id="act-dot-${g.key}" title="尚無調查活動"></span>
           📁 <strong>${g.name}</strong>
           <span style="color:#64748b;font-weight:400;font-size:12px">・${g.routes.length} 條路線</span>
         </td>
@@ -4155,10 +4163,53 @@ async function loadAdminRoutes() {
     </table>`
     // 預設全部收合，點分組標題才展開
     el.querySelectorAll('tr.adm-rt').forEach(tr => { tr.style.display='none' })
+    startActivityPolling()
   } catch(e) {
     adminCloudErr()
     el.innerHTML = `<div style="color:#dc2626;padding:16px">載入失敗：${e.message}</div>`
   }
+}
+
+// ── 調查狀態燈 ────────────────────────────────────────────────────
+// 紅：有人正在跑，或最後一趟結束未滿 10 分鐘
+// 橘：結束後 10~15 分鐘，整個專案都沒有新的調查進來
+// 灰：超過 15 分鐘沒有任何動靜（或這個專案從來沒有人跑過）
+const ACT_RED_MS    = 10*60*1000
+const ACT_ORANGE_MS = 15*60*1000
+let _actTimer=null
+function _actLevel(a){
+  if(!a) return {cls:'gray', tip:'尚無調查活動'}
+  const t=new Date(a.at).getTime()
+  if(!isFinite(t)) return {cls:'gray', tip:'尚無調查活動'}
+  const who=a.surveyor?`（${a.surveyor}）`:''
+  // state==='stale' 是後端判定「開始了但超過 3 小時沒有結束訊號」，
+  // 多半是現場閃退或關掉分頁。不能一直紅著，當成沒有活動。
+  if(a.state==='start') return {cls:'red', tip:'調查進行中'+who}
+  if(a.state==='stale') return {cls:'gray', tip:'上次調查沒有正常結束'+who}
+  const d=Date.now()-t
+  const mins=Math.floor(d/60000)
+  if(d<ACT_RED_MS)    return {cls:'red',    tip:`剛結束調查 ${mins} 分鐘`+who}
+  if(d<ACT_ORANGE_MS) return {cls:'orange', tip:`結束調查 ${mins} 分鐘，尚無後續`+who}
+  return {cls:'gray', tip:`已 ${mins} 分鐘沒有調查活動`+who}
+}
+async function refreshActivityDots(){
+  const dots=document.querySelectorAll('.act-dot')
+  if(!dots.length) return
+  let act={}
+  try{ act = await cloudGet({action:'getProjectActivity'}) || {} }
+  catch(e){ return }   // 查不到就維持現況，不要把燈洗成灰的誤導人
+  dots.forEach(d=>{
+    const key=d.id.replace('act-dot-','')
+    const lv=_actLevel(act[key])
+    d.className='act-dot '+lv.cls
+    d.title=lv.tip
+  })
+}
+function startActivityPolling(){
+  refreshActivityDots()
+  if(_actTimer) clearInterval(_actTimer)
+  // 每 60 秒重算一次。分頁被切到背景時瀏覽器會自動節流，不用另外處理。
+  _actTimer=setInterval(refreshActivityDots, 60*1000)
 }
 
 // 展開／收合某個專案底下的路線
