@@ -5001,8 +5001,14 @@ function buildSegmentCards(trip,pt,dir){
   const spd  = (d,s) => (d>0&&s>0)?(d/s*3.6).toFixed(1):'—'
   const pct  = (v,t) => t>0?Math.round(v/t*100)+'%':'0%'
   const LBL={}; ;[...ROAD_DELAYS,...INT_DELAYS].forEach(d=>LBL[d.cause]=d.label)
-  // 零值不隱藏，只淡化——「沒有記錄到」跟「欄位不存在」是兩回事，現場要分得出來
   const row=(k,v,zero)=>`<div class="sd-k${zero?' z':''}">${he(k)}</div><div class="sd-v${zero?' z':''}">${he(String(v))}</div>`
+  // 延滯只列「真的有記到秒數」的項目。整組都是 0 就只留那條分組標題（小計 0 秒），
+  // 底下不再排一整排 0——手機上滑半天全是零，反而看不到有值的那一項。
+  const dRows=(cols,src,suffix)=>{
+    const hit=cols.filter(c=>(src[c]||0)>0)
+    if(!hit.length) return ''
+    return `<div class="sd-rows">${hit.map(c=>row(LBL[c]||c,(src[c]||0)+' 秒'+(suffix?suffix(c):''))).join('')}</div>`
+  }
 
   const segD = segs.map((_,i)=>segDelaysForIdx(trip,i))
   const segT = trip.segTimes||[]
@@ -5016,7 +5022,7 @@ function buildSegmentCards(trip,pt,dir){
     const roadSub=SGS_ROAD_COLS.reduce((s,c)=>s+(sd[c]||0),0)
     const intSub =SGS_INT_COLS.reduce((s,c)=>s+(sd[c]||0),0)
     return `<div class="sd-card">
-      <div class="sd-hd"><span>${i+1}. ${he(segDisp(segLabel(i)||seg.name||''))}</span><span class="sd-hd-t">${arr}</span></div>
+      <div class="sd-hd"><span>${i+1}. ${he(segDisp((nodes[i]&&nodes[i+1])?`${nodes[i].exitName||nodes[i].name||''} ～ ${nodes[i+1].name||''}`:(seg.name||'')))}</span><span class="sd-hd-t">${arr}</span></div>
       <div class="sd-rows">
         ${row('旅行時間', st_.travelS!=null?st_.travelS+' 秒':'—')}
         ${row('距離', seg.length?seg.length+' 公尺':'—')}
@@ -5025,9 +5031,9 @@ function buildSegmentCards(trip,pt,dir){
         ${row('行駛速率', spd(seg.length,runS)+' km/h')}
       </div>
       <div class="sd-sub">路段中延滯　小計 ${roadSub} 秒</div>
-      <div class="sd-rows">${SGS_ROAD_COLS.map(c=>row(LBL[c]||c,(sd[c]||0)+' 秒',!(sd[c]>0))).join('')}</div>
+      ${dRows(SGS_ROAD_COLS,sd)}
       <div class="sd-sub">交叉口延滯　小計 ${intSub} 秒</div>
-      <div class="sd-rows">${SGS_INT_COLS.map(c=>row(LBL[c]||c,(sd[c]||0)+' 秒',!(sd[c]>0))).join('')}</div>
+      ${dRows(SGS_INT_COLS,sd)}
     </div>`
   }).join('')
 
@@ -5041,8 +5047,8 @@ function buildSegmentCards(trip,pt,dir){
     <div class="sd-rows">
       ${row('站名', config.routeName||'—')}
       ${row('日期', config.date||'—')}
-      ${row('天氣', WEATHER_ZH[config.weather]||'—')}
-      ${row('調查員', config.surveyor||'—')}
+      ${row('天氣', trip.weather||config.weather||'—')}
+      ${row('調查員', trip.surveyor||config.surveyor||'—')}
       ${row('起點時刻', _ok(_st)?tpHMS(_st).join(':'):'—')}
       ${row('終點時刻', _ok(_et)?tpHMS(_et).join(':'):'—')}
       ${row('總旅行時間', (trip.travelS||0)+' 秒')}
@@ -5053,10 +5059,10 @@ function buildSegmentCards(trip,pt,dir){
       ${row('總旅行速率', spd(len,trip.travelS)+' km/h')}
       ${row('總行駛速率', spd(len,trip.runS)+' km/h')}
     </div>
-    <div class="sd-sub">路段中延滯　各項小計</div>
-    <div class="sd-rows">${SGS_ROAD_COLS.map(c=>row(LBL[c]||c,(colT[c]||0)+' 秒　'+pct(colT[c],trip.travelS),!(colT[c]>0))).join('')}</div>
-    <div class="sd-sub">交叉口延滯　各項小計</div>
-    <div class="sd-rows">${SGS_INT_COLS.map(c=>row(LBL[c]||c,(colT[c]||0)+' 秒　'+pct(colT[c],trip.travelS),!(colT[c]>0))).join('')}</div>
+    <div class="sd-sub">路段中延滯　各項小計 ${SGS_ROAD_COLS.reduce((s,c)=>s+(colT[c]||0),0)} 秒</div>
+    ${dRows(SGS_ROAD_COLS,colT,c=>'　'+pct(colT[c],trip.travelS))}
+    <div class="sd-sub">交叉口延滯　各項小計 ${SGS_INT_COLS.reduce((s,c)=>s+(colT[c]||0),0)} 秒</div>
+    ${dRows(SGS_INT_COLS,colT,c=>'　'+pct(colT[c],trip.travelS))}
   </div>`
 
   const wrap=document.createElement('div')
