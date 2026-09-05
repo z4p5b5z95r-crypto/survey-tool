@@ -609,16 +609,30 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .admin-add-btn{padding:9px 18px;background:#2563eb;color:white;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s;flex-shrink:0}
 .admin-add-btn:hover{background:#1d4ed8}
 .admin-empty{text-align:center;padding:40px 20px;color:#94a3b8;font-size:14px}
-/* 調查狀態燈：紅＝進行中或剛結束 10 分鐘內、橘＝10~15 分鐘、灰＝15 分鐘以上沒動靜 */
+/* 調查狀態燈：綠＝進行中或剛結束 10 分鐘內、橘＝10~15 分鐘、灰＝15 分鐘以上沒動靜 */
 .act-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 7px 0 2px;
   vertical-align:middle;flex-shrink:0;background:#cbd5e1;border:1px solid rgba(0,0,0,.12)}
-.act-dot.red{background:#ef4444;border-color:#b91c1c;box-shadow:0 0 0 3px rgba(239,68,68,.18);animation:actPulse 1.6s ease-in-out infinite}
+.act-dot.green{background:#22c55e;border-color:#15803d;box-shadow:0 0 0 3px rgba(34,197,94,.20);animation:actPulse 1.6s ease-in-out infinite}
 .act-dot.orange{background:#f59e0b;border-color:#b45309;box-shadow:0 0 0 3px rgba(245,158,11,.16)}
 .act-dot.gray{background:#cbd5e1;border-color:#94a3b8}
+/* 路線列的燈小一號，跟專案的燈分出層級 */
+.act-dot.rt{width:8px;height:8px;margin:0 6px 0 0}
+/* 亮燈時把調查員名字寫出來，不用把滑鼠移上去才知道是誰 */
+.act-who{display:none;margin-left:7px;padding:1px 8px;border-radius:10px;
+  background:#dcfce7;color:#15803d;font-size:11px;font-weight:700;vertical-align:middle;white-space:nowrap}
+.act-who.on{display:inline-block}
+.act-who.warm{background:#fef3c7;color:#b45309}
 /* 讀不到狀態（多半是後端還沒重新部署）：空心問號燈，跟「真的沒活動」的灰燈區分開 */
 .act-dot.err{background:transparent;border:1px dashed #94a3b8}
 @keyframes actPulse{0%,100%{opacity:1}50%{opacity:.45}}
-.admin-loading{padding:20px;color:#64748b;font-size:13px}
+/* 後台各頁籤的下載動畫：沿用「調查報告」那顆雲朵下載圖示（so-bob），
+   原本是一行「載入中...」的純文字，跟其他地方的載入樣子對不起來 */
+.admin-loading{padding:38px 20px;color:#64748b;font-size:13px;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:13px}
+.admin-loading .so-card{width:72px;height:72px;border-radius:16px;background:#1e293b;
+  display:flex;align-items:center;justify-content:center;overflow:hidden}
+.admin-loading .so-card svg{width:32px;height:32px;color:#4ade80;
+  animation:so-bob 1.3s ease-in-out infinite}
 /* 帳號狀態 */
 .status-badge{display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700}
 .status-badge.on{background:#dcfce7;color:#15803d}
@@ -719,27 +733,27 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
         <input id="adm-new-pwd" type="password" placeholder="密碼（4 碼以上）" onkeydown="if(event.key==='Enter')adminAddUser()"/>
         <button class="admin-add-btn" onclick="adminAddUser()">＋ 新增帳號</button>
       </div>
-      <div id="admin-users-table"><div class="admin-loading">載入中...</div></div>
+      <div id="admin-users-table"></div>
     </div>
 
     <!-- 專案資料 -->
     <div id="atab-routes" style="display:none">
-      <div id="admin-routes-table"><div class="admin-loading">載入中...</div></div>
+      <div id="admin-routes-table"></div>
     </div>
 
     <!-- 調查報告（月曆） -->
     <div id="atab-surveys" style="display:none">
-      <div id="admin-surveys-table"><div class="admin-loading">載入中...</div></div>
+      <div id="admin-surveys-table"></div>
     </div>
 
     <!-- 登入紀錄 -->
     <div id="atab-logins" style="display:none">
-      <div id="admin-logins-table"><div class="admin-loading">載入中...</div></div>
+      <div id="admin-logins-table"></div>
     </div>
 
     <!-- 監測連結 -->
     <div id="atab-trash" style="display:none">
-      <div id="admin-trash-table"><div class="admin-loading">載入中...</div></div>
+      <div id="admin-trash-table"></div>
     </div>
     <div id="atab-link" style="display:none;padding:20px">
       <!-- QR Code 區塊 -->
@@ -3834,6 +3848,15 @@ function enterAdminPanel() {
   switchAdminTab('surveys')   // 預設落在第一個頁籤「調查報告」
 }
 
+// 各頁籤共用的下載動畫，跟「專案資料下載中」那顆雲朵是同一個
+function admLoadingHTML(msg){
+  return '<div class="admin-loading"><div class="so-card">'
+    + '<svg viewBox="0 0 22 17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<path d="M16.5 12H5.5a4 4 0 0 1-.2-8 5 5 0 0 1 9.8 1H16a3 3 0 0 1 .5 7z"/>'
+    + '<line x1="11" y1="9" x2="11" y2="15.5"/>'
+    + '<polyline points="8.5,13 11,15.5 13.5,13"/>'
+    + '</svg></div><div>' + (msg || '下載中…') + '</div></div>'
+}
 function switchAdminTab(tab) {
   document.querySelectorAll('.admin-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab))
   document.getElementById('atab-users').style.display   = tab === 'users'   ? '' : 'none'
@@ -3855,7 +3878,7 @@ function switchAdminTab(tab) {
 // 下面是登入紀錄（用來佐證「那個時間點是誰在用這個帳號」）。
 async function loadAdminLogins(){
   const el=document.getElementById('admin-logins-table')
-  el.innerHTML='<div class="admin-loading">載入中...</div>'
+  el.innerHTML = admLoadingHTML('下載中…')
   try{
     const [ops, logins]=await Promise.all([
       cloudGet({action:'getAuditLogs', limit:'300'}, 30000).catch(()=>[]),
@@ -3973,7 +3996,7 @@ function adminCloudErr() { document.getElementById('admin-cloud-dot').className=
 // ── 帳號管理 ─────────────────────────────────────────────
 async function loadAdminUsers() {
   const el = document.getElementById('admin-users-table')
-  el.innerHTML = '<div class="admin-loading">載入中...</div>'
+  el.innerHTML = admLoadingHTML('下載中…')
   try {
     const users = await cloudGet({ action: 'getUsers' })
     adminCloudOk()
@@ -4070,7 +4093,7 @@ async function adminChangeUserStatus(name, status, btn) {
 // ── 專案資料 ─────────────────────────────────────────────
 async function loadAdminRoutes() {
   const el = document.getElementById('admin-routes-table')
-  el.innerHTML = '<div class="admin-loading">載入中...</div>'
+  el.innerHTML = admLoadingHTML('下載中…')
   try {
     const [routes, users, projects] = await Promise.all([
       cloudGet({ action: 'getRoutes' }),
@@ -4122,7 +4145,7 @@ async function loadAdminRoutes() {
         <option value=""${!curPid?' selected':''}>— 尚未歸入專案 —</option>
       </select>`
       return `<tr class="adm-rt" data-grp="${gKey}">
-        <td style="padding-left:34px"><strong>${S(r.routeName) || '—'}</strong></td>
+        <td style="padding-left:34px"><span class="act-dot rt gray" id="act-rt-${safeId}" title="尚無調查活動"></span><strong>${S(r.routeName) || '—'}</strong><span class="act-who" id="act-who-rt-${safeId}"></span></td>
         <td style="color:#64748b;font-size:12px">${S(r.routeFromTo) || '—'}</td>
         <td style="text-align:center;color:#475569">${(r.nodes || []).length}</td>
         <td>${ownerCell}</td>
@@ -4144,7 +4167,7 @@ async function loadAdminRoutes() {
         <td colspan="3">
           <span class="adm-grp-caret" id="adm-caret-${g.key}">▸</span>
           <span class="act-dot gray" id="act-dot-${g.key}" title="尚無調查活動"></span>
-          📁 <strong>${g.name}</strong>
+          📁 <strong>${g.name}</strong><span class="act-who" id="act-who-${g.key}"></span>
           <span style="color:#64748b;font-weight:400;font-size:12px">・${g.routes.length} 條路線</span>
         </td>
         <td>${ownerCtl}</td>
@@ -4185,12 +4208,12 @@ function _actLevel(a){
   if(!isFinite(t)) return {cls:'gray', tip:'尚無調查活動'}
   const who=a.surveyor?`（${a.surveyor}）`:''
   // state==='stale' 是後端判定「開始了但超過 3 小時沒有結束訊號」，
-  // 多半是現場閃退或關掉分頁。不能一直紅著，當成沒有活動。
-  if(a.state==='start') return {cls:'red', tip:'調查進行中'+who}
+  // 多半是現場閃退或關掉分頁。不能一直亮著，當成沒有活動。
+  if(a.state==='start') return {cls:'green', tip:'調查進行中'+who}
   if(a.state==='stale') return {cls:'gray', tip:'上次調查沒有正常結束'+who}
   const d=Date.now()-t
   const mins=Math.floor(d/60000)
-  if(d<ACT_RED_MS)    return {cls:'red',    tip:`剛結束調查 ${mins} 分鐘`+who}
+  if(d<ACT_RED_MS)    return {cls:'green',  tip:`剛結束調查 ${mins} 分鐘`+who}
   if(d<ACT_ORANGE_MS) return {cls:'orange', tip:`結束調查 ${mins} 分鐘，尚無後續`+who}
   return {cls:'gray', tip:`已 ${mins} 分鐘沒有調查活動`+who}
 }
@@ -4199,7 +4222,11 @@ async function refreshActivityDots(){
   const dots=document.querySelectorAll('.act-dot')
   if(!dots.length) return
   let act
-  try{ act = await cloudGet({action:'getProjectActivity'}) || {} }
+  try{
+    act = await cloudGet({action:'getProjectActivity'}) || {}
+    // 舊格式相容：以前回的是 { projectId: {...} }，現在是 { routes:{}, projects:{} }
+    if(!act.routes && !act.projects) act={routes:{}, projects:act}
+  }
   catch(e){
     // ⚠️ 最常見的原因是「後端還沒重新部署」——舊版沒有 getProjectActivity 這個 action，
     // 會回 unknown action。以前這裡靜靜 return，燈就一直是灰的，看起來像「沒人在跑」，
@@ -4207,7 +4234,7 @@ async function refreshActivityDots(){
     const msg=String((e&&e.message)||e)
     console.error('[狀態燈] 取得失敗：', msg)
     dots.forEach(d=>{
-      d.className='act-dot err'
+      d.className='act-dot '+(d.id.indexOf('act-rt-')===0?'rt ':'')+'err'
       d.title = /unknown action/i.test(msg)
         ? '後端尚未更新：請重新部署 Apps Script 後才會顯示狀態'
         : '無法取得調查狀態：'+msg
@@ -4222,10 +4249,25 @@ async function refreshActivityDots(){
   }
   _actErrToasted=false
   dots.forEach(d=>{
-    const key=d.id.replace('act-dot-','')
-    const lv=_actLevel(act[key])
-    d.className='act-dot '+lv.cls
+    const isRoute=d.id.indexOf('act-rt-')===0
+    const key=isRoute ? d.id.slice('act-rt-'.length) : d.id.replace('act-dot-','')
+    const rec=isRoute ? (act.routes||{})[key] : (act.projects||{})[key]
+    const lv=_actLevel(rec)
+    d.className='act-dot '+(isRoute?'rt ':'')+lv.cls
     d.title=lv.tip
+    // 亮著的時候把調查員名字寫在旁邊；灰掉就收起來
+    const who=document.getElementById(isRoute?('act-who-rt-'+key):('act-who-'+key))
+    if(who){
+      const name=(rec&&rec.surveyor)||''
+      const lit=lv.cls==='green'||lv.cls==='orange'
+      if(lit&&name){
+        who.textContent=(rec.state==='start'?'調查中 · ':'剛結束 · ')+name
+        who.className='act-who on'+(lv.cls==='orange'?' warm':'')
+      }else{
+        who.textContent=''
+        who.className='act-who'
+      }
+    }
   })
 }
 function startActivityPolling(){
@@ -4756,7 +4798,7 @@ async function adminDeleteSurvey(id) {
 // ── 垃圾桶 ───────────────────────────────────────────────────────
 async function loadAdminTrash() {
   const el = document.getElementById('admin-trash-table')
-  el.innerHTML = '<div class="admin-loading">載入中...</div>'
+  el.innerHTML = admLoadingHTML('下載中…')
   try {
     const data = await cloudGet({ action: 'getDeleted' })
     adminCloudOk()
