@@ -1773,27 +1773,31 @@ function getHistory(){ return _histCache !== null ? _histCache : getLocalHistory
 // 組合按鈕不會亮，孤兒對帳也會把已經上傳過的誤判成沒上傳而重複補送。
 // 這支負責補齊：發現目前這個調查日期不在快取裡，就單獨把那一天抓回來合併進去。
 // 後端帶 date 時不設筆數上限，只回那一天，所以比原本更省。
-let _histDateFetched=new Set()
+//
+// ⚠️ 這支要抓的是「完整」的那一天（full=1，含 gpsTrack 與 delayLog）。
+// loadCloudHistory() 抓的最近 30 筆是輕量版，沒有軌跡也沒有延滯事件——
+// 只靠它的話，『調查紀錄』分頁會變成節點時間正常、但地圖沒軌跡、延滯整排消失。
+// 所以判斷「這天抓過了沒」不能只看日期在不在快取裡（輕量的那批也會命中），
+// 要看有沒有抓過「完整版」。
+let _histDateFetched=new Set()   // 已經抓過完整版的日期
 async function ensureHistoryForDate(day){
   const d=(day||'').slice(0,10)
   if(!d || !cloudRouteId || !cloudScriptUrl || !cloudApiKey) return false
   if(_histDateFetched.has(d)) return false
-  const cache=_histCache||[]
-  if(cache.some(h=>(h.date||'').slice(0,10)===d)){ _histDateFetched.add(d); return false }
   _histDateFetched.add(d)
+  const cache=_histCache||[]
   try{
-    const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey,date:d,t:Date.now()})
+    const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey,date:d,full:'1',t:Date.now()})
     // gsJson 會擋掉「伺服器回 HTML 錯誤頁」的情況並自動重試（見上方註解）
     const data=await gsJson(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(20000)})
     if(!Array.isArray(data)) return false
-    const json={ok:true,data}
-    // 合併而不是取代——記錄視窗與日期下拉還要靠原本那批涵蓋其他日期
-    const seen=new Set(cache.map(h=>(h.date||'').slice(0,10)+'|'+(h.round||1)+'|'+(h.submittedAt||'')))
-    const add=json.data.filter(h=>!seen.has((h.date||'').slice(0,10)+'|'+(h.round||1)+'|'+(h.submittedAt||'')))
-    if(!add.length) return false
-    _histCache=cache.concat(add)
+    // 同一筆若已經有輕量版在快取裡，要用完整版「取代」它，不能只是略過，
+    // 否則先進來的空殼會一直贏，軌跡永遠補不上。
+    const keyOf=h=>(h.date||'').slice(0,10)+'|'+(h.round||1)+'|'+(h.submittedAt||'')
+    const fullKeys=new Set(data.map(keyOf))
+    _histCache=cache.filter(h=>!fullKeys.has(keyOf(h))).concat(data)
     return true
-  }catch(e){ return false }
+  }catch(e){ _histDateFetched.delete(d); return false }   // 失敗就讓它下次還能再試
 }
 
 // Group raw history entries by date+回合 — one row per day per round (rounds kept separate,
@@ -1852,6 +1856,17 @@ function syncChipsFromCloudHistory(){
         // 本機已經有這一趟，資料不覆蓋；但雲端既然查得到，就代表它確實上傳過了。
         // 沒有這一步，改版前記錄的舊資料會一直顯示成「待上傳」的橘色時鐘。
         if(!bucket[k]._uploaded){ bucket[k]._uploaded=true; changed=true }
+        // 例外：如果本機這筆是先前用「輕量版」還原出來的空殼（沒有軌跡／沒有延滯事件），
+        // 而這次完整版帶回來了，就把缺的兩塊補上。不補的話空殼會一直贏，
+        // 『調查紀錄』分頁就永遠是「有表格、沒軌跡、沒延滯」。
+        if(bucket[k]._fromCloud){
+          if(!(bucket[k].gpsTrack||[]).length && (t.gpsTrack||[]).length){
+            bucket[k].gpsTrack=t.gpsTrack; changed=true
+          }
+          if(!(bucket[k].delayLog||[]).length && (t.delayLog||[]).length){
+            bucket[k].delayLog=t.delayLog; changed=true
+          }
+        }
         return
       }
       // Preserve ALL fields the cloud returns — segTimes/nodeTimestamps/gpsTrack
@@ -3703,12 +3718,67 @@ function getNavFarDist(){
   return 150
 }
 // 轉彎角度分類：進入節點的方位角 vs 離開節點的方位角，差值決定左轉/右轉/直行/迴轉
+// 直行門檻放寬到 32°：道路本身的緩彎（尤其是弧形路口、匝道）用 20° 會被誤報成轉彎。
 function classifyTurn(angle){
   const a=((angle+540)%360)-180   // normalize to -180..180
   if(Math.abs(a)>=150) return {type:'uturn', label:'迴轉', rotate:180}
-  if(a>=20) return {type:'right', label:'右轉', rotate:90}
-  if(a<=-20) return {type:'left', label:'左轉', rotate:-90}
+  if(a>=32) return {type:'right', label:'右轉', rotate:90}
+  if(a<=-32) return {type:'left', label:'左轉', rotate:-90}
   return {type:'straight', label:'直行', rotate:0}
+}
+
+// ── 導航幾何：以「PM 畫的那條線」為準，不再用節點之間的直線 ──────────────
+// 舊作法是 上一節點→下一節點 拉直線當進入方位、下一節點→再下一節點 拉直線當離開方位。
+// 兩節點之間只要道路是彎的、或中間有鬼節點強迫繞路，直線的方向就跟實際道路差很多，
+// 左右轉會報錯。routePolylines 裡本來就存著貼路的完整形狀（含鬼節點與 PM 手動拖曳），
+// 這裡改成取用它。
+const NAV_GEOM_M = 30    // 路口前後各取 30 公尺來判斷道路走向
+
+// 目前行進方向下的分段折線：回程＝段順序反轉 + 每段內部反轉
+function _dirPolylines(){
+  if(!Array.isArray(routePolylines) || !routePolylines.length) return []
+  return (cur && cur.direction==='return')
+    ? [...routePolylines].reverse().map(s=>[...s].reverse())
+    : routePolylines
+}
+// 折線「最後 D 公尺」的行進方位＝快到路口時車頭朝哪
+function _bearingIntoEnd(line, D){
+  if(!Array.isArray(line) || line.length<2) return null
+  const end=line[line.length-1]
+  let acc=0, a=line[0]
+  for(let i=line.length-1;i>0;i--){
+    acc+=haversine(line[i][0],line[i][1],line[i-1][0],line[i-1][1])
+    if(acc>=D){ a=line[i-1]; break }
+  }
+  if(haversine(a[0],a[1],end[0],end[1])<3) return null   // 太短，方位不可靠
+  return calcBearing(a[0],a[1],end[0],end[1])
+}
+// 折線「前 D 公尺」的行進方位＝過了路口之後要往哪走
+function _bearingOutStart(line, D){
+  if(!Array.isArray(line) || line.length<2) return null
+  const start=line[0]
+  let acc=0, b=line[line.length-1]
+  for(let i=1;i<line.length;i++){
+    acc+=haversine(line[i-1][0],line[i-1][1],line[i][0],line[i][1])
+    if(acc>=D){ b=line[i]; break }
+  }
+  if(haversine(start[0],start[1],b[0],b[1])<3) return null
+  return calcBearing(start[0],start[1],b[0],b[1])
+}
+// 沿折線算「還有多遠到路口」。直線距離在彎路上會低估，報「300 公尺後右轉」
+// 但實際要開 450 公尺。
+// 回傳 null＝目前位置離這條折線太遠（例如回程走了對面巷子），此時交給呼叫端用直線距離。
+function _distAlongToNode(line, lat, lng){
+  if(!Array.isArray(line) || line.length<2) return null
+  let best=-1, bestD=Infinity
+  for(let i=0;i<line.length;i++){
+    const d=haversine(lat,lng,line[i][0],line[i][1])
+    if(d<bestD){ bestD=d; best=i }
+  }
+  if(best<0 || bestD>60) return null   // 根本不在這條路上
+  let acc=0
+  for(let i=best;i<line.length-1;i++) acc+=haversine(line[i][0],line[i][1],line[i+1][0],line[i+1][1])
+  return Math.round(acc)
 }
 // 導航提示條位在畫面最上方（蓋過返回鍵那一排），顯示/隱藏時把返回鍵、時速徽章往下推，避免疊在一起
 function _syncSurveyTopOffsets(){
@@ -3727,10 +3797,31 @@ function updateNavBanner(lat,lng,nextNode,dist){
   const afterNode=ordered[currentNodeIdx+1]
   if(!nextNode||!afterNode){ banner.style.display='none'; _syncSurveyTopOffsets(); return }
   const prevNode=currentNodeIdx>0 ? ordered[currentNodeIdx-1] : null
-  const inBearing = prevNode ? calcBearing(prevNode.lat,prevNode.lng,nextNode.lat,nextNode.lng)
-                              : calcBearing(lat,lng,nextNode.lat,nextNode.lng)
-  const outBearing = calcBearing(nextNode.lat,nextNode.lng,afterNode.lat,afterNode.lng)
+  const polys=_dirPolylines()
+  const inLine  = polys[currentNodeIdx-1] || null   // 正在走的這一段（終點是 nextNode）
+  const outLine = polys[currentNodeIdx]   || null   // 過了路口之後那一段
+
+  // ── 進入方位 ──
+  // 第一順位是「車子實際的行進方向」。這是實測值，不管走去程車道、對面車道，
+  // 還是單行道繞到隔壁巷子，它都是對的——PM 只畫去程也不會報錯方向。
+  // 車速太慢時 _navBearing 會退化成指南針（車內手機擺放角度會影響），不能信，
+  // 這時才退回用畫的線；再不行才用節點直線。
+  const inBearing =
+      (_lastSpeed>=NAV_SPEED_MS && _navBearing!=null) ? _navBearing
+    : (_bearingIntoEnd(inLine, NAV_GEOM_M)
+       ?? (prevNode ? calcBearing(prevNode.lat,prevNode.lng,nextNode.lat,nextNode.lng)
+                    : calcBearing(lat,lng,nextNode.lat,nextNode.lng)))
+
+  // ── 離開方位 ──
+  // 這個沒辦法實測（車還沒過路口），只能看幾何：取離開段折線的前 30 公尺，
+  // 這樣才會照著 PM 畫的路徑走，而不是往「再下一個節點」拉直線。
+  const outBearing = _bearingOutStart(outLine, NAV_GEOM_M)
+    ?? calcBearing(nextNode.lat,nextNode.lng,afterNode.lat,afterNode.lng)
+
   const turn=classifyTurn(outBearing-inBearing)
+  // 距離改成沿路算；偏離折線太遠（回程走別條路）時 _distAlongToNode 回 null，退回直線
+  const along=_distAlongToNode(inLine, lat, lng)
+  if(along!=null) dist=along
   const wasHidden=banner.style.display==='none'||!banner.style.display
   banner.style.display='flex'
   if(wasHidden) _syncSurveyTopOffsets()
