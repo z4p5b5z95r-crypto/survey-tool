@@ -1383,6 +1383,8 @@ function loadFromHash(){
 }
 
 function applyConfig(cfg){
+  // 後台的「調查狀態燈」是以專案為單位，這裡要把路線所屬的專案記下來
+  config.projectId   =cfg.projectId   ||cfg.pid||''
   config.routeName   =cfg.routeName   ||cfg.rn||''
   config.routeFromTo =cfg.routeFromTo ||cfg.ft||''
   config.totalLength =cfg.totalLength ||cfg.tl||0
@@ -1953,6 +1955,10 @@ function syncChipsFromCloudHistory(){
         roadDelays:      t.roadDelays      ||{},
         intDelays:       t.intDelays       ||{},
         delayLog:        t.delayLog        ||[],
+        // 這兩個在雲端是掛在「調查」層級（entry）而不是「趟」層級，要在這裡接下來，
+        // 否則從雲端還原的紀錄打開後，SGS 表頭的天氣與調查員會是空的
+        surveyor:        entry.surveyor    ||'',
+        weather:         entry.weather     ||'',
         _fromCloud: true   // flag: loaded from cloud (not recorded this session)
       }
       changed=true
@@ -4261,7 +4267,24 @@ function doConfirmRedo(){
 // ════════════════════════════════════
 //  START SURVEY
 // ════════════════════════════════════
+// 後台專案列表的「調查狀態燈」訊號。
+// 只是報備用的，成敗都不能影響現場調查——所以不 await、不擋流程、失敗完全吞掉。
+// 沒有網路時這一則就掉了，燈不會亮；這是刻意的取捨，總比讓調查卡住好。
+function pingActivity(event){
+  try{
+    const pid=config.projectId
+    if(!pid || !cloudScriptUrl || !cloudApiKey) return
+    fetch(cloudScriptUrl,{
+      method:'POST', headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'pingActivity', key:cloudApiKey, projectId:pid,
+                           routeId:cloudRouteId, surveyor:config.surveyor||'', event}),
+      signal:AbortSignal.timeout(8000), keepalive:true
+    }).catch(()=>{})
+  }catch(e){}
+}
+
 function startSurvey(){
+  pingActivity('start')
   const key=`${selPeakType}_${selDirection}`
   cur={peakType:selPeakType,direction:selDirection,round:selRound,key,
     startTime:null,endTime:null,gpsTrack:[],
@@ -4640,6 +4663,7 @@ function _trimTrackToSurvey(track, t0, t1){
 function endSurvey(auto){
   if(!auto && !confirm('確定結束調查？'))return
   if(!cur) return
+  pingActivity('end')   // 後台狀態燈：從這一刻起算 10 分鐘
   clearTimeout(_autoEndTimer); _autoEndTimer=null   // 手動先按了結束，就別再自動結算一次
   // 自動結束時面板可能還停在「已記錄最後一個節點」的提示，先收掉
   const _ep=$('end-survey-prompt'); if(_ep) _ep.style.display='none'
@@ -4671,6 +4695,10 @@ function endSurvey(auto){
     segTimes:segsForTable,delayLog:[...delayLog],
     gpsTrack:_trimTrackToSurvey(cur.gpsTrack,cur.startTime,cur.endTime),startTime:cur.startTime,endTime:cur.endTime,
     nodeTimestamps:[...nodeTimestamps],
+    // 調查員與天氣要跟著這一趟走，不能只靠 config。
+    // config 是「這次開啟 App 的當下狀態」，重新整理或從雲端還原後就空了，
+    // SGS 表頭會變成兩條光禿禿的底線（現場看到的「天氣：一 調查員：二」就是這個）。
+    surveyor:config.surveyor||'', weather:config.weather||'',
   }
   saveTripsToStorage()   // persist so page-close won't lose this trip
   buildTripDoneUI(travelS,totalDelayS,runS)
@@ -5107,8 +5135,8 @@ function buildOneOfficialForm(trip,pt,dir){
       </div>
       <div class="sgs-pf-mr">
         <div>日　期：&nbsp;<span style="color:#dc2626;font-weight:700">${he(config.date||'')}</span></div>
-        <div>天　氣：&nbsp;${he(config.weather||'—')}</div>
-        <div>調查員：&nbsp;<u>${he(config.surveyor||'—')}</u></div>
+        <div>天　氣：&nbsp;${he(trip.weather||config.weather||'—')}</div>
+        <div>調查員：&nbsp;<u>${he(trip.surveyor||config.surveyor||'—')}</u></div>
       </div>
     </div>
     <div style="overflow-x:auto">
