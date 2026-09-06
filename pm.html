@@ -3077,8 +3077,12 @@ async function deleteTask(id) {
     try{
       await cloudPost({action:'deleteRoute',id:task.cloudId,deletedBy:getCurrentUser()||'pm',note})
     }catch(e){
-      toast('❌ 雲端刪除失敗，尚未刪除：'+e.message+'（請檢查網路後再試一次）')
-      return
+      if(_isGoneError(e)){
+        toast('雲端已無此路線，已移除本機殘留紀錄')
+      }else{
+        toast('❌ 雲端刪除失敗，尚未刪除：'+e.message+'（請檢查網路後再試一次）')
+        return
+      }
     }
   }
   if(currentTaskId===id){currentTaskId=null;showListView()}
@@ -3508,6 +3512,18 @@ async function renameProject(pid){
 }
 
 // 刪除專案：底下還有路線的話先提醒（避免路線變成孤兒資料）
+// 「雲端找不到」跟「連不上雲端」要分開處理。
+//
+// ⚠️ 這裡原本一律擋下，造成一個解不開的死結：
+// 雲端那筆已經不存在（被永久清除、或當初根本沒建成功）時，後端回「找不到專案」，
+// 前端就拒絕刪本機——於是這個專案永遠卡在列表上，怎麼按刪除都刪不掉。
+// 「找不到」代表它已經是我們要的結果了，應該視為成功往下走；
+// 只有真正的連線失敗才需要擋，否則雲端還留著資料，下次同步又會跑回來。
+function _isGoneError(e){
+  const m=String((e&&e.message)||e)
+  return /找不到專案|找不到路線|找不到調查記錄|not found/i.test(m)
+}
+
 async function deleteProject(pid){
   const proj=savedProjects.find(p=>p.id===pid)
   if(!proj){toast('找不到專案');return}
@@ -3520,8 +3536,13 @@ async function deleteProject(pid){
     try{
       await cloudPost({action:'deleteProject',id:proj.cloudId,deletedBy:getCurrentUser()||'pm',note})
     }catch(e){
-      toast('❌ 雲端刪除失敗，尚未刪除：'+e.message+'（請檢查網路後再試一次）')
-      return
+      if(_isGoneError(e)){
+        // 雲端本來就沒有了，本機這筆是殘影，直接清掉
+        toast('雲端已無此專案，已移除本機殘留紀錄')
+      }else{
+        toast('❌ 雲端刪除失敗，尚未刪除：'+e.message+'（請檢查網路後再試一次）')
+        return
+      }
     }
   }
   savedProjects=savedProjects.filter(p=>p.id!==pid)
