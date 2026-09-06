@@ -608,6 +608,10 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .admin-add-row input:focus{border-color:#2563eb}
 .admin-add-btn{padding:9px 18px;background:#2563eb;color:white;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s;flex-shrink:0}
 .admin-add-btn:hover{background:#1d4ed8}
+.adm-emp-inp{width:100%;padding:5px 9px;border:1.5px solid #e2e8f0;border-radius:7px;
+  font-size:13px;font-family:var(--mono,ui-monospace,monospace);background:white;color:#1e293b;outline:none}
+.adm-emp-inp:focus{border-color:#2563eb}
+.adm-emp-inp::placeholder{color:#cbd5e1;font-style:italic}
 .admin-empty{text-align:center;padding:40px 20px;color:#94a3b8;font-size:14px}
 /* 調查狀態燈：綠＝進行中或剛結束 10 分鐘內、橘＝10~15 分鐘、灰＝15 分鐘以上沒動靜 */
 .act-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 7px 0 2px;
@@ -675,7 +679,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
       </div>
     </div>
     <div id="form-login">
-      <div class="login-field"><label>姓名</label><input id="li-name" placeholder="輸入您的姓名" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('li-pwd').focus()"/></div>
+      <div class="login-field"><label>工號</label><input id="li-name" placeholder="輸入您的工號" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('li-pwd').focus()"/></div>
       <div class="login-field"><label>密碼</label><input id="li-pwd" type="password" placeholder="輸入密碼" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
       <button class="login-btn" onclick="doLogin()">登入</button>
       <div class="login-err" id="login-err"></div>
@@ -684,7 +688,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
          GitHub Pages ＋ 瀏覽器快取常常讓人分不清看到的是新版還是舊版，
          有這行就不必再猜。不需要時整段刪掉即可，沒有其他程式依賴它。 -->
     <div style="text-align:center;margin-top:18px;font-size:10px;color:#cbd5e1;letter-spacing:.5px">
-      build 2026-09-04d
+      build 2026-09-05a
     </div>
   </div>
 </div>
@@ -729,7 +733,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     <!-- 帳號管理 -->
     <div id="atab-users">
       <div class="admin-add-row">
-        <input id="adm-new-name" placeholder="姓名" autocomplete="off"/>
+        <input id="adm-new-emp" placeholder="工號（登入帳號）" autocomplete="off" style="max-width:180px"/>
+        <input id="adm-new-name" placeholder="姓名（顯示用）" autocomplete="off"/>
         <input id="adm-new-pwd" type="password" placeholder="密碼（4 碼以上）" onkeydown="if(event.key==='Enter')adminAddUser()"/>
         <button class="admin-add-btn" onclick="adminAddUser()">＋ 新增帳號</button>
       </div>
@@ -1150,11 +1155,12 @@ function switchLoginTab(tab) {
 }
 
 async function doLogin() {
-  const name = document.getElementById('li-name').value.trim()
+  // 輸入的是工號（登入帳號）；後端也接受舊的姓名登入，方便還沒設工號的帳號過渡
+  const loginId = document.getElementById('li-name').value.trim()
   const pwd  = document.getElementById('li-pwd').value
   const err  = document.getElementById('login-err')
   const btn  = document.querySelector('#form-login .login-btn')
-  if (!name || !pwd) { err.textContent = '請填入姓名與密碼'; return }
+  if (!loginId || !pwd) { err.textContent = '請填入工號與密碼'; return }
 
   btn.disabled = true; btn.textContent = '驗證中...'
   err.textContent = ''
@@ -1173,15 +1179,15 @@ async function doLogin() {
     const hash = await hashPwd(pwd)
     const legacyHash = hashPwdLegacy(pwd)   // 供後端過渡期比對舊帳號
     const meta = loginMeta()   // 取現成的，不等網路
-    res = await cloudAuth({ action: 'loginUser', name, hash, legacyHash,
+    res = await cloudAuth({ action: 'loginUser', name: loginId, hash, legacyHash,
                             city: meta.city, device: meta.device })
   } catch(e) {
     const m = String((e && e.message) || e)
     console.error('登入驗證失敗：', m)
     err.textContent =
         /停用/.test(m)            ? '此帳號已停用，請聯絡管理員'
-      : /帳號或密碼/.test(m)      ? '姓名或密碼錯誤'
-      : /找不到使用者/.test(m)    ? '查無此帳號'
+      : /帳號或密碼/.test(m)      ? '工號或密碼錯誤'
+      : /找不到使用者/.test(m)    ? '查無此工號'
       : /Unexpected token|JSON/i.test(m) ? '伺服器回應異常，請稍後再試'
       : ('連線失敗：' + m)
     btn.disabled = false; btn.textContent = '登入'
@@ -1190,8 +1196,11 @@ async function doLogin() {
 
   // ── ② 進入主畫面：這裡出錯跟帳號密碼無關，訊息要講實話 ──
   try {
-    setSession(name, res.sessionToken, res.expiresAt, res.apiKey)
-    enterApp(name)
+    // ⚠️ 這裡一定要用 res.name（顯示姓名），不是使用者輸入的工號。
+    // session、路線擁有者、稽核紀錄內部都是以姓名為鍵，用工號會全部對不起來。
+    const displayName = res.name || loginId
+    setSession(displayName, res.sessionToken, res.expiresAt, res.apiKey)
+    enterApp(displayName)
   } catch(e) {
     console.error('enterApp 失敗：', e)
     err.textContent = '登入成功，但載入主畫面失敗：' + ((e && e.message) || e)
@@ -4004,11 +4013,17 @@ async function loadAdminUsers() {
     const statusLabel = s => s==='停用'?'off':s==='隱藏'?'hide':'on'
     const statusText  = s => s==='停用'?'停用':s==='隱藏'?'隱藏':'啟用'
     el.innerHTML = `<table class="admin-table">
-      <thead><tr><th>姓名</th><th>建立時間</th><th>狀態</th><th style="width:220px">操作</th></tr></thead>
+      <thead><tr><th style="width:150px">工號（登入帳號）</th><th>姓名</th><th>建立時間</th><th>狀態</th><th style="width:220px">操作</th></tr></thead>
       <tbody>${users.map(u => {
         const st = u.status || '啟用'
         const sl = statusLabel(st)
+        const eid = u.empId || ''
         return `<tr>
+          <td>
+            <input class="adm-emp-inp" value="${S(eid)}" placeholder="未設定"
+              onchange="adminSetEmpId('${u.name}', this)"
+              ${u.name==='admin'?'':''}/>
+          </td>
           <td><strong>${u.name}</strong></td>
           <td style="color:#94a3b8;font-size:12px">${u.createdAt ? String(u.createdAt).slice(0,10) : '—'}</td>
           <td>${u.name === 'admin' ? '<span style="font-size:11px;color:#94a3b8">—</span>' : `
@@ -4035,19 +4050,36 @@ async function loadAdminUsers() {
 }
 
 async function adminAddUser() {
-  const name = document.getElementById('adm-new-name').value.trim()
-  const pwd  = document.getElementById('adm-new-pwd').value
+  const empId = document.getElementById('adm-new-emp').value.trim()
+  const name  = document.getElementById('adm-new-name').value.trim()
+  const pwd   = document.getElementById('adm-new-pwd').value
+  if (!empId) { toast('請填入工號（那就是登入帳號）'); return }
   if (!name || !pwd) { toast('請填入姓名與密碼'); return }
   if (pwd.length < 8) { toast('密碼至少 8 個字元'); return }
   if (/^\d+$/.test(pwd)) { toast('密碼不能全為數字'); return }
   try {
     const hash = await hashPwd(pwd)
-    await cloudPost({ action: 'registerUser', name, hash })
+    await cloudPost({ action: 'registerUser', name, empId, hash })
+    document.getElementById('adm-new-emp').value  = ''
     document.getElementById('adm-new-name').value = ''
     document.getElementById('adm-new-pwd').value  = ''
-    toast(`✅ 帳號「${name}」已建立`)
+    toast(`✅ 帳號「${empId}／${name}」已建立`)
     loadAdminUsers()
   } catch(e) { toast('❌ ' + e.message) }
+}
+
+// 幫既有帳號補上／修改工號。工號重複時後端會擋下並回錯誤。
+async function adminSetEmpId(name, inp) {
+  const empId = (inp.value || '').trim()
+  const prev = inp.defaultValue
+  try {
+    await cloudPost({ action: 'updateUserEmpId', name, empId })
+    inp.defaultValue = empId
+    toast(empId ? `✅「${name}」的工號設為 ${empId}` : `已清除「${name}」的工號`)
+  } catch(e) {
+    inp.value = prev            // 失敗就還原，不要讓畫面顯示沒存進去的值
+    toast('❌ ' + e.message)
+  }
 }
 
 async function adminResetPwd(name) {
