@@ -3263,13 +3263,24 @@ function svyStopPickDelay(d, group, byVoice){
     : null
   _stopEvent=null
   markStopPanelPicked(d)
-  if(!byVoice && firstPick) showToast(`⏱ ${d.icon} ${d.label} 計時中（可隨時改選）`)
+  if(!byVoice){
+    // 手動點選也要複誦，理由跟語音那條路一樣：駕駛不用低頭確認自己按到什麼。
+    // 之前只有 toast，眼睛沒看螢幕就完全不知道按到哪一個。
+    // （語音那條路由 svyVoiceCommit 自己複誦，這裡只處理手動，才不會唸兩次）
+    speakNav(d.label, null, {high:true})
+    if(firstPick) showToast(`⏱ ${d.icon} ${d.label} 計時中（可隨時改選）`)
+  }
+  // 面板維持展開到車子重新行駛為止——手動與語音行為一致
+  svySheetExpand()
 }
 // 面板留著時，把選中的原因標示出來，並把標題換成「可隨時更改」
 // 停止面板的計時：從車子停下的那一刻起算，讓駕駛知道已經停多久
 let _stopTick=null
+// 延滯結束後要顯示的固定秒數。null＝還在計時中。
+let _stopFrozenSec=null
 function startStopTicker(){
   clearInterval(_stopTick)
+  _stopFrozenSec=null      // 新的一次停等，重新開始計
   const from = (_stopEvent && _stopEvent.startedAt) || Date.now()
   const paint=()=>{
     // 兩個計時元素只會有一個是可見的（未選原因用 plain，計時中用群組裡那個），
@@ -3277,6 +3288,16 @@ function startStopTicker(){
     const a=document.getElementById('svy-stop-timer')
     const b=document.getElementById('svy-stop-timer-plain')
     if(!a && !b) return
+    // ⚠️ 延滯已經結束（車子重新行駛）時，數字要停住。
+    // 這一段的秒數在 toggleDelay 結束的那一刻就結算完並寫進紀錄了，
+    // 但畫面上如果還在跑（例如語音追問還沒答完、面板仍留著），
+    // 駕駛看到的秒數會一直長，跟實際記錄到的對不起來。
+    if(_stopFrozenSec!=null){
+      const t=fmtSec(_stopFrozenSec)
+      if(a) a.textContent=t
+      if(b) b.textContent=t
+      return
+    }
     const base = (activeDelay && activeDelay.startedAt) ? activeDelay.startedAt.getTime() : from
     const txt=fmtSec(Math.max(0,Math.round((Date.now()-base)/1000)))
     if(a) a.textContent=txt
@@ -3352,6 +3373,7 @@ function svyDismissStop(byResume){
   stopCauseListening()
   _stopActive=false
   _stopPanelOpen=false
+  _stopFrozenSec=null
   stopStopTicker()
   { setStopHdrMode('idle')
     const eb=document.getElementById('svy-stop-end'); if(eb) eb.style.display='none'
@@ -4589,6 +4611,8 @@ function toggleDelay(d,group,opts){
     playDelayBeep(false)
     if(navigator.vibrate) navigator.vibrate(60)
     // ── 結束提醒：藍框閃示已結束秒數，2 秒後消失 ──
+    // 面板可能還留著（語音追問未結束），把計時顯示凍在實際記錄到的秒數
+    _stopFrozenSec=dur
     clearTimeout(_delayIndTimer)
     _setDelayInd('✓',d.label+' 已結束','('+fmtSec(dur)+')','#4ade80')
     _delayIndTimer=setTimeout(()=>_setDelayInd(null,null,null,null),2000)
