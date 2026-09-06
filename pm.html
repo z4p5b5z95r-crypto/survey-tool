@@ -3240,6 +3240,26 @@ async function syncProjectsFromCloud(me) {
       }else if(loc.name!==S(p.name)){loc.name=S(p.name)||loc.name;changed=true}
       map[p.id]=loc.id
     }
+
+    // ⚠️ 反向清理：雲端已經沒有的專案，本機也要跟著移除。
+    // 沒有這一步，在 A 瀏覽器刪掉的專案，B 瀏覽器的 localStorage 仍留著自己那份，
+    // 永遠不會消失——現場看到的就是「A 刪掉了、換一台又長回來」。
+    //
+    // 只清「曾經同步過雲端（有 cloudId）、而且本機沒有任何路線掛在它底下」的專案：
+    //   · 沒有 cloudId ＝ 純本機專案（還沒上傳），不能碰
+    //   · 底下還有路線 ＝ 資料還在用，寧可留著讓使用者自己處理
+    const cloudIds={}
+    ;(projects||[]).forEach(p=>{ cloudIds[String(p.id)]=true })
+    const before=savedProjects.length
+    savedProjects=savedProjects.filter(p=>{
+      if(!p.cloudId) return true                                   // 純本機專案
+      if(cloudIds[String(p.cloudId)]) return true                   // 雲端還在
+      if(savedTasks.some(t=>t.projectId===p.id)) return true        // 底下還有路線
+      console.warn('[同步] 雲端已無此專案，移除本機殘留：', p.name, p.cloudId)
+      return false
+    })
+    if(savedProjects.length!==before) changed=true
+
     if(changed) localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
   }catch(e){/* 專案同步失敗不影響路線同步，靜默即可 */}
   return map
@@ -3532,18 +3552,41 @@ async function deleteProject(pid){
   const note=askDeleteNote(`刪除專案「${proj.name}」？`)
   if(note===null)return
   // 跟刪路線一樣：雲端一定要刪成功才能刪本機，不然下次登入同步時，沒真的刪掉的專案又會跑回來
-  if(proj.cloudId&&gsUrl&&getSessionToken()){
+  //
+  // ⚠️ 不能直接拿 proj.cloudId 去刪。
+  // 本機存的 cloudId 有可能跟雲端實際那一列對不上（早期版本留下的錯誤對應），
+  // 這時後端回「找不到專案」，本機刪掉了、雲端那筆卻原封不動——
+  // 於是在 A 瀏覽器看起來刪成功，換 B 瀏覽器一同步又整個長回來。
+  // 正確做法是先跟雲端核對「這個專案到底是哪一列」，用實際存在的 id 去刪。
+  if(gsUrl&&getSessionToken()){
+    let targetId=proj.cloudId||''
     try{
-      await cloudPost({action:'deleteProject',id:proj.cloudId,deletedBy:getCurrentUser()||'pm',note})
+      const cloudList=await cloudGet({action:'getProjects'})
+      const byId   = targetId && (cloudList||[]).find(p=>String(p.id)===String(targetId))
+      const byName = (cloudList||[]).find(p=>S(p.name)===S(proj.name))
+      const hit    = byId || byName
+      targetId = hit ? String(hit.id) : ''
+      if(hit && byName && !byId){
+        console.warn('[刪除專案] 本機 cloudId 與雲端不符，改用名稱比對到的 id：', proj.cloudId, '→', targetId)
+      }
     }catch(e){
-      if(_isGoneError(e)){
-        // 雲端本來就沒有了，本機這筆是殘影，直接清掉
-        toast('雲端已無此專案，已移除本機殘留紀錄')
-      }else{
-        toast('❌ 雲端刪除失敗，尚未刪除：'+e.message+'（請檢查網路後再試一次）')
-        return
+      // 連雲端清單都拉不到＝網路有問題，這時絕對不能刪本機
+      toast('❌ 無法確認雲端狀態，尚未刪除：'+e.message+'（請檢查網路後再試一次）')
+      return
+    }
+    if(targetId){
+      try{
+        await cloudPost({action:'deleteProject',id:targetId,deletedBy:getCurrentUser()||'pm',note})
+      }catch(e){
+        if(_isGoneError(e)){
+          toast('雲端已無此專案，已移除本機殘留紀錄')
+        }else{
+          toast('❌ 雲端刪除失敗，尚未刪除：'+e.message+'（請檢查網路後再試一次）')
+          return
+        }
       }
     }
+    // targetId 為空＝雲端清單裡本來就沒有這個專案，本機這筆是殘影，直接清掉
   }
   savedProjects=savedProjects.filter(p=>p.id!==pid)
   localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
