@@ -704,8 +704,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
       </div>
     </div>
     <div id="form-login">
-      <div class="login-field"><label>工號</label><input id="li-name" placeholder="輸入您的工號" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('li-pwd').focus()"/></div>
-      <div class="login-field"><label>密碼</label><input id="li-pwd" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="輸入 4 位數密碼" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+      <div class="login-field"><label>帳號</label><input id="li-name" placeholder="輸入您的工號" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('li-pwd').focus()"/></div>
+      <div class="login-field"><label>密碼</label><input id="li-pwd" type="password" placeholder="預設為分機" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
       <button class="login-btn" onclick="doLogin()">登入</button>
       <div class="login-err" id="login-err"></div>
     </div>
@@ -1186,7 +1186,7 @@ async function doLogin() {
   const pwd  = document.getElementById('li-pwd').value
   const err  = document.getElementById('login-err')
   const btn  = document.querySelector('#form-login .login-btn')
-  if (!loginId || !pwd) { err.textContent = '請填入工號與密碼'; return }
+  if (!loginId || !pwd) { err.textContent = '請填入帳號與密碼'; return }
 
   btn.disabled = true; btn.textContent = '驗證中...'
   err.textContent = ''
@@ -1212,8 +1212,8 @@ async function doLogin() {
     console.error('登入驗證失敗：', m)
     err.textContent =
         /停用/.test(m)            ? '此帳號已停用，請聯絡管理員'
-      : /帳號或密碼/.test(m)      ? '工號或密碼錯誤'
-      : /找不到使用者/.test(m)    ? '查無此工號'
+      : /帳號或密碼/.test(m)      ? '帳號或密碼錯誤'
+      : /找不到使用者/.test(m)    ? '查無此帳號'
       : /Unexpected token|JSON/i.test(m) ? '伺服器回應異常，請稍後再試'
       : ('連線失敗：' + m)
     btn.disabled = false; btn.textContent = '登入'
