@@ -105,6 +105,31 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
   background:#1e293b;border-radius:8px;padding:6px 11px;
 }
 .tb-user-name{color:#e2e8f0;font-size:13px;font-weight:600}
+/* 名字本身就是「修改密碼」的入口 */
+.tb-me{background:transparent;border:none;font-family:inherit;cursor:pointer;padding:4px 8px;
+  border-radius:8px;transition:background .15s;position:relative}
+.tb-me:hover{background:rgba(255,255,255,.12)}
+.tb-me::after{content:'🔑';font-size:10px;margin-left:5px;opacity:.6}
+.cp-mask{position:fixed;inset:0;z-index:9600;background:rgba(15,23,42,.55);display:flex;
+  align-items:center;justify-content:center;padding:20px}
+.cp-box{background:#fff;border-radius:16px;padding:22px;width:100%;max-width:340px;
+  box-shadow:0 12px 40px rgba(0,0,0,.28)}
+.cp-box h3{font-size:16px;font-weight:700;color:#1e293b;margin-bottom:4px}
+.cp-hint{font-size:12px;color:#64748b;line-height:1.7;margin-bottom:16px}
+.cp-f{margin-bottom:11px}
+.cp-f label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:5px}
+.cp-f input{width:100%;padding:10px 13px;border:1.5px solid #e2e8f0;border-radius:10px;
+  font-size:14px;outline:none;font-family:inherit;transition:border-color .15s}
+.cp-f input:focus{border-color:#2563eb}
+.cp-rule{font-size:11px;color:#94a3b8;margin-top:5px;line-height:1.6}
+.cp-rule b{color:#16a34a}
+.cp-rule s{color:#cbd5e1}
+.cp-err{font-size:12px;color:#dc2626;min-height:17px;margin-bottom:8px}
+.cp-btns{display:flex;gap:8px;margin-top:6px}
+.cp-btns button{flex:1;padding:11px;border-radius:10px;font-size:14px;font-weight:700;
+  cursor:pointer;font-family:inherit;border:none}
+.cp-ok{background:#2563eb;color:#fff}
+.cp-cancel{background:#f1f5f9;color:#475569}
 .tb-logout{color:#475569;font-size:11px;cursor:pointer;background:none;border:none;padding:0}
 .tb-logout:hover{color:#94a3b8}
 
@@ -680,7 +705,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     </div>
     <div id="form-login">
       <div class="login-field"><label>工號</label><input id="li-name" placeholder="輸入您的工號" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('li-pwd').focus()"/></div>
-      <div class="login-field"><label>密碼</label><input id="li-pwd" type="password" placeholder="輸入密碼" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+      <div class="login-field"><label>密碼</label><input id="li-pwd" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="輸入 4 位數密碼" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
       <button class="login-btn" onclick="doLogin()">登入</button>
       <div class="login-err" id="login-err"></div>
     </div>
@@ -713,7 +738,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
         </div>
       </div>
       <div class="tb-user">
-        <span class="tb-user-name">admin</span>
+        <button class="tb-user-name tb-me" onclick="openChangePwd()" title="修改密碼">admin</button>
         <button class="tb-logout" onclick="doLogout()">登出</button>
       </div>
     </div>
@@ -735,7 +760,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
       <div class="admin-add-row">
         <input id="adm-new-emp" placeholder="工號（登入帳號）" autocomplete="off" style="max-width:180px"/>
         <input id="adm-new-name" placeholder="姓名（顯示用）" autocomplete="off"/>
-        <input id="adm-new-pwd" type="password" placeholder="密碼（4 碼以上）" onkeydown="if(event.key==='Enter')adminAddUser()"/>
+        <input id="adm-new-pwd" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="初始密碼（4 位數字）" style="max-width:150px" onkeydown="if(event.key==='Enter')adminAddUser()"/>
+        <button class="admin-add-btn" style="background:#64748b" onclick="genDefaultPwd()" title="隨機產生 4 位數字">🎲 產生</button>
         <button class="admin-add-btn" onclick="adminAddUser()">＋ 新增帳號</button>
       </div>
       <div id="admin-users-table"></div>
@@ -824,7 +850,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
         </div>
       </div>
       <div class="tb-user">
-        <span class="tb-user-name" id="tb-username">—</span>
+        <button class="tb-user-name tb-me" id="tb-username" onclick="openChangePwd()" title="修改密碼">—</button>
         <button class="tb-logout" onclick="doLogout()">登出</button>
       </div>
     </div>
@@ -1260,8 +1286,7 @@ async function doRegister() {
   const btn   = document.querySelector('#form-register .login-btn')
   if (!name || !pwd) { err.textContent = '請填入姓名與密碼'; return }
   if (pwd !== pwd2)  { err.textContent = '兩次密碼不符'; return }
-  if (pwd.length < 8) { err.textContent = '密碼至少 8 個字元'; return }
-  if (/^\d+$/.test(pwd)) { err.textContent = '密碼不能全為數字'; return }
+  if (!/^\d{4}$/.test(pwd)) { err.textContent = '密碼必須是 4 位數字'; return }
 
   btn.disabled = true; btn.textContent = '建立中...'
   err.textContent = ''
@@ -1273,6 +1298,76 @@ async function doRegister() {
   } catch(e) {
     err.textContent = e.message.includes('已被使用') ? '此姓名已存在，請直接登入' : '連線失敗，請稍後再試'
     btn.disabled = false; btn.textContent = '建立帳號'
+  }
+}
+
+
+// ══════════════════════════════════════════════════════
+//  自行修改密碼（點頂欄自己的名字）
+// ══════════════════════════════════════════════════════
+// 兩套密碼規則是刻意的：
+//   後台發的初始密碼 = 4 位數字（好唸、好交代給本人）
+//   使用者自己改的  = 8 碼以上且要有大寫、小寫、數字（自己保管的才要夠強）
+const PW_STRONG = v => v.length>=8 && /[a-z]/.test(v) && /[A-Z]/.test(v) && /\d/.test(v)
+function openChangePwd(){
+  if(document.querySelector('.cp-mask')) return
+  const el=document.createElement('div')
+  el.className='cp-mask'
+  el.onclick=e=>{ if(e.target===el) closeChangePwd() }
+  el.innerHTML=`<div class="cp-box">
+    <h3>修改密碼</h3>
+    <div class="cp-hint">目前登入：<b>${S(getCurrentUser()||'')}</b></div>
+    <div class="cp-f"><label>目前密碼</label><input id="cp-old" type="password" autocomplete="current-password"></div>
+    <div class="cp-f"><label>新密碼</label><input id="cp-new" type="password" autocomplete="new-password" oninput="cpCheck()">
+      <div class="cp-rule" id="cp-rule">
+        <span id="cp-r-len">・至少 8 個字元</span><br>
+        <span id="cp-r-low">・包含小寫英文</span><br>
+        <span id="cp-r-up">・包含大寫英文</span><br>
+        <span id="cp-r-num">・包含數字</span>
+      </div></div>
+    <div class="cp-f"><label>再輸入一次新密碼</label><input id="cp-new2" type="password" autocomplete="new-password"
+      onkeydown="if(event.key==='Enter')submitChangePwd()"></div>
+    <div class="cp-err" id="cp-err"></div>
+    <div class="cp-btns">
+      <button class="cp-cancel" onclick="closeChangePwd()">取消</button>
+      <button class="cp-ok" id="cp-ok" onclick="submitChangePwd()">確認修改</button>
+    </div>
+  </div>`
+  document.body.appendChild(el)
+  setTimeout(()=>{ const i=document.getElementById('cp-old'); if(i) i.focus() },50)
+}
+function closeChangePwd(){ const m=document.querySelector('.cp-mask'); if(m) m.remove() }
+// 即時把符合的規則打勾，不用等按下去才知道差在哪
+function cpCheck(){
+  const v=document.getElementById('cp-new').value
+  const set=(id,ok)=>{ const e=document.getElementById(id); if(e) e.innerHTML=(ok?'✓':'・')+e.textContent.replace(/^[✓・]/,'') ; if(e) e.style.color=ok?'#16a34a':'#94a3b8' }
+  set('cp-r-len', v.length>=8)
+  set('cp-r-low', /[a-z]/.test(v))
+  set('cp-r-up',  /[A-Z]/.test(v))
+  set('cp-r-num', /\d/.test(v))
+}
+async function submitChangePwd(){
+  const oldPwd=document.getElementById('cp-old').value
+  const nv=document.getElementById('cp-new').value
+  const nv2=document.getElementById('cp-new2').value
+  const err=document.getElementById('cp-err')
+  const btn=document.getElementById('cp-ok')
+  err.textContent=''
+  if(!oldPwd){ err.textContent='請輸入目前密碼'; return }
+  if(nv!==nv2){ err.textContent='兩次新密碼不一致'; return }
+  if(!PW_STRONG(nv)){ err.textContent='新密碼要 8 碼以上，且包含大寫、小寫與數字'; return }
+  if(nv===oldPwd){ err.textContent='新密碼不能跟目前密碼一樣'; return }
+  btn.disabled=true; btn.textContent='修改中…'
+  try{
+    const oldHash=await hashPwd(oldPwd)
+    const legacyOldHash=hashPwdLegacy(oldPwd)
+    const hash=await hashPwd(nv)
+    await cloudPost({ action:'changeOwnPassword', oldHash, legacyOldHash, hash })
+    closeChangePwd()
+    toast('✅ 密碼已更新，下次登入請用新密碼')
+  }catch(e){
+    err.textContent=(e&&e.message)||String(e)
+    btn.disabled=false; btn.textContent='確認修改'
   }
 }
 
@@ -4049,20 +4144,30 @@ async function loadAdminUsers() {
   }
 }
 
+// 後台發的是「初始密碼」：4 位數字，好唸、好當面交代給本人。
+// 使用者拿到後可以自己到頂欄名字那邊改成強密碼（也可以不改）。
+function genDefaultPwd(){
+  const v=String(Math.floor(Math.random()*10000)).padStart(4,'0')
+  const el=document.getElementById('adm-new-pwd')
+  if(el){ el.value=v; el.focus(); el.select() }
+  return v
+}
+
 async function adminAddUser() {
   const empId = document.getElementById('adm-new-emp').value.trim()
   const name  = document.getElementById('adm-new-name').value.trim()
   const pwd   = document.getElementById('adm-new-pwd').value
   if (!empId) { toast('請填入工號（那就是登入帳號）'); return }
   if (!name || !pwd) { toast('請填入姓名與密碼'); return }
-  if (pwd.length < 8) { toast('密碼至少 8 個字元'); return }
-  if (/^\d+$/.test(pwd)) { toast('密碼不能全為數字'); return }
+  if (!/^\d{4}$/.test(pwd)) { toast('密碼必須是 4 位數字'); return }
   try {
     const hash = await hashPwd(pwd)
     await cloudPost({ action: 'registerUser', name, empId, hash })
     document.getElementById('adm-new-emp').value  = ''
     document.getElementById('adm-new-name').value = ''
     document.getElementById('adm-new-pwd').value  = ''
+    // 初始密碼只有這一刻看得到（資料庫存的是雜湊），所以用 alert 讓管理者確實抄下來
+    alert(`✅ 帳號已建立\n\n工號（登入帳號）：${empId}\n姓名：${name}\n初始密碼：${pwd}\n\n請把這組資料交給本人。\n本人登入後可自行到右上角名字處修改密碼。`)
     toast(`✅ 帳號「${empId}／${name}」已建立`)
     loadAdminUsers()
   } catch(e) { toast('❌ ' + e.message) }
@@ -4083,10 +4188,9 @@ async function adminSetEmpId(name, inp) {
 }
 
 async function adminResetPwd(name) {
-  const pwd = prompt(`重設「${name}」的新密碼（至少 8 碼，不能全為數字）：`)
+  const pwd = prompt(`重設「${name}」的新密碼（4 位數字）：`)
   if (pwd === null) return
-  if (!pwd || pwd.length < 8) { toast('密碼至少 8 個字元'); return }
-  if (/^\d+$/.test(pwd)) { toast('密碼不能全為數字'); return }
+  if (!/^\d{4}$/.test(pwd)) { toast('密碼必須是 4 位數字'); return }
   try {
     const hash = await hashPwd(pwd)
     await cloudPost({ action: 'resetPassword', name, hash })
