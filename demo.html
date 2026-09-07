@@ -494,6 +494,24 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .sd-tot .sd-hd{background:#0369a1}
 
 
+
+/* ── 出發前確認 ── */
+#prep-modal{position:fixed;inset:0;z-index:9400;background:rgba(15,23,42,.72);
+  display:none;align-items:center;justify-content:center;padding:22px}
+#prep-modal.open{display:flex}
+.prep-card{background:#fff;border-radius:20px;width:100%;max-width:360px;padding:26px 22px 22px;
+  box-shadow:0 18px 50px rgba(0,0,0,.35)}
+.prep-q{text-align:center}
+.prep-ico{font-size:42px;line-height:1;margin-bottom:12px}
+.prep-title{font-size:18px;font-weight:800;color:#0f172a;line-height:1.45;margin-bottom:10px}
+.prep-beta{display:inline-block;margin-left:6px;background:#fef08a;color:#854d0e;font-size:10px;
+  font-weight:800;padding:2px 7px;border-radius:5px;vertical-align:middle;letter-spacing:.5px}
+.prep-sub{font-size:13px;color:#64748b;line-height:1.8;margin-bottom:20px}
+.prep-acts{display:flex;gap:9px}
+.prep-btn{flex:1;padding:14px;border:none;border-radius:13px;font-size:16px;font-weight:800;
+  cursor:pointer;font-family:inherit}
+.prep-btn.go{background:#4f6ef7;color:#fff}
+.prep-btn.no{background:#f1f5f9;color:#475569}
 /* ── 調查員工號登入 ── */
 .emp-card{background:#fff;border-radius:22px;padding:30px 24px 26px;width:100%;max-width:360px;
   box-shadow:0 18px 50px rgba(0,0,0,.35);text-align:center}
@@ -3278,7 +3296,13 @@ function triggerStopDetection(){
   // onDone 有可能是 speakNav 的「估算保險計時器」提前叫的，這時手機還在唸。
   // 在 iOS 上開麥會把音訊 session 從播放切成錄音，正在唸的提示語就被從中間掐斷
   // （現場症狀：提示語沒講完就卡掉）。所以一律用 listenAfterSpeech 等真的講完。
-  speakNav('請說出車輛停止原因', ()=>{ listenAfterSpeech(()=>_stopActive) }, {high:true})
+  // 沒開語音輸入就不開麥克風，提示語也要跟著換——
+  // 唸「請說出」卻不收音，調查員會一直對著手機講話卻沒有反應。
+  if(voicePickEnabled){
+    speakNav('請說出車輛停止原因', ()=>{ listenAfterSpeech(()=>_stopActive) }, {high:true})
+  }else{
+    speakNav('請選擇停止原因', null, {high:true})
+  }
   svySheetExpand()
   svyShowPanel('stop')
   startStopTicker()
@@ -3449,6 +3473,11 @@ function getApproachDist(){
 // ════════════════════════════════════
 //  TURN-BY-TURN NAV BANNER（接近下個節點時顯示左右轉方向＋距離，可選語音提示）
 // ════════════════════════════════════
+// 兩個獨立的開關，每次掃 QR 進來時詢問一次：
+//   navVoiceEnabled   語音導航 — 只管「前方○○公尺，右轉」這類轉彎提示
+//   voicePickEnabled  語音輸入 — 只管「用嘴巴說出停止原因」的麥克風辨識（宣告在語音辨識那一段）
+// ⚠️ 關掉導航≠整支 App 靜音。調查開始／結束、通過節點、詢問停止原因
+// 這些是流程必要的提示，不受導航開關影響（見 speakNav 已移除全域攔截）。
 let navVoiceEnabled = (localStorage.getItem('nav_voice_enabled') ?? '1') === '1'
 let _navAnnouncedTier = 0   // 0=尚未提示 1=已提示遠距離 2=已提示近距離（換下個節點時重置）
 const NAV_NEAR_M = 30
@@ -3506,7 +3535,10 @@ let _spQueue=[], _spBusy=false, _spLastText='', _spLastAt=0
 let _spNeedGap=false   // 剛做過 cancel()，下一次 speak() 要留一點間隔（見 _spPump）
 let _spCurHigh=false   // 目前正在播的是不是「重要語音」（見 speakNav 的略過規則）
 function speakNav(text, onDone, opts){
-  if(!navVoiceEnabled){ if(onDone) onDone(); return }
+  // ⚠️ 這裡刻意不看 navVoiceEnabled。
+  // 導航開關只該關掉「轉彎提示」，不該把調查開始／結束、節點、停止詢問也一起靜音——
+  // 那些是流程指令，關掉會讓調查員不知道系統到哪一步了。
+  // 轉彎提示的攔截改放在 updateNavBanner 呼叫端。
   if(!('speechSynthesis' in window)){ if(onDone) onDone(); return }
   const now=Date.now()
   if(text===_spLastText && now-_spLastAt<2000){ if(onDone) onDone(); return }
@@ -3768,6 +3800,9 @@ function startClarify(rule){
   }, IS_IOS?300:0)
 }
 function askClarify(rule){
+  // 沒開語音輸入就不追問——問了也收不到答案，只會讓面板卡著等一個永遠不來的回覆。
+  // 這種情況下由調查員自己在面板上點選，本來就分得出路口／路段。
+  if(!voicePickEnabled) return
   speakNav(rule.ask, ()=>{
     listenAfterSpeech(()=>_stopActive && _clarify===rule, ()=>{
       // 逾時從「問完」開始算，不然朗讀時間會吃掉駕駛的回答時間
@@ -4014,12 +4049,15 @@ function updateNavBanner(lat,lng,nextNode,dist){
   $('nav-banner-dist').textContent = dist<NAV_NEAR_M ? '即將' : distText+' 後'
   $('nav-banner-turn').textContent = turn.label
   // 語音提示：遠距離提醒一次、近距離再提醒一次，換下個節點會重置（節點紀錄是背景自動進行，語音不用特別報路口名稱）
-  if(dist<=NAV_NEAR_M && _navAnnouncedTier<2){
-    _navAnnouncedTier=2
-    speakNav(turn.label)
-  }else if(dist<=getNavFarDist() && _navAnnouncedTier<1){
-    _navAnnouncedTier=1
-    speakNav(`前方${Math.round(dist/10)*10}公尺，${turn.label}`)
+  // 轉彎提示是「語音導航」的內容，關掉導航就不唸（畫面上的提示條仍然照常顯示）
+  if(navVoiceEnabled){
+    if(dist<=NAV_NEAR_M && _navAnnouncedTier<2){
+      _navAnnouncedTier=2
+      speakNav(turn.label)
+    }else if(dist<=getNavFarDist() && _navAnnouncedTier<1){
+      _navAnnouncedTier=1
+      speakNav(`前方${Math.round(dist/10)*10}公尺，${turn.label}`)
+    }
   }
 }
 function checkNodeProximity(lat,lng){
@@ -6357,6 +6395,11 @@ document.addEventListener('touchmove', e=>{
 </div>
 
 <!-- ══ Device Test Modal ══ -->
+<!-- 出發前確認：問候 → 兩個 Beta 開關 → 裝置檢查 -->
+<div id="prep-modal">
+  <div class="prep-card"><div id="prep-body"></div></div>
+</div>
+
 <div id="devtest-modal" onclick="if(event.target===this)closeDevTest()">
   <div class="devtest-box">
     <div class="devtest-hdr">
@@ -6410,6 +6453,20 @@ let _empNext=null          // 工號確認後要接著跑的事（進裝置檢�
 let _empPendingId=''       // 正在確認中的工號
 
 function showEmpLogin(next){
+  // 同一支手機、同一天，工號只需要輸入一次。
+  // 換日就要重問——現場常常是換人接手同一支手機。
+  try{
+    const last=JSON.parse(localStorage.getItem(EMP_KEY)||'null')
+    if(last && last.empId && last.name && last.day===todayStr()){
+      config.surveyor=last.name
+      config.surveyorEmpId=last.empId
+      const si=document.getElementById('si-name'); if(si) si.value=last.name
+      const ss=document.getElementById('s-surveyor'); if(ss) ss.value=last.name
+      next()                       // 直接進路線頁面
+      startPrepFlow(last.name)     // 再跳出問候與設備確認
+      return
+    }
+  }catch(e){}
   _empNext=next
   showScreen('screen-emp')
   const idEl=document.getElementById('emp-id')
@@ -6475,15 +6532,71 @@ async function empSubmit(){
 }
 
 function _empDone(empId, name){
-  // 記在本機，後續簽到、SGS 表頭的調查員欄都直接用，不必再打一次
-  try{ localStorage.setItem(EMP_KEY, JSON.stringify({empId, name})) }catch(e){}
+  // 記在本機（含日期），同一天同一支手機不用再輸入
+  try{ localStorage.setItem(EMP_KEY, JSON.stringify({empId, name, day:todayStr()})) }catch(e){}
   config.surveyor=name
   config.surveyorEmpId=empId
   const si=document.getElementById('si-name'); if(si) si.value=name
   const ss=document.getElementById('s-surveyor'); if(ss) ss.value=name
-  // 接著是裝置檢查與授權，關掉之後才進選路線
+  // 先跳到路線頁面，問候與設備確認蓋在上面——調查員看得到自己要做的路線清單，
+  // 心裡有底之後再回答那兩個開關，比對著空白畫面問來得清楚
   const next=_empNext; _empNext=null
-  _afterDevTest = ()=>{ _afterDevTest=null; if(next) next() }
+  if(next) next()
+  startPrepFlow(name)
+}
+
+// ══════════════════════════════════════════════════════════════
+//  出發前確認：問候 → 語音導航？ → 語音輸入？ → 裝置檢查與授權
+// ══════════════════════════════════════════════════════════════
+const PREP_STEPS=[
+  {key:'nav',  q:'請問需要開啟語音導航嗎？',
+   sub:'開啟後會在接近路口時提示「前方○○公尺，右轉」。<br>關閉也不影響調查開始／結束、通過節點與停止詢問的語音。'},
+  {key:'mic',  q:'請問需要開啟語音輸入嗎？',
+   sub:'開啟後車輛停止時可以直接說出原因，不用低頭點選。<br>關閉則改為在畫面上點選停止原因。'},
+]
+let _prepIdx=0, _prepName=''
+function startPrepFlow(name){
+  _prepName=name||config.surveyor||''
+  _prepIdx=-1                       // -1 是問候頁
+  _renderPrep()
+  document.getElementById('prep-modal').classList.add('open')
+}
+function _renderPrep(){
+  const body=document.getElementById('prep-body')
+  if(!body) return
+  if(_prepIdx<0){
+    body.innerHTML='<div class="prep-q"><div class="prep-ico">👋</div>'
+      +'<div class="prep-title">'+he(_prepName)+' 您好</div>'
+      +'<div class="prep-sub">調查開始前，讓我們先來確認你的設備及授權</div>'
+      +'<div class="prep-acts"><button class="prep-btn go" onclick="prepNext()">開始確認</button></div></div>'
+    return
+  }
+  const st=PREP_STEPS[_prepIdx]
+  if(!st){ _finishPrep(); return }
+  body.innerHTML='<div class="prep-q"><div class="prep-ico">'+(st.key==='nav'?'🧭':'🎤')+'</div>'
+    +'<div class="prep-title">'+st.q+'<span class="prep-beta">Beta</span></div>'
+    +'<div class="prep-sub">'+st.sub+'</div>'
+    +'<div class="prep-acts">'
+    +'<button class="prep-btn no" onclick="prepAnswer(false)">不需要</button>'
+    +'<button class="prep-btn go" onclick="prepAnswer(true)">需要</button>'
+    +'</div></div>'
+}
+function prepNext(){ _prepIdx++; _renderPrep() }
+function prepAnswer(yes){
+  const st=PREP_STEPS[_prepIdx]
+  if(st.key==='nav'){
+    navVoiceEnabled=yes
+    localStorage.setItem('nav_voice_enabled', yes?'1':'0')
+    const b=document.getElementById('nav-banner-mute'); if(b) b.textContent=yes?'🔊':'🔇'
+  }else if(st.key==='mic'){
+    voicePickEnabled=yes
+    localStorage.setItem('voice_pick_enabled', yes?'1':'0')
+  }
+  prepNext()
+}
+function _finishPrep(){
+  document.getElementById('prep-modal').classList.remove('open')
+  // 接著才是裝置檢查與授權
   openDevTest()
 }
 
