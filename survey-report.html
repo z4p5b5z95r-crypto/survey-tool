@@ -3568,7 +3568,7 @@ function startInlineEdit(si,combo){
   setTimeout(()=>{
     const el=document.querySelector(`[data-sv-key="${si}-${combo}"]`)
     if(!el) return
-    _snapStart(el)      // 記下起點基準，改動時才算得出要平移多少
+    _snapTimes(el)      // 記下所有時刻，改動時才算得出是哪一格、移多少
     el.scrollIntoView({behavior:'smooth',block:'nearest'})
   },120)
 }
@@ -3685,29 +3685,40 @@ function _liveTL(box){
     .reduce((a,el)=>a+(parseInt(el.dataset.seglen,10)||0),0)
 }
 
-// ── 改起點＝整趟時間軸平移 ──────────────────────────────────────
-// 調查員把時刻記錯一小時（15 打成 16）是最常見的更正情境，
-// 這時候要動的是「整趟」，不是只有起點——各段之間的間隔是實測出來的，
-// 不該因為修正起點就被拉長或壓縮。
-// 所以改起點時，把所有節點時刻一起加上同樣的差值。
-// （單獨改某一個節點則只動那一個，因為那是在修正那個路口的到達時刻。）
-function _shiftAllNodes(box, deltaSec){
-  if(!deltaSec) return
-  const n=[...box.querySelectorAll('[data-ie^="node-h-"]')].length
-  const get=k=>{const el=box.querySelector(`[data-ie="${k}"]`);const v=parseInt(el&&el.value,10);return isNaN(v)?0:v}
+// ── 時刻連動：改哪一個，它之後的全部跟著移 ──────────────────────
+// 現場的時刻是一條連續的流水帳。發現某個時間記錯（整段慢了一小時、
+// 或某個路口的到達時刻抄錯），錯的通常是「從那一刻起」的整段，不是只有那一格。
+// 所以規則統一：
+//   改起點      → 所有節點跟著移（等於整趟平移）
+//   改第 i 個節點 → 第 i 之後的節點跟著移，第 i 之前的完全不動
+// 各段間隔是實測出來的，平移不會改變它們——只有被改的那一段長度會變。
+//
+// 索引約定：0 = 起點，1..n = 第 1..n 個節點（終點就是最後一個節點）。
+function _timeIdxCount(box){ return box.querySelectorAll('[data-ie^="node-h-"]').length }
+function _readTimes(box){
+  const g=k=>{const el=box.querySelector(`[data-ie="${k}"]`);const v=parseInt(el&&el.value,10);return isNaN(v)?0:v}
+  const n=_timeIdxCount(box)
+  const out=[g('start-h')*3600+g('start-m')*60+g('start-s')]
+  for(let i=0;i<n;i++) out.push(g(`node-h-${i}`)*3600+g(`node-m-${i}`)*60+g(`node-s-${i}`))
+  return out
+}
+// 從第 fromIdx 個節點（1 起算）開始往後平移
+function _shiftFrom(box, fromIdx, delta){
+  if(!delta) return
+  const n=_timeIdxCount(box)
+  const g=k=>{const el=box.querySelector(`[data-ie="${k}"]`);const v=parseInt(el&&el.value,10);return isNaN(v)?0:v}
   const set=(k,v)=>{const el=box.querySelector(`[data-ie="${k}"]`);if(el)el.value=v}
-  for(let i=0;i<n;i++){
-    let sec=get(`node-h-${i}`)*3600+get(`node-m-${i}`)*60+get(`node-s-${i}`)+deltaSec
-    sec=((sec%86400)+86400)%86400      // 跨日就繞回來，不會出現負的時：分：秒
+  for(let i=Math.max(0,fromIdx-1);i<n;i++){
+    let sec=g(`node-h-${i}`)*3600+g(`node-m-${i}`)*60+g(`node-s-${i}`)+delta
+    sec=((sec%86400)+86400)%86400      // 繞回 0~24 小時，不會出現負的時：分：秒
     set(`node-h-${i}`,Math.floor(sec/3600))
     set(`node-m-${i}`,Math.floor(sec/60)%60)
     set(`node-s-${i}`,sec%60)
   }
 }
-// 記住目前的起點秒數，下次改動時才算得出差值
-function _snapStart(box){
-  const g=k=>{const el=box.querySelector(`[data-ie="${k}"]`);const v=parseInt(el&&el.value,10);return isNaN(v)?0:v}
-  box.dataset.prevStart=String(g('start-h')*3600+g('start-m')*60+g('start-s'))
+// 記下目前所有時刻，下次改動才比對得出「哪一格被改、改了多少」
+function _snapTimes(box){
+  try{ box.dataset.prevTimes=JSON.stringify(_readTimes(box)) }catch(e){}
 }
 
 // 事件委派綁在 document，表格每次重繪都不必重新綁
@@ -3721,21 +3732,27 @@ function _bindLiveRecalc(){
     if(!/^(start|node|dl)-/.test(ie)) return
     const box=el.closest('[data-sv-key]')
     if(!box) return
-    if(/^start-[hms]$/.test(ie)){
-      const g=k=>{const x=box.querySelector(`[data-ie="${k}"]`);const v=parseInt(x&&x.value,10);return isNaN(v)?0:v}
-      const now=g('start-h')*3600+g('start-m')*60+g('start-s')
-      const prev=parseInt(box.dataset.prevStart,10)
-      if(!isNaN(prev)) _shiftAllNodes(box, now-prev)
-      box.dataset.prevStart=String(now)
+    if(/^(start|node)-/.test(ie)){
+      let prev=null
+      try{ prev=JSON.parse(box.dataset.prevTimes||'null') }catch(e){}
+      const now=_readTimes(box)
+      if(prev && prev.length===now.length){
+        let idx=-1
+        for(let i=0;i<now.length;i++){ if(now[i]!==prev[i]){ idx=i; break } }
+        // 逐字輸入的中間狀態（15→1→16）不影響結果：每次都跟上一個快照比，
+        // 差值會自己抵消，最後的淨平移量就是使用者真正改的幅度。
+        if(idx>=0) _shiftFrom(box, idx+1, now[idx]-prev[idx])
+      }
+      _snapTimes(box)
     }
     _liveRecalc(box)
   })
-  // 進入編輯模式時先記下起點，之後才有基準可以算差值
+  // 點進任何一格時，若還沒有基準就先記一次
   document.addEventListener('focusin', e=>{
     const el=e.target
-    if(el&&el.dataset&&/^start-[hms]$/.test(el.dataset.ie||'')){
+    if(el&&el.dataset&&/^(start|node)-/.test(el.dataset.ie||'')){
       const box=el.closest('[data-sv-key]')
-      if(box && box.dataset.prevStart===undefined) _snapStart(box)
+      if(box && box.dataset.prevTimes===undefined) _snapTimes(box)
     }
   })
 }
