@@ -493,6 +493,26 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .sd-tot{border-color:#0369a1}
 .sd-tot .sd-hd{background:#0369a1}
 
+
+/* ── 調查員工號登入 ── */
+.emp-card{background:#fff;border-radius:22px;padding:30px 24px 26px;width:100%;max-width:360px;
+  box-shadow:0 18px 50px rgba(0,0,0,.35);text-align:center}
+.emp-logo{width:82px;height:82px;margin:0 auto 14px;border-radius:20px;background:#1e293b;
+  display:flex;align-items:center;justify-content:center;font-size:42px}
+.emp-title{font-size:19px;font-weight:800;color:#0f172a;margin-bottom:22px;line-height:1.4}
+.emp-beta{display:inline-block;margin-left:7px;background:#fef08a;color:#854d0e;font-size:11px;
+  font-weight:800;padding:2px 8px;border-radius:6px;vertical-align:middle;letter-spacing:.5px}
+.emp-f{text-align:left;margin-bottom:14px}
+.emp-f label{display:block;font-size:13px;font-weight:800;color:#475569;margin-bottom:6px}
+.emp-f input{width:100%;padding:15px 16px;border:2px solid #e2e8f0;border-radius:14px;
+  font-size:17px;outline:none;font-family:inherit;color:#0f172a;transition:border-color .15s}
+.emp-f input:focus{border-color:#4f6ef7}
+.emp-note{font-size:11px;color:#94a3b8;margin-top:6px;line-height:1.6}
+.emp-err{font-size:13px;color:#dc2626;min-height:19px;margin-bottom:6px;font-weight:700}
+.emp-btn{width:100%;padding:16px;background:#4f6ef7;color:#fff;border:none;border-radius:14px;
+  font-size:17px;font-weight:800;cursor:pointer;font-family:inherit;transition:opacity .15s}
+.emp-btn:disabled{opacity:.55}
+.emp-hello{font-size:14px;color:#16a34a;font-weight:800;margin-top:12px;min-height:20px}
 /* ── SGS 表格：與桌機報告頁（survey-report.html）逐項對齊 ──────────
    樣式與算式都直接沿用桌機那份，兩邊看到的必須是同一張表。
    注意兩個容易被改壞的算式：
@@ -608,6 +628,33 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 </div>
 
 <!-- ══ Screen: 專案 QR 掃描後先選路線 ══ -->
+<!-- ══ 調查員工號登入：掃完 QR 的第一關 ══════════════════════════
+     只問工號。查得到就自動帶出姓名，查不到才追問姓名並寫進名冊，
+     下一次同一個工號就不用再打名字了。 -->
+<div id="screen-emp" class="screen" style="background:linear-gradient(160deg,#1e293b 0%,#0f172a 100%);align-items:center;justify-content:center;padding:24px">
+  <div class="emp-card">
+    <div class="emp-logo">🚗</div>
+    <div class="emp-title">交通行駛速率與延滯調查<span class="emp-beta">BETA</span></div>
+
+    <div class="emp-f">
+      <label for="emp-id">帳號</label>
+      <input id="emp-id" type="text" inputmode="text" autocomplete="username"
+             placeholder="輸入您的工號" onkeydown="if(event.key==='Enter')empSubmit()">
+    </div>
+
+    <div class="emp-f" id="emp-name-wrap" style="display:none">
+      <label for="emp-name">姓名</label>
+      <input id="emp-name" type="text" placeholder="第一次使用，請輸入姓名"
+             onkeydown="if(event.key==='Enter')empSubmit()">
+      <div class="emp-note">建立後，下次只要輸入工號就會自動帶出姓名</div>
+    </div>
+
+    <div class="emp-err" id="emp-err"></div>
+    <button class="emp-btn" id="emp-btn" onclick="empSubmit()">下一步</button>
+    <div class="emp-hello" id="emp-hello"></div>
+  </div>
+</div>
+
 <div id="screen-project-routes" class="screen">
   <div class="page-header">
     <div class="page-header-body">
@@ -6092,7 +6139,8 @@ function closeDailyReminder(pid){
 // 一天內開第二個專案不會再走一遍。
 async function startSetupFlow(){
   if(!(permGateDoneToday() && await allPermsGranted())){ showPermGate(); return }
-  if(!devTestDoneToday()) openDevTest()
+  // 工號登入那一關已經帶著跑過裝置檢查了，這裡不要再跳第二次
+  if(!devTestDoneToday() && !_afterDevTest && !config.surveyorEmpId) openDevTest()
 }
 const DEVTEST_DAILY_KEY='devtest_daily'
 function devTestDoneToday(){
@@ -6263,11 +6311,13 @@ window.addEventListener('load', async () => {
   const kParam  = params.get('k')
 
   if(pidParam && gsParam && kParam){
-    // ── 專案 QR：先選路線 ──
-    await showProjectRoutePicker(pidParam, gsParam, kParam)
+    // ── 專案 QR：工號登入 → 裝置檢查與授權 → 選路線 ──
+    cloudScriptUrl=gsParam; cloudApiKey=kParam
+    showEmpLogin(()=>{ showProjectRoutePicker(pidParam, gsParam, kParam) })
   }else if(idParam && gsParam && kParam){
-    // ── 單一路線 QR ──
-    await loadCloudRouteAndProceed(idParam, gsParam, kParam)
+    // ── 單一路線 QR：同樣先過工號登入 ──
+    cloudScriptUrl=gsParam; cloudApiKey=kParam
+    showEmpLogin(()=>{ loadCloudRouteAndProceed(idParam, gsParam, kParam) })
   }else if(loadFromHash()){
     // ── Offline ?c= encoded route ──
     await prefetchRoutes()
@@ -6349,6 +6399,111 @@ function closeHelpMenu(){
   document.getElementById('help-menu').classList.remove('open')
 }
 
+
+// ══════════════════════════════════════════════════════════════
+//  調查員工號登入（掃完 QR 的第一關）
+// ══════════════════════════════════════════════════════════════
+// 順序：工號 → 裝置檢查與授權 → 選路線
+// 工號查得到就自動帶姓名；查不到才追問一次姓名並寫進名冊。
+const EMP_KEY='surveyor_emp'
+let _empNext=null          // 工號確認後要接著跑的事（進裝置檢查→選路線）
+let _empPendingId=''       // 正在確認中的工號
+
+function showEmpLogin(next){
+  _empNext=next
+  showScreen('screen-emp')
+  const idEl=document.getElementById('emp-id')
+  const nameWrap=document.getElementById('emp-name-wrap')
+  const btn=document.getElementById('emp-btn')
+  if(nameWrap) nameWrap.style.display='none'
+  if(btn){ btn.disabled=false; btn.textContent='下一步' }
+  document.getElementById('emp-err').textContent=''
+  document.getElementById('emp-hello').textContent=''
+  // 帶出上次用過的工號，同一支手機同一個人不用每天重打
+  try{
+    const last=JSON.parse(localStorage.getItem(EMP_KEY)||'null')
+    if(last && last.empId && idEl) idEl.value=last.empId
+  }catch(e){}
+  setTimeout(()=>{ if(idEl){ idEl.focus(); idEl.select() } },80)
+}
+
+async function empSubmit(){
+  const idEl=document.getElementById('emp-id')
+  const nameEl=document.getElementById('emp-name')
+  const nameWrap=document.getElementById('emp-name-wrap')
+  const err=document.getElementById('emp-err')
+  const hello=document.getElementById('emp-hello')
+  const btn=document.getElementById('emp-btn')
+  const empId=(idEl.value||'').trim()
+  err.textContent=''
+  if(!empId){ err.textContent='請輸入工號'; idEl.focus(); return }
+
+  // 第二階段：姓名欄已經開著，代表這是新工號，要建檔
+  if(nameWrap.style.display!=='none'){
+    const nm=(nameEl.value||'').trim()
+    if(!nm){ err.textContent='請輸入姓名'; nameEl.focus(); return }
+    btn.disabled=true; btn.textContent='建立中…'
+    try{
+      await _empPost({action:'registerSurveyor', empId, name:nm})
+      _empDone(empId, nm)
+    }catch(e){
+      err.textContent='建立失敗：'+((e&&e.message)||e)
+      btn.disabled=false; btn.textContent='建立並繼續'
+    }
+    return
+  }
+
+  // 第一階段：查名冊
+  btn.disabled=true; btn.textContent='查詢中…'
+  try{
+    const found=await _empGet({action:'getSurveyor', empId})
+    if(found && found.name){
+      hello.textContent='　'+found.name+'，您好'
+      _empDone(empId, found.name)
+    }else{
+      // 查無此工號 → 追問姓名
+      _empPendingId=empId
+      nameWrap.style.display='block'
+      err.textContent=''
+      btn.disabled=false; btn.textContent='建立並繼續'
+      setTimeout(()=>{ if(nameEl) nameEl.focus() },80)
+    }
+  }catch(e){
+    err.textContent='查詢失敗：'+((e&&e.message)||e)+'（請確認網路）'
+    btn.disabled=false; btn.textContent='下一步'
+  }
+}
+
+function _empDone(empId, name){
+  // 記在本機，後續簽到、SGS 表頭的調查員欄都直接用，不必再打一次
+  try{ localStorage.setItem(EMP_KEY, JSON.stringify({empId, name})) }catch(e){}
+  config.surveyor=name
+  config.surveyorEmpId=empId
+  const si=document.getElementById('si-name'); if(si) si.value=name
+  const ss=document.getElementById('s-surveyor'); if(ss) ss.value=name
+  // 接著是裝置檢查與授權，關掉之後才進選路線
+  const next=_empNext; _empNext=null
+  _afterDevTest = ()=>{ _afterDevTest=null; if(next) next() }
+  openDevTest()
+}
+
+// 工號查詢／建檔都走 API key（現場端沒有登入流程）
+async function _empGet(params){
+  if(!cloudScriptUrl||!cloudApiKey) throw new Error('未設定雲端')
+  const p=new URLSearchParams({...params, key:cloudApiKey, t:Date.now()})
+  return await gsJson(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(15000)})
+}
+async function _empPost(body){
+  if(!cloudScriptUrl||!cloudApiKey) throw new Error('未設定雲端')
+  const res=await fetch(cloudScriptUrl,{method:'POST',headers:{'Content-Type':'text/plain'},
+    body:JSON.stringify({...body, key:cloudApiKey}), signal:AbortSignal.timeout(15000)})
+  const txt=await res.text()
+  if(txt.trim().startsWith('<')) throw new Error('伺服器回應異常')
+  const json=JSON.parse(txt)
+  if(!json.ok) throw new Error(json.error||'寫入失敗')
+  return json.data
+}
+
 // ── Device test ──
 function openDevTest(){
   var modal=document.getElementById('devtest-modal')
@@ -6359,9 +6514,12 @@ function openDevTest(){
   modal.classList.add('open')
   runDeviceChecks()
 }
+// 裝置檢查關閉後要接著做的事（工號登入流程用它串到「選路線」）
+let _afterDevTest=null
 function closeDevTest(){
   devMicCleanup()
   document.getElementById('devtest-modal').classList.remove('open')
+  if(_afterDevTest){ const f=_afterDevTest; _afterDevTest=null; try{ f() }catch(e){ console.error(e) } }
 }
 
 // ── 設備測試核心 ──
