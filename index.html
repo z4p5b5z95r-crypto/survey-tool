@@ -2808,6 +2808,12 @@ async function runPermGate(){
   }catch(e){ motionP=Promise.reject(e) }
 
   // ③ 麥克風：拿到權限後立刻關掉，這裡只是為了先跳授權視窗
+  // ⚠️ 出發前那張設定卡若關掉語音輸入，這一整段跳過——
+  // 不會跳麥克風授權視窗，也不會預熱語音辨識。
+  // 跟使用者要一個他明確說不要的權限，只會讓人困惑。
+  if(!voicePickEnabled){
+    setPermRow('mic','skip','你選擇不使用語音輸入，已跳過')
+  }else{
   try{
     const st=await navigator.mediaDevices.getUserMedia({audio:true})
     st.getTracks().forEach(t=>t.stop())
@@ -2822,6 +2828,7 @@ async function runPermGate(){
     setPermRow('mic','fail', e.name==='NotAllowedError'
       ? '已拒絕，停車時請改用按鈕選擇原因'
       : '無法使用麥克風，停車時請用按鈕')
+  }
   }
 
   // ④ 定位：實際取一次位置，順便確認精度
@@ -6927,12 +6934,20 @@ async function runDeviceChecks(){
   renderDevResults()
 
   // ── 3.5 麥克風與語音辨識（停車時可直接說出延滯原因）──
-  _devResults.push({id:'mic',name:'語音輸入測試',required:false,
-    status: VOICE_SR ? 'pending' : 'warn',
-    heard:'',
-    desc: VOICE_SR
-      ? '停車時可直接說出延滯原因，不必低頭點螢幕。請按下方按鈕唸一句話測試。'
-      : '此瀏覽器不支援語音辨識，停車時請用按鈕選擇原因（不影響監測作業）'})
+  // 出發前那張設定卡已經關掉語音輸入的話，這一步整個跳過——
+  // 不會要求麥克風授權，也不用唸三個詞。要一個不會用到的權限本來就沒道理，
+  // 而且那是整個裝置檢查裡最花時間的一步。
+  if(!voicePickEnabled){
+    _devResults.push({id:'mic',name:'語音輸入測試',required:false,status:'skip',
+      desc:'你選擇不使用語音輸入，已跳過麥克風授權與測試。停車時請直接在畫面上點選原因。'})
+  }else{
+    _devResults.push({id:'mic',name:'語音輸入測試',required:false,
+      status: VOICE_SR ? 'pending' : 'warn',
+      heard:'',
+      desc: VOICE_SR
+        ? '停車時可直接說出延滯原因，不必低頭點螢幕。請按下方按鈕唸一句話測試。'
+        : '此瀏覽器不支援語音辨識，停車時請用按鈕選擇原因（不影響監測作業）'})
+  }
   renderDevResults()
 
   // ── 4. 定位授權 + GPS 精度（實際取得位置）──
@@ -7092,10 +7107,12 @@ function devDoneHtml(){
       +'<div class="dvq-title">必要項目未通過</div>'
       +'<div class="dvq-sub">沒有定位就無法記錄軌跡與節點時間。<br>請依上一步的提示修正後重新檢查。</div></div>'
   }
+  var skipN=_devResults.filter(function(r){return r.status==='skip'}).length
   return '<div class="dvq"><div class="dvq-ico">✅</div>'
     +'<div class="dvq-title">裝置檢查完成</div>'
     +'<div class="dvq-sub">'+okN+' 項正常'
     +(limited>0?('，'+limited+' 項輔助功能受限（不影響資料完整性）'):'')
+    +(skipN>0?('，'+skipN+' 項依你的設定略過'):'')
     +'</div></div>'
 }
 function devStepHtml(r){
