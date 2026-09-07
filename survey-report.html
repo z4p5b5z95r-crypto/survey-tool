@@ -190,6 +190,9 @@ td:first-child{text-align:left;font-weight:500}
 .pf-seg{text-align:left!important;font-weight:600;color:#1e3a5f;background:#f0f4fa!important}
 .pf-time{color:#1565c0;font-weight:800;font-size:12px}
 .pf-arrive{background:#c8f7d0!important;color:#1b5e20;font-weight:800}
+/* 編輯模式下「算出來的」格子：跟可輸入的框明顯不同，一眼看得出不能改 */
+.pf-derived{position:relative;color:#64748b!important;font-style:italic}
+.pf-derived::after{content:'ƒ';position:absolute;top:1px;right:2px;font-size:8px;color:#94a3b8;font-style:normal}
 .pf-spd{font-size:15px;font-weight:800;color:#1e3a5f}
 .pf-pct{font-size:9.5px;background:#f0f4fa!important;color:#374151}
 .pf-totrow td{background:#dbeafe!important;font-weight:700;color:#1e3a5f;border-color:#93c5fd}
@@ -1868,11 +1871,11 @@ function renderComboRecords(combo){
         ${dCell('parking')}${dCell('ped_cross')}${dCell('road_other')}
         ${dCell('red_light')}${dCell('left_same')}${dCell('left_opp')}
         ${dCell('right_turn')}${dCell('cross_veh')}${dCell('ped_int')}${dCell('int_other')}
-        <td style="font-weight:600">${st2?.travelS??''}</td>
-        <td>${seg.length||''}</td>
-        <td style="font-weight:600">${calcRunS??''}</td>
-        <td>${spdFn(seg.length,st2?.travelS)}</td>
-        <td>${spdFn(seg.length,calcRunS)}</td>
+        <td style="font-weight:600" data-calc="segTravel-${i}">${st2?.travelS??''}</td>
+        <td data-seglen="${seg.length||0}">${seg.length||''}</td>
+        <td style="font-weight:600" data-calc="segRun-${i}">${calcRunS??''}</td>
+        <td data-calc="segSpdT-${i}">${spdFn(seg.length,st2?.travelS)}</td>
+        <td data-calc="segSpdR-${i}">${spdFn(seg.length,calcRunS)}</td>
       </tr>`
     }).join('')
     const emptyRows=Array(Math.max(0,7-segOrder.length)).fill(`<tr>${'<td></td>'.repeat(23)}</tr>`).join('')
@@ -1990,21 +1993,24 @@ function renderComboRecords(combo){
             <td rowspan="2" class="pf-seg">${he(toNode?.name||'終點')}</td>
             <td rowspan="2">${TL}</td>
             ${isEdit?`<td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="23" data-ie="start-h" value="${+sH||0}"></td><td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="start-m" value="${+sM||0}"></td><td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="start-s" value="${+sS||0}"></td>`:`<td class="pf-time">${sH}</td><td class="pf-time">${sM}</td><td class="pf-time">${sS}</td>`}
-            ${isEdit?`<td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="23" data-ie="end-h" value="${+eH||0}"></td><td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="end-m" value="${+eM||0}"></td><td class="pf-arrive"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="end-s" value="${+eS||0}"></td>`:`<td class="pf-time">${eH}</td><td class="pf-time">${eM}</td><td class="pf-arrive">${eS}</td>`}
-            <td style="font-weight:700">${trip.travelS||0}</td>
-            <td>${trip.intTotalS||0}</td>
-            <td>${trip.roadTotalS||0}</td>
-            <td>${trip.runS||0}</td>
-            <td rowspan="2" class="pf-spd">${travelSpd}</td>
-            <td rowspan="2" class="pf-spd">${runSpd}</td>
+            <!-- 終點時刻＝最後一個節點的經過時刻，由計算得出，不開放手動修改 -->
+            <td class="pf-time${isEdit?' pf-derived':''}" data-calc="end-h">${eH}</td>
+            <td class="pf-time${isEdit?' pf-derived':''}" data-calc="end-m">${eM}</td>
+            <td class="pf-arrive${isEdit?' pf-derived':''}" data-calc="end-s">${eS}</td>
+            <td style="font-weight:700" data-calc="travelS">${trip.travelS||0}</td>
+            <td data-calc="intTotalS">${trip.intTotalS||0}</td>
+            <td data-calc="roadTotalS">${trip.roadTotalS||0}</td>
+            <td data-calc="runS">${trip.runS||0}</td>
+            <td rowspan="2" class="pf-spd" data-calc="travelSpd">${travelSpd}</td>
+            <td rowspan="2" class="pf-spd" data-calc="runSpd">${runSpd}</td>
           </tr>
           <tr>
             <td colspan="3" class="pf-pct"></td>
             <td colspan="3" class="pf-pct"></td>
             <td class="pf-pct" style="color:#1d6fbd;font-weight:600">百分比</td>
-            <td class="pf-pct">${pct(trip.intTotalS||0,trip.travelS)}</td>
-            <td class="pf-pct">${pct(trip.roadTotalS||0,trip.travelS)}</td>
-            <td class="pf-pct">${pct(trip.runS||0,trip.travelS)}</td>
+            <td class="pf-pct" data-calc="pctInt">${pct(trip.intTotalS||0,trip.travelS)}</td>
+            <td class="pf-pct" data-calc="pctRoad">${pct(trip.roadTotalS||0,trip.travelS)}</td>
+            <td class="pf-pct" data-calc="pctRun">${pct(trip.runS||0,trip.travelS)}</td>
           </tr>
         </table>
         </div>
@@ -2040,30 +2046,30 @@ function renderComboRecords(combo){
             <td rowspan="2" class="pf-fl">延滯時間<br>(秒)</td>
             <td class="pf-fl">小計</td>
             <td colspan="3" class="pf-fv"></td>
-            ${RC.map(c=>`<td class="pf-fv">${colT[c]||0}</td>`).join('')}
-            ${IC.map(c=>`<td class="pf-fv">${colT[c]||0}</td>`).join('')}
+            ${RC.map(c=>`<td class="pf-fv" data-calc="sum-${c}">${colT[c]||0}</td>`).join('')}
+            ${IC.map(c=>`<td class="pf-fv" data-calc="sum-${c}">${colT[c]||0}</td>`).join('')}
             <td colspan="5"></td>
           </tr>
           <tr>
             <td class="pf-fl">合計</td>
             <td colspan="3"></td>
-            <td colspan="6" class="pf-fv">${roadT}</td>
-            <td colspan="7" class="pf-fv">${intT}</td>
+            <td colspan="6" class="pf-fv" data-calc="roadT">${roadT}</td>
+            <td colspan="7" class="pf-fv" data-calc="intT">${intT}</td>
             <td colspan="5"></td>
           </tr>
           <tr>
             <td rowspan="2" class="pf-fl">延滯時間<br>百分比</td>
             <td class="pf-fl">小計</td>
             <td colspan="3" class="pf-fv"></td>
-            ${RC.map(c=>`<td class="pf-fv">${pct(colT[c],roadT+intT)}</td>`).join('')}
-            ${IC.map(c=>`<td class="pf-fv">${pct(colT[c],roadT+intT)}</td>`).join('')}
+            ${RC.map(c=>`<td class="pf-fv" data-calc="pct-${c}">${pct(colT[c],roadT+intT)}</td>`).join('')}
+            ${IC.map(c=>`<td class="pf-fv" data-calc="pct-${c}">${pct(colT[c],roadT+intT)}</td>`).join('')}
             <td colspan="5"></td>
           </tr>
           <tr>
             <td class="pf-fl">合計</td>
             <td colspan="3"></td>
-            <td colspan="6" class="pf-fv">${pct(roadT,roadT+intT)}</td>
-            <td colspan="7" class="pf-fv">${pct(intT,roadT+intT)}</td>
+            <td colspan="6" class="pf-fv" data-calc="pctRoadT">${pct(roadT,roadT+intT)}</td>
+            <td colspan="7" class="pf-fv" data-calc="pctIntT">${pct(intT,roadT+intT)}</td>
             <td colspan="5"></td>
           </tr>
         </table>
@@ -3564,32 +3570,101 @@ function cancelInlineEdit(si,combo){
   renderComboRecords(combo)
 }
 
-// 「終點」時刻與「最後一段路段的經過時刻」是同一個值，畫面上卻有兩組輸入框。
-// 改任一邊就即時同步另一邊，避免兩個框顯示不同時間、讓人不知道以哪個為準。
-// 用事件委派綁在 document 上，這樣每次重繪表格都不必重新綁定。
-function _bindEndTimeSync(){
-  if(_bindEndTimeSync._done) return
-  _bindEndTimeSync._done=true
+// ── 編輯中的即時重算 ────────────────────────────────────────────
+// 可以手改的只有：起點時刻、各節點經過時刻、各段的延滯秒數。
+// 其餘全部是算出來的——終點時刻、每段旅行/行駛時間與速率、
+// 總旅行時間、三項延滯統計、各種小計與百分比。
+// 以前只有按下「儲存」才重算，改到一半的畫面數字全是舊的，
+// 根本看不出自己改的東西合不合理。現在邊改邊算。
+//
+// 公式（跟儲存時的 _recalcTrip 同一套，改一邊就要改另一邊）：
+//   終點        = 最後一個節點的經過時刻
+//   段旅行時間  = 該段終點時刻 − 前一個節點時刻
+//   段行駛時間  = 段旅行時間 − 落在該段的延滯總和
+//   總旅行時間  = 終點 − 起點
+//   交叉口/路段中延滯 = 各自欄位加總
+//   行駛時間    = 總旅行 − 兩項延滯
+//   速率        = 距離 ÷ 時間 × 3.6
+function _liveRecalc(box){
+  if(!box) return
+  const q=sel=>box.querySelector(sel)
+  const num=el=>{ const v=parseInt(el&&el.value,10); return isNaN(v)?0:v }
+  const setC=(k,v)=>{ const el=box.querySelector(`[data-calc="${k}"]`); if(el) el.textContent=v }
+  const pad=v=>String(v).padStart(2,'0')
+  const P2=(v,t)=>t>0?(v/t*100).toFixed(2)+'%':'0.00%'
+  const spd=(d,t)=>(d>0&&t>0)?(d/t*3.6).toFixed(1):''
+
+  // 每一段的節點時刻（秒數表示）。第 0 個是起點。
+  const nSeg=[...box.querySelectorAll('[data-ie^="node-h-"]')].length
+  if(!nSeg) return
+  const toSec=(h,m,s)=>h*3600+m*60+s
+  const t0=toSec(num(q('[data-ie="start-h"]')),num(q('[data-ie="start-m"]')),num(q('[data-ie="start-s"]')))
+  const ts=[t0]
+  for(let i=0;i<nSeg;i++){
+    ts.push(toSec(num(q(`[data-ie="node-h-${i}"]`)),
+                  num(q(`[data-ie="node-m-${i}"]`)),
+                  num(q(`[data-ie="node-s-${i}"]`))))
+  }
+  // 終點＝最後一個節點
+  const lastH=num(q(`[data-ie="node-h-${nSeg-1}"]`))
+  const lastM=num(q(`[data-ie="node-m-${nSeg-1}"]`))
+  const lastS=num(q(`[data-ie="node-s-${nSeg-1}"]`))
+  setC('end-h',pad(lastH)); setC('end-m',pad(lastM)); setC('end-s',pad(lastS))
+
+  const RCn=ROAD_DELAYS.map(d=>d.cause), ICn=INT_DELAYS.map(d=>d.cause)
+  const colT={}; ;[...RCn,...ICn].forEach(c=>colT[c]=0)
+
+  const rows=[...box.querySelectorAll('tr')].filter(tr=>tr.querySelector('[data-ie^="node-h-"]'))
+  for(let i=0;i<nSeg;i++){
+    // 跨午夜就補一天，不然會算出負的
+    let dur=ts[i+1]-ts[i]; if(dur<0) dur+=86400
+    let dsum=0
+    ;[...RCn,...ICn].forEach(c=>{
+      const v=num(q(`[data-ie="dl-${c}-${i}"]`))
+      colT[c]+=v; dsum+=v
+    })
+    const run=Math.max(0,dur-dsum)
+    const lenEl=rows[i]&&rows[i].querySelector('[data-seglen]')
+    const len=lenEl?(parseInt(lenEl.dataset.seglen,10)||0):0
+    setC(`segTravel-${i}`,dur)
+    setC(`segRun-${i}`,run)
+    setC(`segSpdT-${i}`,spd(len,dur))
+    setC(`segSpdR-${i}`,spd(len,run))
+  }
+
+  let total=ts[nSeg]-ts[0]; if(total<0) total+=86400
+  const roadT=RCn.reduce((a,c)=>a+colT[c],0)
+  const intT =ICn.reduce((a,c)=>a+colT[c],0)
+  const runT =Math.max(0,total-roadT-intT)
+  const dBase=roadT+intT
+  const TL=_liveTL(box)
+
+  setC('travelS',total); setC('intTotalS',intT); setC('roadTotalS',roadT); setC('runS',runT)
+  setC('pctInt',P2(intT,total)); setC('pctRoad',P2(roadT,total)); setC('pctRun',P2(runT,total))
+  setC('travelSpd',spd(TL,total)); setC('runSpd',spd(TL,runT))
+  ;[...RCn,...ICn].forEach(c=>{ setC(`sum-${c}`,colT[c]||0); setC(`pct-${c}`,P2(colT[c],dBase)) })
+  setC('roadT',roadT); setC('intT',intT)
+  setC('pctRoadT',P2(roadT,dBase)); setC('pctIntT',P2(intT,dBase))
+}
+// 總距離：各段距離相加（跟表格裡看到的一致，不另外從 route 讀，免得對不起來）
+function _liveTL(box){
+  return [...box.querySelectorAll('[data-seglen]')]
+    .reduce((a,el)=>a+(parseInt(el.dataset.seglen,10)||0),0)
+}
+
+// 事件委派綁在 document，表格每次重繪都不必重新綁
+function _bindLiveRecalc(){
+  if(_bindLiveRecalc._done) return
+  _bindLiveRecalc._done=true
   document.addEventListener('input', e=>{
     const el=e.target
-    const ie=el&&el.dataset&&el.dataset.ie
-    if(!ie) return
-    const m=ie.match(/^(end|node)-([hms])(?:-(\d+))?$/)
-    if(!m) return
+    if(!el||!el.dataset||!el.dataset.ie) return
+    if(!/^(start|node|dl)-/.test(el.dataset.ie)) return
     const box=el.closest('[data-sv-key]')
-    if(!box) return
-    const idxs=[...box.querySelectorAll('[data-ie^="node-h-"]')]
-      .map(n=>parseInt(n.dataset.ie.slice(7),10)).filter(n=>!isNaN(n))
-    if(!idxs.length) return
-    const last=Math.max(...idxs)
-    const kind=m[1], unit=m[2]
-    if(kind==='node' && parseInt(m[3],10)!==last) return   // 只有最後一段對應終點
-    const sel = kind==='end' ? `[data-ie="node-${unit}-${last}"]` : `[data-ie="end-${unit}"]`
-    const other=box.querySelector(sel)
-    if(other && other.value!==el.value) other.value=el.value
+    if(box) _liveRecalc(box)
   })
 }
-_bindEndTimeSync()
+_bindLiveRecalc()
 
 function saveInlineEdit(si,combo){
   const key=`${si}-${combo}`
@@ -3626,16 +3701,8 @@ function saveInlineEdit(si,combo){
     newTs[ni]=newISO; prevISO=newISO
   }
 
-  // 2b. 摘要列的「終點」另有一組輸入框，指向的其實就是最後一個節點的到達時刻。
-  //     兩邊已經即時同步（見 _bindEndTimeSync），這裡再明確以終點框為準，
-  //     免得將來版面調整、最後一段路段列不再顯示時就漏掉這個值。
-  if(nNodes>1 && container.querySelector('[data-ie="end-h"]')){
-    const li=nNodes-1
-    newTs[li]=_rebuildTS(
-      trip.nodeTimestamps?.[li]||trip.endTime,
-      `${pad(inpV('end-h'))}:${pad(inpV('end-m'))}:${pad(inpV('end-s'))}`,
-      newTs[li-1], survDate)
-  }
+  // 2b. 終點時刻不再有獨立輸入框——它就是最後一個節點的經過時刻，
+  //     上面的迴圈已經算進去了，這裡不用也不能再覆寫。
 
   trip.nodeTimestamps=newTs; trip.startTime=newTs[0]; trip.endTime=newTs[nNodes-1]
 
