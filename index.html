@@ -499,7 +499,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 #prep-modal{position:fixed;inset:0;z-index:9400;background:rgba(15,23,42,.72);
   display:none;align-items:center;justify-content:center;padding:22px}
 #prep-modal.open{display:flex}
-.prep-card{background:#fff;border-radius:20px;width:100%;max-width:360px;padding:26px 22px 22px;
+.prep-card{background:#fff;border-radius:20px;width:100%;max-width:360px;padding:26px 22px 30px;
   box-shadow:0 18px 50px rgba(0,0,0,.35)}
 .prep-q{text-align:center}
 .prep-ico{font-size:42px;line-height:1;margin-bottom:12px}
@@ -507,6 +507,9 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .prep-beta{display:inline-block;margin-left:6px;background:#fef08a;color:#854d0e;font-size:10px;
   font-weight:800;padding:2px 7px;border-radius:5px;vertical-align:middle;letter-spacing:.5px}
 .prep-sub{font-size:13px;color:#64748b;line-height:1.8;margin-bottom:20px}
+/* 問候頁（B3）：主按鈕往下移，「我不是○○」跟在它下面收近，
+   兩顆成為一組落在卡片下半部，上方留白給問候語 */
+.prep-sub-hello{margin-bottom:46px;font-size:14.5px;line-height:1.9;color:#475569}
 .prep-acts{display:flex;gap:9px}
 /* 設定卡：兩個開關並排比對 */
 .prep-set{text-align:left}
@@ -527,8 +530,8 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .prep-btn.no{background:#f1f5f9;color:#475569}
 /* 「我不是○○」：次要動作，放在主按鈕下方的文字連結。
    點擊區刻意做得比視覺大（padding 撐開），開車前手抖也按得到。 */
-.prep-link{display:block;width:100%;margin-top:6px;padding:12px 8px;background:none;border:none;
-  color:#64748b;font-size:14px;font-family:inherit;cursor:pointer;text-decoration:underline;
+.prep-link{display:block;width:100%;margin-top:12px;padding:10px 8px;background:none;border:none;
+  color:rgba(15,23,42,.32);font-size:12.5px;font-family:inherit;cursor:pointer;text-decoration:underline;
   text-underline-offset:3px;-webkit-tap-highlight-color:transparent}
 .prep-link:active{color:#0f172a}
 /* ── 調查員工號登入 ── */
@@ -6745,7 +6748,7 @@ function _renderPrep(){
     const gn=he(givenName(_prepName))
     body.innerHTML='<div class="prep-q"><div class="prep-ico">👋</div>'
       +'<div class="prep-title">'+gn+' 您好</div>'
-      +'<div class="prep-sub">開始前我們先來確認裝置及授權吧</div>'
+      +'<div class="prep-sub prep-sub-hello">開始前我們先來確認<br>您的裝置及授權吧！</div>'
       +'<div class="prep-acts"><button class="prep-btn go" onclick="prepNext()">好</button></div>'
       +'<button class="prep-link" onclick="switchSurveyor()">我不是'+gn+'</button>'
       +'</div>'
