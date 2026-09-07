@@ -508,6 +508,19 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
   font-weight:800;padding:2px 7px;border-radius:5px;vertical-align:middle;letter-spacing:.5px}
 .prep-sub{font-size:13px;color:#64748b;line-height:1.8;margin-bottom:20px}
 .prep-acts{display:flex;gap:9px}
+/* 設定卡：兩個開關並排比對 */
+.prep-set{text-align:left}
+.prep-set-hd{font-size:12px;font-weight:800;color:#94a3b8;letter-spacing:.5px;margin-bottom:4px}
+.prep-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:15px 2px;border-top:1px solid #f1f5f9;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.prep-row:active{background:#f8fafc}
+.prep-row-l{font-size:16px;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:6px}
+.prep-sw{width:52px;height:30px;border-radius:15px;background:#cbd5e1;position:relative;
+  flex-shrink:0;transition:background .18s}
+.prep-sw i{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .18s}
+.prep-sw.on{background:#4f6ef7}
+.prep-sw.on i{transform:translateX(22px)}
 .prep-btn{flex:1;padding:14px;border:none;border-radius:13px;font-size:16px;font-weight:800;
   cursor:pointer;font-family:inherit}
 .prep-btn.go{background:#4f6ef7;color:#fff}
@@ -6683,55 +6696,71 @@ function _empDone(empId, name){
 // ══════════════════════════════════════════════════════════════
 //  出發前確認：問候 → 語音導航？ → 語音輸入？ → 裝置檢查與授權
 // ══════════════════════════════════════════════════════════════
-const PREP_STEPS=[
-  {key:'nav',  q:'請問需要開啟語音導航嗎？',
-   sub:'開啟後會在接近路口時提示「前方○○公尺，右轉」。<br>關閉也不影響調查開始／結束、通過節點與停止詢問的語音。'},
-  {key:'mic',  q:'請問需要開啟語音輸入嗎？',
-   sub:'開啟後車輛停止時可以直接說出原因，不用低頭點選。<br>關閉則改為在畫面上點選停止原因。'},
-]
+// 稱呼去掉姓氏：郭大明 → 大明。中文姓名才處理，英文名字原樣保留。
+const COMPOUND_SURNAMES=['歐陽','司馬','上官','諸葛','東方','獨孤','南宮','司徒','夏侯','皇甫',
+  '尉遲','公孫','慕容','長孫','宇文','淳于','單于','太叔','申屠','公羊','軒轅','令狐','鍾離',
+  '西門','南門','呼延','百里','東郭','仲孫','端木','樂正','司空','万俟','司寇','鮮于','梁丘','左丘']
+function givenName(full){
+  const n=String(full||'').trim()
+  if(!n) return ''
+  // 只要含有非中文字元（英文名、代號）就不動它，免得把 KUO 切成 UO
+  if(!/^[一-鿿]+$/.test(n)) return n
+  // 整個名字就是一個複姓（理論上不會有，但別把它切成單字）
+  if(n.length===2 && COMPOUND_SURNAMES.includes(n)) return n
+  if(n.length>=3 && COMPOUND_SURNAMES.includes(n.slice(0,2))) return n.slice(2)
+  if(n.length>=2 && n.length<=4) return n.slice(1)
+  return n
+}
+
 let _prepIdx=0, _prepName=''
 function startPrepFlow(name){
   _prepName=name||config.surveyor||''
-  _prepIdx=-1                       // -1 是問候頁
+  _prepIdx=0                      // 0=問候　1=設定卡
   _renderPrep()
   document.getElementById('prep-modal').classList.add('open')
 }
 function _renderPrep(){
   const body=document.getElementById('prep-body')
   if(!body) return
-  if(_prepIdx<0){
+  if(_prepIdx===0){
     body.innerHTML='<div class="prep-q"><div class="prep-ico">👋</div>'
-      +'<div class="prep-title">'+he(_prepName)+' 您好</div>'
-      +'<div class="prep-sub">調查開始前，讓我們先來確認你的設備及授權</div>'
-      +'<div class="prep-acts"><button class="prep-btn go" onclick="prepNext()">開始確認</button></div></div>'
+      +'<div class="prep-title">'+he(givenName(_prepName))+' 您好</div>'
+      +'<div class="prep-sub">開始前我們先來確認裝置及授權吧</div>'
+      +'<div class="prep-acts"><button class="prep-btn go" onclick="prepNext()">好</button></div></div>'
     return
   }
-  const st=PREP_STEPS[_prepIdx]
-  if(!st){ _finishPrep(); return }
-  body.innerHTML='<div class="prep-q"><div class="prep-ico">'+(st.key==='nav'?'🧭':'🎤')+'</div>'
-    +'<div class="prep-title">'+st.q+'<span class="prep-beta">Beta</span></div>'
-    +'<div class="prep-sub">'+st.sub+'</div>'
-    +'<div class="prep-acts">'
-    +'<button class="prep-btn no" onclick="prepAnswer(false)">不需要</button>'
-    +'<button class="prep-btn go" onclick="prepAnswer(true)">需要</button>'
-    +'</div></div>'
+  if(_prepIdx===1){
+    body.innerHTML='<div class="prep-set">'
+      +'<div class="prep-set-hd">語音功能</div>'
+      +_prepRow('nav','🧭','語音導航', navVoiceEnabled)
+      +_prepRow('mic','🎤','語音輸入', voicePickEnabled)
+      +'<div class="prep-acts" style="margin-top:16px">'
+      +'<button class="prep-btn go" onclick="prepNext()">開始檢查設備</button></div>'
+      +'</div>'
+    return
+  }
+  _finishPrep()
+}
+function _prepRow(key,ico,label,on){
+  return '<div class="prep-row" onclick="prepToggle(\''+key+'\')">'
+    +'<span class="prep-row-l">'+ico+' '+label+'<span class="prep-beta">Beta</span></span>'
+    +'<span class="prep-sw'+(on?' on':'')+'" id="prep-sw-'+key+'"><i></i></span></div>'
+}
+function prepToggle(key){
+  if(key==='nav'){
+    navVoiceEnabled=!navVoiceEnabled
+    localStorage.setItem('nav_voice_enabled', navVoiceEnabled?'1':'0')
+    const b=document.getElementById('nav-banner-mute'); if(b) b.textContent=navVoiceEnabled?'🔊':'🔇'
+  }else{
+    voicePickEnabled=!voicePickEnabled
+    localStorage.setItem('voice_pick_enabled', voicePickEnabled?'1':'0')
+  }
+  const sw=document.getElementById('prep-sw-'+key)
+  if(sw) sw.classList.toggle('on', key==='nav'?navVoiceEnabled:voicePickEnabled)
 }
 function prepNext(){ _prepIdx++; _renderPrep() }
-function prepAnswer(yes){
-  const st=PREP_STEPS[_prepIdx]
-  if(st.key==='nav'){
-    navVoiceEnabled=yes
-    localStorage.setItem('nav_voice_enabled', yes?'1':'0')
-    const b=document.getElementById('nav-banner-mute'); if(b) b.textContent=yes?'🔊':'🔇'
-  }else if(st.key==='mic'){
-    voicePickEnabled=yes
-    localStorage.setItem('voice_pick_enabled', yes?'1':'0')
-  }
-  prepNext()
-}
 function _finishPrep(){
   document.getElementById('prep-modal').classList.remove('open')
-  // 接著才是裝置檢查與授權
   openDevTest()
 }
 
