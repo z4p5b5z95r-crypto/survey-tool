@@ -525,6 +525,12 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
   cursor:pointer;font-family:inherit}
 .prep-btn.go{background:#4f6ef7;color:#fff}
 .prep-btn.no{background:#f1f5f9;color:#475569}
+/* 「我不是○○」：次要動作，放在主按鈕下方的文字連結。
+   點擊區刻意做得比視覺大（padding 撐開），開車前手抖也按得到。 */
+.prep-link{display:block;width:100%;margin-top:6px;padding:12px 8px;background:none;border:none;
+  color:#64748b;font-size:14px;font-family:inherit;cursor:pointer;text-decoration:underline;
+  text-underline-offset:3px;-webkit-tap-highlight-color:transparent}
+.prep-link:active{color:#0f172a}
 /* ── 調查員工號登入 ── */
 .emp-card{background:#fff;border-radius:22px;padding:30px 24px 26px;width:100%;max-width:360px;
   box-shadow:0 18px 50px rgba(0,0,0,.35);text-align:center}
@@ -6736,10 +6742,13 @@ function _renderPrep(){
   const body=document.getElementById('prep-body')
   if(!body) return
   if(_prepIdx===0){
+    const gn=he(givenName(_prepName))
     body.innerHTML='<div class="prep-q"><div class="prep-ico">👋</div>'
-      +'<div class="prep-title">'+he(givenName(_prepName))+' 您好</div>'
+      +'<div class="prep-title">'+gn+' 您好</div>'
       +'<div class="prep-sub">開始前我們先來確認裝置及授權吧</div>'
-      +'<div class="prep-acts"><button class="prep-btn go" onclick="prepNext()">好</button></div></div>'
+      +'<div class="prep-acts"><button class="prep-btn go" onclick="prepNext()">好</button></div>'
+      +'<button class="prep-link" onclick="switchSurveyor()">我不是'+gn+'</button>'
+      +'</div>'
     return
   }
   if(_prepIdx===1){
@@ -6754,6 +6763,23 @@ function _renderPrep(){
   }
   _finishPrep()
 }
+
+// 「我不是○○」：換人接手同一支手機時回到工號輸入。
+// ⚠️ 一定要把當天記住的工號清掉，否則回到登入畫面後
+// showEmpLogin() 又會判定「今天已經登入過」而直接跳過，變成按了沒反應。
+function switchSurveyor(){
+  try{ localStorage.removeItem(EMP_KEY) }catch(e){}
+  config.surveyor=''
+  config.surveyorEmpId=''
+  const si=document.getElementById('si-name'); if(si) si.value=''
+  const ss=document.getElementById('s-surveyor'); if(ss) ss.value=''
+  const modal=document.getElementById('prep-modal'); if(modal) modal.classList.remove('open')
+  // 回到工號畫面。next 仍然是原本那條路（選路線／載入路線），換完人接著走同一段流程。
+  showScreen('screen-emp')
+  _empResetForm()
+  const idEl=document.getElementById('emp-id'); if(idEl) idEl.value=''   // 換人就不要帶前一個人的工號
+}
+
 function _prepRow(key,ico,label,on){
   return '<div class="prep-row" onclick="prepToggle(\''+key+'\')">'
     +'<span class="prep-row-l">'+ico+' '+label+'<span class="prep-beta">Beta</span></span>'
