@@ -547,6 +547,15 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .emp-f input{width:100%;padding:15px 16px;border:2px solid #e2e8f0;border-radius:14px;
   font-size:17px;outline:none;font-family:inherit;color:#0f172a;transition:border-color .15s}
 .emp-f input:focus{border-color:#4f6ef7}
+/* 工號欄：T 是固定前綴，做成輸入框的一部分，看起來像同一格 */
+.emp-idwrap{display:flex;align-items:stretch;border:2px solid #e2e8f0;border-radius:14px;
+  overflow:hidden;transition:border-color .15s;background:#fff}
+.emp-idwrap:focus-within{border-color:#4f6ef7}
+.emp-prefix{display:flex;align-items:center;padding:0 4px 0 16px;font-size:17px;font-weight:800;
+  color:#0f172a;background:#fff;user-select:none;flex-shrink:0}
+.emp-idwrap input{border:none!important;border-radius:0!important;padding-left:2px!important;
+  letter-spacing:1px}
+.emp-idwrap input:focus{border-color:transparent!important}
 .emp-note{font-size:11px;color:#94a3b8;margin-top:6px;line-height:1.6}
 .emp-err{font-size:13px;color:#dc2626;min-height:19px;margin-bottom:6px;font-weight:700}
 .emp-btn{width:100%;padding:16px;background:#4f6ef7;color:#fff;border:none;border-radius:14px;
@@ -678,8 +687,12 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 
     <div class="emp-f">
       <label for="emp-id">工號</label>
-      <input id="emp-id" type="text" inputmode="text" autocomplete="username"
-             placeholder="輸入您的工號" onkeydown="if(event.key==='Enter')empSubmit()">
+      <!-- 工號一律 T 開頭，前綴固定顯示、不用打；只輸入後面的數字，直接跳數字鍵盤 -->
+      <div class="emp-idwrap">
+        <span class="emp-prefix">T</span>
+        <input id="emp-id" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="username"
+               placeholder="後面的數字" onkeydown="if(event.key==='Enter')empSubmit()">
+      </div>
     </div>
 
     <div class="emp-f" id="emp-name-wrap" style="display:none">
@@ -6646,12 +6659,25 @@ function _empResetForm(){
   if(btn){ btn.disabled=false; btn.textContent='下一步' }
   const err=document.getElementById('emp-err'); if(err) err.textContent=''
   const hi=document.getElementById('emp-hello'); if(hi) hi.textContent=''
-  // 帶出上次用過的工號，少打幾個字（DEMO 也適用，只是不會自動跳過畫面）
+  // 帶出上次用過的工號（只填數字，T 是固定前綴）
   try{
     const last=JSON.parse(localStorage.getItem(EMP_KEY)||'null')
-    if(last && last.empId && idEl) idEl.value=last.empId
+    if(last && last.empId && idEl) idEl.value=empDigits(last.empId)
   }catch(e){}
   setTimeout(()=>{ if(idEl){ idEl.focus(); idEl.select() } },80)
+}
+
+// 工號一律 T 開頭。畫面上只讓打後面的數字，這裡統一組回完整工號。
+// 使用者若自己多打了 T（習慣或貼上），也不會變成 TT123。
+const EMP_PREFIX='T'
+function fullEmpId(input){
+  const raw=String(input||'').trim().toUpperCase()
+  const digits=raw.replace(/^T+/,'').replace(/[^0-9]/g,'')
+  return digits ? EMP_PREFIX+digits : ''
+}
+// 反過來：把存起來的完整工號還原成「輸入框裡該顯示的數字」
+function empDigits(full){
+  return String(full||'').trim().toUpperCase().replace(/^T+/,'').replace(/[^0-9]/g,'')
 }
 
 async function empSubmit(){
@@ -6661,9 +6687,9 @@ async function empSubmit(){
   const err=document.getElementById('emp-err')
   const hello=document.getElementById('emp-hello')
   const btn=document.getElementById('emp-btn')
-  const empId=(idEl.value||'').trim()
+  const empId=fullEmpId(idEl.value)
   err.textContent=''
-  if(!empId){ err.textContent='請輸入工號'; idEl.focus(); return }
+  if(!empId){ err.textContent='請輸入工號後面的數字'; idEl.focus(); return }
 
   // 第二階段：姓名欄已經開著，代表這是新工號，要建檔
   if(nameWrap.style.display!=='none'){
