@@ -3833,9 +3833,38 @@ function saveInlineEdit(si,combo){
   _editModes.delete(key)
   renderComboRecords(combo)
 
-  const _metaChanged = Object.keys(svPatch).length || Object.keys(tpPatch).length
-  if(_metaChanged) askSaveScope(sv,trip,svPatch,tpPatch,_moved)
-  else _emToast('✅ 已儲存並重新計算')
+  // 6. 寫回雲端
+  //
+  // ⚠️ 這裡以前只有「表頭欄位有改」才會送出（askSaveScope）。
+  // 只改時刻或延滯秒數時 svPatch/tpPatch 都是空的，於是什麼都沒送——
+  // 畫面跳「已儲存」，重新整理卻整個復原。那句提示等於在說謊。
+  // 現在只要按了儲存，一律把重算後的量測欄位寫回去。
+  const measPatch={
+    startTime:      trip.startTime,
+    endTime:        trip.endTime,
+    nodeTimestamps: trip.nodeTimestamps||[],
+    delayLog:       trip.delayLog||[],
+    segTimes:       trip.segTimes||[],
+    roadDelays:     trip.roadDelays||{},
+    intDelays:      trip.intDelays||{},
+    travelS:        trip.travelS||0,
+    runS:           trip.runS||0,
+    intTotalS:      trip.intTotalS||0,
+    roadTotalS:     trip.roadTotalS||0,
+    totalDelayS:    trip.totalDelayS||0
+  }
+  _emToast('⏳ 儲存中…')
+  cloudPost({action:'updateTripMeta', tripId:trip.id, patch:measPatch})
+    .then(()=>{
+      const _metaChanged = Object.keys(svPatch).length || Object.keys(tpPatch).length
+      if(_metaChanged) askSaveScope(sv,trip,svPatch,tpPatch,_moved)
+      else _emToast('✅ 已儲存並重新計算')
+    })
+    .catch(e=>{
+      // 失敗一定要講出來，不能讓使用者以為存好了
+      _emToast('❌ 儲存失敗：'+((e&&e.message)||e)+'（畫面上的數字尚未寫入雲端）')
+      console.error('[儲存] updateTripMeta 失敗', e)
+    })
 }
 
 // ── 儲存範圍：只套用到這份報告，或一併寫回雲端 ──────────────────
