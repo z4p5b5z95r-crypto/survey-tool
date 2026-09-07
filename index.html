@@ -6600,9 +6600,17 @@ const EMP_KEY='surveyor_emp'
 let _empNext=null          // 工號確認後要接著跑的事（進裝置檢查→選路線）
 let _empPendingId=''       // 正在確認中的工號
 
+// DEMO 版每次都要走過登入畫面（教學／展示要看得到完整流程）；
+// 正式版才套用「同一天只問一次」。用檔名判斷，harness 不必額外設旗標。
+function isDemoMode(){
+  try{ return /demo\.html$/i.test(location.pathname) || !!window.__DEMO_MODE__ }
+  catch(e){ return false }
+}
+
 function showEmpLogin(next){
   // 同一支手機、同一天，工號只需要輸入一次。
   // 換日就要重問——現場常常是換人接手同一支手機。
+  if(isDemoMode()){ _empNext=next; showScreen('screen-emp'); _empResetForm(); return }
   try{
     const last=JSON.parse(localStorage.getItem(EMP_KEY)||'null')
     if(last && last.empId && last.name && last.day===todayStr()){
@@ -6617,14 +6625,19 @@ function showEmpLogin(next){
   }catch(e){}
   _empNext=next
   showScreen('screen-emp')
+  _empResetForm()
+}
+
+// 把登入表單回到初始狀態（姓名欄收起、按鈕還原、帶出上次用過的工號）
+function _empResetForm(){
   const idEl=document.getElementById('emp-id')
   const nameWrap=document.getElementById('emp-name-wrap')
   const btn=document.getElementById('emp-btn')
   if(nameWrap) nameWrap.style.display='none'
   if(btn){ btn.disabled=false; btn.textContent='下一步' }
-  document.getElementById('emp-err').textContent=''
-  document.getElementById('emp-hello').textContent=''
-  // 帶出上次用過的工號，同一支手機同一個人不用每天重打
+  const err=document.getElementById('emp-err'); if(err) err.textContent=''
+  const hi=document.getElementById('emp-hello'); if(hi) hi.textContent=''
+  // 帶出上次用過的工號，少打幾個字（DEMO 也適用，只是不會自動跳過畫面）
   try{
     const last=JSON.parse(localStorage.getItem(EMP_KEY)||'null')
     if(last && last.empId && idEl) idEl.value=last.empId
