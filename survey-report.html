@@ -192,6 +192,9 @@ td:first-child{text-align:left;font-weight:500}
 .pf-arrive{background:#c8f7d0!important;color:#1b5e20;font-weight:800}
 /* 編輯模式下「算出來的」格子：跟可輸入的框明顯不同，一眼看得出不能改 */
 .pf-derived{position:relative;color:#64748b!important;font-style:italic}
+.pf-timeerr{outline:2px solid #dc2626;outline-offset:2px}
+.pf-timeerr-tip{background:#fee2e2;color:#991b1b;font-size:12.5px;font-weight:700;
+  padding:9px 14px;border-bottom:1.5px solid #dc2626}
 .pf-derived::after{content:'ƒ';position:absolute;top:1px;right:2px;font-size:8px;color:#94a3b8;font-style:normal}
 .pf-spd{font-size:15px;font-weight:800;color:#1e3a5f}
 .pf-pct{font-size:9.5px;background:#f0f4fa!important;color:#374151}
@@ -3562,7 +3565,12 @@ function _emToast(msg){
 function startInlineEdit(si,combo){
   _editModes.add(`${si}-${combo}`)
   renderComboRecords(combo)
-  setTimeout(()=>{const el=document.querySelector(`[data-sv-key="${si}-${combo}"]`);if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'})},120)
+  setTimeout(()=>{
+    const el=document.querySelector(`[data-sv-key="${si}-${combo}"]`)
+    if(!el) return
+    _snapStart(el)      // 記下起點基準，改動時才算得出要平移多少
+    el.scrollIntoView({behavior:'smooth',block:'nearest'})
+  },120)
 }
 
 function cancelInlineEdit(si,combo){
@@ -3615,9 +3623,14 @@ function _liveRecalc(box){
   const colT={}; ;[...RCn,...ICn].forEach(c=>colT[c]=0)
 
   const rows=[...box.querySelectorAll('tr')].filter(tr=>tr.querySelector('[data-ie^="node-h-"]'))
+  let hasNeg=false
   for(let i=0;i<nSeg;i++){
-    // 跨午夜就補一天，不然會算出負的
-    let dur=ts[i+1]-ts[i]; if(dur<0) dur+=86400
+    // ⚠️ 負數不要偷偷補一天。
+    // 交通調查都在 9~11 點或 17~19 點跑，跨午夜幾乎不可能；
+    // 時刻打錯（例如把 15 點打成 16 點）才是常態。
+    // 補一天會算出 84230 秒這種看起來「有值」的鬼數字，反而把錯誤蓋掉了。
+    const dur=ts[i+1]-ts[i]
+    if(dur<0) hasNeg=true
     let dsum=0
     ;[...RCn,...ICn].forEach(c=>{
       const v=num(q(`[data-ie="dl-${c}-${i}"]`))
@@ -3632,7 +3645,8 @@ function _liveRecalc(box){
     setC(`segSpdR-${i}`,spd(len,run))
   }
 
-  let total=ts[nSeg]-ts[0]; if(total<0) total+=86400
+  const total=ts[nSeg]-ts[0]
+  if(total<0) hasNeg=true
   const roadT=RCn.reduce((a,c)=>a+colT[c],0)
   const intT =ICn.reduce((a,c)=>a+colT[c],0)
   const runT =Math.max(0,total-roadT-intT)
@@ -3645,11 +3659,55 @@ function _liveRecalc(box){
   ;[...RCn,...ICn].forEach(c=>{ setC(`sum-${c}`,colT[c]||0); setC(`pct-${c}`,P2(colT[c],dBase)) })
   setC('roadT',roadT); setC('intT',intT)
   setC('pctRoadT',P2(roadT,dBase)); setC('pctIntT',P2(intT,dBase))
+  _markTimeError(box,hasNeg)
+}
+// 時刻順序不合理（後面的比前面早）就整張標紅並擋住儲存，
+// 不要讓人存進一筆算出來是負數或八萬秒的資料
+function _markTimeError(box,bad){
+  box.classList.toggle('pf-timeerr',!!bad)
+  const btn=box.querySelector('.em-save-inline')
+  if(btn){
+    btn.disabled=!!bad
+    btn.title=bad?'時刻順序不合理：後面的時刻不能早於前面的':''
+  }
+  let tip=box.querySelector('.pf-timeerr-tip')
+  if(bad&&!tip){
+    tip=document.createElement('div')
+    tip.className='pf-timeerr-tip'
+    tip.textContent='⚠️ 時刻順序不合理：後面的時刻早於前面的，請檢查時／分／秒'
+    const hdr=box.querySelector('.sgs-pf-meta')
+    if(hdr&&hdr.parentNode) hdr.parentNode.insertBefore(tip,hdr.nextSibling)
+  }else if(!bad&&tip) tip.remove()
 }
 // 總距離：各段距離相加（跟表格裡看到的一致，不另外從 route 讀，免得對不起來）
 function _liveTL(box){
   return [...box.querySelectorAll('[data-seglen]')]
     .reduce((a,el)=>a+(parseInt(el.dataset.seglen,10)||0),0)
+}
+
+// ── 改起點＝整趟時間軸平移 ──────────────────────────────────────
+// 調查員把時刻記錯一小時（15 打成 16）是最常見的更正情境，
+// 這時候要動的是「整趟」，不是只有起點——各段之間的間隔是實測出來的，
+// 不該因為修正起點就被拉長或壓縮。
+// 所以改起點時，把所有節點時刻一起加上同樣的差值。
+// （單獨改某一個節點則只動那一個，因為那是在修正那個路口的到達時刻。）
+function _shiftAllNodes(box, deltaSec){
+  if(!deltaSec) return
+  const n=[...box.querySelectorAll('[data-ie^="node-h-"]')].length
+  const get=k=>{const el=box.querySelector(`[data-ie="${k}"]`);const v=parseInt(el&&el.value,10);return isNaN(v)?0:v}
+  const set=(k,v)=>{const el=box.querySelector(`[data-ie="${k}"]`);if(el)el.value=v}
+  for(let i=0;i<n;i++){
+    let sec=get(`node-h-${i}`)*3600+get(`node-m-${i}`)*60+get(`node-s-${i}`)+deltaSec
+    sec=((sec%86400)+86400)%86400      // 跨日就繞回來，不會出現負的時：分：秒
+    set(`node-h-${i}`,Math.floor(sec/3600))
+    set(`node-m-${i}`,Math.floor(sec/60)%60)
+    set(`node-s-${i}`,sec%60)
+  }
+}
+// 記住目前的起點秒數，下次改動時才算得出差值
+function _snapStart(box){
+  const g=k=>{const el=box.querySelector(`[data-ie="${k}"]`);const v=parseInt(el&&el.value,10);return isNaN(v)?0:v}
+  box.dataset.prevStart=String(g('start-h')*3600+g('start-m')*60+g('start-s'))
 }
 
 // 事件委派綁在 document，表格每次重繪都不必重新綁
@@ -3659,9 +3717,26 @@ function _bindLiveRecalc(){
   document.addEventListener('input', e=>{
     const el=e.target
     if(!el||!el.dataset||!el.dataset.ie) return
-    if(!/^(start|node|dl)-/.test(el.dataset.ie)) return
+    const ie=el.dataset.ie
+    if(!/^(start|node|dl)-/.test(ie)) return
     const box=el.closest('[data-sv-key]')
-    if(box) _liveRecalc(box)
+    if(!box) return
+    if(/^start-[hms]$/.test(ie)){
+      const g=k=>{const x=box.querySelector(`[data-ie="${k}"]`);const v=parseInt(x&&x.value,10);return isNaN(v)?0:v}
+      const now=g('start-h')*3600+g('start-m')*60+g('start-s')
+      const prev=parseInt(box.dataset.prevStart,10)
+      if(!isNaN(prev)) _shiftAllNodes(box, now-prev)
+      box.dataset.prevStart=String(now)
+    }
+    _liveRecalc(box)
+  })
+  // 進入編輯模式時先記下起點，之後才有基準可以算差值
+  document.addEventListener('focusin', e=>{
+    const el=e.target
+    if(el&&el.dataset&&/^start-[hms]$/.test(el.dataset.ie||'')){
+      const box=el.closest('[data-sv-key]')
+      if(box && box.dataset.prevStart===undefined) _snapStart(box)
+    }
   })
 }
 _bindLiveRecalc()
