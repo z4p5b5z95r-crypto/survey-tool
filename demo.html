@@ -1442,7 +1442,12 @@ async function _fetchRawSegmentLatlngs(n1,n2,seg){
 // 重點：形狀是照【原始節點清單】一小段一小段接出來的，跟選擇路線地圖同一套走法，
 // 不再拿「起點→終點」去問 OSRM（那樣 OSRM 會自己挑一條它認為最短的路，
 // 完全無視中間的鬼節點和 PM 手動拖出來的路徑，這就是之前路線會跑掉的原因）。
-async function prefetchRoutes(){
+// gen：呼叫當下的路線載入序號。每段路徑都要跟 OSRM 要（最久 8 秒），
+// 中途使用者改點別條路線的話，剩下的段就別再往 routePolylines 塞——
+// 那會變成「一半 T5、一半 T3+T4」的混血路線畫到地圖上。
+async function prefetchRoutes(gen){
+  const mine = gen==null ? null : gen
+  const stale = () => mine!=null && mine!==_routeGen
   routePolylines=[]
   _routeSrcStat={cache:0, osrm:0, straight:0}
   const rn=config._rawNodes||config.nodes||[]
@@ -1450,17 +1455,21 @@ async function prefetchRoutes(){
   if(rn.length<2) return
   const realIdx=rn.map((n,i)=>n._ghost?-1:i).filter(i=>i>=0)
   if(realIdx.length<2) return
+  const out=[]
   for(let k=0;k<realIdx.length-1;k++){
     const from=realIdx[k],to=realIdx[k+1]
     const lls=[]
     for(let j=from;j<to;j++){
       const part=await _fetchRawSegmentLatlngs(rn[j],rn[j+1],rs[j])
+      if(stale()) return
       if(!part||part.length<2) continue
       if(lls.length===0) lls.push(part[0])
       lls.push(...part.slice(1))
     }
-    routePolylines.push(lls.length>=2?lls:[[rn[from].lat,rn[from].lng],[rn[to].lat,rn[to].lng]])
+    out.push(lls.length>=2?lls:[[rn[from].lat,rn[from].lng],[rn[to].lat,rn[to].lng]])
   }
+  if(stale()) return
+  routePolylines=out
   console.log('[路徑] PM存檔 '+_routeSrcStat.cache+' 段 / 現場向OSRM取得 '+_routeSrcStat.osrm
     +' 段 / 退回直線 '+_routeSrcStat.straight+' 段')
 }
@@ -1837,7 +1846,10 @@ function _thinTripsForStorage(byRound){
 function saveTripsToStorage(){
   const k=storageKey(); if(!k) return
   // 存的是「目前選擇的調查日期」（不是系統今天），這樣切換到補調查某一天時，本地暫存才對得起來
-  const payload={date:(config.date||todayStr()).slice(0,10), tripsByRound:_thinTripsForStorage(allTripsByRound)}
+  // routeId 一起存。萬一哪天又有非同步的漏網之魚把別條路線的資料寫進來，
+  // 下次還原時至少擋得住，不會變成「重開 App 還是打勾」的永久錯誤。
+  const payload={routeId:cloudRouteId||'', date:(config.date||todayStr()).slice(0,10),
+    tripsByRound:_thinTripsForStorage(allTripsByRound)}
   try{
     localStorage.setItem(k, JSON.stringify(payload))
     return true
@@ -1895,11 +1907,22 @@ function loadTripsFromStorage(){
     const workDate = (config.date||todayStr()).slice(0,10)
     // 本地暫存跟目前選擇的調查日期不同，就不還原（換一天調查＝重新開始，避免跟別天的資料混在一起）
     if(savedDate && savedDate.slice(0,10) !== workDate) return 0
+    // 存檔標記的路線跟現在這條不一樣＝這份備份不屬於這條路線，直接丟掉並清乾淨
+    if(parsed.routeId && cloudRouteId && parsed.routeId !== cloudRouteId){
+      try{ localStorage.removeItem(k) }catch(e){}
+      return 0
+    }
     let count=0
+    // 舊版存檔沒有 routeId，無法確定裡面的 _fromCloud 是不是別條路線混進來的
+    // （這個 bug 已修，但手機上可能還留著壞掉的備份）。
+    // _fromCloud 的資料本來就只是雲端歷史的快取，丟掉會自動重新同步回來，
+    // 所以這裡直接不還原；現場自己記錄的那些（沒有 _fromCloud）一定保留。
+    const dropCloudCache = !parsed.routeId
     if(parsed.tripsByRound){
       ROUND_KEYS.forEach(n=>{
         const bucket=parsed.tripsByRound[n]||parsed.tripsByRound[String(n)]; if(!bucket) return
         Object.keys(bucket).forEach(tripKey=>{
+          if(dropCloudCache && bucket[tripKey] && bucket[tripKey]._fromCloud) return
           if(!allTripsByRound[n][tripKey]){ allTripsByRound[n][tripKey]=bucket[tripKey]; count++ }
         })
       })
@@ -1922,6 +1945,9 @@ function clearTripStorage(){
 
 // ── Survey history — cloud-first, localStorage fallback ───────────
 let _histCache = null   // null = not loaded yet; [] = loaded but empty
+// _histCache 是「哪一條路線的歷史」。沒有這個標記的話，換路線後在雲端回應到達之前，
+// 上一條路線的歷史會被當成這一條的，組合按鈕就會出現「我根本沒跑卻打勾」。
+let _histRouteId = null
 
 // Save to localStorage as offline backup
 function saveToLocalHistory(){
@@ -1954,7 +1980,12 @@ function getLocalHistory(){
 }
 
 // Returns cached cloud history, or local if cloud not loaded
-function getHistory(){ return _histCache !== null ? _histCache : getLocalHistory() }
+// 快取如果是別條路線留下來的，一律當成「還沒載入」，改用這條路線的本機備份。
+// 寧可少顯示，也不能把別條路線的紀錄當成這條的（那會讓沒跑過的組合亮綠勾）。
+function getHistory(){
+  if(_histCache !== null && _histRouteId === cloudRouteId) return _histCache
+  return getLocalHistory()
+}
 
 // 主要的歷史查詢固定回「最近 30 筆」，而現在每上傳一趟就是一筆獨立紀錄，
 // 30 筆大概只夠涵蓋兩三天。補調查較舊的日期時，那天的紀錄早就掉出這個視窗：
@@ -1967,25 +1998,32 @@ function getHistory(){ return _histCache !== null ? _histCache : getLocalHistory
 // 只靠它的話，『調查紀錄』分頁會變成節點時間正常、但地圖沒軌跡、延滯整排消失。
 // 所以判斷「這天抓過了沒」不能只看日期在不在快取裡（輕量的那批也會命中），
 // 要看有沒有抓過「完整版」。
-let _histDateFetched=new Set()   // 已經抓過完整版的日期
+let _histDateFetched=new Set()   // 已經抓過完整版的「路線id|日期」
 async function ensureHistoryForDate(day){
   const d=(day||'').slice(0,10)
   if(!d || !cloudRouteId || !cloudScriptUrl || !cloudApiKey) return false
-  if(_histDateFetched.has(d)) return false
-  _histDateFetched.add(d)
-  const cache=_histCache||[]
+  // ★ 記號要連路線一起記。只記日期的話，跑完 T5 再換 T3+T4，
+  //   「今天抓過了」會讓 T3+T4 永遠拿不到完整版歷史。
+  const mark=cloudRouteId+'|'+d
+  if(_histDateFetched.has(mark)) return false
+  _histDateFetched.add(mark)
+  const gen=_routeGen, rid=cloudRouteId
+  const cache=(_histRouteId===rid && _histCache) ? _histCache : []
   try{
-    const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey,date:d,full:'1',t:Date.now()})
+    const p=new URLSearchParams({action:'getHistory',routeId:rid,key:cloudApiKey,date:d,full:'1',t:Date.now()})
     // gsJson 會擋掉「伺服器回 HTML 錯誤頁」的情況並自動重試（見上方註解）
     const data=await gsJson(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(20000)})
+    // 回來時使用者可能已經換到別條路線了，這份資料就不能再寫進快取
+    if(gen!==_routeGen || rid!==cloudRouteId) return false
     if(!Array.isArray(data)) return false
     // 同一筆若已經有輕量版在快取裡，要用完整版「取代」它，不能只是略過，
     // 否則先進來的空殼會一直贏，軌跡永遠補不上。
     const keyOf=h=>(h.date||'').slice(0,10)+'|'+(h.round||1)+'|'+(h.submittedAt||'')
     const fullKeys=new Set(data.map(keyOf))
     _histCache=cache.filter(h=>!fullKeys.has(keyOf(h))).concat(data)
+    _histRouteId=rid
     return true
-  }catch(e){ _histDateFetched.delete(d); return false }   // 失敗就讓它下次還能再試
+  }catch(e){ _histDateFetched.delete(mark); return false }   // 失敗就讓它下次還能再試
 }
 
 // Group raw history entries by date+回合 — one row per day per round (rounds kept separate,
@@ -2008,15 +2046,21 @@ function groupHistoryByDate(hist){
 // Fetch history from cloud and refresh display
 async function loadCloudHistory(){
   if(!cloudRouteId||!cloudScriptUrl||!cloudApiKey) return
+  const gen=_routeGen, rid=cloudRouteId
   try{
-    const p=new URLSearchParams({action:'getHistory',routeId:cloudRouteId,key:cloudApiKey})
+    const p=new URLSearchParams({action:'getHistory',routeId:rid,key:cloudApiKey})
     const json={ok:true,data:await gsJson(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(20000)})}
+    // 回來時已經換路線 → 整份丟掉。否則會把上一條路線的歷史寫進現在這條的快取，
+    // 接著 syncChipsFromCloudHistory() 就會幫沒跑過的組合打勾，還存進本機。
+    if(gen!==_routeGen || rid!==cloudRouteId) return
     if(json.ok){
-      _histCache=json.data; renderHistModal(); renderDateSelectOptions()
+      _histCache=json.data; _histRouteId=rid
+      renderHistModal(); renderDateSelectOptions()
       // 目前這個調查日期若不在這 30 筆裡（補調查舊日期時很常見），先單獨補抓那一天，
       // 否則組合按鈕不會亮、對帳還會把早就上傳過的誤判成孤兒而重複送一次
       const _day=(config.date||todayStr()).slice(0,10)
       ensureHistoryForDate(_day).then(added=>{
+        if(gen!==_routeGen || rid!==cloudRouteId) return
         if(added) renderHistModal()
         syncChipsFromCloudHistory()
         // 對帳一定要在雲端歷史齊備「之後」做，才知道哪些是真的沒上傳
@@ -2032,6 +2076,10 @@ async function loadCloudHistory(){
 // (loops over every entry for that date, across all rounds — not just the first match)
 function syncChipsFromCloudHistory(){
   const workDate=(config.date||todayStr()).slice(0,10)
+  // 最後一道防線：這份歷史必須確定屬於現在這條路線。
+  // 這個函式的結果會被 saveTripsToStorage() 寫進本機，一旦搞錯就會留在手機上，
+  // 重開 App 也還在——現場遇到的「離峰去程我根本沒跑卻打勾」就是這樣來的。
+  if(cloudRouteId && _histCache!==null && _histRouteId!==cloudRouteId) return
   const hist=getHistory()
   const todays=hist.filter(h=>(h.date||'').slice(0,10)===workDate)
   if(!todays.length) return
@@ -2873,7 +2921,9 @@ function checkSigninReady(){
 }
 $('si-name').addEventListener('input',checkSigninReady)
 
-let _lastLoadedWorkDate=null
+// 「上一次進調查畫面時，是哪一條路線的哪一天」。
+// 以前只記日期，所以同一天換路線不會觸發清空，上一條路線的完成狀態就跟著進來了。
+let _lastLoadedKey=null
 function startFromQR(){
   config.surveyor=$('si-name').value.trim()
   config.weather=signinWeather
@@ -2882,12 +2932,13 @@ function startFromQR(){
   // 如果調查日期跟上一次載入的不一樣（例如：先進今天，返回後又切成補調查昨天），
   // 記憶體中的 allTripsByRound 要先清空，不然舊日期的完成狀態會混進新日期
   const workDate=(config.date||todayStr()).slice(0,10)
-  if(_lastLoadedWorkDate && _lastLoadedWorkDate!==workDate){
+  const loadKey=(cloudRouteId||qrKey||'')+'|'+workDate
+  if(_lastLoadedKey && _lastLoadedKey!==loadKey){
     allTripsByRound={}
     ROUND_KEYS.forEach(r=>{ allTripsByRound[r]={} })
     allTrips=allTripsByRound[selRound]
   }
-  _lastLoadedWorkDate=workDate
+  _lastLoadedKey=loadKey
   // Restore any trips recorded in earlier sessions for this QR（同一個調查日期才會還原）
   const restored=loadTripsFromStorage()
   autoPickRound()  // default to the first round that isn't fully done yet
@@ -5112,7 +5163,7 @@ async function submitToCloud(tripKey, round){
     // 確認進了雲端才把這幾趟標成已上傳，組合按鈕才會從橘色時鐘變綠勾
     markUploaded(body.round, Object.keys(body.trips||{}))
     saveToLocalHistory()    // persist to device as offline backup
-    _histCache=null         // invalidate cache so cloud re-fetch gets fresh data
+    _histCache=null; _histRouteId=null   // invalidate cache so cloud re-fetch gets fresh data
     loadCloudHistory()      // refresh history from cloud
     if(statusEl) statusEl.textContent='✅ 已成功上傳至雲端！'
     if(btnEl){ btnEl.style.display='none' }
@@ -5352,7 +5403,7 @@ async function _refetchFullDay(btn){
   if(btn){ btn.disabled=true; btn.textContent='下載中…' }
   showFullLoading('下載完整紀錄中…', day+'　軌跡與延滯明細')
   try{
-    _histDateFetched.delete(day)          // 清掉「這天抓過了」的記號，強制重抓完整版
+    _histDateFetched.delete(cloudRouteId+'|'+day)  // 清掉「這條路線這天抓過了」的記號，強制重抓完整版
     const added=await ensureHistoryForDate(day)
     // 已經在畫面上的那一筆是輕量空殼，要讓它能被完整版覆蓋
     Object.keys(allTripsByRound).forEach(n=>{
@@ -6239,11 +6290,31 @@ async function waitLoadingAnimation(){
 
 // 下載指定路線並接續原本的流程（畫面：下載中 → 計算路徑中 → 簽到畫面）
 // 單一路線 QR（?id=）跟專案 QR 選定路線後，都是走這一段
+// 換路線時，所有「屬於上一條路線」的東西都必須失效。
+// 這是現場回報「跑完 T5 換 T3+T4，離峰去程卻已經打勾」與「點 T3+T4 卻畫出 T5 路線」的根因：
+// _histCache / _histDateFetched / routePolylines / _lastLoadedKey 全是全域變數，
+// 而下載歷史、算道路路徑都是非同步的——上一條路線還在路上的請求，
+// 回來時會寫進「現在這條路線」的資料裡，而且還會被 saveTripsToStorage() 存下來。
+// _routeGen 就是這次載入的序號：序號一變，之前那些還沒回來的工作全部作廢。
+let _routeGen = 0
+function _resetRouteScopedState(){
+  _histCache = null
+  _histRouteId = null
+  _histDateFetched.clear()
+  _lastLoadedKey = null
+  routePolylines = []
+  _routeSrcStat = {cache:0, osrm:0, straight:0}
+  allTripsByRound = {}
+  ;(ROUND_KEYS||[1]).forEach(r=>{ allTripsByRound[r] = {} })
+  allTrips = allTripsByRound[selRound] || (allTripsByRound[selRound] = {})
+}
 async function loadCloudRouteAndProceed(routeId, gsParam, kParam){
+  const gen = ++_routeGen
   cloudRouteId   = routeId
   cloudScriptUrl = gsParam
   cloudApiKey    = kParam
   qrKey = 'cloud_' + routeId   // localStorage namespace
+  _resetRouteScopedState()
 
   showScreen('screen-loading')  // uses classList — correct way
   setLoadPct(5)
@@ -6251,18 +6322,22 @@ async function loadCloudRouteAndProceed(routeId, gsParam, kParam){
   try{
     document.getElementById('loading-msg').textContent='任務下載中'
     document.getElementById('loading-sub').textContent=''
-    setTimeout(()=>setLoadPct(40), 300)  // animate car forward while fetching
+    setTimeout(()=>{ if(gen===_routeGen) setLoadPct(40) }, 300)  // animate car forward while fetching
     const routeData = await cloudFetchRoute(routeId, gsParam, kParam)
+    if(gen!==_routeGen) return            // 使用者已經改點別條路線了，這份資料作廢
     applyConfig(routeData)
     setLoadPct(55)
     document.getElementById('loading-msg').textContent='計算道路路徑中'
     document.getElementById('loading-sub').textContent=''
-    await prefetchRoutes()
+    await prefetchRoutes(gen)
+    if(gen!==_routeGen) return
     setLoadPct(100)
     await new Promise(r=>setTimeout(r,700))  // let car reach 🏁
+    if(gen!==_routeGen) return
     showSigninScreen()
     flushOfflineQueue()
   }catch(e){
+    if(gen!==_routeGen) return
     document.getElementById('loading-msg').textContent='❌ 載入失敗'
     document.getElementById('loading-sub').textContent=e.message
     setLoadPct(0)
