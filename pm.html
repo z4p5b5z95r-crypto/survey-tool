@@ -554,6 +554,63 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .cc-en{font-size:9px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
 .cal-more{font-size:9px;color:#94a3b8;padding-left:2px;cursor:pointer;font-weight:700;line-height:1.4}
 .cal-more:hover{color:#2563eb}
+/* ── 月曆／清單 切換鈕 ───────────────────────────────────── */
+.cal-seg{display:flex;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;flex:none}
+.cal-seg button{border:0;background:#fff;color:#475569;font-size:12px;font-weight:700;
+  padding:6px 13px;cursor:pointer;font-family:inherit}
+.cal-seg button+button{border-left:1px solid #cbd5e1}
+.cal-seg button.on{background:#2563eb;color:#fff}
+/* ── 清單檢視 ────────────────────────────────────────────
+   月曆是固定高度、格子平分；清單則是可以往下捲的長串，所以 .cal-wrap.list
+   把高度限制改成「最高不超過可視高度」，內容少的時候就照內容縮。 */
+.cal-wrap.list{height:auto;min-height:0;max-height:calc(100vh - var(--cal-off,232px))}
+.cl-scroll{overflow:auto;padding:10px 12px 14px}
+.cl-empty{padding:34px 0;text-align:center;color:#94a3b8;font-size:13px}
+.cl-day+.cl-day{margin-top:14px}
+.cl-dhd{display:flex;align-items:baseline;gap:8px;padding:5px 2px 7px;
+  border-bottom:2px solid #e2e8f0;margin-bottom:8px;position:sticky;top:0;background:#fff;z-index:2}
+.cl-dd{font-size:15px;font-weight:800;color:#0f172a;letter-spacing:.3px}
+.cl-dw{font-size:11px;font-weight:700;color:#64748b}
+.cl-dm{margin-left:auto;font-size:11px;color:#94a3b8;font-weight:600}
+.cl-pj{border:1px solid #e2e8f0;border-radius:10px;margin-bottom:7px;overflow:hidden;background:#fff}
+.cl-pjhd{display:flex;align-items:center;gap:8px;padding:9px 11px;cursor:pointer;
+  border-left:3px solid;background:#f8fafc}
+.cl-pjhd:hover{background:#f1f5f9}
+.cl-caret{font-size:11px;color:#94a3b8;transition:transform .15s;flex:none}
+.cl-pj.open .cl-caret{transform:rotate(90deg)}
+.cl-pjn{font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:min(46vw,340px)}
+.cl-pm{flex:none;font-size:10px;font-weight:700;color:#475569;background:#e2e8f0;
+  border-radius:20px;padding:2px 8px}
+.cl-meta{margin-left:auto;flex:none;font-size:11px;color:#94a3b8;font-weight:600}
+.cl-body{display:none}
+.cl-pj.open .cl-body{display:block}
+/* 六欄：調查人員／路線名稱／調查時間／趟次名稱／趟次／箭頭 */
+.cl-hd,.cl-row{display:grid;grid-template-columns:120px minmax(140px,1.4fr) 108px minmax(150px,1.6fr) 74px 20px;
+  gap:8px;align-items:center;padding:8px 11px;border-top:1px solid #f1f5f9}
+.cl-hd{font-size:10px;font-weight:800;color:#94a3b8;letter-spacing:.5px;background:#fcfdfe}
+.cl-row{cursor:pointer;font-size:12px;color:#334155}
+.cl-row:hover{background:#f8fafc}
+.cl-c{min-width:0}
+.cl-who{font-weight:700;color:#0f172a;display:flex;align-items:center;gap:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cl-ic{font-size:11px;flex:none}
+.cl-hd .cl-who{font-weight:800;color:#94a3b8}
+.cl-rt{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cl-tm{font-variant-numeric:tabular-nums;color:#475569;white-space:nowrap}
+.cl-tm.fb{color:#94a3b8}
+.cl-fbm{font-size:9px;font-weight:700;color:#94a3b8;background:#f1f5f9;border-radius:4px;
+  padding:1px 4px;margin-left:4px}
+.cl-cb{display:flex;gap:4px;flex-wrap:wrap}
+.cl-hd .cl-cb{display:block}
+.cl-chip{font-size:10px;font-weight:700;color:#475569;background:#f1f5f9;border:1px solid #e2e8f0;
+  border-radius:20px;padding:1px 7px;white-space:nowrap}
+.cl-dim{color:#cbd5e1}
+.cl-n{text-align:right}
+.cl-hd .cl-n{text-align:right}
+.cl-tn{font-size:11px;font-weight:800;border:1px solid;border-radius:20px;padding:2px 8px;white-space:nowrap}
+.cl-go{color:#cbd5e1;text-align:right;font-size:14px}
+.cl-row:hover .cl-go{color:#2563eb}
 .cal-legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;padding:7px 11px;background:#fff;
   border:1px solid #e2e8f0;border-radius:10px;font-size:11px;color:#475569}
 .cal-lg{display:flex;align-items:center;gap:5px}
@@ -610,6 +667,18 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
   .cc-pj{font-size:10px}
   .cal-fg select{min-width:120px}
   .cal-nav{margin-left:0;width:100%;justify-content:space-between}
+  /* 清單在窄螢幕改成兩行卡片式：欄位標題列隱藏，用內文自己表達 */
+  .cal-wrap.list{max-height:none}
+  .cl-scroll{padding:8px 8px 12px}
+  .cl-hd{display:none}
+  .cl-row{grid-template-columns:1fr auto;grid-template-areas:'who n' 'rt n' 'tm go' 'cb cb';
+    gap:3px 8px;padding:9px 10px}
+  .cl-who{grid-area:who} .cl-rt{grid-area:rt;white-space:normal}
+  .cl-tm{grid-area:tm;font-size:11px} .cl-cb{grid-area:cb;margin-top:2px}
+  .cl-n{grid-area:n;align-self:start} .cl-go{grid-area:go;align-self:end}
+  .cl-pjn{max-width:44vw}
+  .cl-meta{width:100%;margin-left:0;order:9;padding-left:19px}
+  .cl-pjhd{flex-wrap:wrap;row-gap:3px}
 }
 .admin-table{width:100%;border-collapse:collapse;background:white;border-radius:12px;overflow:hidden;box-shadow:0 1px 5px rgba(0,0,0,.07);margin-top:4px}
 .admin-table th{background:#f1f5f9;color:#475569;padding:10px 14px;text-align:left;font-size:12px;font-weight:700;border-bottom:2px solid #e2e8f0}
@@ -4581,6 +4650,10 @@ let _calUserMovedMonth=false                      // 使用者自己翻過月份
 let _calMonthCache={}                             // 'YYYY-MM' -> 該月的調查（輕量欄位）
 let _calMonthPending={}                           // 同一個月不要重複發請求
 let _calMonths=[]                                 // 有資料的月份清單
+// 檢視方式：'cal' 月曆（原本的）／'list' 清單（日期→專案→展開看調查人員與趟次）。
+// 記在 localStorage，下次進來維持上次選的。
+let _calView=(()=>{ try{ return localStorage.getItem('pm_cal_view')==='list'?'list':'cal' }catch(e){ return 'cal' } })()
+let _calOpen={}                                   // 'YYYY-MM-DD|專案id' -> 展開中
 
 function thisMonth(){
   const t=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'})
@@ -4773,6 +4846,133 @@ function calGroups(dateStr){
   return [...m.values()].sort((a,b)=>a.name.localeCompare(b.name,'zh-TW'))
 }
 
+// ── 清單檢視：日期 → 專案（可展開）→ 調查人員／路線／時間／趟次 ──────────
+// 專案的負責 PM＝專案的 owner；路線沒掛專案時退回路線的 owner。
+function svPM(sv){
+  const rt=_calRoutes[sv.routeId]
+  const pj=rt && _calProjects[rt.projectId]
+  return (pj&&pj.owner) || (rt&&rt.owner) || '未指定'
+}
+function _hm(v){
+  if(!v) return ''
+  const d=new Date(v); if(isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Taipei'})
+}
+// 調查時間＝這筆調查裡最早與最晚那一趟的開始時刻。
+// combos 由後端 meta 模式提供（只有 peakType/direction/startTime 三個小欄位）；
+// 舊資料或後端還沒更新時退回 submittedAt，至少不會空白。
+function svTimeRange(sv){
+  const ts=(sv.combos||[]).map(c=>c.startTime).filter(Boolean)
+    .map(s=>new Date(s)).filter(d=>!isNaN(d.getTime())).sort((a,b)=>a-b)
+  if(!ts.length) return _hm(sv.submittedAt)||'—'
+  const a=_hm(ts[0]), b=_hm(ts[ts.length-1])
+  return (a===b||!b)?a:`${a}–${b}`
+}
+// 沒有 combos 時上面顯示的是「上傳時刻」而不是實際調查時刻，要標示出來，
+// 免得使用者把上傳時間當成調查時間。
+function svTimeIsUpload(sv){
+  return !(sv.combos||[]).some(c=>c.startTime)
+}
+// 趟次名稱用該路線自訂的離／尖峰名稱組出來，例如「尖峰去程 ×2」
+function svComboNames(sv){
+  const rt=_calRoutes[sv.routeId]||{}
+  const pk=rt.peakName||'尖峰', op=rt.offPeakName||'離峰'
+  const m=new Map()
+  ;(sv.combos||[]).forEach(c=>{
+    const nm=(c.peakType==='peak'?pk:op)+(c.direction==='return'?'回程':'去程')
+    m.set(nm,(m.get(nm)||0)+1)
+  })
+  return [...m.entries()].map(([name,n])=>({name,n}))
+}
+// 依「日期 → 專案」把當月資料整理好；日期新的排前面
+function calListData(){
+  const byDate=new Map()
+  calFiltered().forEach(sv=>{
+    const ds=String(sv.date).slice(0,10); if(!ds) return
+    if(!byDate.has(ds)) byDate.set(ds,new Map())
+    const pj=svProject(sv), pm=byDate.get(ds)
+    if(!pm.has(pj.id)) pm.set(pj.id,{ id:pj.id, name:pj.name, pm:svPM(sv), items:[] })
+    pm.get(pj.id).items.push(sv)
+  })
+  return [...byDate.entries()].sort((a,b)=>b[0].localeCompare(a[0])).map(([date,pm])=>({
+    date,
+    projects:[...pm.values()].sort((a,b)=>a.name.localeCompare(b.name,'zh-TW')).map(g=>{
+      // 同一條路線同一天可能跑了好幾回合，照「調查時間」由早到晚排
+      g.items.sort((x,y)=>String(svTimeRange(x)).localeCompare(String(svTimeRange(y))))
+      g.trips=g.items.reduce((n,s)=>n+(+s.tripCount||0),0)
+      g.routes=new Set(g.items.map(s=>s.routeId)).size
+      g.surveyors=[...new Set(g.items.map(s=>s.surveyor).filter(Boolean))]
+      return g
+    })
+  }))
+}
+const _WDZH=['日','一','二','三','四','五','六']
+function calListHTML(){
+  const data=calListData()
+  if(!data.length){
+    return `<div class="cl-empty">${_calLoading?'&nbsp;':(_calMineOnly?'你的專案這個月還沒有調查紀錄':'這個月沒有調查紀錄')}</div>`
+  }
+  return data.map(d=>{
+    const wd=_WDZH[new Date(d.date+'T00:00:00').getDay()]
+    const nT=d.projects.reduce((n,g)=>n+g.trips,0)
+    const blocks=d.projects.map(g=>{
+      const col=calColor(g.id)
+      const key=d.date+'|'+g.id, open=!!_calOpen[key]
+      const rows=g.items.map(sv=>{
+        const cb=svComboNames(sv)
+        return `<div class="cl-row" onclick="openCalReport(${jsArg(sv.routeId)},${jsArg(d.date)})">
+          <div class="cl-c cl-who"><span class="cl-ic">👷</span>${esc(sv.surveyor||'未記錄')}</div>
+          <div class="cl-c cl-rt">${esc(svRouteName(sv))}
+            ${svDateFlagBadge(sv,{block:false})||''}</div>
+          <div class="cl-c cl-tm${svTimeIsUpload(sv)?' fb':''}"
+               ${svTimeIsUpload(sv)?'title="這筆沒有逐趟時間，顯示的是上傳時刻"':''}
+          >${esc(svTimeRange(sv))}${svTimeIsUpload(sv)?'<span class="cl-fbm">上傳</span>':''}</div>
+          <div class="cl-c cl-cb">${cb.length
+            ? cb.map(c=>`<span class="cl-chip">${esc(c.name)}${c.n>1?` ×${c.n}`:''}</span>`).join('')
+            : '<span class="cl-dim">—</span>'}</div>
+          <div class="cl-c cl-n"><span class="cl-tn" style="color:${col.c};background:${col.bg};border-color:${col.bd}">${+sv.tripCount||0} 趟</span></div>
+          <div class="cl-c cl-go">›</div>
+        </div>`
+      }).join('')
+      return `<div class="cl-pj${open?' open':''}">
+        <div class="cl-pjhd" style="border-left-color:${col.c}" onclick="calToggleGroup(${jsArg(key)})">
+          <span class="cl-caret">▸</span>
+          <span class="cl-pjn" style="color:${col.c}" title="${esc(g.name)}">${esc(g.name)}</span>
+          <span class="cl-pm" title="專案負責 PM">PM ${esc(g.pm)}</span>
+          <span class="cl-meta">${g.routes} 條路線・${g.items.length} 筆・${g.trips} 趟</span>
+        </div>
+        <div class="cl-body">
+          <div class="cl-hd">
+            <div class="cl-c cl-who">調查人員</div><div class="cl-c cl-rt">路線名稱</div>
+            <div class="cl-c cl-tm">調查時間</div><div class="cl-c cl-cb">趟次名稱</div>
+            <div class="cl-c cl-n">趟次</div><div class="cl-c cl-go"></div>
+          </div>
+          ${rows}
+        </div>
+      </div>`
+    }).join('')
+    return `<div class="cl-day">
+      <div class="cl-dhd"><span class="cl-dd">${d.date.replace(/-/g,'/')}</span>
+        <span class="cl-dw">週${wd}</span>
+        <span class="cl-dm">${d.projects.length} 個專案・${nT} 趟</span></div>
+      ${blocks}</div>`
+  }).join('')
+}
+function calToggleGroup(key){
+  _calOpen[key]=!_calOpen[key]
+  renderSurveyCalendar()
+}
+function calSetView(v){
+  _calView=v==='list'?'list':'cal'
+  try{ localStorage.setItem('pm_cal_view',_calView) }catch(e){}
+  renderSurveyCalendar()
+}
+function calExpandAll(on){
+  if(!on){ _calOpen={} }
+  else calListData().forEach(d=>d.projects.forEach(g=>{ _calOpen[d.date+'|'+g.id]=true }))
+  renderSurveyCalendar()
+}
+
 function renderSurveyCalendar(){
   const el=document.getElementById(_calHost)
   if(!el) return
@@ -4804,6 +5004,7 @@ function renderSurveyCalendar(){
   const todayStr=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'})
 
   let cells=''
+  if(_calView==='list'){ cells='' } else {
   for(let i=0;i<first;i++) cells+='<div class="cal-cell blank"></div>'
   for(let d=1;d<=days;d++){
     const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`
@@ -4829,9 +5030,14 @@ function renderSurveyCalendar(){
   }
   const tail=(first+days)%7
   if(tail) for(let i=tail;i<7;i++) cells+='<div class="cal-cell blank"></div>'
+  }
 
   el.innerHTML=`
     <div class="cal-filters">
+      <div class="cal-seg">
+        <button class="${_calView==='cal'?'on':''}" onclick="calSetView('cal')">月曆</button>
+        <button class="${_calView==='list'?'on':''}" onclick="calSetView('list')">清單</button>
+      </div>
       <div class="cal-fg"><label>專案</label>
         <select onchange="_calFilt.project=this.value;renderSurveyCalendar()">
           <option value="">全部專案</option>
@@ -4848,11 +5054,15 @@ function renderSurveyCalendar(){
         <div class="cal-ml">${y}年 ${m}月</div>
         <button onclick="calShiftMonth(1)" title="下個月">›</button>
         <button class="cal-today" onclick="calGoToday()">本月</button>
+        ${_calView==='list'?`
+        <button class="cal-today" onclick="calExpandAll(true)" title="全部展開">全部展開</button>
+        <button class="cal-today" onclick="calExpandAll(false)" title="全部收合">收合</button>`:''}
       </div>
     </div>
-    <div class="cal-wrap">
+    <div class="cal-wrap${_calView==='list'?' list':''}">
+      ${_calView==='list' ? `<div class="cl-scroll">${calListHTML()}</div>` : `
       <div class="cal-dow">${['日','一','二','三','四','五','六'].map(x=>`<div>${x}</div>`).join('')}</div>
-      <div class="cal-grid">${cells}</div>
+      <div class="cal-grid">${cells}</div>`}
       <!-- 跟 PM 首頁「專案資料下載中…」同一套雲朵下載動畫 -->
       <div class="cal-loading${_calLoading?' on':''}">
         <div class="so-card">
