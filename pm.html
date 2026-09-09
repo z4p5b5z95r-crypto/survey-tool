@@ -254,6 +254,18 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .proj-group-body{background:white;border-top:1px solid #e2e8f0;padding:0 12px}
 .proj-group-body .pc{border:none;border-radius:0;border-bottom:1px solid #f1f5f9;margin-bottom:0;padding:12px 2px;box-shadow:none}
 .proj-group-body .pc:last-child{border-bottom:none}
+/* 整張路線卡可點進編輯；左邊色帶對應地圖上的編號顏色 */
+.proj-group-body .pc{cursor:pointer;padding-left:10px;transition:background .12s}
+.proj-group-body .pc:hover{background:#f8fafc}
+.pc-no{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;
+  border-radius:50%;color:#fff;font-size:11px;font-weight:800;margin-right:7px;flex:none;
+  vertical-align:1px}
+/* 專案路線地圖：只有目前展開的那個專案會畫 */
+.pj-map-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;
+  padding:9px;margin:10px 0 4px}
+.pj-map-hd{font-size:12px;font-weight:800;color:#334155;margin-bottom:7px}
+#pj-routes-map{height:210px;border-radius:9px;overflow:hidden;background:#e2e8f0}
+.pj-map-hint{font-size:10.5px;color:#94a3b8;margin-top:6px;line-height:1.5}
 /* 搬移路線到其他專案的選單 */
 .mv-proj-item{display:block;width:100%;text-align:left;padding:11px 14px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:11px;font-size:13.5px;font-weight:600;color:#0f172a;cursor:pointer;font-family:inherit;margin-bottom:6px}
 .mv-proj-item:hover{background:#f1f5f9}
@@ -3179,7 +3191,7 @@ function newTask(projectId) {
   if(_inEditView && _dirty && !confirm('清除目前設定，開始新建路線？'))return
   currentTaskId=null
   _currentProjectId=projectId||null
-  if(_currentProjectId)_openProjectIds.add(_currentProjectId)
+  if(_currentProjectId)_openProjectId=_currentProjectId
   document.getElementById('rn').value=''
   document.getElementById('ft').value=''
   document.getElementById('tl').value=''
@@ -3208,7 +3220,7 @@ async function loadTask(id) {
   const task=savedTasks.find(t=>t.id===id);if(!task)return
   currentTaskId=id
   _currentProjectId=task.projectId||null
-  if(_currentProjectId)_openProjectIds.add(_currentProjectId)
+  if(_currentProjectId)_openProjectId=_currentProjectId
   const cfg=task.cfg
   document.getElementById('rn').value=cfg.rn||''
   document.getElementById('ft').value=cfg.ft||''
@@ -3606,10 +3618,60 @@ async function repairCloudProjectIds(cloudRoutes, cloudProjects){
 //  RENDER PROJECTS — 一個專案可以有多條路線，共用一個 QR；
 //  現場掃專案 QR 後先選路線，才進到原本的監測流程
 // ════════════════════════════════════════════════════════
-let _openProjectIds=new Set()   // 記住哪些專案分組目前是展開的
+// 一次只展開一個專案（手風琴）。專案一多時，全部攤開會讓側欄變得很長、
+// 要找某條路線得一直捲；而且展開的專案下面會畫地圖，同時開好幾張也浪費資源。
+let _openProjectId=null
 function toggleProjectGroup(pid){
-  if(_openProjectIds.has(pid)) _openProjectIds.delete(pid); else _openProjectIds.add(pid)
+  _openProjectId = (_openProjectId===pid) ? null : pid
   renderProjects(document.getElementById('project-search')?.value.trim()||'')
+}
+// ── 專案路線地圖（跟現場 App 掃專案 QR 後的選路線畫面同一套視覺）──
+const PJ_MAP_COLORS=['#2563eb','#ea580c','#0d9488','#dc2626','#7c3aed','#0891b2','#ca8a04','#db2777']
+let _pjMap=null
+// PM 建路線時每段已經算過貼路座標並存在 sg[i].ll，這裡直接重用，
+// 不必再跟 OSRM 要一次，也不會像直接連節點那樣畫成一條條斜線穿過房子。
+function _pjPolyline(nd, sg){
+  const lls=[]
+  for(let i=0;i<nd.length-1;i++){
+    const cached=(sg||[])[i] && ((sg[i].ll)||(sg[i].latlngs))
+    if(cached && cached.length>=2){
+      if(!lls.length) lls.push(cached[0])
+      lls.push(...cached.slice(1))
+    }else{
+      if(!lls.length) lls.push([nd[i].a, nd[i].o])
+      lls.push([nd[i+1].a, nd[i+1].o])
+    }
+  }
+  return lls
+}
+function renderProjectRoutesMap(routes){
+  const box=document.getElementById('pj-routes-map')
+  if(!box || !leafletReady()) return
+  if(_pjMap){ try{_pjMap.remove()}catch(e){} _pjMap=null }
+  _pjMap=L.map('pj-routes-map',{zoomControl:true,attributionControl:false,scrollWheelZoom:false})
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(_pjMap)
+  const bounds=[]
+  routes.forEach((t,i)=>{
+    const nd=(t.cfg&&t.cfg.nd)||[]
+    if(nd.length<2) return
+    const color=PJ_MAP_COLORS[i%PJ_MAP_COLORS.length]
+    const lls=_pjPolyline(nd, t.cfg.sg)
+    if(lls.length<2) return
+    const poly=L.polyline(lls,{color,weight:5,opacity:.85}).addTo(_pjMap)
+    poly.on('click',()=>loadTask(t.id))
+    lls.forEach(pt=>bounds.push(pt))
+    const mid=nd[Math.floor(nd.length/2)]
+    L.marker([mid.a,mid.o],{icon:L.divIcon({
+      html:`<div style="width:26px;height:26px;background:${color};border:2.5px solid #fff;border-radius:50%;`
+          +`display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;`
+          +`box-shadow:0 2px 6px rgba(0,0,0,.35)">${i+1}</div>`,
+      className:'',iconSize:[26,26],iconAnchor:[13,13]
+    })}).addTo(_pjMap).on('click',()=>loadTask(t.id))
+  })
+  if(bounds.length) _pjMap.fitBounds(bounds,{padding:[22,22]})
+  else _pjMap.setView([24.99,121.30],12)
+  // 側欄剛展開時容器尺寸還沒定案，補一次 invalidateSize 免得地圖只畫出左上角
+  setTimeout(()=>{ try{ _pjMap && _pjMap.invalidateSize() }catch(e){} }, 60)
 }
 function renderProjects(filter='') {
   const me=getCurrentUser()||''
@@ -3644,16 +3706,19 @@ function renderProjects(filter='') {
     const proj=savedProjects.find(p=>p.id===pid)
     const projName=proj?.name||'未分類路線'
     const routes=groups[pid]||[]
-    const isOpen=filter?true:_openProjectIds.has(pid)
-    const routesHtml=routes.map(t=>{
+    const isOpen=filter?true:(_openProjectId===pid)
+    const routesHtml=routes.map((t,ri)=>{
       const isEdit=t.id===currentTaskId&&_inEditView
+      const rc=PJ_MAP_COLORS[ri%PJ_MAP_COLORS.length]   // 跟地圖上的編號同色
       const metaParts=[]
       if(t.cfg.ft) metaParts.push(`<span>📍 ${t.cfg.ft}</span>`)
       if(t.creator&&t.creator!=='未知') metaParts.push(`<span>👤 ${t.creator}</span>`)
       const metaHtml=metaParts.map((s,i)=>i<metaParts.length-1?s+`<span class="pc-dot">·</span>`:s).join('')
-      return`<div class="pc${isEdit?' editing':''}">
+      // 整張卡片可點：跟現場 App 的選路線清單一致，點下去就進編輯
+      return`<div class="pc${isEdit?' editing':''}" style="border-left:4px solid ${rc}"
+                  onclick="loadTask('${t.id}')">
         <div class="pc-top">
-          <div class="pc-name">${t.cfg.rn||'未命名路線'}</div>
+          <div class="pc-name"><span class="pc-no" style="background:${rc}">${ri+1}</span>${t.cfg.rn||'未命名路線'}</div>
           <div class="pc-chips">
             ${isEdit?'<span class="pc-chip editing-chip">▶ 編輯中</span>':''}
           </div>
@@ -3663,14 +3728,14 @@ function renderProjects(filter='') {
           <div class="pc-actions-l">
             ${isEdit
               ?`<span class="pc-active-tag">▶ 編輯中</span>`
-              :`<button class="pc-btn edit" onclick="loadTask('${t.id}')">✏️ 編輯</button>`}
+              :`<button class="pc-btn edit" onclick="event.stopPropagation();loadTask('${t.id}')">✏️ 編輯</button>`}
             ${t.cloudId
               ? ''
-              :(gsUrl&&getSessionToken())?`<button class="pc-btn" style="color:#16a34a" onclick="uploadTask('${t.id}')">☁ 上傳</button>`:''}
+              :(gsUrl&&getSessionToken())?`<button class="pc-btn" style="color:#16a34a" onclick="event.stopPropagation();uploadTask('${t.id}')">☁ 上傳</button>`:''}
           </div>
           <div class="pc-actions-r">
-            <button class="pc-btn icon del" title="刪除路線" onclick="deleteTask('${t.id}')">🗑</button>
-            <button class="pc-btn icon more" title="更多操作" onclick="toggleRouteMoreMenu('${t.id}',this)">⋯</button>
+            <button class="pc-btn icon del" title="刪除路線" onclick="event.stopPropagation();deleteTask('${t.id}')">🗑</button>
+            <button class="pc-btn icon more" title="更多操作" onclick="event.stopPropagation();toggleRouteMoreMenu('${t.id}',this)">⋯</button>
           </div>
         </div>
       </div>`
@@ -3688,9 +3753,24 @@ function renderProjects(filter='') {
         <button class="pc-btn projadd" title="新增路線" onclick="event.stopPropagation();newTask('${pid}')">＋ 路線</button>
         <button class="pc-btn projdel" title="刪除專案" onclick="event.stopPropagation();deleteProject('${pid}')">🗑 刪除</button>
       </div>
-      <div class="proj-group-body">${routesHtml}</div>
+      <div class="proj-group-body">
+        ${isOpen && routes.length ? `<div class="pj-map-card">
+          <div class="pj-map-hd">🗺 專案路線地圖</div>
+          <div id="pj-routes-map"></div>
+          <div class="pj-map-hint">點地圖上的編號路線，或下方清單，都可以直接進入編輯</div>
+        </div>` : ''}
+        ${routesHtml}
+      </div>
     </div>`
   }).join('')
+  // innerHTML 換掉之後舊的地圖實例就沒有容器了，一定要重畫。
+  // 只有目前展開的那個專案才需要地圖。
+  if(_pjMap){ try{_pjMap.remove()}catch(e){} _pjMap=null }
+  const openPid = filter ? order[0] : _openProjectId
+  if(openPid){
+    const openRoutes=groups[openPid]||[]
+    if(openRoutes.length) requestAnimationFrame(()=>renderProjectRoutesMap(openRoutes))
+  }
 }
 
 // 新建專案：先取名，再直接進入路線編輯畫面（該路線會歸屬這個新專案）
@@ -3702,7 +3782,7 @@ function newProject(){
   const proj={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:null,name:name.trim()||'未命名專案',savedAt:new Date().toLocaleDateString('zh-TW'),creator:getCurrentUser()||'未知'}
   savedProjects.push(proj)
   localStorage.setItem('pm_projects',JSON.stringify(savedProjects))
-  _openProjectIds.add(proj.id)
+  _openProjectId=proj.id
   renderProjects()
   toast(`✅ 專案「${proj.name}」已建立`)
 }
@@ -3830,7 +3910,7 @@ function duplicateRoute(taskId){
   const idx=savedTasks.findIndex(x=>x.id===taskId)
   savedTasks.splice(idx>=0?idx+1:savedTasks.length,0,copy)
   localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
-  if(t.projectId) _openProjectIds.add(t.projectId)   // 確保複製出來的那條看得到
+  if(t.projectId) _openProjectId=t.projectId   // 確保複製出來的那條看得到
   renderProjects(document.getElementById('project-search')?.value.trim()||'')
   toast(`✅ 已複製為「${newName}」`)
 }
@@ -3873,7 +3953,7 @@ async function doMoveRoute(taskId, targetProjectId){
   const t=savedTasks.find(x=>x.id===taskId); if(!t)return
   t.projectId=targetProjectId
   localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
-  _openProjectIds.add(targetProjectId)
+  _openProjectId=targetProjectId
   renderProjects()
   toast('✅ 已搬移')
   // 這條路線先前若已經同步過雲端，補傳一次讓雲端也記住新的專案歸屬
