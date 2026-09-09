@@ -2081,12 +2081,81 @@ function showInsertTooltip(lat,lng,cb){
   document.body.appendChild(el); _insertChoiceEl=el; _insertTooltipCb=cb
   setTimeout(()=>{const i=document.getElementById('_ins_name_inp');if(i){i.focus();i.select()}},30)
 }
+// ── 在既有路徑上插入節點：把「原本畫好的線」剪成兩段，而不是重算 ──
+//
+// 之前插入節點（含假節點）時，被插入的那一段是直接丟掉重來：
+//   const seg0={... waypoints:[]}   // 拖曳出來的途經點沒了
+//   const seg1={... waypoints:[]}
+// 於是 addNode() 找不到 _latlngs，就重新跟 OSRM 要一條路——
+// PM 辛苦拖出來的走法整段被官方最短路徑取代，這就是「路線自己重畫」。
+//
+// 現在改成：沿著原本那條折線找出離插入點最近的位置，就地剪成兩半，
+// 兩段各自沿用剪下來的座標與落在該側的途經點。完全不碰 OSRM，畫的東西原封不動。
+function _projOnSeg(a, b, p){
+  // 回傳 p 投影到線段 ab 的 t（0~1）與距離，單位是經緯度座標（比較大小用，不需要真實距離）
+  const ax=a[1], ay=a[0], bx=b[1], by=b[0], px=p.lng, py=p.lat
+  const l2=(bx-ax)**2+(by-ay)**2
+  if(!l2) return {t:0, d:Math.hypot(px-ax,py-ay)}
+  let t=((px-ax)*(bx-ax)+(py-ay)*(by-ay))/l2
+  t=Math.max(0,Math.min(1,t))
+  return {t, d:Math.hypot(px-(ax+t*(bx-ax)), py-(ay+t*(by-ay)))}
+}
+// 把折線 lls 在最接近 pt 的地方剪開，回傳 [前半, 後半]（兩半都含交點）
+function _splitLatlngs(lls, pt){
+  if(!Array.isArray(lls) || lls.length<2) return null
+  let bi=0, bt=0, bd=Infinity
+  for(let i=0;i<lls.length-1;i++){
+    const r=_projOnSeg(lls[i], lls[i+1], pt)
+    if(r.d<bd){ bd=r.d; bi=i; bt=r.t }
+  }
+  const a=lls[bi], b=lls[bi+1]
+  const cut=[a[0]+(b[0]-a[0])*bt, a[1]+(b[1]-a[1])*bt]
+  const head=lls.slice(0,bi+1).concat([cut])
+  const tail=[cut].concat(lls.slice(bi+1))
+  if(head.length<2 || tail.length<2) return null
+  return [head, tail, bi, bt]
+}
+// 折線長度（公尺）
+function _llsMeters(lls){
+  if(!Array.isArray(lls)||lls.length<2) return 0
+  let m=0
+  for(let i=0;i<lls.length-1;i++) m+=map.distance(lls[i], lls[i+1])
+  return Math.round(m)
+}
+// 依「沿線位置」把原本的途經點分給前後兩段
+function _splitWaypoints(lls, wps, bi, bt){
+  const head=[], tail=[]
+  ;(wps||[]).forEach(w=>{
+    let wi=0, wt=0, wd=Infinity
+    for(let i=0;i<lls.length-1;i++){
+      const r=_projOnSeg(lls[i], lls[i+1], w)
+      if(r.d<wd){ wd=r.d; wi=i; wt=r.t }
+    }
+    if(wi<bi || (wi===bi && wt<=bt)) head.push(w); else tail.push(w)
+  })
+  return [head, tail]
+}
 function showInsertChoice(segIdx,lat,lng){
   showInsertTooltip(lat,lng,async(name,ghost=false)=>{
     pushHistory()
     const newNodeList=[...nodes.slice(0,segIdx+1),{lat,lng,name,exitName:'',radius:15,lineAngle:null,lineLength:10,_ghost:ghost},...nodes.slice(segIdx+1)]
-    const seg0={name:'',lanes:segData[segIdx]?.lanes||2,width:segData[segIdx]?.width||8,length:0,_auto:true,waypoints:[]}
-    const seg1={name:'',lanes:segData[segIdx]?.lanes||2,width:segData[segIdx]?.width||8,length:0,_auto:true,waypoints:[]}
+    const old = segData[segIdx] || {}
+    const base = {lanes:old.lanes||2, width:old.width||8, mode:old.mode||'driving'}
+    let seg0, seg1
+    // ★ 原本這一段已經有畫好的路徑就地剪開，兩半各自沿用，不重跑 OSRM
+    const cut = _splitLatlngs(old._latlngs, {lat,lng})
+    if(cut){
+      const [head, tail, bi, bt] = cut
+      const [wpA, wpB] = _splitWaypoints(old._latlngs, old.waypoints, bi, bt)
+      seg0={name:'',...base,length:_llsMeters(head),_auto:true,waypoints:wpA,
+            _latlngs:head,_latlngsStr:JSON.stringify(head),_source:old._source||'saved'}
+      seg1={name:'',...base,length:_llsMeters(tail),_auto:true,waypoints:wpB,
+            _latlngs:tail,_latlngsStr:JSON.stringify(tail),_source:old._source||'saved'}
+    }else{
+      // 這一段還沒有路徑（極少見，例如剛連好還沒算完）才交給 addNode 去算
+      seg0={name:'',...base,length:0,_auto:true,waypoints:[]}
+      seg1={name:'',...base,length:0,_auto:true,waypoints:[]}
+    }
     const newSegData=[...segData.slice(0,segIdx),seg0,seg1,...segData.slice(segIdx+1)]
     document.getElementById('route-loading').style.display='block'
     await rebuildAllNodes(newNodeList,newSegData)
