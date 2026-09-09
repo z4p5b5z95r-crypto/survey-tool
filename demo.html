@@ -447,23 +447,32 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .btn-blue{width:100%;padding:16px;background:#2563eb;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer}
 .btn-purple{width:100%;padding:16px;background:#7c3aed;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer}
 /* ── 收音中的麥克風提示 ── */
-#mic-live{position:fixed;left:50%;top:88px;transform:translateX(-50%);z-index:9000;
-  display:none;flex-direction:column;align-items:center;gap:9px;pointer-events:none}
+/* 全螢幕壓暗，只留麥克風。
+   只有「車子已經停下、而且麥克風真的開了」才會出現，所以不會擋到行車視線；
+   點畫面任一處就收起來，改用下面的按鈕選（收音不中斷，之後開口照樣收得到）。 */
+/* ⚠️ pointer-events:none 是關鍵：遮罩只是視覺提示，不能吃掉點擊。
+   沒有這一行的話，駕駛想直接按下面的延滯按鈕會先點到遮罩，等於要按兩次。
+   現在點擊直接穿透到後面的按鈕，選了原因收音就結束、遮罩自動消失。
+   也不要用 blur——會把下面的按鈕糊掉，反而不好按。 */
+#mic-live{position:fixed;inset:0;z-index:9000;background:rgba(2,6,23,.5);
+  pointer-events:none;
+  display:none;flex-direction:column;align-items:center;justify-content:center;
+  animation:micIn .18s ease-out}
 #mic-live.on{display:flex}
-.mic-live-box{position:relative;width:76px;height:76px;display:flex;align-items:center;justify-content:center}
-.mic-live-ico{position:relative;z-index:2;width:60px;height:60px;border-radius:50%;
-  background:#dc2626;display:flex;align-items:center;justify-content:center;font-size:29px;
-  box-shadow:0 6px 22px rgba(220,38,38,.55)}
-.mic-live-ring{position:absolute;inset:8px;border-radius:50%;background:rgba(220,38,38,.45);
-  animation:micPulse 1.6s ease-out infinite}
-.mic-live-ring.d2{animation-delay:.8s}
+@keyframes micIn{from{opacity:0}to{opacity:1}}
+.mic-live-box{position:relative;width:74px;height:74px;display:flex;align-items:center;justify-content:center}
+.mic-live-ico{position:relative;z-index:2;width:57px;height:57px;border-radius:50%;
+  background:linear-gradient(160deg,#ef4444,#b91c1c);display:flex;align-items:center;
+  justify-content:center;font-size:27px;box-shadow:0 8px 24px rgba(220,38,38,.6)}
+.mic-live-ring{position:absolute;inset:0;border-radius:50%;
+  border:2px solid rgba(248,113,113,.8);animation:micPulse 1.7s ease-out infinite}
+.mic-live-ring.d2{animation-delay:.85s}
 @keyframes micPulse{
-  0%  {transform:scale(.85);opacity:.65}
-  70% {transform:scale(1.6);opacity:0}
-  100%{transform:scale(1.6);opacity:0}
+  0%  {transform:scale(.78);opacity:.9}
+  70% {transform:scale(1.35);opacity:0}
+  100%{transform:scale(1.35);opacity:0}
 }
-.mic-live-txt{background:rgba(15,23,42,.9);color:#fff;font-size:13.5px;font-weight:800;
-  padding:7px 15px;border-radius:20px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+
 /* 與「重新調查」同一個橘（.btn-start.redo）：代表「重來一次」這類動作 */
 .btn-orange{width:100%;padding:16px;background:#ea580c;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(234,88,12,.35)}
 
@@ -3551,7 +3560,7 @@ function triggerStopDetection(){
 }
 
 // Called when user picks a delay button while stop panel is shown
-function svyStopPickDelay(d, group, byVoice){
+function svyStopPickDelay(d, group, byVoice, sayAs){
   clearTimeout(_stopCdTimer)
   endClarify()         // 駕駛直接點了按鈕，追問就作廢
   stopCauseListening()
@@ -3564,7 +3573,7 @@ function svyStopPickDelay(d, group, byVoice){
   const firstPick = !activeDelay
   // 有 activeDelay 就是「改選」——交給 toggleDelay 內建的更正邏輯，
   // 它會保留原本的起算時刻、撤掉前一筆、並語音複誦「修改為○○」。
-  toggleDelay(d,group)
+  toggleDelay(d,group,{sayAs})
   // 第一次選才需要把起算點回推到車子真正停下的時刻
   if(firstPick && activeDelay && _stopEvent){
     activeDelay.startedAt=new Date(_stopEvent.startedAt)
@@ -3576,13 +3585,8 @@ function svyStopPickDelay(d, group, byVoice){
     : null
   _stopEvent=null
   markStopPanelPicked(d)
-  if(!byVoice){
-    // 手動點選也要複誦，理由跟語音那條路一樣：駕駛不用低頭確認自己按到什麼。
-    // 之前只有 toast，眼睛沒看螢幕就完全不知道按到哪一個。
-    // （語音那條路由 svyVoiceCommit 自己複誦，這裡只處理手動，才不會唸兩次）
-    speakNav(d.label, null, {high:true})
-    if(firstPick) showToast(`⏱ ${d.icon} ${d.label} 計時中（可隨時改選）`)
-  }
+  // 播報已經由 toggleDelay 統一處理，這裡只補畫面提示
+  if(!byVoice && firstPick) showToast(`⏱ ${d.icon} ${d.label} 計時中（可隨時改選）`)
   // 面板維持展開到車子重新行駛為止——手動與語音行為一致
   svySheetExpand()
 }
@@ -3998,16 +4002,16 @@ function setVoiceHint(txt){
 }
 // 蓋在地圖上的收音提示。行車中不可能盯著面板裡的小字，
 // 所以用大圖示 ＋ 脈動圈明確告訴駕駛「現在可以講了」。
+// 收音中的視覺提示：畫面壓暗 + 一個麥克風，沒有文字。
+// 不吃點擊（見 CSS 的 pointer-events:none），所以下面的延滯按鈕隨時可以直接按；
+// 選了原因或收音結束，遮罩就自動消失，不需要使用者手動關。
 function showMicLive(on){
   const el=document.getElementById('mic-live')
   if(!el) return
   el.classList.toggle('on', !!on)
-  if(on) setMicLiveTxt(_clarify ? (_clarify.hint||'請回答') : '請說出停止原因')
 }
-function setMicLiveTxt(t){
-  const el=document.getElementById('mic-live-txt')
-  if(el && t) el.textContent=t
-}
+// 遮罩上已經沒有文字了，保留這支只是讓 setVoiceHint 的呼叫端不用改。
+function setMicLiveTxt(){}
 // 「等系統真的講完再開麥」。所有『先播提示語、再聽駕駛回答』的地方都要走這裡。
 //
 // 為什麼不能直接在 speakNav 的 onDone 裡開麥：onDone 有可能是 speakNav 內部的
@@ -4179,11 +4183,11 @@ function applyVoiceCause(c, sayAs){
   const d=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===c.cause)
   if(!d){ vlog('✗ DELAYS 找不到', c.cause); return }
   vlog('✓ 記錄', d.label)
-  svyStopPickDelay(d, c.group, true)
   // 複誦完整名稱，讓駕駛不用低頭就知道系統聽成什麼；聽錯就直接按按鈕更正。
   // sayAs 用於追問後的複誦——按鈕標籤有時不足以區分（例如路口那顆就叫「行人」）。
+  // 播報交給 toggleDelay 一次講完，這裡不再自己講，否則會聽到兩句。
   const name=sayAs||d.label
-  speakNav(name, null, {high:true})
+  svyStopPickDelay(d, c.group, true, name)
   showToast(`🎤 ${d.icon} ${name}`, true)
 }
 // 提前提示的距離門檻：速度愈快，愈早提醒，給使用者足夠反應時間（沿用節點感應線同一套速度分級邏輯）
@@ -4819,8 +4823,9 @@ function startSurvey(){
     roadDelays:{},intDelays:{}}
   ROAD_DELAYS.forEach(d=>{cur.roadDelays[d.cause]=0})
   INT_DELAYS.forEach(d=>{cur.intDelays[d.cause]=0})
-  delayLog=[];activeDelay=null;_resumeAboveSpeedSince=null;elapsedSec=0
-  _stopSince=null;_stopActive=false;_stopEvent=null;_stopResumeSince=null
+  // 上一趟可能還有沒清掉的計時器與畫面狀態（例如中途按返回），一律先歸零，
+  // 「重新開始調查」就一定是全新的一趟，不會把上次的延滯帶進來。
+  resetSurveyRuntime()
   const ep=$('end-survey-prompt');if(ep) ep.style.display='none'
   nodeTimestamps=[]   // will be filled when nodes are hit
   currentNodeIdx=0    // 0 = waiting for node 1
@@ -5107,7 +5112,13 @@ function toggleDelay(d,group,opts){
     if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause)
       if(p) toggleDelay(p,activeDelay.group,{keepPanel:_sameStop})}
     if(_oldCause) undoDelayRecord(_oldCause.cause,_oldCause.group)   // 把剛結束那段撤掉
-    if(_switching) speakNav('修改為'+d.label, null, {high:true})
+    // ★ 播報統一在這裡做，這是「選了某個延滯原因」的唯一入口——
+    //   不管是自動偵測停止後點按鈕、自己把面板拉起來點、還是語音說的，都會走到。
+    //   以前 svyStopPickDelay 與 applyVoiceCause 各自又講一次，改選時就會聽到
+    //   「修改為路邊停靠」＋「路邊停靠」兩句；而自己拉面板點的那條路反而完全不出聲。
+    if(!opts?.silent){
+      speakNav(opts?.sayAs || (_switching ? ('修改為'+d.label) : d.label), null, {high:true})
+    }
     // ── Start recording this delay ──
     const s=new Date(),sp=lastPos?{...lastPos}:null;let el=0
     const tid=setInterval(()=>{
@@ -5139,12 +5150,43 @@ function toggleDelay(d,group,opts){
 // ════════════════════════════════════
 //  END SURVEY
 // ════════════════════════════════════
+// 把「這一趟」的所有執行中狀態徹底歸零。
+// ⚠️ 以前只做 cur=null，但 activeDelay 的 setInterval 沒有被清掉——
+// 那個計時器會一直跑下去，於是下一趟一開始，畫面上就掛著上一趟沒結束的
+// 「路邊停靠 00:32」而且秒數還在加（車子明明在動）。
+// 返回與重新開始都必須走這裡。
+function resetSurveyRuntime(){
+  // 延滯計時器
+  if(activeDelay && activeDelay.timerId) clearInterval(activeDelay.timerId)
+  activeDelay=null
+  delayLog=[]
+  // 停止面板 / 語音追問 / 各種計時器
+  stopStopTicker(); _stopFrozenSec=null
+  clearTimeout(_stopCdTimer); _stopCdTimer=null
+  clearTimeout(_stopDeferTimer); _stopDeferTimer=null
+  clearTimeout(_delayIndTimer); _delayIndTimer=null
+  endClarify(); stopCauseListening()
+  _stopPanelOpen=false; _stopActive=false; _stopEvent=null
+  _stopSince=null; _stopResumeSince=null; _voicePick=null
+  _resumeAboveSpeedSince=null; elapsedSec=0
+  // 畫面：延滯按鈕的秒數、選中狀態、藍框提示、停止面板一律復原
+  ;[...ROAD_DELAYS,...INT_DELAYS].forEach(d=>{
+    const t=$(`dtime-${d.cause}`); if(t) t.textContent=''
+    const b=$(`dbtn-${d.cause}`); if(b) b.classList.remove('active')
+  })
+  ;[...document.querySelectorAll('.btn-dl.picked')].forEach(b=>b.classList.remove('picked'))
+  _setDelayInd(null,null,null,null)
+  setStopHdrMode('idle')
+  const eb=document.getElementById('svy-stop-end'); if(eb) eb.style.display='none'
+  showMicLive(false)
+}
 function surveyBackConfirm(){
-  if(!confirm('確定停止調查並返回上一頁？\n已記錄的節點資料將保留。')) return
+  if(!confirm('確定停止調查並返回上一頁？\n這一趟尚未完成，資料不會保留。')) return
   // Stop timers
   if(clockTimer){clearInterval(clockTimer);clockTimer=null}
   stopAudioKeepAlive(); releaseWakeLock(); disableNoSleep()
-  // Discard current in-progress trip
+  // 這一趟沒跑完就直接丟掉：不寫進 allTrips、也不留任何執行中的狀態
+  resetSurveyRuntime()
   cur=null
   goReady()
 }
@@ -6835,7 +6877,6 @@ document.addEventListener('touchmove', e=>{
     <div class="mic-live-ring d2"></div>
     <div class="mic-live-ico">🎤</div>
   </div>
-  <div class="mic-live-txt" id="mic-live-txt">請說出停止原因</div>
 </div>
 
 <!-- ══ Device Test Modal ══ -->
