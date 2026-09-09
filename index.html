@@ -2741,7 +2741,11 @@ function loadSavedSurveyor(){
   try{
     const raw=localStorage.getItem(k); if(!raw) return
     const {name,weather}=JSON.parse(raw)
-    if(name){
+    // ⚠️ 工號登入帶進來的姓名優先，這裡不能蓋掉。
+    // 這個快取的鍵是「路線＋當天」，同一支手機同一天換人接手時，
+    // 前一位調查員的名字會留在裡面；照舊無條件覆寫的話，
+    // 新的人明明刷了自己的工號，簽到頁卻還是顯示上一個人。
+    if(name && !config.surveyorEmpId){
       $('si-name').value=name
     }
     if(weather) selSigninWeather(weather)
@@ -2817,7 +2821,8 @@ function onDateSelChange(val){
   const hist=getHistory()
   const entry=hist.find(h=>h.date&&h.date.slice(0,10)===val)
   if(entry){
-    if(entry.surveyor) $('si-name').value=entry.surveyor
+    // 同上：刷過工號就以工號的姓名為準，不要被舊紀錄蓋掉（天氣照舊可以帶）
+    if(entry.surveyor && !config.surveyorEmpId) $('si-name').value=entry.surveyor
     if(entry.weather) selSigninWeather(entry.weather)
   }
   checkSigninReady()
@@ -2831,7 +2836,7 @@ function onCustomDateInput(val){
   const hist=getLocalHistory()
   const entry=hist.find(h=>h.date&&h.date.slice(0,10)===d)
   if(entry){
-    if(entry.surveyor) $('si-name').value=entry.surveyor
+    if(entry.surveyor && !config.surveyorEmpId) $('si-name').value=entry.surveyor
     if(entry.weather) selSigninWeather(entry.weather)
   }
   checkSigninReady()
@@ -2880,6 +2885,13 @@ function showSigninScreen(){
   showScreen('screen-signin')
   renderRouteWarn()     // 路徑退回直線時要讓調查員知道，導航方向會不準
   loadSavedSurveyor()   // auto-fill today's last-used name & weather
+  // 工號登入過就一律以名冊上的姓名為準。放在 loadSavedSurveyor 之後，
+  // 是為了不管前面哪一段（快取、歷史紀錄）填了什麼，最後都以工號為準。
+  if(config.surveyorEmpId && config.surveyor){
+    const si=$('si-name'); if(si) si.value=config.surveyor
+    const ss=$('s-surveyor'); if(ss) ss.value=config.surveyor
+  }
+  checkSigninReady()
   buildDateSelect()     // build date dropdown
   setTimeout(initSigninMap, 120)
   loadCloudHistory()    // load history in background for the history list below
