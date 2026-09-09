@@ -446,6 +446,35 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .badge-todo{font-size:11px;padding:3px 9px;border-radius:20px;background:#f1f5f9;color:#94a3b8}
 .btn-blue{width:100%;padding:16px;background:#2563eb;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer}
 .btn-purple{width:100%;padding:16px;background:#7c3aed;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer}
+/* ── 結束前補登未取得原因的停等 ── */
+#stopreview{position:fixed;inset:0;z-index:9200;background:#0d1117;display:none;
+  flex-direction:column;padding:calc(14px + env(safe-area-inset-top,0px)) 14px
+  calc(14px + env(safe-area-inset-bottom,0px))}
+#stopreview.on{display:flex}
+.sr-head{flex:none;margin-bottom:12px}
+.sr-title{color:#fff;font-size:17px;font-weight:800}
+.sr-sub{color:#94a3b8;font-size:12px;margin-top:4px;line-height:1.6}
+.sr-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.sr-card{background:#131c2e;border:1px solid #263449;border-radius:14px;overflow:hidden}
+#sr-map{height:190px;background:#1e293b}
+.sr-meta{padding:12px 13px 0}
+.sr-row{display:flex;align-items:baseline;gap:8px}
+.sr-dur{color:#fff;font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+.sr-time{color:#94a3b8;font-size:11.5px;margin-left:auto;font-variant-numeric:tabular-nums}
+.sr-where{color:#94a3b8;font-size:12px;margin-top:3px}
+.sr-acts{display:flex;gap:9px;padding:13px}
+.sr-btn{flex:1;padding:13px;font-size:14px;font-weight:800;border:none;border-radius:11px;
+  cursor:pointer;font-family:inherit}
+.sr-btn.add{background:#16a34a;color:#fff}
+.sr-btn.skip{background:#334155;color:#cbd5e1}
+.sr-cz{display:flex;gap:8px;padding:4px 11px 12px}
+.sr-col{flex:1;min-width:0}
+.sr-col-h{color:#94a3b8;font-size:11px;text-align:center;margin-bottom:6px;font-weight:700}
+.sr-c{width:100%;margin-bottom:6px;padding:11px 5px;font-size:12.5px;font-weight:700;
+  background:#0f172a;color:#cbd5e1;border:1px solid #263449;border-radius:9px;
+  cursor:pointer;font-family:inherit}
+.sr-c:active{background:#1e3a5f;border-color:#3b82f6}
+.sr-foot{flex:none;text-align:center;color:#64748b;font-size:12px;padding-top:10px}
 /* ── 收音中的麥克風提示 ── */
 /* 全螢幕壓暗，只留麥克風。
    只有「車子已經停下、而且麥克風真的開了」才會出現，所以不會擋到行車視線；
@@ -1308,6 +1337,16 @@ let lastPos=null, clockTimer=null, elapsedSec=0
 let activeDelay=null, delayLog=[], _resumeAboveSpeedSince=null
 // Stop detection
 let _stopSince=null, _stopActive=false, _stopCdTimer=null, _stopCdVal=5, _stopEvent=null, _stopResumeSince=null
+// ── 重複詢問 ──
+// 停下後每隔 STOP_ASK_GAP_MS 問一次，最多 STOP_ASK_MAX 次。
+// ⚠️ 計時器一律從「車子停下的那一刻」起算，重問不會歸零——
+//    重問只是再提醒一次，這段停等本身是連續的同一件事。
+const STOP_ASK_MAX = 5
+const STOP_ASK_GAP_MS = 8000
+let _askCount = 0          // 這一次停等已經問了幾次
+let _askTimer = null       // 下一次重問的計時器
+// 問滿仍沒有原因、車子就開走的停等，先掛在這裡，等調查結束再逐筆補登
+let _pendingStops = []
 let _autoEndTimer=null   // 通過最後一個節點後自動結束的計時器（手動按結束時要取消，避免結算兩次）
 let _lastSpeedMs=null, _lastSpeedTs=0, _stopPollTimer=null   // 停止偵測輪詢用
 
@@ -3549,19 +3588,49 @@ function triggerStopDetection(){
   // （現場症狀：提示語沒講完就卡掉）。所以一律用 listenAfterSpeech 等真的講完。
   // 沒開語音輸入就不開麥克風，提示語也要跟著換——
   // 唸「請說出」卻不收音，調查員會一直對著手機講話卻沒有反應。
-  if(voicePickEnabled){
-    speakNav('請說出車輛停止原因', ()=>{ listenAfterSpeech(()=>_stopActive) }, {high:true})
-  }else{
-    speakNav('請選擇停止原因', null, {high:true})
-  }
+  _askCount=0
+  clearTimeout(_askTimer); _askTimer=null
+  askStopCause()
   svySheetExpand()
   svyShowPanel('stop')
   startStopTicker()
+}
+// 問一次「停止原因」，並排定下一次重問。
+// 停止條件只有三個：駕駛給了原因、車子重新開動、問滿 STOP_ASK_MAX 次。
+function askStopCause(){
+  if(!_stopActive || activeDelay) return
+  _askCount++
+  if(voicePickEnabled){
+    speakNav('請說出車輛停止原因', ()=>{ listenAfterSpeech(()=>_stopActive && !activeDelay) }, {high:true})
+  }else{
+    speakNav('請選擇停止原因', null, {high:true})
+  }
+  updateAskHint()
+  clearTimeout(_askTimer); _askTimer=null
+  if(_askCount < STOP_ASK_MAX){
+    _askTimer=setTimeout(()=>{
+      _askTimer=null
+      if(_stopActive && !activeDelay) askStopCause()
+    }, STOP_ASK_GAP_MS)
+  }else{
+    // 問滿了：不再播報，但面板留著讓駕駛隨時手動點；車子開走才收。
+    vlog('▸ 已詢問 '+STOP_ASK_MAX+' 次仍無原因，停止播報，等待車輛行駛')
+  }
+}
+// 標題列顯示問到第幾次；問滿之後換成「未取得原因」
+function updateAskHint(){
+  const t=document.getElementById('svy-stop-title')
+  if(!t || activeDelay) return
+  t.textContent = (_askCount>=STOP_ASK_MAX)
+    ? '未取得原因 — 可手動選擇'
+    : `偵測到停止 — 選擇延滯類型或忽略（第 ${_askCount} 次詢問）`
 }
 
 // Called when user picks a delay button while stop panel is shown
 function svyStopPickDelay(d, group, byVoice, sayAs){
   clearTimeout(_stopCdTimer)
+  clearTimeout(_askTimer); _askTimer=null   // 拿到原因就不用再問了
+  _askCount=0
   endClarify()         // 駕駛直接點了按鈕，追問就作廢
   stopCauseListening()
   _stopActive=false
@@ -3685,7 +3754,27 @@ function svyDismissStop(byResume){
   }
   clearTimeout(_stopDeferTimer); _stopDeferTimer=null
   clearTimeout(_stopCdTimer); _stopCdTimer=null
+  clearTimeout(_askTimer); _askTimer=null
   vlog('▸ 收起停止面板 byResume='+!!byResume)
+  // ★ 車子開走、但整段停等都沒拿到原因 → 掛到補登清單，調查結束再逐筆確認。
+  //   這段時間現在「不算延滯」，所以會落在行駛時間裡；
+  //   補登時選了原因才會被扣出來變成延滯，不補就維持行駛時間，帳面永遠平。
+  //   駕駛自己按「忽略」是明確表態不要記，不進清單。
+  if(byResume && _stopEvent && !activeDelay){
+    const sec=Math.max(0,Math.round((Date.now()-_stopEvent.startedAt)/1000))
+    if(sec>=3){
+      _pendingStops.push({
+        startedAt: _stopEvent.startedAt,
+        endedAt:   Date.now(),
+        sec,
+        pos:       _stopEvent.pos ? {lat:_stopEvent.pos.lat, lng:_stopEvent.pos.lng} : null,
+        nodeIdx:   currentNodeIdx,
+        asked:     _askCount
+      })
+      vlog('▸ 未取得原因的停等 '+sec+'s 已掛入補登清單（共 '+_pendingStops.length+' 筆）')
+    }
+  }
+  _askCount=0
   endClarify()
   stopCauseListening()
   _stopActive=false
@@ -3699,7 +3788,9 @@ function svyDismissStop(byResume){
   _stopResumeSince=null
   svyShowPanel('idle')
   svySheetCollapse()
-  showToast(byResume ? '▸ 車輛已重新行駛，未記錄停等' : '⊘ 已忽略，不記錄')
+  showToast(byResume
+    ? (_pendingStops.length ? '▸ 已重新行駛 — 這段停等留待結束後補登' : '▸ 車輛已重新行駛，未記錄停等')
+    : '⊘ 已忽略，不記錄')
 }
 
 // ════════════════════════════════════
@@ -5166,6 +5257,7 @@ function resetSurveyRuntime(){
   clearTimeout(_stopDeferTimer); _stopDeferTimer=null
   clearTimeout(_delayIndTimer); _delayIndTimer=null
   endClarify(); stopCauseListening()
+  clearTimeout(_askTimer); _askTimer=null; _askCount=0; _pendingStops=[]
   _stopPanelOpen=false; _stopActive=false; _stopEvent=null
   _stopSince=null; _stopResumeSince=null; _voicePick=null
   _resumeAboveSpeedSince=null; elapsedSec=0
@@ -5242,9 +5334,105 @@ function _trimTrackToSurvey(track, t0, t1){
 }
 
 // auto=true：通過最後一個節點自動結束，不跳確認框（畫面上的「🔴 結束調查」按鈕仍會確認）
-function endSurvey(auto){
+// ════════════════════════════════════
+//  結束前補登：問滿仍沒有原因的停等
+// ════════════════════════════════════
+let _srIdx=0, _srDone=null, _srMap=null
+function _srFmt(sec){ const m=Math.floor(sec/60), x=sec%60; return (m<10?'0':'')+m+':'+(x<10?'0':'')+x }
+function _srClock(t){ return new Date(t).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}) }
+// 這一筆停在哪：用節點順序描述，現場最容易對照
+function _srWhere(p){
+  const names=getNodeNames()
+  const i=Math.max(0,Math.min(names.length-1,(p.nodeIdx||1)-1))
+  const from=names[i-1], to=names[i]
+  if(from && to) return `${from} → ${to} 之間`
+  return to ? `${to} 前` : '路線途中'
+}
+function openStopReview(onDone){
+  _srIdx=0; _srDone=onDone
+  document.getElementById('stopreview').classList.add('on')
+  srRender()
+}
+function srRender(){
+  const total=_pendingStops.length
+  if(_srIdx>=total){ closeStopReview(); return }
+  const p=_pendingStops[_srIdx]
+  document.getElementById('sr-title').textContent=`還有 ${total-_srIdx} 段停等沒有原因`
+  document.getElementById('sr-foot').textContent=`第 ${_srIdx+1} / ${total} 段`
+  document.getElementById('sr-dur').textContent='停等 '+_srFmt(p.sec)
+  document.getElementById('sr-time').textContent=_srClock(p.startedAt)+' – '+_srClock(p.endedAt)
+  document.getElementById('sr-where').textContent=_srWhere(p)
+  document.getElementById('sr-causes').innerHTML=''
+  document.getElementById('sr-acts').style.display='flex'
+  srDrawMap(p)
+}
+// 地圖：畫出這條路線 ＋ 標出當時停下的位置
+function srDrawMap(p){
+  const el=document.getElementById('sr-map'); if(!el || typeof L==='undefined') return
+  if(_srMap){ try{_srMap.remove()}catch(e){} _srMap=null }
+  _srMap=L.map('sr-map',{zoomControl:false,attributionControl:false,dragging:true,scrollWheelZoom:false})
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(_srMap)
+  const lls=routePolylines.length?routePolylines.flat():config.nodes.map(n=>[n.lat,n.lng])
+  if(lls.length>=2) L.polyline(lls,{color:'#f97316',weight:5,opacity:.85}).addTo(_srMap)
+  if(p.pos){
+    L.circleMarker([p.pos.lat,p.pos.lng],{radius:16,fillColor:'#dc2626',color:'transparent',fillOpacity:.28}).addTo(_srMap)
+    L.circleMarker([p.pos.lat,p.pos.lng],{radius:9,fillColor:'#dc2626',color:'#fff',weight:3,fillOpacity:1}).addTo(_srMap)
+    _srMap.setView([p.pos.lat,p.pos.lng],17)
+  }else if(lls.length>=2){
+    _srMap.fitBounds(lls,{padding:[24,24]})
+  }else{
+    _srMap.setView([24.99,121.30],14)
+  }
+  setTimeout(()=>{ try{ _srMap && _srMap.invalidateSize() }catch(e){} },80)
+}
+// 「補上原因」→ 展開原因按鈕（左路段、右路口）
+function srShowCauses(){
+  document.getElementById('sr-acts').style.display='none'
+  const col=(list,label,grp)=>`<div class="sr-col"><div class="sr-col-h">${label}</div>`
+    + list.map(d=>`<button class="sr-c" onclick="srPick('${d.cause}','${grp}')">${d.icon} ${d.label}</button>`).join('')
+    + '</div>'
+  document.getElementById('sr-causes').innerHTML=
+    `<div class="sr-cz">${col(ROAD_DELAYS,'路段','road')}${col(INT_DELAYS,'路口','int')}</div>`
+}
+// 選了原因：把這段補記成延滯（秒數就是當時實際停等的長度）
+function srPick(cause, group){
+  const p=_pendingStops[_srIdx]
+  const d=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===cause)
+  if(cur && d){
+    const bucket = group==='int' ? cur.intDelays : cur.roadDelays
+    bucket[cause]=(bucket[cause]||0)+p.sec
+    delayLog.push({cause, group, label:d.label, icon:d.icon,
+      startedAt:new Date(p.startedAt), endedAt:new Date(p.endedAt), sec:p.sec,
+      pos:p.pos||null, _backfilled:true})
+    showToast(`✓ 已補上 ${d.icon} ${d.label} ${_srFmt(p.sec)}`)
+  }
+  _srIdx++; srRender()
+}
+// 不補：什麼都不記，這段時間自然留在行駛時間裡
+function srSkip(){
+  _srIdx++; srRender()
+}
+function closeStopReview(){
+  document.getElementById('stopreview').classList.remove('on')
+  if(_srMap){ try{_srMap.remove()}catch(e){} _srMap=null }
+  _pendingStops=[]
+  const f=_srDone; _srDone=null
+  if(f) f()
+}
+
+function endSurvey(auto, skipReview){
   if(!auto && !confirm('確定結束調查？'))return
   if(!cur) return
+  // 結束時刻先定下來，補登畫面停留多久都不會影響旅行時間
+  if(!cur.endTime) cur.endTime=new Date()
+  // ★ 還有沒給原因的停等 → 先逐筆確認，處理完才真正結算
+  if(!skipReview && _pendingStops.length){
+    if(activeDelay){const p0=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause);if(p0)toggleDelay(p0,activeDelay.group)}
+    if(clockTimer){clearInterval(clockTimer);clockTimer=null}
+    stopAudioKeepAlive()
+    openStopReview(()=>endSurvey(true,true))
+    return
+  }
   pingActivity('end')   // 後台狀態燈：從這一刻起算 10 分鐘
   clearTimeout(_autoEndTimer); _autoEndTimer=null   // 手動先按了結束，就別再自動結算一次
   // 自動結束時面板可能還停在「已記錄最後一個節點」的提示，先收掉
@@ -6867,6 +7055,34 @@ document.addEventListener('touchmove', e=>{
   </div>
 </div>
 
+<!-- ══ 結束前補登：問滿 5 次仍沒有原因的停等 ══
+     一次只顯示一段，現場逐筆確認。附地圖標出當時停在哪裡。
+     這裡不用語音——調查已經結束、人不在開車，用點的更快也更準。 -->
+<div id="stopreview">
+  <div class="sr-head">
+    <div class="sr-title" id="sr-title">還有 1 段停等沒有原因</div>
+    <div class="sr-sub">補上原因會計入延滯；不補就當作行駛中，不留紀錄</div>
+  </div>
+  <div class="sr-body">
+    <div class="sr-card">
+      <div id="sr-map"></div>
+      <div class="sr-meta">
+        <div class="sr-row">
+          <span class="sr-dur" id="sr-dur">停等 00:00</span>
+          <span class="sr-time" id="sr-time"></span>
+        </div>
+        <div class="sr-where" id="sr-where"></div>
+      </div>
+      <div class="sr-acts" id="sr-acts">
+        <button class="sr-btn add" onclick="srShowCauses()">補上原因</button>
+        <button class="sr-btn skip" onclick="srSkip()">不需補上</button>
+      </div>
+      <div id="sr-causes"></div>
+    </div>
+  </div>
+  <div class="sr-foot" id="sr-foot">第 1 / 1 段</div>
+</div>
+
 <!-- ══ 收音中的麥克風提示 ══
      語音聆聽的小字提示條在面板裡，行車中低頭才看得到。
      這個是蓋在地圖上的大圖示，麥克風「真的開了」才出現，
@@ -7884,7 +8100,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       if(SIM.stops.length && SIM.i>=SIM.stops[0]){
         SIM.stops.shift(); SIM.stopped=true
         hud('🛑 車輛停下 — 會自動彈出面板並語音詢問')
-        clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,25000)   // 沒人選也不會卡住
+        scheduleDemoResume()
       }else{
         SIM.i+=1                      // 每 0.5 秒 4 公尺 ＝ 8 m/s ≒ 29 km/h
         if(SIM.i>=SIM.path.length){ SIM.running=false; hud('🏁 已抵達終點') }
@@ -7895,6 +8111,25 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   function resume(){
     if(!SIM.stopped) return
     clearTimeout(SIM.timer); SIM.stopped=false; hud('▶ 車輛重新起步')
+  }
+
+  /* 沒人選原因時，車子要停到「語音至少問滿兩次」才重新起步——
+     這樣展示才看得到「同一次停等會重複詢問、而且計時不會歸零」。
+     直接讀 App 的 _askCount（同一個 global 詞法作用域，跨 script 讀得到），
+     所以之後改 STOP_ASK_GAP_MS 或 STOP_ASK_MAX，這裡都不用跟著調。 */
+  const DEMO_MIN_ASKS=2
+  function askedTimes(){ try{ return _askCount||0 }catch(e){ return 0 } }
+  function scheduleDemoResume(){
+    clearTimeout(SIM.timer)
+    const t0=Date.now()
+    ;(function chk(){
+      if(!SIM.stopped) return
+      // 已經問滿兩次還是沒人回答 → 起步（面板會在車子開動 3 秒後自動收起）
+      if(askedTimes()>=DEMO_MIN_ASKS){ hud('▶ 問了 '+askedTimes()+' 次沒回答 — 車輛重新起步'); resume(); return }
+      // 保險：語音被瀏覽器擋掉之類的意外，最多停 40 秒
+      if(Date.now()-t0>40000){ resume(); return }
+      SIM.timer=setTimeout(chk,800)
+    })()
   }
 
   /* 完全不碰真實 GPS：整個 navigator.geolocation 換成模擬版。
