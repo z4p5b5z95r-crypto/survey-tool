@@ -8055,6 +8055,14 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     {routeId:'R3',roundCount:3,roundStates:['todo','todo','todo'],roundDone:[0,0,0],comboTotal:4}]
 
   /* ── 攔截雲端請求 ── */
+  /* 工號登入是唯一「不模擬」的部分：直接打正式後端查真名冊，
+     這樣現場拿 demo 練習時，輸入自己的工號就會叫出自己的名字。
+     用的是 DEMO_KEY，不是正式 API_KEY——這把 key 後端只開放
+     getSurveyor / registerSurveyor 兩個動作，就算 demo.html 公開在
+     GitHub 上被人抄走，也讀不到路線、歷史調查，更寫不進調查資料；
+     要停用時把 Apps Script 指令碼屬性裡的 DEMO_KEY 刪掉即可。 */
+  const REAL_GS='https://script.google.com/macros/s/AKfycbx0NO47Q0fbMv6dCtgBd-w_qcJxbfLDtZKFMI1hnjvn-dgTl5f3k3HBc0oeOr62su2dSg/exec'
+  const DEMO_KEY='demo_3b835ffc6ddc201bb7d4d389'
   const realFetch=window.fetch.bind(window)
   const J=d=>new Response(JSON.stringify({ok:true,data:d}),{status:200,headers:{'Content-Type':'application/json'}})
   let CUR='R1', FWD=[]
@@ -8064,6 +8072,20 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     const q=new URLSearchParams(url.split('?')[1]||'')
     let action=q.get('action')
     if(!action&&init&&init.body){ try{ action=JSON.parse(init.body).action }catch(e){} }
+    // 工號名冊：轉打正式後端（換成 demo 金鑰）。
+    // 這兩個動作不進下面的模擬 switch。
+    if(action==='getSurveyor'){
+      q.set('key',DEMO_KEY); q.set('t',String(Date.now()))
+      hud('🔎 查真名冊：'+q.get('empId'))
+      return realFetch(REAL_GS+'?'+q.toString(),{cache:'no-store',signal:init&&init.signal})
+    }
+    if(action==='registerSurveyor'){
+      let b={}; try{ b=JSON.parse(init.body) }catch(e){}
+      b.key=DEMO_KEY
+      hud('📝 寫入真名冊：'+b.empId+' '+b.name)
+      return realFetch(REAL_GS,{method:'POST',
+        headers:{'Content-Type':'text/plain'},body:JSON.stringify(b),signal:init&&init.signal})
+    }
     switch(action){
       case 'getProject':         return J({id:'DEMO',name:PROJ_NAME})
       case 'getProjectRoutes':   return J(DEF.map(d=>ROUTES[d.id]))
