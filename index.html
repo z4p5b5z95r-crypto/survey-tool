@@ -2182,8 +2182,10 @@ function syncChipsFromCloudHistory(){
       // Preserve ALL fields the cloud returns — segTimes/nodeTimestamps/gpsTrack
       // are needed for the official form and result map. Fall back to [] only if absent.
       bucket[k]={
-        peakType:        k.startsWith('peak')?'peak':'off_peak',
-        direction:       k.endsWith('bound')?'bound':'return',
+        // ⚠️ 不能用 startsWith('peak') 判斷：PM 自訂的時段代碼（p1、p3…）會被判成 off_peak，
+        //    還原回來的紀錄就掛到錯的時段去。一律用 parseComboKey 從結尾切。
+        peakType:        parseComboKey(k)[0],
+        direction:       parseComboKey(k)[1],
         startTime:       t.startTime       || null,
         endTime:         t.endTime         || null,
         travelS:         t.travelS         ||0,
@@ -2261,8 +2263,8 @@ async function viewHistoryReport(idx){
   COMBO_KEYS.forEach(k=>{
     const t=g.trips?.[k]; if(!t) return
     synth[k]={
-      peakType:       k.startsWith('peak')?'peak':'off_peak',
-      direction:      k.endsWith('bound')?'bound':'return',
+      peakType:       parseComboKey(k)[0],
+      direction:      parseComboKey(k)[1],
       startTime:      t.startTime      || null,
       endTime:        t.endTime        || null,
       travelS:        t.travelS        ||0,
