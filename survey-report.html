@@ -174,6 +174,12 @@ td:first-child{text-align:left;font-weight:500}
 .sgs-pf-meta{display:flex;background:#eef3fa;border-bottom:1.5px solid #1e3a5f}
 .sgs-pf-ml{flex:1;padding:7px 14px;border-right:1px solid #94a3b8;font-size:11px;line-height:1.9;color:#1e3a5f}
 .sgs-pf-ml u{text-decoration-color:#3d6490}
+/* 時段勾選：橫向排，一行放不下才折到下一行（時段可能有 1~6 個） */
+.sgs-tline{display:flex;align-items:flex-start}
+.sgs-tline>.lb{flex:none}
+.sgs-pklist{display:flex;flex-wrap:wrap;gap:0 16px;min-width:0}
+.sgs-pklist>span{white-space:nowrap}
+.sgs-pklist>span.on{font-weight:800}
 .sgs-pf-mr{width:200px;padding:7px 14px;font-size:11px;line-height:2.2;color:#1e3a5f;text-align:left}
 .sgs-pf-mr u{text-decoration-color:#3d6490}
 .sgs-pf-divider{border:none;border-top:1.5px solid #1e3a5f;margin:0}
@@ -440,8 +446,50 @@ let _filterRound = null  // 1/2/3 or null = 全部次數
 let _tripMaps = {}       // mapId -> L.map instance
 let _tripMapBounds = {}  // mapId -> L.latLngBounds (for re-fitting after invalidateSize)
 
-const COMBO_KEYS = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
-function COMBO_LABEL_(key){ const o=(route&&route.offPeakName)||'離峰', p=(route&&route.peakName)||'尖峰'; return {off_peak_bound:o+' 去程',off_peak_return:o+' 回程',peak_bound:p+' 去程',peak_return:p+' 回程'}[key] }
+// ── 調查時段 ────────────────────────────────────────────────
+// PM 可自訂 1~6 個時段（例如 2 尖峰 2 離峰），每段都有去程與回程。
+// 一個時段 = {k:代碼, n:名稱, t:時間}；趟次的 peakType 存的就是 k。
+// ★ 舊路線沒有 periods 時退回 off_peak / peak，跟歷史資料的 peakType 完全一致。
+function PERIODS(){
+  const ps = route && route.periods
+  if (Array.isArray(ps) && ps.length) return ps
+  return [
+    {k:'off_peak', n:(route&&route.offPeakName)||'離峰', t:(route&&(route.offPeakTime||route.offPeakLabel))||''},
+    {k:'peak',     n:(route&&route.peakName)   ||'尖峰', t:(route&&(route.peakTime   ||route.peakLabel))   ||''}
+  ]
+}
+function PERIOD_OF(k){ return PERIODS().find(p=>p.k===k) || null }
+function PERIOD_NAME(k){
+  const p=PERIOD_OF(k); if(p) return p.n
+  // 時段被 PM 刪掉、但舊紀錄還在時，至少顯示代碼，不要變成空白
+  return ({peak:(route&&route.peakName)||'尖峰', off_peak:(route&&route.offPeakName)||'離峰'})[k] || String(k||'')
+}
+function PERIOD_TIME(k){ const p=PERIOD_OF(k); return (p&&p.t)||'' }
+// 組合鍵 = 「時段代碼_方向」。代碼本身可能含底線（off_peak），所以從結尾切。
+function parseComboKey(k){
+  const s=String(k||'')
+  if(s.endsWith('_return')) return [s.slice(0,-'_return'.length),'return']
+  if(s.endsWith('_bound'))  return [s.slice(0,-'_bound'.length), 'bound']
+  return [s,'bound']
+}
+// 仍叫 COMBO_KEYS、仍是陣列，其餘 forEach/filter/includes 的用法都不用改
+let COMBO_KEYS = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
+function rebuildComboKeys(){
+  const ks=[]
+  PERIODS().forEach(p=>{ ks.push(p.k+'_bound'); ks.push(p.k+'_return') })
+  COMBO_KEYS = ks
+  return COMBO_KEYS
+}
+// 統計表每頁放兩個時段，超過就換頁（延滯統計表、各路段統計表都用這個）
+function PERIOD_PAGES(){
+  const ps=PERIODS(), out=[]
+  for(let i=0;i<ps.length;i+=2) out.push(ps.slice(i,i+2))
+  return out.length?out:[ps]
+}
+function COMBO_LABEL_(key){
+  const [pt,dir]=parseComboKey(key)
+  return PERIOD_NAME(pt)+' '+(dir==='return'?'回程':'去程')
+}
 const COMBO_LABEL = new Proxy({}, {get:(_,key)=>COMBO_LABEL_(key)})   // route 尚未載入時安全 fallback，載入後即時反映 PM 自訂名稱
 // 路段名稱顯示用：畫面與匯出的報告一律用破折號「—」，不用箭頭「→」。
 // 只在「輸出的那一刻」轉換，資料本身仍維持箭頭——因為合併假節點、回程反轉路段名稱那些邏輯
@@ -454,12 +502,21 @@ function segDisp(n){
 }
 // 路段名稱的分隔符號：新資料用「～」，舊資料可能是「—」或「→」，切字串時三種都要吃
 const SEG_SEP = /[→—～]/
-const TRACK_COLOR = {
-  off_peak_bound:'#2563eb',
-  off_peak_return:'#60a5fa',
-  peak_bound:'#dc2626',
-  peak_return:'#f87171'
+// 軌跡顏色：舊的離峰藍／尖峰紅維持不變；PM 新增的時段依序輪替配色。
+// 去程用深色、回程用淺色，跟原本的規則一致。
+const TRACK_PALETTE = [
+  ['#dc2626','#f87171'], ['#2563eb','#60a5fa'], ['#ea580c','#fb923c'],
+  ['#0891b2','#22d3ee'], ['#7c3aed','#a78bfa'], ['#16a34a','#4ade80']
+]
+function trackColorOf(combo){
+  const [pt,dir]=parseComboKey(combo)
+  if(pt==='peak')     return dir==='return'?'#f87171':'#dc2626'
+  if(pt==='off_peak') return dir==='return'?'#60a5fa':'#2563eb'
+  const i=PERIODS().findIndex(p=>p.k===pt)
+  const pair=TRACK_PALETTE[(i<0?0:i)%TRACK_PALETTE.length]
+  return dir==='return'?pair[1]:pair[0]
 }
+const TRACK_COLOR = new Proxy({}, {get:(_,k)=>trackColorOf(k)})
 
 const ROAD_DELAYS = [
   {cause:'congestion', label:'阻塞'},
@@ -933,6 +990,7 @@ function _fetchRouteData(gs, sessionToken, routeId, date){
 async function _loadRouteIntoGlobals(gs, sessionToken, routeId, date){
   const d = await _fetchRouteData(gs, sessionToken, routeId, date)
   route      = d.route
+  rebuildComboKeys()   // 時段是路線設定的一部分：路線一換就要重算「有哪幾個組合」
   allSurveys = d.surveys
   _filterDate = date || ''
   _filterRound = null
@@ -1059,6 +1117,8 @@ window.addEventListener('load', async () => {
     route = routeRes.data
     // GAS may return arrays/objects as JSON strings — parse defensively
     const _tryParse = (v, fallback) => { if(typeof v!=='string') return v??fallback; try{return JSON.parse(v)}catch{return fallback} }
+    route.periods  = _tryParse(route.periods,  null)
+    rebuildComboKeys()
     route.nodes    = _tryParse(route.nodes,    [])
     route.segments = _tryParse(route.segments, [])
     setLoadProgress(45)
@@ -1331,24 +1391,20 @@ function renderPage(){
 // ── Travel Time Table ──
 function renderTravelTable(){
   const segs = _mergeGhostSegs()
-  const OB = avgTrips.off_peak_bound, OR = avgTrips.off_peak_return
-  const PB = avgTrips.peak_bound,     PR = avgTrips.peak_return
-  const offLabel = route.offPeakName||'離峰'
-  const pkLabel  = route.peakName||'尖峰'
+  // 畫面上的統計表不分頁（可以橫向捲動），所有時段一次列出來
+  const PDS=PERIODS()
+  const combos=[]; PDS.forEach(p=>{ combos.push(avgTrips[p.k+'_bound']); combos.push(avgTrips[p.k+'_return']) })
+  const _blk=lb=>PDS.map(p=>`<th colspan="2">${he(p.n)} ${lb}</th>`).join('')
+  const _dir=()=>PDS.map(()=>'<th>去程</th><th>回程</th>').join('')
 
   let html = `<tr>
     <th rowspan="2">路段位置</th><th rowspan="2">車道數</th><th rowspan="2">路寬(m)</th><th rowspan="2">路段長(m)</th>
-    <th colspan="2">${he(offLabel)} 旅行時間(秒)</th>
-    <th colspan="2">${he(pkLabel)} 旅行時間(秒)</th>
-    <th colspan="2">${he(offLabel)} 行駛時間(秒)</th>
-    <th colspan="2">${he(pkLabel)} 行駛時間(秒)</th>
+    ${_blk('旅行時間(秒)')}${_blk('行駛時間(秒)')}
   </tr><tr>
-    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
-    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
+    ${_dir()}${_dir()}
   </tr>`
 
-  const combos=[OB,OR,PB,PR]
-  let totTvl=[0,0,0,0], totRun=[0,0,0,0], totLen=0
+  let totTvl=combos.map(()=>0), totRun=combos.map(()=>0), totLen=0
   // avgTrips 的 segTimes 已經是「合併後路段」的索引，直接用第 si 段即可。
   // 之前這裡還在照原始路段索引累加，合併過的第一段會重複相加、後面的段則整個取不到值，
   // 才會出現「第二段全部是 —、合計也少算」的情形。
@@ -1546,24 +1602,19 @@ function _mergeGhostSegs(){
 // ── Speed Table ──
 function renderSpeedTable(){
   const segs = _mergeGhostSegs()
-  const OB = avgTrips.off_peak_bound, OR = avgTrips.off_peak_return
-  const PB = avgTrips.peak_bound,     PR = avgTrips.peak_return
-  const offLabel = route.offPeakName||'離峰'
-  const pkLabel  = route.peakName||'尖峰'
+  const PDS=PERIODS()
+  const combos=[]; PDS.forEach(p=>{ combos.push(avgTrips[p.k+'_bound']); combos.push(avgTrips[p.k+'_return']) })
+  const _blk=lb=>PDS.map(p=>`<th colspan="2">${he(p.n)} ${lb}</th>`).join('')
+  const _dir=()=>PDS.map(()=>'<th>去程</th><th>回程</th>').join('')
 
   let html = `<tr>
     <th rowspan="2">路段位置</th><th rowspan="2">路段長(m)</th>
-    <th colspan="2">${he(offLabel)} 旅行速率(km/h)</th>
-    <th colspan="2">${he(pkLabel)} 旅行速率(km/h)</th>
-    <th colspan="2">${he(offLabel)} 行駛速率(km/h)</th>
-    <th colspan="2">${he(pkLabel)} 行駛速率(km/h)</th>
+    ${_blk('旅行速率(km/h)')}${_blk('行駛速率(km/h)')}
   </tr><tr>
-    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
-    <th>去程</th><th>回程</th><th>去程</th><th>回程</th>
+    ${_dir()}${_dir()}
   </tr>`
 
-  const combos=[OB,OR,PB,PR]
-  let totTvl=[0,0,0,0], totRun=[0,0,0,0], totLen=0
+  let totTvl=combos.map(()=>0), totRun=combos.map(()=>0), totLen=0
   segs.forEach((seg,si)=>{
     const L=seg.length||0
     const segTvl=combos.map(t=>t?.segTimes?.[si]?.travelS||0)
@@ -1590,19 +1641,15 @@ function renderSpeedTable(){
 
 // ── Delay Table ──
 function renderDelayTable(){
-  const OB = avgTrips.off_peak_bound, OR = avgTrips.off_peak_return
-  const PB = avgTrips.peak_bound,     PR = avgTrips.peak_return
-  const trips = [OB,OR,PB,PR]
-  const offLabel = route.offPeakName||'離峰'
-  const pkLabel  = route.peakName||'尖峰'
+  const PDS=PERIODS()
+  const trips=[]; PDS.forEach(p=>{ trips.push(avgTrips[p.k+'_bound']); trips.push(avgTrips[p.k+'_return']) })
 
   const r = (label, vals) =>
     `<tr><td>${label}</td>${vals.map(v=>`<td>${fmt(v)}</td>`).join('')}</tr>`
 
   let html = `<tr>
     <th>指標</th>
-    <th>${he(offLabel)}<br>去程</th><th>${he(offLabel)}<br>回程</th>
-    <th>${he(pkLabel)}<br>去程</th><th>${he(pkLabel)}<br>回程</th>
+    ${PDS.map(p=>`<th>${he(p.n)}<br>去程</th><th>${he(p.n)}<br>回程</th>`).join('')}
   </tr>`
   // 排列順序比照 SGS 制式表單：先把所有「秒數」列完，最後才是百分比統計。
   // 上半部（總旅行時間）的百分比分母是旅行時間；
@@ -1661,13 +1708,15 @@ function renderDelayTable(){
 
 // ════════════════ COMBO SELECTOR ════════════════
 function renderComboSelector(){
-  const _pkN=route.peakName||'尖峰', _opN=route.offPeakName||'離峰'
-  const COMBOS = [
-    {key:'peak_bound',    label:_pkN+'去程', cls:'peak'},
-    {key:'peak_return',   label:_pkN+'回程', cls:'peak'},
-    {key:'off_peak_bound',label:_opN+'去程', cls:'offpeak'},
-    {key:'off_peak_return',label:_opN+'回程',cls:'offpeak'},
-  ]
+  // 按鈕由時段動態產生。舊路線算出來就是尖峰去/回、離峰去/回這四顆，跟改版前一樣。
+  // cls 只影響配色：名稱裡有「尖」的當作尖峰色，其餘用離峰色。
+  const COMBOS = PERIODS().flatMap(p=>{
+    const cls = (p.k==='peak' || (p.k!=='off_peak' && /尖/.test(p.n))) ? 'peak' : 'offpeak'
+    return [
+      {key:p.k+'_bound',  label:p.n+'去程', cls},
+      {key:p.k+'_return', label:p.n+'回程', cls}
+    ]
+  })
   document.getElementById('combo-selector').innerHTML = COMBOS.map(c=>{
     const [pt,dir]=parseCombo(c.key)
     const count=surveys.filter(sv=>sv.trips?.find(t=>t.peakType===pt&&t.direction===dir)).length
@@ -1791,7 +1840,7 @@ function renderComboRecords(combo){
 
   if(!matchSurveys.length){
     el.innerHTML=`<div class="no-data-msg">
-      <div style="font-size:40px;margin-bottom:12px">${pt==='peak'?'🔴':'🔵'}</div>
+      <div style="font-size:40px;margin-bottom:12px">${/peak$/.test(pt)&&pt!=='off_peak'?'🔴':'🔵'}</div>
       <div style="font-size:15px;font-weight:700;margin-bottom:6px">尚無此組合的調查紀錄</div>
       <div style="font-size:12px;color:#94a3b8">${COMBO_LABEL[combo]} 旅次尚未調查</div>
     </div>`; return
@@ -1805,7 +1854,7 @@ function renderComboRecords(combo){
     const route=_rt()          // 這筆調查當時的路線（沒有封存版本就是目前的設定）
     const segs = _mergeGhostSegs()
     const segOrder = isReturn ? [...segs].reverse() : segs
-    const isPeak = pt==='peak'
+    const _pt = pt   // 這一趟屬於哪個時段（代碼），表頭的 ■/□ 靠它判斷
     const off=route.offPeakLabel||'14:00~16:00', pk=route.peakLabel||'17:00~19:00'
     const st=trip.startTime?new Date(trip.startTime):null
     const et=trip.endTime?new Date(trip.endTime):null
@@ -1949,12 +1998,14 @@ function renderComboRecords(combo){
                   <option value="return"${isReturn?' selected':''}>回</option>
                 </select>`
               :`${!isReturn?'■':'□'} 去　　${isReturn?'■':'□'} 回`}</div>
-            <div>時　間：&nbsp;${isEdit
+            <!-- 時段 1~6 個都列出來，橫向排、一行放不下才折行 -->
+            <div class="sgs-tline"><span class="lb">時　間：&nbsp;</span>${isEdit
               ?`<select class="pf-meta-inp" data-ie="meta-peak">
-                  <option value="off_peak"${!isPeak?' selected':''}>${he(route.offPeakName||'離峰')}（${he(off)}）</option>
-                  <option value="peak"${isPeak?' selected':''}>${he(route.peakName||'尖峰')}（${he(pk)}）</option>
+                  ${PERIODS().map(p=>`<option value="${he(p.k)}"${p.k===_pt?' selected':''}>${he(p.n)}${p.t?`（${he(p.t)}）`:''}</option>`).join('')}
                 </select>`
-              :`${!isPeak?'■':'□'} ${route.offPeakName||'離峰'}（${off}）　&nbsp;${isPeak?'■':'□'} ${route.peakName||'尖峰'}（${pk}）`}</div>
+              :`<span class="sgs-pklist">${PERIODS().map(p=>
+                  `<span${p.k===_pt?' class="on"':''}>${p.k===_pt?'■':'□'} ${he(p.n)}${p.t?`（${he(p.t)}）`:''}</span>`
+                ).join('')}</span>`}</div>
           </div>
           <div class="sgs-pf-mr">
             <div>日　期：&nbsp;${isEdit
@@ -2334,7 +2385,7 @@ async function downloadSGS(){
   // Sheet 2: Delay summary
   XLSX.utils.book_append_sheet(wb, buildDelaySheet(), '延滯統計')
   // Per-trip sheets
-  let tripIdx = {off_peak_bound:0, off_peak_return:0, peak_bound:0, peak_return:0}
+  let tripIdx = {}; COMBO_KEYS.forEach(k=>{ tripIdx[k]=0 })
   surveys.forEach(sv=>{
     COMBO_KEYS.forEach(combo=>{
       const [pt,dir] = parseCombo(combo)
@@ -2352,69 +2403,66 @@ async function downloadSGS(){
 }
 
 function buildTripSheetName(combo, n){
-  const _o=route.offPeakName||'離峰', _p=route.peakName||'尖峰'
-  const map = {off_peak_bound:_o+'去',off_peak_return:_o+'回',peak_bound:_p+'去',peak_return:_p+'回'}
-  return `${map[combo]}_${n}`
+  const [pt,dir]=parseComboKey(combo)
+  // Excel 工作表名稱上限 31 字元，時段名稱長的話先截短，否則 XLSX 會丟例外
+  const nm=String(PERIOD_NAME(pt)).slice(0,12)
+  return `${nm}${dir==='return'?'回':'去'}_${n}`
 }
 
 // 各路段平均旅行時間及行駛時間統計表（秒）— 比照 PDF buildSegTimePage
 function buildTimeSheet(){
   const segs=_mergeGhostSegs()
-  const OB=avgTrips.off_peak_bound, OR=avgTrips.off_peak_return
-  const PB=avgTrips.peak_bound, PR=avgTrips.peak_return
-  const T4=[OB,OR,PB,PR]
-  const off=route.offPeakName||'離峰', pk=route.peakName||'尖峰'
+  // 欄位跟著時段走：N 個時段 → 旅行時間 N×2 欄 ＋ 行駛時間 N×2 欄。
+  // Excel 沒有分頁問題，所有時段一次列完就好。
+  const PDS=PERIODS()
+  const T4=[]; PDS.forEach(p=>{ T4.push(avgTrips[p.k+'_bound']); T4.push(avgTrips[p.k+'_return']) })
   const TL=route.totalLength||0
   const info=`路線：${route.routeName}　起迄：${route.routeFromTo}　全長：${TL}m`
 
   // header rows (match PDF two-row header)
+  const _blk=lb=>PDS.flatMap(p=>[`${p.n} ${lb}`,''])
+  const _dir=()=>PDS.flatMap(()=>['去程','回程'])
   const rows=[
     ['各路段平均旅行時間及行駛時間統計表（秒）'],
     [info],
     [],
-    ['路段位置','車道數','路寬(m)','路段長(m)',
-     `${off} 旅行時間(秒)`,'',`${pk} 旅行時間(秒)`,'',
-     `${off} 行駛時間(秒)`,'',`${pk} 行駛時間(秒)`,''],
-    ['','','','','去程','回程','去程','回程','去程','回程','去程','回程'],
+    ['路段位置','車道數','路寬(m)','路段長(m)', ..._blk('旅行時間(秒)'), ..._blk('行駛時間(秒)')],
+    ['','','','', ..._dir(), ..._dir()],
   ]
-  let totLen=0, totTv=[0,0,0,0], totRv=[0,0,0,0]
+  let totLen=0, totTv=T4.map(()=>0), totRv=T4.map(()=>0)
   segs.forEach((seg,si)=>{
     const segTv=T4.map(t=>t?.segTimes?.[si]?.travelS||0)
     const segRv=T4.map(t=>t?.segTimes?.[si]?.runS||0)
     segTv.forEach((v,j)=>totTv[j]+=v)
     segRv.forEach((v,j)=>totRv[j]+=v)
     totLen+=seg.length||0
-    const tv=segTv.map(v=>v||''), rv=segRv.map(v=>v||'')
     rows.push([segDisp(seg.name), seg.lanes||'', seg.width||'', seg.length||0,
-      tv[0],tv[1],tv[2],tv[3], rv[0],rv[1],rv[2],rv[3]])
+      ...segTv.map(v=>v||''), ...segRv.map(v=>v||'')])
   })
   // 合計欄改用「加總上面每個路段的數字」，跟表格內容一致
   rows.push(['合計','','',totLen,
-    T4[0]?totTv[0]:'', T4[1]?totTv[1]:'', T4[2]?totTv[2]:'', T4[3]?totTv[3]:'',
-    T4[0]?totRv[0]:'', T4[1]?totRv[1]:'', T4[2]?totRv[2]:'', T4[3]?totRv[3]:''])
+    ...T4.map((t,j)=>t?totTv[j]:''), ...T4.map((t,j)=>t?totRv[j]:'')])
   return XLSX.utils.aoa_to_sheet(rows)
 }
 
 // 各路段平均旅行速率及行駛速率統計表（公里/時）— 比照 PDF buildSegSpdPage
 function buildSpeedSheet(){
   const segs=_mergeGhostSegs()
-  const OB=avgTrips.off_peak_bound, OR=avgTrips.off_peak_return
-  const PB=avgTrips.peak_bound, PR=avgTrips.peak_return
-  const T4=[OB,OR,PB,PR]
-  const off=route.offPeakName||'離峰', pk=route.peakName||'尖峰'
+  const PDS=PERIODS()
+  const T4=[]; PDS.forEach(p=>{ T4.push(avgTrips[p.k+'_bound']); T4.push(avgTrips[p.k+'_return']) })
   const TL=route.totalLength||0
   const info=`路線：${route.routeName}　起迄：${route.routeFromTo}　全長：${TL}m`
 
+  const _blk=lb=>PDS.flatMap(p=>[`${p.n} ${lb}`,''])
+  const _dir=()=>PDS.flatMap(()=>['去程','回程'])
   const rows=[
     ['各路段平均旅行速率及行駛速率統計表（公里/時）'],
     [info],
     [],
-    ['路段位置','路段長(m)',
-     `${off} 旅行速率(km/h)`,'',`${pk} 旅行速率(km/h)`,'',
-     `${off} 行駛速率(km/h)`,'',`${pk} 行駛速率(km/h)`,''],
-    ['','','去程','回程','去程','回程','去程','回程','去程','回程'],
+    ['路段位置','路段長(m)', ..._blk('旅行速率(km/h)'), ..._blk('行駛速率(km/h)')],
+    ['','', ..._dir(), ..._dir()],
   ]
-  let totLen=0, totTv=[0,0,0,0], totRv=[0,0,0,0]
+  let totLen=0, totTv=T4.map(()=>0), totRv=T4.map(()=>0)
   segs.forEach((seg,si)=>{
     const L=seg.length||0
     const segTv=T4.map(t=>t?.segTimes?.[si]?.travelS||0)
@@ -2422,22 +2470,20 @@ function buildSpeedSheet(){
     segTv.forEach((v,j)=>totTv[j]+=v)
     segRv.forEach((v,j)=>totRv[j]+=v)
     totLen+=L
-    const tv=segTv.map(v=>spd(L,v)), rv=segRv.map(v=>spd(L,v))
-    rows.push([segDisp(seg.name), L, tv[0],tv[1],tv[2],tv[3], rv[0],rv[1],rv[2],rv[3]])
+    rows.push([segDisp(seg.name), L,
+      ...segTv.map(v=>spd(L,v)), ...segRv.map(v=>spd(L,v))])
   })
   // 合計欄改用「路段長度總和 ÷ 每個路段時間加總」，跟上面各路段的數字加總一致
   rows.push(['合計',totLen,
-    T4[0]?spd(totLen,totTv[0]):'—', T4[1]?spd(totLen,totTv[1]):'—', T4[2]?spd(totLen,totTv[2]):'—', T4[3]?spd(totLen,totTv[3]):'—',
-    T4[0]?spd(totLen,totRv[0]):'—', T4[1]?spd(totLen,totRv[1]):'—', T4[2]?spd(totLen,totRv[2]):'—', T4[3]?spd(totLen,totRv[3]):'—'])
+    ...T4.map((t,j)=>t?spd(totLen,totTv[j]):'—'),
+    ...T4.map((t,j)=>t?spd(totLen,totRv[j]):'—')])
   return XLSX.utils.aoa_to_sheet(rows)
 }
 
 function buildDelaySheet(){
-  const OB=avgTrips.off_peak_bound, OR=avgTrips.off_peak_return
-  const PB=avgTrips.peak_bound, PR=avgTrips.peak_return
-  const trips=[OB,OR,PB,PR]
-  const off=route.offPeakName||'離峰', pk=route.peakName||'尖峰'
-  const hdr = [`${off} 去程`,`${off} 回程`,`${pk} 去程`,`${pk} 回程`]
+  const PDS=PERIODS()
+  const trips=[]; PDS.forEach(p=>{ trips.push(avgTrips[p.k+'_bound']); trips.push(avgTrips[p.k+'_return']) })
+  const hdr = PDS.flatMap(p=>[`${p.n} 去程`,`${p.n} 回程`])
 
   const v=(t,key)=>t?t[key]??'':'—'
   // 上半部「總旅行時間」：分母為旅行時間
@@ -2785,9 +2831,18 @@ function downloadSGSPdf(returnOnly){
   const startN = nodes[0]?.name||'起點', endN = nodes[nodes.length-1]?.name||'終點'
   const boundDir = startN+'至'+endN, retDir = endN+'至'+startN
 
+  // ── 統計表的欄位：一頁固定放兩個時段（× 去/回 ＝ 4 欄），超過就換頁 ──
+  // 制式表單本來就是 4 欄寬，維持不變才不會列印跑版；時段多的時候改成多印幾頁。
+  const PG = PERIOD_PAGES()
+  // 某一頁（一組時段）對應的趟次資料，順序是 時段1去、時段1回、時段2去、時段2回
+  const tripsOfGroup = grp => {
+    const out=[]
+    grp.forEach(p=>{ out.push(avgTrips?.[p.k+'_bound']); out.push(avgTrips?.[p.k+'_return']) })
+    return out
+  }
+  // 舊變數保留給還沒改寫的地方用（就是原本的離峰去/回、尖峰去/回）
   const OB = avgTrips?.off_peak_bound, OR_ = avgTrips?.off_peak_return
   const PB = avgTrips?.peak_bound,     PR  = avgTrips?.peak_return
-  const T4 = [OB, OR_, PB, PR]
 
   const dates     = [...new Set(surveys.map(s=>s.date||'').filter(Boolean))].join('、')
   const weathers  = [...new Set(surveys.map(s=>_weather(s.weather||'')).filter(Boolean))].join('、')
@@ -2864,10 +2919,16 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
 `
 
   // ── 延滯統計表 ─────────────────────────────────────────────────────────
-  function buildDelayPage(mode){
+  // grp = 這一頁要放的時段（最多 2 個）；pi/np = 第幾頁 / 共幾頁
+  function buildDelayPage(mode, grp, pi, np){
+    grp = grp || PG[0]
     const isSec = mode==='sec'
     const unit  = isSec ? '秒' : '%'
-    const title = isSec ? '延滯統計表' : '延滯統計表(續)'
+    // 分成多頁時在標題後標示頁次，列印出來才知道還有下一頁
+    const title = (isSec ? '延滯統計表' : '延滯統計表(續)')
+                + ((np>1) ? `（${pi+1}／${np}）` : '')
+    const T4 = tripsOfGroup(grp)
+    const NC = T4.length          // 2 個時段＝4 欄；最後一頁只有 1 個時段時＝2 欄
 
     const D4 = (fn) => T4.map(t=>`<td>${_n(fn(t))}</td>`).join('')
     // 下半部「總延滯時間」的百分比，分母是這一趟的延滯總和（路段＋交叉口），不是旅行時間。
@@ -2901,23 +2962,19 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
 <table class="s">
 <colgroup>
   <col style="width:20px"><col style="width:20px"><col style="width:88px">
-  <col><col><col><col>
+  ${grp.map(()=>'<col><col>').join('')}
 </colgroup>
 <tr>
   <td colspan="3" rowspan="2" style="letter-spacing:3px">調　查　時　間</td>
-  <td colspan="2">${route.offPeakName||'離峰'}時間</td>
-  <td colspan="2">${route.peakName||'尖峰'}時間</td>
+  ${grp.map(p=>`<td colspan="2">${he(p.n)}時間</td>`).join('')}
 </tr>
 <tr>
-  <td colspan="2">${off}</td>
-  <td colspan="2">${pk}</td>
+  ${grp.map(p=>`<td colspan="2">${he(p.t||'')}</td>`).join('')}
 </tr>
 <tr>
   <td colspan="3" style="letter-spacing:5px">方　　　向</td>
-  <td>${boundDir.replace('至','<br>至<br>')}</td>
-  <td>${retDir.replace('至','<br>至<br>')}</td>
-  <td>${boundDir.replace('至','<br>至<br>')}</td>
-  <td>${retDir.replace('至','<br>至<br>')}</td>
+  ${grp.map(()=>
+    `<td>${boundDir.replace('至','<br>至<br>')}</td><td>${retDir.replace('至','<br>至<br>')}</td>`).join('')}
 </tr>
 <tr>
   <td colspan="3">平均總旅行速率(公里/時)</td>
@@ -2964,17 +3021,19 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
   }
 
   // ── helpers for reference-format seg tables ─────────────────────────────
-  function _segTableHeader(titleMain, unitLabel){
-    const offl = route.offPeakTime || off
-    const pkl  = route.peakTime  || pk
+  // grp = 這一頁的時段（最多 2 個）。欄位數＝時段數 × 去/回 × 旅行/行駛。
+  function _segTableHeader(titleMain, unitLabel, grp){
+    grp = grp || PG[0]
+    const nc = grp.length * 2            // 每個統計區塊的欄數（2 時段＝4 欄，跟制式表單一致）
     const bd = `${startN}<br>至<br>${endN}`
     const rd = `${endN}<br>至<br>${startN}`
+    // 前 5 欄固定，其餘平分剩下的寬度：時段少一半時欄位自動變寬，不會擠在左邊
+    const dw = (56 / (nc * 2)).toFixed(2)
     return `
 <colgroup>
   <col style="width:18px"><col style="width:22%">
   <col style="width:26px"><col style="width:26px"><col style="width:34px">
-  <col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:7%">
-  <col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:7%">
+  ${Array.from({length:nc*2},()=>`<col style="width:${dw}%">`).join('')}
 </colgroup>
 <tr>
   <td rowspan="5" class="sr-mc">
@@ -2992,28 +3051,18 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
   <td rowspan="5" class="sr-vhdr">車道數</td>
   <td rowspan="5" class="sr-vhdr">路寬(m)</td>
   <td rowspan="5" class="sr-vhdr">路段長度(m)</td>
-  <td colspan="4" style="font-weight:700">${titleMain}(秒)</td>
-  <td colspan="4" style="font-weight:700">${unitLabel}(秒)</td>
+  <td colspan="${nc}" style="font-weight:700">${titleMain}(秒)</td>
+  <td colspan="${nc}" style="font-weight:700">${unitLabel}(秒)</td>
 </tr>
 <tr>
-  <td colspan="2">${route.offPeakName||'離峰'}時間</td><td colspan="2">${route.peakName||'尖峰'}時間</td>
-  <td colspan="2">${route.offPeakName||'離峰'}時間</td><td colspan="2">${route.peakName||'尖峰'}時間</td>
+  ${grp.map(p=>`<td colspan="2">${he(p.n)}時間</td>`).join('').repeat(2)}
 </tr>
 <tr>
-  <td colspan="2" style="font-size:7.5pt">${offl}</td>
-  <td colspan="2" style="font-size:7.5pt">${pkl}</td>
-  <td colspan="2" style="font-size:7.5pt">${offl}</td>
-  <td colspan="2" style="font-size:7.5pt">${pkl}</td>
+  ${grp.map(p=>`<td colspan="2" style="font-size:7.5pt">${he(p.t||'')}</td>`).join('').repeat(2)}
 </tr>
 <tr>
-  <td rowspan="2" style="font-size:7.5pt">${bd}</td>
-  <td rowspan="2" style="font-size:7.5pt">${rd}</td>
-  <td rowspan="2" style="font-size:7.5pt">${bd}</td>
-  <td rowspan="2" style="font-size:7.5pt">${rd}</td>
-  <td rowspan="2" style="font-size:7.5pt">${bd}</td>
-  <td rowspan="2" style="font-size:7.5pt">${rd}</td>
-  <td rowspan="2" style="font-size:7.5pt">${bd}</td>
-  <td rowspan="2" style="font-size:7.5pt">${rd}</td>
+  ${Array.from({length:nc*2},(_,i)=>
+    `<td rowspan="2" style="font-size:7.5pt">${i%2===0?bd:rd}</td>`).join('')}
 </tr>
 <tr></tr>`
   }
@@ -3032,10 +3081,13 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
   }
 
   // ── 各路段平均旅行時間及行駛時間統計表 ───────────────────────────────────
-  function buildSegTimePage(){
+  function buildSegTimePage(grp, pi, np){
+    grp = grp || PG[0]
+    const T4 = tripsOfGroup(grp)
     const ns = segs.length
     const _v = v => v ? `<td class="sr-val">${v}</td>` : '<td></td>'
-    let totTv=[0,0,0,0], totRv=[0,0,0,0], totLen=0
+    // 累加欄位數要跟著時段數走，寫死 4 個的話最後一頁只有 1 個時段時會多出兩欄
+    let totTv=T4.map(()=>0), totRv=T4.map(()=>0), totLen=0
     let rows = ''
     segs.forEach((seg,i)=>{
       const tv=T4.map(t=>t?.segTimes?.[i]?.travelS||0)
@@ -3059,17 +3111,19 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
       ${totTv.map(v=>`<td>${v||''}</td>`).join('')}
       ${totRv.map(v=>`<td>${v||''}</td>`).join('')}
     </tr>`
-    return `<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px">各路段平均旅行時間及平均行駛時間統計表</div>
+    return `<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px">各路段平均旅行時間及平均行駛時間統計表${np>1?`（${pi+1}／${np}）`:''}</div>
 ${_segDateInfo()}
-<table class="seg-r">${_segTableHeader('平均旅行時間','平均行駛時間')}
+<table class="seg-r">${_segTableHeader('平均旅行時間','平均行駛時間',grp)}
 ${rows}</table>`
   }
 
   // ── 各路段平均旅行速率及行駛速率統計表 ─────────────────────────────────
-  function buildSegSpdPage(){
+  function buildSegSpdPage(grp, pi, np){
+    grp = grp || PG[0]
+    const T4 = tripsOfGroup(grp)
     const ns = segs.length
     const _v = v => v ? `<td class="sr-val">${v}</td>` : '<td></td>'
-    let totLen=0, totTv=[0,0,0,0], totRv=[0,0,0,0]
+    let totLen=0, totTv=T4.map(()=>0), totRv=T4.map(()=>0)
     let rows = ''
     segs.forEach((seg,i)=>{
       const L = seg.length||0
@@ -3096,9 +3150,9 @@ ${rows}</table>`
       ${T4.map((t,j)=>`<td>${t?_spd(totLen,totTv[j])||'':''}</td>`).join('')}
       ${T4.map((t,j)=>`<td>${t?_spd(totLen,totRv[j])||'':''}</td>`).join('')}
     </tr>`
-    return `<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px;margin-top:14px">各路段平均旅行速率及平均行駛速率統計表（公里/時）</div>
+    return `<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px;margin-top:14px">各路段平均旅行速率及平均行駛速率統計表（公里/時）${np>1?`（${pi+1}／${np}）`:''}</div>
 ${_segDateInfo()}
-<table class="seg-r">${_segTableHeader('平均旅行速率','平均行駛速率')}
+<table class="seg-r">${_segTableHeader('平均旅行速率','平均行駛速率',grp)}
 ${rows}</table>`
   }
 
@@ -3326,10 +3380,12 @@ ${segRows}${emptyRows}
   // ── Assemble ──────────────────────────────────────────────────────────────
   // 「平均」的部分＝延滯統計表（秒／百分比）＋各路段平均時間與速率；
   // 後面每一趟的調查表屬於原始明細，批次下載時不需要。
+  // 兩個時段一頁：時段只有 2 個時 PG.length===1，輸出跟改版前完全一樣。
+  const NP = PG.length
   const avgPages = [
-    buildDelayPage('sec'),
-    buildDelayPage('pct'),
-    `<div class="pg">${buildSegTimePage()}${buildSegSpdPage()}</div>`
+    ...PG.map((g,i)=>buildDelayPage('sec', g, i, NP)),
+    ...PG.map((g,i)=>buildDelayPage('pct', g, i, NP)),
+    ...PG.map((g,i)=>`<div class="pg">${buildSegTimePage(g,i,NP)}${buildSegSpdPage(g,i,NP)}</div>`)
   ]
   // 批次模式：只回傳這條路線的報告頁與樣式，由呼叫端合併成一份文件。
   // 傳入 {sections:{...}} 就只產出勾選的表；沒傳就是四張平均表全給。
@@ -3337,12 +3393,15 @@ ${segRows}${emptyRows}
     const sec = (returnOnly && typeof returnOnly==='object') ? returnOnly.sections : null
     if(!sec) return {css: CSS, avgPages}
     const out=[]
-    if(sec.delaySec) out.push(buildDelayPage('sec'))
-    if(sec.delayPct) out.push(buildDelayPage('pct'))
-    const segBlocks=[]
-    if(sec.segTime) segBlocks.push(buildSegTimePage())
-    if(sec.segSpd)  segBlocks.push(buildSegSpdPage())
-    if(segBlocks.length) out.push(`<div class="pg">${segBlocks.join('')}</div>`)
+    if(sec.delaySec) PG.forEach((g,i)=>out.push(buildDelayPage('sec', g, i, NP)))
+    if(sec.delayPct) PG.forEach((g,i)=>out.push(buildDelayPage('pct', g, i, NP)))
+    // 路段時間與速率兩張表印在同一頁，所以要以「時段分頁」為外層再各印一次
+    PG.forEach((g,i)=>{
+      const segBlocks=[]
+      if(sec.segTime) segBlocks.push(buildSegTimePage(g,i,NP))
+      if(sec.segSpd)  segBlocks.push(buildSegSpdPage(g,i,NP))
+      if(segBlocks.length) out.push(`<div class="pg">${segBlocks.join('')}</div>`)
+    })
     if(sec.trips) surveys.forEach((sv,si)=>{ (sv.trips||[]).forEach(trip=>out.push(buildTripPage(sv,si,trip))) })
     return {css: CSS, avgPages: out}
   }

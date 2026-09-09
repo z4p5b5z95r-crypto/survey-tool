@@ -475,6 +475,24 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .seg-confirm-banner.pending{background:#fffbeb;border:1.5px solid #fde68a;color:#92400e}
 .seg-confirm-banner.confirmed{background:#f0fdf4;border:1.5px solid #bbf7d0;color:#16a34a}
 .seg-confirm-btn{padding:7px 14px;border-radius:8px;border:none;background:#f59e0b;color:white;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0}
+/* ── 調查時段（可增減 1~6 段）───────────────────────────── */
+.pd-hdr{display:grid;grid-template-columns:20px 1fr 118px 26px;gap:5px;font-size:10px;
+  font-weight:700;color:#94a3b8;letter-spacing:.4px;margin-bottom:4px;padding-left:1px}
+.pd-row{display:grid;grid-template-columns:20px 1fr 118px 26px;gap:5px;align-items:center;margin-bottom:5px}
+.pd-n{width:20px;height:20px;border-radius:50%;color:#fff;font-size:9px;font-weight:800;
+  display:flex;align-items:center;justify-content:center}
+.pd-row input{padding:6px 8px;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;
+  font-family:inherit;width:100%;background:#fff;color:#0f172a}
+.pd-row input:focus{outline:2px solid #93c5fd;outline-offset:-1px;border-color:#3b82f6}
+.pd-del{width:26px;height:26px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;
+  border-radius:7px;cursor:pointer;font-size:12px;line-height:1;padding:0}
+.pd-del:disabled{opacity:.3;cursor:not-allowed}
+.pd-add{width:100%;padding:7px;border:1.5px dashed #93c5fd;background:#f8fbff;color:#2563eb;
+  border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:2px}
+.pd-add:disabled{opacity:.4;cursor:not-allowed;border-style:solid}
+.pd-tot{margin-top:7px;font-size:11px;color:#64748b;line-height:1.6}
+.pd-tot b{color:#0f172a}
+.pd-warn{color:#b45309;font-weight:600}
 .rc-btn-row{display:flex;gap:8px}
 .rc-btn{flex:1;padding:10px 6px;border:1.5px solid #e2e8f0;border-radius:10px;background:white;color:#475569;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
 .rc-btn.sel{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}
@@ -976,18 +994,24 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
           <div class="acc-sec" id="acc-time">
             <div class="acc-hd" onclick="toggleAcc('acc-time')">
               <span class="acc-hd-icon">⏰</span>
-              <span class="acc-hd-label">離/尖峰時間設定</span>
+              <span class="acc-hd-label">調查時段設定</span>
+              <span class="acc-hd-badge" id="pd-count-badge">2 段</span>
               <svg class="acc-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
             <div class="acc-bd">
-              <div class="row2">
-                <div class="field"><label>時段名稱</label><input id="opn" value="離峰" placeholder="離峰" oninput="renderStepBar()"/></div>
-                <div class="field"><label>時段名稱</label><input id="pkn" value="尖峰" placeholder="尖峰" oninput="renderStepBar()"/></div>
+              <!-- 時段可增減：有些案子不只尖峰/離峰兩段，可能 2 尖 2 離。
+                   opn/pkn/op/pk 保留成隱藏欄位，讓既有的 QR、預覽、PDF 範例等舊程式碼照舊運作。 -->
+              <div class="field">
+                <label>調查時段（每個時段都會有去程與回程）</label>
+                <div class="pd-hdr"><span></span><span>時段名稱</span><span>監測時間</span><span></span></div>
+                <div id="pd-rows"></div>
+                <button type="button" class="pd-add" id="pd-add" onclick="addPeriod()">＋ 新增時段</button>
+                <div class="pd-tot" id="pd-tot"></div>
               </div>
-              <div class="row2">
-                <div class="field"><label>監測時間</label><input id="op" value="14:00~16:00" oninput="renderStepBar()"/></div>
-                <div class="field"><label>監測時間</label><input id="pk" value="17:00~19:00" oninput="renderStepBar()"/></div>
-              </div>
+              <input type="hidden" id="opn" value="離峰"/>
+              <input type="hidden" id="pkn" value="尖峰"/>
+              <input type="hidden" id="op" value="14:00~16:00"/>
+              <input type="hidden" id="pk" value="17:00~19:00"/>
               <div class="field">
                 <label>調查次數設定（預設3次，可自行選擇調查次數）</label>
                 <div class="rc-btn-row" id="rc-btn-row"></div>
@@ -1831,6 +1855,10 @@ function normalizeCfg(c){
   // 只轉換「本來就存在」的欄位，不要順手補上空白欄位——
   // 否則 syncFromCloud 用 JSON.stringify 比對新舊設定時會每次都判定成有變動。
   ;['rn','ft','op','pk','opn','pkn'].forEach(k=>{ if(k in c) c[k]=S(c[k]) })
+  // pds 是 null 就整個拿掉，別留一個空欄位——syncFromCloud 用 JSON.stringify 比對，
+  // 留著會讓每條舊路線每次都被判定成「有變動」而重寫一次
+  if('pds' in c){ if(!Array.isArray(c.pds)||!c.pds.length) delete c.pds
+                  else c.pds.forEach(p=>{ if(p){ p.k=S(p.k); p.n=S(p.n); p.t=S(p.t) } }) }
   if(Array.isArray(c.nd)) c.nd.forEach(n=>{ if(n){ if('n' in n) n.n=S(n.n); if('n2' in n) n.n2=S(n.n2) } })
   if(Array.isArray(c.sg)) c.sg.forEach(s=>{ if(s&&'n' in s){ s.n=S(s.n) } })
   return c
@@ -2854,10 +2882,93 @@ function selectRoundCount(n) {
   document.getElementById('rc').value = Math.min(RC_MAX, Math.max(1, n))
   renderRcButtons()
 }
+// ════════════════════════════════════════════════════════
+//  調查時段（可增減 1~6 段）
+//  一個時段 = {k:代碼, n:名稱, t:時間}。k 是穩定代碼，趟次的 peakType 存的就是它，
+//  所以 PM 改名稱不會讓已經跑完的資料對不上。
+//  ★ 舊路線一律用 off_peak / peak 這兩個原本就在用的代碼，歷史資料完全不用搬。
+// ════════════════════════════════════════════════════════
+const PD_MAX = 6
+let periodData = [
+  {k:'off_peak', n:'離峰', t:'14:00~16:00'},
+  {k:'peak',     n:'尖峰', t:'17:00~19:00'}
+]
+const PD_COLORS = ['#dc2626','#2563eb','#ea580c','#0891b2','#7c3aed','#16a34a']
+// 新時段配一個沒被用過的代碼；永遠不重用已刪除的代碼，避免跟舊資料混淆
+function nextPeriodKey(){
+  const used = new Set(periodData.map(p=>p.k))
+  for(let i=1;i<=99;i++){ const k='p'+i; if(!used.has(k)) return k }
+  return 'p'+Date.now().toString(36)
+}
+function normPeriodList(arr){
+  if(!Array.isArray(arr) || !arr.length) return null
+  const seen=new Set(), out=[]
+  arr.forEach((p,i)=>{
+    if(!p) return
+    let k=String(p.k||p.key||'').trim()
+    if(!k || seen.has(k)) k='p'+(i+1)
+    if(seen.has(k)) return
+    seen.add(k)
+    out.push({ k, n:String(p.n||p.name||'').trim()||('時段'+(i+1)), t:String(p.t||p.time||'').trim() })
+  })
+  return out.length ? out.slice(0,PD_MAX) : null
+}
+function addPeriod(){
+  if(periodData.length>=PD_MAX) return
+  periodData.push({k:nextPeriodKey(), n:'時段'+(periodData.length+1), t:'00:00~00:00'})
+  renderPeriods()
+}
+function delPeriod(i){
+  if(periodData.length<=1) return
+  const p=periodData[i]
+  if(!confirm(`確定刪除「${p.n}」這個時段？\n\n已經調查過的這個時段紀錄不會被刪除，但之後現場 App 不會再出現這個時段的按鈕。`)) return
+  periodData.splice(i,1)
+  renderPeriods()
+}
+function setPeriod(i,f,v){
+  if(!periodData[i]) return
+  periodData[i][f]=v
+  syncLegacyPeakFields(); renderPeriodTotal(); renderStepBar()
+}
+// 舊欄位同步：QR 預覽、PDF 範例、以及還沒改寫的地方仍讀 opn/pkn/op/pk。
+// 一律以前兩個時段填充，這樣兩段的情況跟改版前完全一致。
+function syncLegacyPeakFields(){
+  const g=id=>document.getElementById(id)
+  const p0=periodData[0]||{n:'離峰',t:'14:00~16:00'}
+  const p1=periodData[1]||p0
+  if(g('opn')) g('opn').value=p0.n
+  if(g('op'))  g('op').value =p0.t
+  if(g('pkn')) g('pkn').value=p1.n
+  if(g('pk'))  g('pk').value =p1.t
+}
+function renderPeriodTotal(){
+  const el=document.getElementById('pd-tot'); if(!el) return
+  const n=periodData.length, pages=Math.ceil(n/2)
+  el.innerHTML=`<b>${n}</b> 個時段 × 去／回 ＝ 每次調查 <b>${n*2}</b> 趟`
+    +`　·　統計表 <b>${pages}</b> 頁（兩個時段一頁）`
+    +(n>=5?'<br><span class="pd-warn">⚠️ 時段較多時，調查表表頭會折行，時段名稱建議 5 個字以內</span>':'')
+  const b=document.getElementById('pd-count-badge'); if(b) b.textContent=n+' 段'
+}
+function renderPeriods(){
+  const host=document.getElementById('pd-rows'); if(!host) return
+  host.innerHTML=periodData.map((p,i)=>`
+    <div class="pd-row">
+      <div class="pd-n" style="background:${PD_COLORS[i%PD_COLORS.length]}">${i+1}</div>
+      <input value="${esc(p.n)}" placeholder="時段名稱" oninput="setPeriod(${i},'n',this.value)"/>
+      <input value="${esc(p.t)}" placeholder="07:00~09:00" oninput="setPeriod(${i},'t',this.value)"/>
+      <button type="button" class="pd-del" onclick="delPeriod(${i})"
+        ${periodData.length<=1?'disabled':''} title="刪除這個時段">✕</button>
+    </div>`).join('')
+  const add=document.getElementById('pd-add'); if(add) add.disabled=periodData.length>=PD_MAX
+  syncLegacyPeakFields(); renderPeriodTotal(); renderStepBar()
+}
+
 function buildConfig() {
   syncSegDataFromDOM()
   return{
     v:1,
+    // pds 是新的權威來源；op/pk/opn/pkn 仍照舊寫出去，舊版程式讀得到
+    pds:periodData.map(p=>({k:p.k, n:(p.n||'').trim()||p.k, t:(p.t||'').trim()})),
     rn:document.getElementById('rn').value.trim(),
     ft:document.getElementById('ft').value.trim(),
     tl:parseInt(document.getElementById('tl').value)||0,
@@ -2963,7 +3074,7 @@ async function downloadQR() {
 // ════════════════════════════════════════════════════════
 // 共用：把一個 cfg 物件包成 saveRoute 要送出的 payload（saveTask 及清單頁 QR 自動上傳都用這個，避免兩邊邏輯兜不起來）
 function buildRoutePayload(cfg, cloudId, owner, projectCloudId) {
-  return {action:'saveRoute',id:cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,roundCount:cfg.rc||3,offPeakLabel:cfg.op,peakLabel:cfg.pk,offPeakName:cfg.opn||'離峰',peakName:cfg.pkn||'尖峰',projectId:projectCloudId||'',owner:owner||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
+  return {action:'saveRoute',id:cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,roundCount:cfg.rc||3,offPeakLabel:cfg.op,peakLabel:cfg.pk,offPeakName:cfg.opn||'離峰',peakName:cfg.pkn||'尖峰',periods:cfg.pds||undefined,projectId:projectCloudId||'',owner:owner||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
 }
 // 把本機專案 id 解析成雲端專案 id；若專案還沒同步過雲端，先同步一次
 async function ensureProjectCloudSynced(proj) {
@@ -3079,6 +3190,9 @@ function newTask(projectId) {
   document.getElementById('pk').value='17:00~19:00'
   document.getElementById('opn').value='離峰'
   document.getElementById('pkn').value='尖峰'
+  // 新路線預設兩段，跟改版前一模一樣
+  periodData=[{k:'off_peak',n:'離峰',t:'14:00~16:00'},{k:'peak',n:'尖峰',t:'17:00~19:00'}]
+  renderPeriods()
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
   radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
@@ -3106,6 +3220,13 @@ async function loadTask(id) {
   document.getElementById('pk').value=cfg.pk||'17:00~19:00'
   document.getElementById('opn').value=cfg.opn||'離峰'
   document.getElementById('pkn').value=cfg.pkn||'尖峰'
+  // 沒有 pds 的舊設定，就用原本的離峰/尖峰兩欄合成出來——
+  // 代碼固定是 off_peak / peak，跟歷史 trips 的 peakType 完全一致，不需要搬資料
+  periodData = normPeriodList(cfg.pds) || [
+    {k:'off_peak', n:cfg.opn||'離峰', t:cfg.op||'14:00~16:00'},
+    {k:'peak',     n:cfg.pkn||'尖峰', t:cfg.pk||'17:00~19:00'}
+  ]
+  renderPeriods()
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
   radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
@@ -3392,11 +3513,11 @@ async function syncFromCloud(opts) {
         const loc=savedTasks[existIdx]
         if(loc.creator!==me){loc.creator=me;changed++}
         if(loc.projectId!==localProjectId){loc.projectId=localProjectId;changed++}
-        const newCfg=normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})})
+        const newCfg=normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',pds:r.periods||null,nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})})
         if(JSON.stringify(loc.cfg)!==JSON.stringify(newCfg)){loc.cfg=newCfg;changed++}
         continue
       }
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,projectId:localProjectId,creator:me,cfg:normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}),savedAt:S(r.createdAt).slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,projectId:localProjectId,creator:me,cfg:normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',pds:r.periods||null,nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}),savedAt:S(r.createdAt).slice(0,10)||'雲端'})
       changed++
     }
     // 移除本機有 cloudId 但雲端「我的路線」已不存在的項目（刪除同步 + 清除誤匯入的他人路線）

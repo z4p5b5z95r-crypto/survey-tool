@@ -64,6 +64,23 @@ input,select,textarea{font-size:max(16px,1em)!important}
 .si-times{font-size:11.5px;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;line-height:1.4}
 .si-times .off{color:#85B7EB}
 .si-times .pk{color:#EF9F27}
+/* 時段配色：順序跟 PM 設定頁的編號圓圈、以及下方組合按鈕一致 */
+.si-times .pd0{color:#F08A8A}
+.si-times .pd1{color:#85B7EB}
+.si-times .pd2{color:#EF9F27}
+.si-times .pd3{color:#5BC8DA}
+.si-times .pd4{color:#B79BEC}
+.si-times .pd5{color:#6BC98A}
+/* 設定頁的時段一覽（唯讀） */
+.s-pdlist{display:flex;flex-direction:column;gap:6px}
+.s-pd{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f8fafc;
+  border:1px solid #e2e8f0;border-radius:9px}
+.s-pd-n{width:19px;height:19px;border-radius:50%;color:#fff;font-size:10px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;flex:none}
+.s-pd-nm{flex:1;min-width:0;font-size:13px;font-weight:700;color:#0f172a;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s-pd-t{flex:none;font-size:12px;color:#64748b;font-variant-numeric:tabular-nums}
+.s-pd-hint{font-size:11px;color:#94a3b8;line-height:1.6;margin-top:2px}
 .signin-body{flex:1;overflow-y:auto;padding:14px 16px;-webkit-overflow-scrolling:touch}
 .signin-card{background:white;border-radius:14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:12px}
 .signin-card h3{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
@@ -289,6 +306,17 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 .cgb-tag{font-size:15px;font-weight:800;padding:2px 8px;border-radius:7px;letter-spacing:.3px;flex-shrink:0}
 .cgb-tag.pk{background:#450a0a;color:#fca5a5}
 .cgb-tag.op{background:#0c2a4e;color:#93c5fd}
+/* PM 自訂的第 3 段以後：顏色順序跟 PM 設定頁的編號圓圈一致，方便現場對照。
+   時段名稱可能較長（例如「夜間離峰」），所以這裡限寬並在放不下時縮小字級。 */
+.cgb-tag.pd0{background:#450a0a;color:#fca5a5}
+.cgb-tag.pd1{background:#0c2a4e;color:#93c5fd}
+.cgb-tag.pd2{background:#7c2d12;color:#fed7aa}
+.cgb-tag.pd3{background:#164e63;color:#a5f3fc}
+.cgb-tag.pd4{background:#4c1d95;color:#ddd6fe}
+.cgb-tag.pd5{background:#14532d;color:#bbf7d0}
+/* 時段多的時候按鈕會變多，格子區塊可捲動，避免把「開始調查」擠到畫面外 */
+.combo-grid-4{max-height:46vh;overflow-y:auto}
+.combo-grid-4 .cgb-tag{max-width:104px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .combo-grid-btn.done .cgb-tag.pk{background:#7f1d1d;color:#fecaca}
 .combo-grid-btn.done .cgb-tag.op{background:#1e3a5f;color:#bfdbfe}
 .cgb-dir{font-size:15px;font-weight:800;color:#e2e8f0;white-space:nowrap}
@@ -574,6 +602,12 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .sgs-pf-title-wrap h2{font-size:15px;font-weight:700;color:#fff;letter-spacing:2px;white-space:nowrap}
 .sgs-pf-meta{display:flex;background:#eef3fa;border-bottom:1.5px solid #1e3a5f;flex-wrap:wrap}
 .sgs-pf-ml{flex:1;min-width:180px;padding:7px 14px;border-right:1px solid #94a3b8;font-size:11px;line-height:1.9;color:#1e3a5f}
+/* 時段勾選：橫向排，一行放不下才折到下一行 */
+.sgs-tline{display:flex;align-items:flex-start}
+.sgs-tline>.lb{flex:none}
+.sgs-pklist{display:flex;flex-wrap:wrap;gap:0 14px;min-width:0}
+.sgs-pklist>span{white-space:nowrap}
+.sgs-pklist>span.on{font-weight:800}
 .sgs-pf-ml u,.sgs-pf-mr u{text-decoration-color:#3d6490}
 .sgs-pf-mr{width:200px;padding:7px 14px;font-size:11px;line-height:2.2;color:#1e3a5f;text-align:left}
 .sgs-pf-tbl{width:100%;border-collapse:collapse;font-size:11px}
@@ -748,11 +782,8 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
           <h2 id="si-route-name">載入任務中...</h2>
           <span class="si-dist" id="si-segs"></span>
         </div>
-        <!-- 第二行放兩個時段，離峰藍、尖峰橘，跟下方選調查組合的配色一致 -->
-        <div class="si-times">
-          <span class="off"><span id="si-offpeak-lb">離峰</span> <span id="si-offpeak"></span></span>
-          <span class="pk"><span id="si-peak-lb">尖峰</span> <span id="si-peak"></span></span>
-        </div>
+        <!-- 第二行列出所有時段，配色跟下方選調查組合的按鈕一致（由 showSigninScreen 動態產生） -->
+        <div class="si-times" id="si-times"></div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <button class="btn-hist-rec" onclick="openHistModal()">📋 記錄</button>
@@ -848,10 +879,10 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     </div>
     <div class="card">
       <div class="card-title">調查時間區間</div>
-      <div class="row2">
-        <div class="field"><label>離峰時間</label><input id="s-offpeak" placeholder="14:00~16:00"/></div>
-        <div class="field"><label>尖峰時間</label><input id="s-peak" placeholder="17:00~19:00"/></div>
-      </div>
+      <!-- 時段由 PM 在後台設定（1~6 段），現場只顯示不修改，避免跟雲端設定打架 -->
+      <div id="s-periods" class="s-pdlist"></div>
+      <input type="hidden" id="s-offpeak"/>
+      <input type="hidden" id="s-peak"/>
     </div>
     <div class="card">
       <div class="card-title">路段設定（依行進順序）</div>
@@ -1172,10 +1203,42 @@ const SGS_INT_COLS  = ['red_light','left_same','left_opp','right_turn','cross_ve
               ...INT_DELAYS.map(d=>d.cause).filter(c=>!SGS_INT_COLS.includes(c))]
   if(miss.length) console.error('[SGS] 這些延滯種類沒有對應的表格欄位：',miss)
 })()
-function PEAK_LABEL_(key){ return {peak:config.peakName||'尖峰', off_peak:config.offPeakName||'離峰'}[key] }
+// ── 調查時段 ──────────────────────────────────────────────
+// PM 可以自訂 1~6 個時段（有些案子是 2 尖峰 2 離峰），每個時段都有去程與回程。
+// 一個時段 = {k:代碼, n:名稱, t:時間}；趟次的 peakType 存的就是 k。
+// ★ 舊路線沒有 periods 時，一律合成 off_peak / peak 這兩個原本就在用的代碼，
+//   所以已經上傳的歷史資料完全不用搬移。
+function PERIODS(){
+  const ps = config.periods
+  if (Array.isArray(ps) && ps.length) return ps
+  return [
+    {k:'off_peak', n:config.offPeakName||'離峰', t:config.offPeakLabel||'14:00~16:00'},
+    {k:'peak',     n:config.peakName   ||'尖峰', t:config.peakLabel   ||'17:00~19:00'}
+  ]
+}
+function PERIOD_OF(k){ return PERIODS().find(p=>p.k===k) || null }
+function PEAK_LABEL_(key){
+  const p=PERIOD_OF(key)
+  if(p) return p.n
+  // 找不到（例如時段被 PM 刪掉，但舊紀錄還在）就退回代碼本身，至少看得出是哪一段
+  return {peak:config.peakName||'尖峰', off_peak:config.offPeakName||'離峰'}[key] || String(key||'')
+}
+function PEAK_TIME_(key){
+  const p=PERIOD_OF(key)
+  if(p) return p.t||''
+  return {peak:config.peakLabel||'', off_peak:config.offPeakLabel||''}[key] || ''
+}
 const PEAK_LABEL  = new Proxy({}, {get:(_,key)=>PEAK_LABEL_(key)})   // 保留 PEAK_LABEL[key] 既有用法，但每次讀取都即時反映 PM 自訂名稱
 const DIR_LABEL   = {bound:'去程', return:'回程'}
-const COMBO_KEYS  = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
+// COMBO_KEYS 以前是寫死的四個；現在由時段動態產生。
+// 仍然叫 COMBO_KEYS、仍然是陣列，所以其餘 forEach/every/some 的用法都不用改。
+let COMBO_KEYS  = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
+function rebuildComboKeys(){
+  const ks=[]
+  PERIODS().forEach(p=>{ ks.push(p.k+'_bound'); ks.push(p.k+'_return') })
+  COMBO_KEYS = ks
+  return COMBO_KEYS
+}
 const WEATHER_ZH  = {sunny:'晴', cloudy:'陰', rainy:'雨'}
 const AUTO_RECORD_DIST = 15  // metres
 
@@ -1521,6 +1584,17 @@ function applyConfig(cfg){
   config.peakLabel   =cfg.peakLabel   ||cfg.pk||'17:00~19:00'
   config.offPeakName =cfg.offPeakName ||cfg.opn||'離峰'
   config.peakName    =cfg.peakName    ||cfg.pkn||'尖峰'
+  // 多時段設定。雲端來的是 periods，離線 ?c= 編碼用的是簡寫 pds。
+  // 兩個都沒有就是舊路線，PERIODS() 會自動退回離峰/尖峰兩段。
+  {
+    const raw = cfg.periods || cfg.pds
+    const arr = Array.isArray(raw) ? raw : null
+    config.periods = (arr && arr.length)
+      ? arr.map((p,i)=>({ k:String(p.k||p.key||('p'+(i+1))),
+                          n:String(p.n||p.name||('時段'+(i+1))),
+                          t:String(p.t||p.time||'') })).slice(0,6)
+      : null
+  }
   config.date        =todayStr()   // always default to today; surveyor picks their own date
   // PM 設定的每日調查次數（1~6，預設3）；套用後重建回合選鈕
   config.roundCount = Math.min(5, Math.max(1, parseInt(cfg.roundCount||cfg.rc)||3))
@@ -2435,11 +2509,14 @@ function autoSelectPeak(){
     return{start:+m[1]*60+ +m[2], end:+m[3]*60+ +m[4]}
   }
   const now=new Date(); const cur_min=now.getHours()*60+now.getMinutes()
-  const peakR=parseRange(config.peakLabel||'')
-  const offR =parseRange(config.offPeakLabel||'')
+  // 掃過所有時段，找出「現在」落在哪一段。時段可能跨午夜（例如 22:00~02:00），
+  // 那種情況起訖會反過來，要拆成兩段判斷。
+  const inRange=(r)=> r && (r.start<=r.end
+      ? (cur_min>=r.start && cur_min<=r.end)
+      : (cur_min>=r.start || cur_min<=r.end))
+  const hit=PERIODS().find(p=>inRange(parseRange(p.t||'')))
   // 合併按鈕需要「時段+方向」兩者都有值才能選取到某一顆按鈕，方向預設猜「去程」，使用者仍可再點別的按鈕改選
-  if(peakR&&cur_min>=peakR.start&&cur_min<=peakR.end){ selPeakType='peak'; selDirection=selDirection||'bound' }
-  else if(offR&&cur_min>=offR.start&&cur_min<=offR.end){ selPeakType='off_peak'; selDirection=selDirection||'bound' }
+  if(hit){ selPeakType=hit.k; selDirection=selDirection||'bound' }
   else return
   drawRouteArrows(selDirection)
   renderComboGrid()
@@ -2717,10 +2794,10 @@ function showSigninScreen(){
   $('si-route-name').textContent=config.routeName||'旅行時間調查'
   // 起訖點改放在下方「路線地圖」卡片，標題列只留路線名、里程與時段
   { const ft=$('si-fromto'); if(ft) ft.textContent=segDisp(config.routeFromTo||'') }
-  $('si-offpeak').textContent=config.offPeakLabel
-  $('si-peak').textContent=config.peakLabel
-  $('si-offpeak-lb').textContent=config.offPeakName||'離峰'
-  $('si-peak-lb').textContent=config.peakName||'尖峰'
+  // 時段列：1~6 段都列出來，配色跟下方組合按鈕一致
+  { const el=$('si-times')
+    if(el) el.innerHTML=PERIODS().map((p,i)=>
+      `<span class="pd${i%6}"><b>${he(p.n)}</b> ${he(p.t||'')}</span>`).join('') }
   // 總里程：優先用 PM 設定的全長，沒有的話就把各路段長度加起來
   const _totalM = (+config.totalLength)>0
     ? +config.totalLength
@@ -2993,6 +3070,15 @@ function renderManualSegList(){
       <div class="seg-meta">${s.lanes}車道 · ${s.width}m · ${s.length}m</div>
     </div><button class="seg-del" onclick="delSeg(${i})">✕</button></div>`).join('')
 }
+// 設定頁的時段一覽（唯讀）。時段是 PM 在後台定的，現場改了也不會同步回雲端，
+// 所以這裡只顯示，避免現場人員以為自己改得動。
+function renderSetupPeriods(){
+  const el=$('s-periods'); if(!el) return
+  el.innerHTML=PERIODS().map((p,i)=>
+    `<div class="s-pd"><span class="s-pd-n" style="background:${['#dc2626','#2563eb','#ea580c','#0891b2','#7c3aed','#16a34a'][i%6]}">${i+1}</span>`
+    +`<span class="s-pd-nm">${he(p.n)}</span><span class="s-pd-t">${he(p.t||'—')}</span></div>`).join('')
+    + `<div class="s-pd-hint">共 ${PERIODS().length} 個時段，每段各有去程與回程（時段由後台設定）</div>`
+}
 function saveSetup(){
   config.routeName   =$('s-route-name').value.trim()
   config.routeFromTo =$('s-route-fromto').value.trim()
@@ -3000,8 +3086,10 @@ function saveSetup(){
   config.date        =$('s-date').value||new Date().toLocaleDateString('zh-TW')
   config.surveyor    =$('s-surveyor').value.trim()
   config.weather     =setupWeather
-  config.offPeakLabel=$('s-offpeak').value.trim()||'14:00~16:00'
-  config.peakLabel   =$('s-peak').value.trim()||'17:00~19:00'
+  // 時段一律沿用目前設定（雲端路線帶下來的 periods，或舊路線的離峰/尖峰），
+  // 現場不再從這兩個輸入框覆寫，避免蓋掉 PM 的多時段設定
+  config.offPeakLabel=config.offPeakLabel||'14:00~16:00'
+  config.peakLabel   =config.peakLabel   ||'17:00~19:00'
   config.segments    =[...manualSegs]
   config.nodes       =[]
   if(!config.routeName){showToast('請填路線名稱');return}
@@ -4512,6 +4600,7 @@ let selPeakType=null,selDirection=null
 // ── 回合（第幾次）選擇 ──
 // PM 在路線設定裡指定 config.roundCount（1~6）後呼叫此函式重建 ROUND_KEYS / allTripsByRound
 function applyRoundCount(){
+  rebuildComboKeys()   // 時段是路線設定的一部分，套用路線時要一起重算「一個回合有哪幾趟」
   const n = Math.min(5, Math.max(1, config.roundCount||3))
   ROUND_KEYS = Array.from({length:n}, (_,i)=>i+1)
   allTripsByRound = {}
@@ -4571,14 +4660,19 @@ function checkStart(){
 function updateProgressChips(){ renderComboGrid() }
 function renderComboGrid(){
   const box=$('combo-grid'); if(!box) return
+  const ps=PERIODS()
   box.innerHTML = COMBO_KEYS.map(k=>{
     const [pt,dir]=parseComboKey(k)
-    const isPeak = pt==='peak'
-    const tagTxt = isPeak?(config.peakName||'尖峰'):(config.offPeakName||'離峰')
-    const tagCls = isPeak?'cgb-tag pk':'cgb-tag op'
+    // 時段配色：舊的 peak/off_peak 維持原本的紅/藍；PM 新增的時段依序輪替，
+    // 顏色跟 PM 設定頁的編號圓圈一致，現場人員一眼對得起來
+    const pi=ps.findIndex(p=>p.k===pt)
+    const tagCls = pt==='peak' ? 'cgb-tag pk'
+                 : pt==='off_peak' ? 'cgb-tag op'
+                 : 'cgb-tag pd'+((pi<0?0:pi)%6)
+    const tagTxt = PEAK_LABEL_(pt)
     const dirTxt = dir==='bound'?'去程':'回程'
     const dirIcon = dir==='bound'?'▶':'◀'
-    const timeTxt = isPeak?(config.peakLabel||''):(config.offPeakLabel||'')
+    const timeTxt = PEAK_TIME_(pt)
     // 三種狀態：未調查／已記錄但還沒上傳（橘色時鐘）／已上傳雲端（綠勾）
     const t=allTrips[k]
     const done=!!t
@@ -4609,7 +4703,10 @@ function onComboGridClick(k){
   checkStart()
 }
 
-function COMBO_ZH_(key){ const o=config.offPeakName||'離峰', p=config.peakName||'尖峰'; return {off_peak_bound:o+'去程',off_peak_return:o+'回程',peak_bound:p+'去程',peak_return:p+'回程'}[key] }
+function COMBO_ZH_(key){
+  const [pt,dir]=parseComboKey(key)
+  return PEAK_LABEL_(pt)+(dir==='return'?'回程':'去程')
+}
 const COMBO_ZH = new Proxy({}, {get:(_,key)=>COMBO_ZH_(key)})
 
 // ── 開始調查按鈕（未完成＝直接開始／已完成＝先跳確認彈窗才能覆蓋）──
@@ -5110,9 +5207,13 @@ function buildTripDoneUI(travelS,totalDelayS,runS){
   $('btn-next-combo').style.display=COMBO_KEYS.some(k=>!allTrips[k])?'block':'none'
   updateProgressChips()
 }
+// 組合鍵 = 「時段代碼_方向」。時段代碼由 PM 自訂（也可能是舊的 peak / off_peak，
+// 本身就含底線），所以要從「結尾」切，不能從第一個底線切。
 function parseComboKey(k){
-  if(k.startsWith('off_peak'))return['off_peak',k.replace('off_peak_','')]
-  return['peak',k.replace('peak_','')]
+  const s=String(k||'')
+  if(s.endsWith('_return')) return [s.slice(0,-'_return'.length),'return']
+  if(s.endsWith('_bound'))  return [s.slice(0,-'_bound'.length), 'bound']
+  return [s,'bound']
 }
 function goNextCombo(){showScreen('screen-ready');checkStart()}
 function goReport(){
@@ -5531,7 +5632,6 @@ function buildSegmentCards(trip,pt,dir){
 // 現場 App 沒有「修改」模式，所以只取桌機的唯讀分支，其餘結構逐格對齊。
 function buildOneOfficialForm(trip,pt,dir){
   const isReturn = dir==='return'
-  const isPeak   = pt==='peak'
   const segs  = isReturn ? [...config.segments].reverse() : config.segments
   const nodes = isReturn ? [...config.nodes].reverse()    : config.nodes
   const TL    = config.totalLength||0
@@ -5594,7 +5694,11 @@ function buildOneOfficialForm(trip,pt,dir){
         <div>站　名：&nbsp;<u>${he(config.routeName||'')}</u></div>
         <div>旅次編號：&nbsp;${he(trip.tripNo||'')}</div>
         <div>方向往：&nbsp;${!isReturn?'■':'□'} 去　　${isReturn?'■':'□'} 回</div>
-        <div>時　間：&nbsp;${!isPeak?'■':'□'} ${he(config.offPeakName||'離峰')}（${he(config.offPeakLabel||'')}）　&nbsp;${isPeak?'■':'□'} ${he(config.peakName||'尖峰')}（${he(config.peakLabel||'')}）</div>
+        <!-- 時段可能有 1~6 個，橫向排、放不下才折行（跟桌面版報告一致） -->
+        <div class="sgs-tline"><span class="lb">時　間：</span>
+          <span class="sgs-pklist">${PERIODS().map(p=>
+            `<span${p.k===pt?' class="on"':''}>${p.k===pt?'■':'□'} ${he(p.n)}${p.t?`（${he(p.t)}）`:''}</span>`
+          ).join('')}</span></div>
       </div>
       <div class="sgs-pf-mr">
         <div>日　期：&nbsp;<span style="color:#dc2626;font-weight:700">${he(config.date||'')}</span></div>
@@ -5895,6 +5999,7 @@ function exportReport(){
     surveyor:config.surveyor, weather:config.weather,
     offPeakLabel:config.offPeakLabel, peakLabel:config.peakLabel,
     offPeakName:config.offPeakName, peakName:config.peakName,
+    periods:PERIODS(),   // 匯出的 Excel 表頭要列出所有時段
     segments:config.segments, nodes:config.nodes
   }
   const eTrips  = JSON.parse(JSON.stringify(allTrips))
@@ -6061,7 +6166,9 @@ function exportReport(){
 '  aoa.push(["","站名：",CFG.routeName||"","","","","","","","","","","","","","","","","","","天氣：",WL[CFG.weather]||""]);\n' +
 '  aoa.push(["","旅次編號：","","","","","","","","","","","","","","","","","","","",""]);\n' +
 '  aoa.push(["","方向：",(dir==="bound"?"■":"□")+" 去    "+(dir==="return"?"■":"□")+" 回","","","","","","","","","","","","","","","","","","調查員：",CFG.surveyor||""]);\n' +
-'  aoa.push(["","時間：",(pt==="off_peak"?"■":"□")+" "+(CFG.offPeakName||"離峰")+"（"+CFG.offPeakLabel+"）  "+(pt==="peak"?"■":"□")+" "+(CFG.peakName||"尖峰")+"（"+CFG.peakLabel+"）","","","","","","","","","","","","","","","","","","",""]);\n' +
+'  var PDS=(CFG.periods&&CFG.periods.length)?CFG.periods:[{k:"off_peak",n:CFG.offPeakName||"離峰",t:CFG.offPeakLabel||""},{k:"peak",n:CFG.peakName||"尖峰",t:CFG.peakLabel||""}];\n' +
+'  var pdTxt=PDS.map(function(p){return (p.k===pt?"■":"□")+" "+p.n+(p.t?"（"+p.t+"）":"");}).join("  ");\n' +
+'  aoa.push(["","時間：",pdTxt,"","","","","","","","","","","","","","","","","",""]);\n' +
 // Summary header
 '  aoa.push(["起點","終點","距離(m)","起點時","分","秒","終點時","分","秒","旅行時間(秒)","交叉口延滯(秒)","路段延滯(秒)","行駛時間(秒)","旅行速率(km/h)","","行駛速率(km/h)",""]);\n' +
 '  var _stStr=st.toLocaleTimeString("zh-TW",{timeZone:"Asia/Taipei",hour12:false,hour:"2-digit",minute:"2-digit",second:"2-digit"}).split(":").map(function(v){return v.padStart(2,"0");});\n' +
@@ -6614,6 +6721,7 @@ window.addEventListener('load', async () => {
     showSigninScreen()
   }else{
     $('s-date').value=todayStr()
+    renderSetupPeriods()
     showScreen('screen-setup')
   }
 })
@@ -6855,8 +6963,8 @@ function _renderPrep(){
   if(_prepIdx===0){
     const gn=he(givenName(_prepName))
     body.innerHTML='<div class="prep-q"><div class="prep-ico">👋</div>'
-      +'<div class="prep-title">'+gn+' 您好</div>'
-      +'<div class="prep-sub prep-sub-hello">開始前我們先來確認<br>您的裝置及授權吧！</div>'
+      +'<div class="prep-title">Hi '+gn+'</div>'
+      +'<div class="prep-sub prep-sub-hello">開始前<br>先來確認裝置及授權吧</div>'
       +'<div class="prep-acts"><button class="prep-btn go" onclick="prepNext()">好</button></div>'
       +'<button class="prep-link" onclick="switchSurveyor()">我不是'+gn+'</button>'
       +'</div>'
