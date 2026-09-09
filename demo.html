@@ -446,6 +446,24 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .badge-todo{font-size:11px;padding:3px 9px;border-radius:20px;background:#f1f5f9;color:#94a3b8}
 .btn-blue{width:100%;padding:16px;background:#2563eb;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer}
 .btn-purple{width:100%;padding:16px;background:#7c3aed;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer}
+/* ── 收音中的麥克風提示 ── */
+#mic-live{position:fixed;left:50%;top:88px;transform:translateX(-50%);z-index:9000;
+  display:none;flex-direction:column;align-items:center;gap:9px;pointer-events:none}
+#mic-live.on{display:flex}
+.mic-live-box{position:relative;width:76px;height:76px;display:flex;align-items:center;justify-content:center}
+.mic-live-ico{position:relative;z-index:2;width:60px;height:60px;border-radius:50%;
+  background:#dc2626;display:flex;align-items:center;justify-content:center;font-size:29px;
+  box-shadow:0 6px 22px rgba(220,38,38,.55)}
+.mic-live-ring{position:absolute;inset:8px;border-radius:50%;background:rgba(220,38,38,.45);
+  animation:micPulse 1.6s ease-out infinite}
+.mic-live-ring.d2{animation-delay:.8s}
+@keyframes micPulse{
+  0%  {transform:scale(.85);opacity:.65}
+  70% {transform:scale(1.6);opacity:0}
+  100%{transform:scale(1.6);opacity:0}
+}
+.mic-live-txt{background:rgba(15,23,42,.9);color:#fff;font-size:13.5px;font-weight:800;
+  padding:7px 15px;border-radius:20px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.4)}
 /* 與「重新調查」同一個橘（.btn-start.redo）：代表「重來一次」這類動作 */
 .btn-orange{width:100%;padding:16px;background:#ea580c;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(234,88,12,.35)}
 
@@ -1088,7 +1106,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     <div id="td-cloud-status" style="display:none;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:600;text-align:center;margin-bottom:4px">⏳ 上傳中...</div>
     <button class="btn-blue" id="btn-next-combo" onclick="goNextCombo()">繼續調查 →</button>
     <button class="btn-purple" onclick="goReport()">📊 查看調查報告</button>
-    <button class="btn-orange" onclick="confirmClearStorage()">🔄 清除所有調查記錄（重新開始）</button>
+    <button class="btn-orange" id="btn-redo-trip" onclick="redoThisTrip()">🔄 重新調查</button>
   </div>
 </div>
 
@@ -3976,6 +3994,19 @@ function matchClarifyAnswer(rule, text){
 function setVoiceHint(txt){
   const el=document.getElementById('svy-voice-hint-txt')
   if(el) el.textContent=txt
+  setMicLiveTxt(txt)   // 地圖上的大圖示跟著換成同一句
+}
+// 蓋在地圖上的收音提示。行車中不可能盯著面板裡的小字，
+// 所以用大圖示 ＋ 脈動圈明確告訴駕駛「現在可以講了」。
+function showMicLive(on){
+  const el=document.getElementById('mic-live')
+  if(!el) return
+  el.classList.toggle('on', !!on)
+  if(on) setMicLiveTxt(_clarify ? (_clarify.hint||'請回答') : '請說出停止原因')
+}
+function setMicLiveTxt(t){
+  const el=document.getElementById('mic-live-txt')
+  if(el && t) el.textContent=t
 }
 // 「等系統真的講完再開麥」。所有『先播提示語、再聽駕駛回答』的地方都要走這裡。
 //
@@ -4097,10 +4128,13 @@ function startCauseListening(){
       vlog('  ✗ 辨識錯誤 '+_vrecErr)
       if(_vrecErr==='not-allowed'||_vrecErr==='service-not-allowed') _vrecDead=true
     }
-    _vrec.onstart=()=>vlog('  🎤 麥克風真的開了')
-    _vrec.onspeechstart=()=>vlog('  🗣 偵測到說話')
+    // onstart 才是「麥克風真的開了」的時刻，不是 start() 被呼叫的那一刻。
+    // 圖示掛在這裡，駕駛看到就代表現在講話收得到。
+    _vrec.onstart=()=>{ vlog('  🎤 麥克風真的開了'); showMicLive(true) }
+    _vrec.onspeechstart=()=>{ vlog('  🗣 偵測到說話'); setMicLiveTxt('聽到了…') }
     _vrec.onend=()=>{
       _vrecOn=false
+      showMicLive(false)
       vlog('  🎤 麥克風結束 stopActive='+_stopActive+' err='+(_vrecErr||'無'))
       // 辨識引擎沉默幾秒就會自己結束（iOS 尤其明顯，continuous=true 也擋不住）。
       // 停止面板現在會一直開著等駕駛選原因，若不自動接回去，
@@ -4122,6 +4156,7 @@ function toggleVoicePick(){
   else { stopCauseListening(); showToast('🔇 語音選原因已關閉，改用按鈕') }
 }
 function stopCauseListening(){
+  showMicLive(false)
   const hint=document.getElementById('svy-voice-hint')
   if(hint) hint.style.display='none'
   if(!_vrec) return
@@ -4713,6 +4748,24 @@ const COMBO_ZH = new Proxy({}, {get:(_,key)=>COMBO_ZH_(key)})
 
 // ── 開始調查按鈕（未完成＝直接開始／已完成＝先跳確認彈窗才能覆蓋）──
 let _redoKey=null
+// 完成頁的「重新調查」：只重跑「剛剛這一趟」（同時段、同方向），
+// 行為跟選擇組合畫面上那顆橘色「重新調查」完全一致——會先跳確認彈窗，
+// 確認後覆蓋前一次的資料。以前這裡是「清除所有調查記錄」，
+// 一按就把整條路線當天的紀錄全部洗掉，跟現場「這一趟跑壞了想重來」的意圖差很多。
+function redoThisTrip(){
+  const key = _tripDoneKey || (cur ? `${cur.peakType}_${cur.direction}` : '')
+  if(!key){ showToast('找不到這一趟的資料'); return }
+  const [pt,dir] = parseComboKey(key)
+  // 選定同一個組合，但「不」退回選擇組合畫面——直接跳確認，
+  // 確認後 doConfirmRedo() 會刪掉舊資料並馬上開始調查。
+  selPeakType = pt
+  selDirection = dir
+  drawRouteArrows(dir)
+  renderComboGrid()
+  checkStart()
+  if(allTrips[key]) openRedoConfirm(key)
+  else startSurvey()
+}
 function onStartBtnClick(){
   const key=`${selPeakType}_${selDirection}`
   if(allTrips[key]){ openRedoConfirm(key); return }
@@ -5069,8 +5122,17 @@ function toggleDelay(d,group,opts){
     _setDelayInd(d.icon,d.label,'0:00','#fca5a5')
     playDelayBeep(true)
     if(navigator.vibrate) navigator.vibrate(120)
-    // 停止面板開著時不收——車子還停著，駕駛隨時可能改選原因
-    if(!_stopPanelOpen) svySheetCollapseWithTimer()  // 縮回但多露出 timer 行
+    // 停止面板開著時不收——車子還停著，駕駛隨時可能改選原因。
+    // ★ 手動點延滯按鈕（沒有經過自動偵測停止）以前會直接把面板收回去，
+    //   駕駛想改選就得再拉一次；現在改成跟自動偵測完全一樣：
+    //   面板留著、顯示「■ 停止計時」，直到車子重新行駛或駕駛自己按停止。
+    if(!_stopPanelOpen){
+      _stopPanelOpen=true
+      svyShowPanel('stop')
+      markStopPanelPicked(d)
+      startStopTicker()
+      svySheetExpand()
+    }
   }
 }
 
@@ -5195,7 +5257,9 @@ function endSurvey(auto){
 // ════════════════════════════════════
 //  TRIP DONE
 // ════════════════════════════════════
+let _tripDoneKey=null   // 完成頁對應的組合鍵，給「重新調查」用
 function buildTripDoneUI(travelS,totalDelayS,runS){
+  _tripDoneKey = `${cur.peakType}_${cur.direction}`
   $('td-title').textContent=`✅ ${PEAK_LABEL[cur.peakType]} ${DIR_LABEL[cur.direction]} 完成`
   $('td-subtitle').textContent=`${fmtHMS(cur.startTime)} → ${fmtHMS(cur.endTime)}`
   $('td-travel').textContent=fmtTime(travelS)
@@ -6753,7 +6817,25 @@ document.addEventListener('touchmove', e=>{
   <div class="help-menu-box" id="help-menu-box">
     <button class="help-menu-item" onclick="closeHelpMenu();openManual()">📖 操作說明</button>
     <button class="help-menu-item" onclick="closeHelpMenu();openDevTest()">🔬 測試設備</button>
+    <!-- 「清除所有記錄」原本放在完成頁，但那顆按鈕現在改成「重新調查」了。
+         這個動作會把本條路線當天的紀錄全部洗掉，不該擺在容易誤觸的位置，
+         但仍要留一個入口（例如資料異常時要重來），所以移到說明選單裡。 -->
+    <button class="help-menu-item" style="color:#dc2626"
+            onclick="closeHelpMenu();confirmClearStorage()">🗑 清除本路線所有記錄</button>
   </div>
+</div>
+
+<!-- ══ 收音中的麥克風提示 ══
+     語音聆聽的小字提示條在面板裡，行車中低頭才看得到。
+     這個是蓋在地圖上的大圖示，麥克風「真的開了」才出現，
+     駕駛一眼就知道現在該講話。 -->
+<div id="mic-live">
+  <div class="mic-live-box">
+    <div class="mic-live-ring"></div>
+    <div class="mic-live-ring d2"></div>
+    <div class="mic-live-ico">🎤</div>
+  </div>
+  <div class="mic-live-txt" id="mic-live-txt">請說出停止原因</div>
 </div>
 
 <!-- ══ Device Test Modal ══ -->
