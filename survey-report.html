@@ -501,6 +501,15 @@ function PERIOD_PAGES(){
   }
   return out.length?out:[[ps[0]||BLANK_PERIOD, BLANK_PERIOD]]
 }
+// 「這個時段沒有資料」的斜線。
+// 格線全部保留，斜線是疊在整個空白區塊上的一條線，從右上角拉到左下角、穿過中間所有格線。
+// rightPct = 距離表格右緣幾 %；widthPct = 這個區塊佔幾 %。
+function noDataSlash(rightPct, widthPct){
+  return `<div class="nodata-slash" style="right:${(+rightPct).toFixed(3)}%;width:${(+widthPct).toFixed(3)}%">`
+    + '<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="無資料">'
+    + '<line x1="100" y1="0" x2="0" y2="100" stroke="#000" stroke-width="1" vector-effect="non-scaling-stroke"/>'
+    + '</svg></div>'
+}
 function COMBO_LABEL_(key){
   const [pt,dir]=parseComboKey(key)
   return PERIOD_NAME(pt)+' '+(dir==='return'?'回程':'去程')
@@ -1361,10 +1370,11 @@ function calcAverages(){
   })
 }
 
-function parseCombo(k){
-  if(k.startsWith('off_peak_')) return ['off_peak', k.replace('off_peak_','')]
-  return ['peak', k.replace('peak_','')]
-}
+// ⚠️ 舊版是從「開頭」比對 off_peak_／peak_，只認得那兩個時段代碼。
+// PM 自訂的時段（p3、p4…）會被判成 ['peak','p3_bound']——時段錯、方向也錯，
+// 於是整趟資料對不上，SGS 表頭就勾到別的時段去。
+// 一律改成從結尾切方向，剩下的就是時段代碼（代碼本身可能含底線，例如 off_peak）。
+function parseCombo(k){ return parseComboKey(k) }
 
 function spd(len, secs){ return (len>0&&secs>0) ? (len/secs*3.6).toFixed(1) : '—' }
 function fmt(v){ return (v==null||v===''||isNaN(v)) ? '—' : v }
@@ -2886,7 +2896,13 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
 .pg-title{font-size:14pt;font-weight:700;text-align:center;margin:0 0 6px;letter-spacing:2px}
 .pg-info{font-size:9pt;line-height:1.9;margin-bottom:5px}
 .pi-row{display:flex;justify-content:space-between}
-.s{width:100%;border-collapse:collapse;font-size:9pt}
+.s{width:100%;border-collapse:collapse;font-size:9pt;table-layout:fixed}
+/* 沒有 table-layout:fixed 的話欄寬會被內容撐開：
+   空白時段那兩欄沒東西就被擠窄，分頁後每一頁寬度就對不起來。 */
+.tblwrap{position:relative}
+.nodata-slash{position:absolute;top:0;bottom:0;pointer-events:none}
+.nodata-slash svg{display:block;width:100%;height:100%}
+@media print{ .nodata-slash{ -webkit-print-color-adjust:exact; print-color-adjust:exact } }
 .s td,.s th{border:1px solid #000;padding:2px 4px;vertical-align:middle;text-align:center}
 .s-vert{text-align:center;font-size:9pt;width:20px;line-height:1.3;
   letter-spacing:1px;vertical-align:middle}
@@ -2945,9 +2961,16 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
     const title = (isSec ? '延滯統計表' : '延滯統計表(續)')
                 + ((np>1) ? `（${pi+1}／${np}）` : '')
     const T4 = tripsOfGroup(grp)
-    const NC = T4.length          // 2 個時段＝4 欄；最後一頁只有 1 個時段時＝2 欄
+    // 哪幾欄屬於「補上去的空白時段」。空白欄一律留空——
+    // 不擋的話 _pct() 會算出 0.0 填進去，看起來像真的量到 0。
+    const colBlank = []
+    grp.forEach(p=>{ colBlank.push(!!p._blank); colBlank.push(!!p._blank) })
 
-    const D4 = (fn) => T4.map(t=>`<td>${_n(fn(t))}</td>`).join('')
+    const D4 = (fn) => T4.map((t,i)=>`<td>${colBlank[i] ? '' : _n(fn(t))}</td>`).join('')
+    // 四個數值欄一律等寬（含補上去的空白時段），這樣分頁後每一頁寬度都一樣
+    const DW = (72 / (grp.length*2)).toFixed(3)
+    // 空白時段永遠是這一頁的最後一個，所以斜線就貼在最右邊、寬度＝兩欄
+    const BLANK_SLASH = grp.some(p=>p._blank) ? noDataSlash(0, DW*2) : ''
     // 下半部「總延滯時間」的百分比，分母是這一趟的延滯總和（路段＋交叉口），不是旅行時間。
     // 這樣各項延滯佔比相加才會等於 100%，跟制式表單一致；
     // 上半部「總旅行時間」則維持以旅行時間為分母（行駛時間＋路段延滯＋交叉口延滯佔全程比例）。
@@ -2976,10 +2999,11 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
     <span>調　查　員：${surveyors}</span>
   </div>
 </div>
+<div class="tblwrap">
 <table class="s">
 <colgroup>
   <col style="width:20px"><col style="width:20px"><col style="width:88px">
-  ${grp.map(()=>'<col><col>').join('')}
+  ${grp.map(()=>`<col style="width:${DW}%"><col style="width:${DW}%">`).join('')}
 </colgroup>
 <tr>
   <td colspan="3" rowspan="2" style="letter-spacing:3px">調　查　時　間</td>
@@ -3034,7 +3058,7 @@ ${ROAD_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${ROAD_L[i+1]}(${unit})</td>
 ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${D4(t=>dv(t,'int',c))}</tr>`).join('')}
 <tr><td class="s-lbl s-bold">小　　計(${unit})</td>${D4(subInt)}</tr>
 <tr><td colspan="2" class="s-bold">合計(${unit})</td>${D4(tot)}</tr>
-</table></div>`
+</table>${BLANK_SLASH}</div></div>`
   }
 
   // ── helpers for reference-format seg tables ─────────────────────────────
@@ -3097,11 +3121,25 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
 </div>`
   }
 
+  // 各路段統計表有「平均旅行」「平均行駛」兩個區塊，空白時段在每個區塊各佔 2 欄，
+  // 兩塊不相連，所以要各畫一條斜線。dw = 每個數值欄的寬度（%）。
+  function segSlashes(grp){
+    if(!grp.some(p=>p._blank)) return ''
+    const nc = grp.length*2                 // 一個區塊有幾欄
+    const dw = 56 / (nc*2)                  // 每欄寬度（兩個區塊共佔 56%）
+    // 由右往左數：行駛區塊的空白欄貼右緣；旅行區塊的空白欄再往左推一個區塊
+    return noDataSlash(0, dw*2) + noDataSlash(nc*dw, dw*2)
+  }
+
   // ── 各路段平均旅行時間及行駛時間統計表 ───────────────────────────────────
   function buildSegTimePage(grp, pi, np){
     grp = grp || PG[0]
     const T4 = tripsOfGroup(grp)
     const ns = segs.length
+    // 空白時段那幾欄一律留空（不要讓 0 或 '—' 跑進來，那看起來像真的量到 0）
+    const colBlank = []
+    grp.forEach(p=>{ colBlank.push(!!p._blank); colBlank.push(!!p._blank) })
+    const _v2 = (v,i) => (colBlank[i] || !v) ? '<td></td>' : `<td class="sr-val">${v}</td>`
     const _v = v => v ? `<td class="sr-val">${v}</td>` : '<td></td>'
     // 累加欄位數要跟著時段數走，寫死 4 個的話最後一頁只有 1 個時段時會多出兩欄
     let totTv=T4.map(()=>0), totRv=T4.map(()=>0), totLen=0
@@ -3120,18 +3158,18 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
         <td class="sr-sl">${he(segDisp(seg.name))}</td>
         <td>${seg.lanes||''}</td><td>${seg.width||''}</td>
         <td class="sr-len">${seg.length||''}</td>
-        ${tv.map(_v).join('')}${rv.map(_v).join('')}
+        ${tv.map(_v2).join('')}${rv.map(_v2).join('')}
       </tr>`
     })
     rows += `<tr class="sr-tot">
       <td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
-      ${totTv.map(v=>`<td>${v||''}</td>`).join('')}
-      ${totRv.map(v=>`<td>${v||''}</td>`).join('')}
+      ${totTv.map((v,i)=>`<td>${colBlank[i]?'':(v||'')}</td>`).join('')}
+      ${totRv.map((v,i)=>`<td>${colBlank[i]?'':(v||'')}</td>`).join('')}
     </tr>`
     return `<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px">各路段平均旅行時間及平均行駛時間統計表${np>1?`（${pi+1}／${np}）`:''}</div>
 ${_segDateInfo()}
-<table class="seg-r">${_segTableHeader('平均旅行時間','平均行駛時間',grp)}
-${rows}</table>`
+<div class="tblwrap"><table class="seg-r">${_segTableHeader('平均旅行時間','平均行駛時間',grp)}
+${rows}</table>${segSlashes(grp)}</div>`
   }
 
   // ── 各路段平均旅行速率及行駛速率統計表 ─────────────────────────────────
@@ -3139,6 +3177,10 @@ ${rows}</table>`
     grp = grp || PG[0]
     const T4 = tripsOfGroup(grp)
     const ns = segs.length
+    // 空白時段那幾欄一律留空
+    const colBlank = []
+    grp.forEach(p=>{ colBlank.push(!!p._blank); colBlank.push(!!p._blank) })
+    const _v2 = (v,i) => (colBlank[i] || !v) ? '<td></td>' : `<td class="sr-val">${v}</td>`
     const _v = v => v ? `<td class="sr-val">${v}</td>` : '<td></td>'
     let totLen=0, totTv=T4.map(()=>0), totRv=T4.map(()=>0)
     let rows = ''
@@ -3158,19 +3200,19 @@ ${rows}</table>`
         <td class="sr-sl">${he(segDisp(seg.name))}</td>
         <td>${seg.lanes||''}</td><td>${seg.width||''}</td>
         <td class="sr-len">${L||''}</td>
-        ${tv.map(_v).join('')}${rv.map(_v).join('')}
+        ${tv.map(_v2).join('')}${rv.map(_v2).join('')}
       </tr>`
     })
     // 總計欄改用「路段長度總和 ÷ 每個路段時間加總」，跟上面各路段的數字加總一致
     rows += `<tr class="sr-tot">
       <td class="sr-sl">總　計</td><td></td><td></td><td>${totLen}</td>
-      ${T4.map((t,j)=>`<td>${t?_spd(totLen,totTv[j])||'':''}</td>`).join('')}
-      ${T4.map((t,j)=>`<td>${t?_spd(totLen,totRv[j])||'':''}</td>`).join('')}
+      ${T4.map((t,j)=>`<td>${(!colBlank[j]&&t)?_spd(totLen,totTv[j])||'':''}</td>`).join('')}
+      ${T4.map((t,j)=>`<td>${(!colBlank[j]&&t)?_spd(totLen,totRv[j])||'':''}</td>`).join('')}
     </tr>`
     return `<div style="text-align:center;font-size:13pt;font-weight:700;letter-spacing:2px;margin-bottom:6px;margin-top:14px">各路段平均旅行速率及平均行駛速率統計表（公里/時）${np>1?`（${pi+1}／${np}）`:''}</div>
 ${_segDateInfo()}
-<table class="seg-r">${_segTableHeader('平均旅行速率','平均行駛速率',grp)}
-${rows}</table>`
+<div class="tblwrap"><table class="seg-r">${_segTableHeader('平均旅行速率','平均行駛速率',grp)}
+${rows}</table>${segSlashes(grp)}</div>`
   }
 
   // ── Per-trip SGS form (橫A4) ──────────────────────────────────────────────
