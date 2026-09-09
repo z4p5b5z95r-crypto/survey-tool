@@ -260,12 +260,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .pc-no{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;
   border-radius:50%;color:#fff;font-size:11px;font-weight:800;margin-right:7px;flex:none;
   vertical-align:1px}
-/* 專案路線地圖：只有目前展開的那個專案會畫 */
-.pj-map-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;
-  padding:9px;margin:10px 0 4px}
-.pj-map-hd{font-size:12px;font-weight:800;color:#334155;margin-bottom:7px}
-#pj-routes-map{height:210px;border-radius:9px;overflow:hidden;background:#e2e8f0}
-.pj-map-hint{font-size:10.5px;color:#94a3b8;margin-top:6px;line-height:1.5}
+
 /* 搬移路線到其他專案的選單 */
 .mv-proj-item{display:block;width:100%;text-align:left;padding:11px 14px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:11px;font-size:13.5px;font-weight:600;color:#0f172a;cursor:pointer;font-family:inherit;margin-bottom:6px}
 .mv-proj-item:hover{background:#f1f5f9}
@@ -1559,6 +1554,7 @@ function showListView() {
 
 function showEditView(title) {
   _inEditView = true
+  clearProjectRoutesOverview()   // 編輯時主地圖要留給節點編輯，不能疊著專案總覽
   document.getElementById('view-list').style.display = 'none'
   document.getElementById('view-edit').style.display = 'flex'
   document.getElementById('map-toolbar').style.display = 'flex'
@@ -3625,9 +3621,17 @@ function toggleProjectGroup(pid){
   _openProjectId = (_openProjectId===pid) ? null : pid
   renderProjects(document.getElementById('project-search')?.value.trim()||'')
 }
-// ── 專案路線地圖（跟現場 App 掃專案 QR 後的選路線畫面同一套視覺）──
+// ── 專案路線總覽：畫在右邊的主地圖上 ──────────────────────
+// 展開某個專案時，右邊主地圖直接把該專案「所有路線」一次畫出來，
+// 每條一個顏色＋中點編號，跟左邊清單的編號和色帶對得起來。
+// 點線或點編號就進入該路線的編輯。
 const PJ_MAP_COLORS=['#2563eb','#ea580c','#0d9488','#dc2626','#7c3aed','#0891b2','#ca8a04','#db2777']
-let _pjMap=null
+let _pjLayers=[]   // 目前畫在主地圖上的專案路線圖層
+function clearProjectRoutesOverview(){
+  if(!map) return
+  _pjLayers.forEach(l=>{ try{ map.removeLayer(l) }catch(e){} })
+  _pjLayers=[]
+}
 // PM 建路線時每段已經算過貼路座標並存在 sg[i].ll，這裡直接重用，
 // 不必再跟 OSRM 要一次，也不會像直接連節點那樣畫成一條條斜線穿過房子。
 function _pjPolyline(nd, sg){
@@ -3645,33 +3649,32 @@ function _pjPolyline(nd, sg){
   return lls
 }
 function renderProjectRoutesMap(routes){
-  const box=document.getElementById('pj-routes-map')
-  if(!box || !leafletReady()) return
-  if(_pjMap){ try{_pjMap.remove()}catch(e){} _pjMap=null }
-  _pjMap=L.map('pj-routes-map',{zoomControl:true,attributionControl:false,scrollWheelZoom:false})
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(_pjMap)
+  clearProjectRoutesOverview()
+  if(!leafletReady() || !initMainMap()) return
   const bounds=[]
-  routes.forEach((t,i)=>{
+  ;(routes||[]).forEach((t,i)=>{
     const nd=(t.cfg&&t.cfg.nd)||[]
     if(nd.length<2) return
     const color=PJ_MAP_COLORS[i%PJ_MAP_COLORS.length]
     const lls=_pjPolyline(nd, t.cfg.sg)
     if(lls.length<2) return
-    const poly=L.polyline(lls,{color,weight:5,opacity:.85}).addTo(_pjMap)
+    const poly=L.polyline(lls,{color,weight:5,opacity:.85}).addTo(map)
     poly.on('click',()=>loadTask(t.id))
+    poly.bindTooltip(`${i+1}. ${t.cfg.rn||'未命名路線'}`,{sticky:true})
+    _pjLayers.push(poly)
     lls.forEach(pt=>bounds.push(pt))
     const mid=nd[Math.floor(nd.length/2)]
-    L.marker([mid.a,mid.o],{icon:L.divIcon({
-      html:`<div style="width:26px;height:26px;background:${color};border:2.5px solid #fff;border-radius:50%;`
-          +`display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;`
-          +`box-shadow:0 2px 6px rgba(0,0,0,.35)">${i+1}</div>`,
-      className:'',iconSize:[26,26],iconAnchor:[13,13]
-    })}).addTo(_pjMap).on('click',()=>loadTask(t.id))
+    const mk=L.marker([mid.a,mid.o],{icon:L.divIcon({
+      html:`<div style="width:28px;height:28px;background:${color};border:2.5px solid #fff;border-radius:50%;`
+          +`display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;`
+          +`box-shadow:0 2px 7px rgba(0,0,0,.4);cursor:pointer">${i+1}</div>`,
+      className:'',iconSize:[28,28],iconAnchor:[14,14]
+    })}).addTo(map)
+    mk.on('click',()=>loadTask(t.id))
+    mk.bindTooltip(`${i+1}. ${t.cfg.rn||'未命名路線'}`)
+    _pjLayers.push(mk)
   })
-  if(bounds.length) _pjMap.fitBounds(bounds,{padding:[22,22]})
-  else _pjMap.setView([24.99,121.30],12)
-  // 側欄剛展開時容器尺寸還沒定案，補一次 invalidateSize 免得地圖只畫出左上角
-  setTimeout(()=>{ try{ _pjMap && _pjMap.invalidateSize() }catch(e){} }, 60)
+  if(bounds.length) map.fitBounds(bounds,{padding:[40,40]})
 }
 function renderProjects(filter='') {
   const me=getCurrentUser()||''
@@ -3753,23 +3756,16 @@ function renderProjects(filter='') {
         <button class="pc-btn projadd" title="新增路線" onclick="event.stopPropagation();newTask('${pid}')">＋ 路線</button>
         <button class="pc-btn projdel" title="刪除專案" onclick="event.stopPropagation();deleteProject('${pid}')">🗑 刪除</button>
       </div>
-      <div class="proj-group-body">
-        ${isOpen && routes.length ? `<div class="pj-map-card">
-          <div class="pj-map-hd">🗺 專案路線地圖</div>
-          <div id="pj-routes-map"></div>
-          <div class="pj-map-hint">點地圖上的編號路線，或下方清單，都可以直接進入編輯</div>
-        </div>` : ''}
-        ${routesHtml}
-      </div>
+      <div class="proj-group-body">${routesHtml}</div>
     </div>`
   }).join('')
-  // innerHTML 換掉之後舊的地圖實例就沒有容器了，一定要重畫。
-  // 只有目前展開的那個專案才需要地圖。
-  if(_pjMap){ try{_pjMap.remove()}catch(e){} _pjMap=null }
-  const openPid = filter ? order[0] : _openProjectId
-  if(openPid){
-    const openRoutes=groups[openPid]||[]
-    if(openRoutes.length) requestAnimationFrame(()=>renderProjectRoutesMap(openRoutes))
+  // 右邊主地圖同步顯示「目前展開的專案」的所有路線；沒有展開就清空。
+  // 編輯路線時主地圖是拿來編節點的，不能被總覽疊上去。
+  if(!_inEditView){
+    const openPid = filter ? order[0] : _openProjectId
+    const openRoutes = openPid ? (groups[openPid]||[]) : []
+    if(openRoutes.length) renderProjectRoutesMap(openRoutes)
+    else clearProjectRoutesOverview()
   }
 }
 
