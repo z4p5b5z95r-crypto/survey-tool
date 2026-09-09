@@ -458,7 +458,29 @@ function PERIODS(){
     {k:'peak',     n:(route&&route.peakName)   ||'尖峰', t:(route&&(route.peakTime   ||route.peakLabel))   ||''}
   ]
 }
-function PERIOD_OF(k){ return PERIODS().find(p=>p.k===k) || null }
+// ★★ 報告要用的時段 ＝ 路線設定的時段 ∪ 資料裡真的出現過的時段 ★★
+//
+// 只照設定跑的話，一旦某一趟的 peakType 對不上任何一個時段代碼
+//（PM 改過時段、現場 App 版本不同、時段被刪掉…），那筆調查就會整個從報告消失，
+// 而且畫面上完全看不出來——現場就遇過「明明跑了卻顯示 0 筆」。
+// 所以這裡把資料裡出現過、但設定裡沒有的代碼補進來當成額外時段，
+// 名稱標成「代碼（未設定）」，資料一定看得到，也一眼看得出是哪裡對不上。
+function PERIODS_ALL(){
+  const base = PERIODS()
+  const known = new Set(base.map(p=>p.k))
+  const extra = []
+  const seen = new Set()
+  ;(allSurveys||[]).forEach(sv=>{
+    ;(sv.trips||[]).forEach(t=>{
+      const k=String(t&&t.peakType||'')
+      if(!k || known.has(k) || seen.has(k)) return
+      seen.add(k)
+      extra.push({k, n:k+'（未設定）', t:'', _orphan:true})
+    })
+  })
+  return extra.length ? base.concat(extra) : base
+}
+function PERIOD_OF(k){ return PERIODS_ALL().find(p=>p.k===k) || null }
 function PERIOD_NAME(k){
   const p=PERIOD_OF(k); if(p) return p.n
   // 時段被 PM 刪掉、但舊紀錄還在時，至少顯示代碼，不要變成空白
@@ -483,7 +505,7 @@ function parseComboKey(k){
 let COMBO_KEYS = ['off_peak_bound','off_peak_return','peak_bound','peak_return']
 function rebuildComboKeys(){
   const ks=[]
-  PERIODS().forEach(p=>{ ks.push(p.k+'_bound'); ks.push(p.k+'_return') })
+  PERIODS_ALL().forEach(p=>{ ks.push(p.k+'_bound'); ks.push(p.k+'_return') })
   COMBO_KEYS = ks
   return COMBO_KEYS
 }
@@ -493,7 +515,7 @@ function rebuildComboKeys(){
 //   補上去的那一欄維持格線，只是內容空白。
 const BLANK_PERIOD = {k:' blank', n:'', t:'', _blank:true}
 function PERIOD_PAGES(){
-  const ps=PERIODS(), out=[]
+  const ps=PERIODS_ALL(), out=[]
   for(let i=0;i<ps.length;i+=2){
     const g=ps.slice(i,i+2)
     if(g.length<2) g.push(BLANK_PERIOD)
@@ -1014,8 +1036,10 @@ function _fetchRouteData(gs, sessionToken, routeId, date){
 async function _loadRouteIntoGlobals(gs, sessionToken, routeId, date){
   const d = await _fetchRouteData(gs, sessionToken, routeId, date)
   route      = d.route
-  rebuildComboKeys()   // 時段是路線設定的一部分：路線一換就要重算「有哪幾個組合」
   allSurveys = d.surveys
+  // ★ 一定要在 allSurveys 指派「之後」才呼叫：
+  //   PERIODS_ALL() 會掃資料裡出現過的 peakType，先算的話孤兒時段就撿不到了
+  rebuildComboKeys()
   _filterDate = date || ''
   _filterRound = null
   applyFilters()
@@ -1164,6 +1188,8 @@ window.addEventListener('load', async () => {
         t.intDelays      = _tryParse(t.intDelays,       {})
       })
     })
+    // trips 解析完才重算組合，PERIODS_ALL() 才掃得到資料裡實際出現的時段
+    rebuildComboKeys()
     applyFilters()
     setLoadProgress(80)
 
