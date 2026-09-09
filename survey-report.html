@@ -465,6 +465,13 @@ function PERIOD_NAME(k){
   return ({peak:(route&&route.peakName)||'尖峰', off_peak:(route&&route.offPeakName)||'離峰'})[k] || String(k||'')
 }
 function PERIOD_TIME(k){ const p=PERIOD_OF(k); return (p&&p.t)||'' }
+// 統計表的欄位標題習慣寫成「離峰時間」；但時段名稱本身若已經以「時間」結尾
+// （現場真的有人取名叫「測試時間」），再加一次就會變成「測試時間時間」。
+function PERIOD_COLTITLE(p){
+  const n=String((p&&p.n)||'')
+  if(!n) return ''
+  return /時間$/.test(n) ? n : n+'時間'
+}
 // 組合鍵 = 「時段代碼_方向」。代碼本身可能含底線（off_peak），所以從結尾切。
 function parseComboKey(k){
   const s=String(k||'')
@@ -480,11 +487,19 @@ function rebuildComboKeys(){
   COMBO_KEYS = ks
   return COMBO_KEYS
 }
-// 統計表每頁放兩個時段，超過就換頁（延滯統計表、各路段統計表都用這個）
+// 統計表每頁放兩個時段，超過就換頁（延滯統計表、各路段統計表都用這個）。
+// ★ 時段是奇數時，最後一頁一定要補一個「空白時段」湊成兩個——
+//   制式表單就是兩欄的版面，只印一個時段會讓表格寬度整個縮掉，看起來像另一張表。
+//   補上去的那一欄維持格線，只是內容空白。
+const BLANK_PERIOD = {k:' blank', n:'', t:'', _blank:true}
 function PERIOD_PAGES(){
   const ps=PERIODS(), out=[]
-  for(let i=0;i<ps.length;i+=2) out.push(ps.slice(i,i+2))
-  return out.length?out:[ps]
+  for(let i=0;i<ps.length;i+=2){
+    const g=ps.slice(i,i+2)
+    if(g.length<2) g.push(BLANK_PERIOD)
+    out.push(g)
+  }
+  return out.length?out:[[ps[0]||BLANK_PERIOD, BLANK_PERIOD]]
 }
 function COMBO_LABEL_(key){
   const [pt,dir]=parseComboKey(key)
@@ -2566,7 +2581,9 @@ function buildTripSheet(trip, survey, combo){
     ['站名:','',route.routeName,'','','','','日期：',survey.date||''],
     ['旅次編號:','','','','','','','',''],
     ['方向往:','',isReturn?'□去 ■回':'■去 □回','','','','','天氣：',survey.weather||''],
-    ['時間:','',`${isPeak?`□${route.offPeakName||'離峰'} ■${route.peakName||'尖峰'}`:`■${route.offPeakName||'離峰'} □${route.peakName||'尖峰'}`} (${isPeak?pk:off})`,
+    // 時段有幾個就列幾個，勾選的是這一趟實際跑的時段
+    ['時間:','',PERIODS().map(p=>
+       `${p.k===trip.peakType?'■':'□'}${p.n}${p.t?`（${p.t}）`:''}`).join('  '),
      '','','','','',''],
     ['調查員：','',survey.surveyor||''],
     [],
@@ -2619,7 +2636,7 @@ function downloadCSV(){
     surveys.forEach((sv,si)=>{
       sv.trips?.forEach(t=>{
         rows.push([si+1, sv.surveyor||'', sv.date||'', sv.weather||'',
-          t.peakType==='peak'?(route.peakName||'尖峰'):(route.offPeakName||'離峰'), t.direction==='bound'?'去程':'回程',
+          PERIOD_NAME(t.peakType), t.direction==='bound'?'去程':'回程',
           t.travelS||0, t.runS||0, t.intTotalS||0, t.roadTotalS||0,
           spd(route.totalLength, t.travelS)])
       })
@@ -2679,7 +2696,7 @@ async function downloadRawTimeline(){
 
     surveys.forEach((sv,si)=>{
       ;(sv.trips||[]).forEach(trip=>{
-        const peakL=trip.peakType==='peak'?(route.peakName||'尖峰'):(route.offPeakName||'離峰')
+        const peakL=PERIOD_NAME(trip.peakType)
         const dirL=trip.direction==='bound'?'去程':'回程'
         const isRet=trip.direction==='return'
         const nodes=_realNodes()
@@ -2966,15 +2983,15 @@ body{font-family:'標楷體','DFKai-SB','MingLiU',serif;background:white;color:#
 </colgroup>
 <tr>
   <td colspan="3" rowspan="2" style="letter-spacing:3px">調　查　時　間</td>
-  ${grp.map(p=>`<td colspan="2">${he(p.n)}時間</td>`).join('')}
+  ${grp.map(p=>`<td colspan="2">${p._blank?'':he(PERIOD_COLTITLE(p))}</td>`).join('')}
 </tr>
 <tr>
-  ${grp.map(p=>`<td colspan="2">${he(p.t||'')}</td>`).join('')}
+  ${grp.map(p=>`<td colspan="2">${p._blank?'':he(p.t||'')}</td>`).join('')}
 </tr>
 <tr>
   <td colspan="3" style="letter-spacing:5px">方　　　向</td>
-  ${grp.map(()=>
-    `<td>${boundDir.replace('至','<br>至<br>')}</td><td>${retDir.replace('至','<br>至<br>')}</td>`).join('')}
+  ${grp.map(p=>p._blank ? '<td></td><td></td>'
+    : `<td>${boundDir.replace('至','<br>至<br>')}</td><td>${retDir.replace('至','<br>至<br>')}</td>`).join('')}
 </tr>
 <tr>
   <td colspan="3">平均總旅行速率(公里/時)</td>
@@ -3055,14 +3072,14 @@ ${INT_C.slice(1).map((c,i)=>`<tr><td class="s-lbl">${INT_L[i+1]}(${unit})</td>${
   <td colspan="${nc}" style="font-weight:700">${unitLabel}(秒)</td>
 </tr>
 <tr>
-  ${grp.map(p=>`<td colspan="2">${he(p.n)}時間</td>`).join('').repeat(2)}
+  ${grp.map(p=>`<td colspan="2">${p._blank?'':he(PERIOD_COLTITLE(p))}</td>`).join('').repeat(2)}
 </tr>
 <tr>
-  ${grp.map(p=>`<td colspan="2" style="font-size:7.5pt">${he(p.t||'')}</td>`).join('').repeat(2)}
+  ${grp.map(p=>`<td colspan="2" style="font-size:7.5pt">${p._blank?'':he(p.t||'')}</td>`).join('').repeat(2)}
 </tr>
 <tr>
-  ${Array.from({length:nc*2},(_,i)=>
-    `<td rowspan="2" style="font-size:7.5pt">${i%2===0?bd:rd}</td>`).join('')}
+  ${[...grp,...grp].map(p=>p._blank ? '<td rowspan="2"></td><td rowspan="2"></td>'
+    : `<td rowspan="2" style="font-size:7.5pt">${bd}</td><td rowspan="2" style="font-size:7.5pt">${rd}</td>`).join('')}
 </tr>
 <tr></tr>`
   }
@@ -3246,7 +3263,9 @@ ${rows}</table>`
   <td style="text-align:right">天　　氣：　${_weather(sv.weather)}</td>
 </tr>
 <tr>
-  <td>時　　間：　${isPeak?'□':'■'} ${route.offPeakName||'離峰'}（${off}）　　　${isPeak?'■':'□'} ${route.peakName||'尖峰'}（${pk}）</td>
+  <!-- 時段有幾個就列幾個，勾選的是這一趟實際跑的時段 -->
+  <td>時　　間：　${PERIODS().map(p=>
+    `${p.k===trip.peakType?'■':'□'} ${he(p.n)}${p.t?`（${he(p.t)}）`:''}`).join('　　')}</td>
   <td style="text-align:right">調查員：　<span style="text-decoration:underline">${he(sv.surveyor||'')}</span></td>
 </tr>
 </table>
