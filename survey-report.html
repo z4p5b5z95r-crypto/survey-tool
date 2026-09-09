@@ -1443,7 +1443,7 @@ function renderPage(){
 function renderTravelTable(){
   const segs = _mergeGhostSegs()
   // 畫面上的統計表不分頁（可以橫向捲動），所有時段一次列出來
-  const PDS=PERIODS()
+  const PDS=PERIODS_ALL()
   const combos=[]; PDS.forEach(p=>{ combos.push(avgTrips[p.k+'_bound']); combos.push(avgTrips[p.k+'_return']) })
   const _blk=lb=>PDS.map(p=>`<th colspan="2">${he(p.n)} ${lb}</th>`).join('')
   const _dir=()=>PDS.map(()=>'<th>去程</th><th>回程</th>').join('')
@@ -1653,7 +1653,7 @@ function _mergeGhostSegs(){
 // ── Speed Table ──
 function renderSpeedTable(){
   const segs = _mergeGhostSegs()
-  const PDS=PERIODS()
+  const PDS=PERIODS_ALL()
   const combos=[]; PDS.forEach(p=>{ combos.push(avgTrips[p.k+'_bound']); combos.push(avgTrips[p.k+'_return']) })
   const _blk=lb=>PDS.map(p=>`<th colspan="2">${he(p.n)} ${lb}</th>`).join('')
   const _dir=()=>PDS.map(()=>'<th>去程</th><th>回程</th>').join('')
@@ -1692,7 +1692,7 @@ function renderSpeedTable(){
 
 // ── Delay Table ──
 function renderDelayTable(){
-  const PDS=PERIODS()
+  const PDS=PERIODS_ALL()
   const trips=[]; PDS.forEach(p=>{ trips.push(avgTrips[p.k+'_bound']); trips.push(avgTrips[p.k+'_return']) })
 
   const r = (label, vals) =>
@@ -1761,7 +1761,7 @@ function renderDelayTable(){
 function renderComboSelector(){
   // 按鈕由時段動態產生。舊路線算出來就是尖峰去/回、離峰去/回這四顆，跟改版前一樣。
   // cls 只影響配色：名稱裡有「尖」的當作尖峰色，其餘用離峰色。
-  const COMBOS = PERIODS().flatMap(p=>{
+  const COMBOS = PERIODS_ALL().flatMap(p=>{
     const cls = (p.k==='peak' || (p.k!=='off_peak' && /尖/.test(p.n))) ? 'peak' : 'offpeak'
     return [
       {key:p.k+'_bound',  label:p.n+'去程', cls},
@@ -2052,9 +2052,9 @@ function renderComboRecords(combo){
             <!-- 時段 1~6 個都列出來，橫向排、一行放不下才折行 -->
             <div class="sgs-tline"><span class="lb">時　間：&nbsp;</span>${isEdit
               ?`<select class="pf-meta-inp" data-ie="meta-peak">
-                  ${PERIODS().map(p=>`<option value="${he(p.k)}"${p.k===_pt?' selected':''}>${he(p.n)}${p.t?`（${he(p.t)}）`:''}</option>`).join('')}
+                  ${PERIODS_ALL().map(p=>`<option value="${he(p.k)}"${p.k===_pt?' selected':''}>${he(p.n)}${p.t?`（${he(p.t)}）`:''}</option>`).join('')}
                 </select>`
-              :`<span class="sgs-pklist">${PERIODS().map(p=>
+              :`<span class="sgs-pklist">${PERIODS_ALL().map(p=>
                   `<span${p.k===_pt?' class="on"':''}>${p.k===_pt?'■':'□'} ${he(p.n)}${p.t?`（${he(p.t)}）`:''}</span>`
                 ).join('')}</span>`}</div>
           </div>
@@ -2465,7 +2465,7 @@ function buildTimeSheet(){
   const segs=_mergeGhostSegs()
   // 欄位跟著時段走：N 個時段 → 旅行時間 N×2 欄 ＋ 行駛時間 N×2 欄。
   // Excel 沒有分頁問題，所有時段一次列完就好。
-  const PDS=PERIODS()
+  const PDS=PERIODS_ALL()
   const T4=[]; PDS.forEach(p=>{ T4.push(avgTrips[p.k+'_bound']); T4.push(avgTrips[p.k+'_return']) })
   const TL=route.totalLength||0
   const info=`路線：${route.routeName}　起迄：${route.routeFromTo}　全長：${TL}m`
@@ -2499,7 +2499,7 @@ function buildTimeSheet(){
 // 各路段平均旅行速率及行駛速率統計表（公里/時）— 比照 PDF buildSegSpdPage
 function buildSpeedSheet(){
   const segs=_mergeGhostSegs()
-  const PDS=PERIODS()
+  const PDS=PERIODS_ALL()
   const T4=[]; PDS.forEach(p=>{ T4.push(avgTrips[p.k+'_bound']); T4.push(avgTrips[p.k+'_return']) })
   const TL=route.totalLength||0
   const info=`路線：${route.routeName}　起迄：${route.routeFromTo}　全長：${TL}m`
@@ -2532,7 +2532,7 @@ function buildSpeedSheet(){
 }
 
 function buildDelaySheet(){
-  const PDS=PERIODS()
+  const PDS=PERIODS_ALL()
   const trips=[]; PDS.forEach(p=>{ trips.push(avgTrips[p.k+'_bound']); trips.push(avgTrips[p.k+'_return']) })
   const hdr = PDS.flatMap(p=>[`${p.n} 去程`,`${p.n} 回程`])
 
@@ -2618,7 +2618,7 @@ function buildTripSheet(trip, survey, combo){
     ['旅次編號:','','','','','','','',''],
     ['方向往:','',isReturn?'□去 ■回':'■去 □回','','','','','天氣：',survey.weather||''],
     // 時段有幾個就列幾個，勾選的是這一趟實際跑的時段
-    ['時間:','',PERIODS().map(p=>
+    ['時間:','',PERIODS_ALL().map(p=>
        `${p.k===trip.peakType?'■':'□'}${p.n}${p.t?`（${p.t}）`:''}`).join('  '),
      '','','','','',''],
     ['調查員：','',survey.surveyor||''],
@@ -3332,7 +3332,7 @@ ${rows}</table>${segSlashes(grp)}</div>`
 </tr>
 <tr>
   <!-- 時段有幾個就列幾個，勾選的是這一趟實際跑的時段 -->
-  <td>時　　間：　${PERIODS().map(p=>
+  <td>時　　間：　${PERIODS_ALL().map(p=>
     `${p.k===trip.peakType?'■':'□'} ${he(p.n)}${p.t?`（${he(p.t)}）`:''}`).join('　　')}</td>
   <td style="text-align:right">調查員：　<span style="text-decoration:underline">${he(sv.surveyor||'')}</span></td>
 </tr>
