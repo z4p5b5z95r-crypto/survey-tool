@@ -965,6 +965,23 @@ function _normalizeRoute(rt){
   rt.segments = _tryParseSR(rt.segments, [])
   return rt
 }
+// ── 修復舊版寫壞的 peakType／direction ────────────────────────────
+// 舊版現場 App 用「從開頭比對 peak_／off_peak_」去拆組合鍵，
+// 遇到 PM 自訂的時段代碼（p1_bound）就拆成 peakType='peak'、direction='p1_bound'，
+// 兩個欄位都是錯的，那一趟在報告裡永遠配不到任何組合、整筆消失。
+// 這裡在讀進來的當下就地修正：direction 只要長得像「代碼_bound/return」就重新拆一次。
+// （現場 App 已經修好不會再寫錯；這段是救已經存進去的舊資料。）
+function _healTrip(t){
+  if(!t) return t
+  const d = String(t.direction||'')
+  if(d==='bound' || d==='return') return t
+  const m = d.match(/^(.+)_(bound|return)$/)
+  if(!m) return t
+  t.peakType  = m[1]
+  t.direction = m[2]
+  t._healed   = true
+  return t
+}
 function _normalizeSurveys(svs){
   ;(svs||[]).forEach(sv => {
     sv.round = +sv.round || 1
@@ -973,6 +990,7 @@ function _normalizeSurveys(svs){
       t.gpsTrack=_tryParseSR(t.gpsTrack,[]); t.delayLog=_tryParseSR(t.delayLog,[])
       t.nodeTimestamps=_tryParseSR(t.nodeTimestamps,[]); t.segTimes=_tryParseSR(t.segTimes,[])
       t.roadDelays=_tryParseSR(t.roadDelays,{}); t.intDelays=_tryParseSR(t.intDelays,{})
+      _healTrip(t)
     })
   })
   return svs||[]
@@ -1186,6 +1204,7 @@ window.addEventListener('load', async () => {
         t.segTimes       = _tryParse(t.segTimes,        [])
         t.roadDelays     = _tryParse(t.roadDelays,      {})
         t.intDelays      = _tryParse(t.intDelays,       {})
+        _healTrip(t)
       })
     })
     // trips 解析完才重算組合，PERIODS_ALL() 才掃得到資料裡實際出現的時段
