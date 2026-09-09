@@ -1343,6 +1343,12 @@ function setRoundFilter(n){
 
 // ════════════════ CALCULATE AVERAGES ════════════════
 function calcAverages(){
+  // ★ 每次都重算一次組合清單，不要依賴呼叫順序。
+  //   之前是「載入路線時算一次」，但快取命中／先拿到輕量資料等路徑會讓它在
+  //   route.periods 還沒到位時就算好（只有離峰/尖峰 4 組），之後再也沒重算，
+  //   於是第三個時段永遠算不出平均值——統計表整欄變「—」、完成組合顯示 2/4。
+  rebuildComboKeys()
+  avgTrips = {}   // 換路線／換時段後，舊的組合鍵不能留著
   COMBO_KEYS.forEach(combo=>{
     const [peakType, direction] = parseCombo(combo)
     // 先依「回合」去重——同一回合若因重測產生多筆紀錄，只取最新一筆代表該回合，
@@ -1430,7 +1436,7 @@ function renderPage(){
     <div class="card"><div class="val">${_mergeGhostSegs().length}</div><div class="lbl">路段數</div></div>
     <div class="card"><div class="val">${surveys.length}</div><div class="lbl">調查次數</div></div>
     <div class="card"><div class="val">${totalTrips}</div><div class="lbl">總旅次數</div></div>
-    <div class="card"><div class="val">${completedCombos}/4</div><div class="lbl">完成組合</div></div>
+    <div class="card"><div class="val">${completedCombos}/${COMBO_KEYS.length}</div><div class="lbl">完成組合</div></div>
   `
   renderTravelTable()
   renderSpeedTable()
@@ -1890,10 +1896,26 @@ function renderComboRecords(combo){
   const matchSurveys = surveys.map((sv,si)=>({sv,si,trip:sv.trips?.find(t=>t.peakType===pt&&t.direction===dir)})).filter(x=>x.trip)
 
   if(!matchSurveys.length){
+    // 這一天資料裡實際存在哪些「時段代碼＋方向」。
+    // 真的沒跑就是空的；如果這裡有東西、卻對不上任何一顆按鈕，代表代碼對不上，
+    // 直接把實際值印出來，不用再猜。
+    const _actual={}
+    ;(surveys||[]).forEach(sv=>(sv.trips||[]).forEach(t=>{
+      const k=String(t&&t.peakType||'?')+'／'+(t&&t.direction==='return'?'回程':'去程')
+      _actual[k]=(_actual[k]||0)+1
+    }))
+    const _hint=Object.keys(_actual).length
+      ? `<div style="margin-top:14px;font-size:11px;color:#94a3b8;line-height:1.9">
+           這一天資料庫裡實際有的組合（時段代碼／方向）：<br>
+           ${Object.entries(_actual).map(([k,n])=>
+             `<code style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:5px;padding:1px 6px;margin:0 3px">${he(k)} ×${n}</code>`).join('')}
+           <br><span style="color:#cbd5e1">本組合要找的是　<code style="background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:1px 6px">${he(pt)}／${dir==='return'?'回程':'去程'}</code></span>
+         </div>` : ''
     el.innerHTML=`<div class="no-data-msg">
       <div style="font-size:40px;margin-bottom:12px">${/peak$/.test(pt)&&pt!=='off_peak'?'🔴':'🔵'}</div>
       <div style="font-size:15px;font-weight:700;margin-bottom:6px">尚無此組合的調查紀錄</div>
       <div style="font-size:12px;color:#94a3b8">${COMBO_LABEL[combo]} 旅次尚未調查</div>
+      ${_hint}
     </div>`; return
   }
 
