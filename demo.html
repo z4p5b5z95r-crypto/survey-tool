@@ -3916,9 +3916,12 @@ function speakNav(text, onDone, opts){
   // 導航開關只該關掉「轉彎提示」，不該把調查開始／結束、節點、停止詢問也一起靜音——
   // 那些是流程指令，關掉會讓調查員不知道系統到哪一步了。
   // 轉彎提示的攔截改放在 updateNavBanner 呼叫端。
-  if(!('speechSynthesis' in window)){ if(onDone) onDone(); return }
+  // 回傳值＝「這句有沒有被收下」。呼叫端要用它決定要不要把「已播報」記起來：
+  // 被丟掉卻記成已播報，就再也不會補播了（轉彎提示的遠距離那一次就是這樣消失的）。
+  if(!('speechSynthesis' in window)){ if(onDone) onDone(); return false }
   const now=Date.now()
-  if(text===_spLastText && now-_spLastAt<2000){ if(onDone) onDone(); return }
+  // 兩秒內同一句：算成功——它剛剛才講過，不需要再排一次
+  if(text===_spLastText && now-_spLastAt<2000){ if(onDone) onDone(); return true }
   const item={text,onDone,high:!!(opts&&opts.high)}
   vlog('speakNav("'+text+'") high='+item.high+' busy='+_spBusy+' unlocking='+_spUnlocking)
   // 重要語音（節點、停止面板、追問）正在播的時候，一般導航提示直接丟掉不排隊。
@@ -3927,7 +3930,7 @@ function speakNav(text, onDone, opts){
   if(!item.high && _spBusy && _spCurHigh){
     vlog('  ↷ 重要語音播放中，略過這句一般提示')
     if(onDone) onDone()
-    return
+    return false            // ← 沒播出去，呼叫端下一次定位要再試一次
   }
   if(item.high){
     _spQueue=[]
@@ -3950,6 +3953,7 @@ function speakNav(text, onDone, opts){
   }
   _spQueue.push(item)
   _spPump()
+  return true
 }
 function _spPump(){
   if(_spBusy) return
@@ -4445,12 +4449,14 @@ function updateNavBanner(lat,lng,nextNode,dist){
   // 語音提示：遠距離提醒一次、近距離再提醒一次，換下個節點會重置（節點紀錄是背景自動進行，語音不用特別報路口名稱）
   // 轉彎提示是「語音導航」的內容，關掉導航就不唸（畫面上的提示條仍然照常顯示）
   if(navVoiceEnabled){
+    // ⚠️ 先 speakNav 再記 tier，順序不能反。
+    // 剛通過上一個節點時「調查開始／節點提示」還在播，這句一般提示會被丟掉；
+    // 舊寫法已經先把 tier 記成 1，於是遠距離提示永遠補不回來——
+    // 現場聽到的就是「沒有提前講，到了路口才說左轉」。
     if(dist<=NAV_NEAR_M && _navAnnouncedTier<2){
-      _navAnnouncedTier=2
-      speakNav(turn.label)
+      if(speakNav(turn.label)) _navAnnouncedTier=2
     }else if(dist<=getNavFarDist() && _navAnnouncedTier<1){
-      _navAnnouncedTier=1
-      speakNav(`前方${Math.round(dist/10)*10}公尺，${turn.label}`)
+      if(speakNav(`前方${Math.round(dist/10)*10}公尺，${turn.label}`)) _navAnnouncedTier=1
     }
   }
 }
@@ -4537,10 +4543,10 @@ function updateTurnAlerts(lat,lng){
     const nxt=_navTurns[_turnIdx+1]
     // 已經比下一個轉折還遠＝這個彎跳過了（沒播到或走了別條路），往前推進
     if(nxt && haversine(lat,lng,nxt.lat,nxt.lng)<dCur-20){ _turnIdx++; continue }
-    if(dCur<=NAV_NEAR_M && !cur_.said2){ cur_.said2=true; speakNav(cur_.label); return }
+    // 同上：播出去了才記成已播報，被重要語音擋掉的話下一次定位再試
+    if(dCur<=NAV_NEAR_M && !cur_.said2){ if(speakNav(cur_.label)) cur_.said2=true; return }
     if(dCur<=getNavFarDist() && !cur_.said1){
-      cur_.said1=true
-      speakNav(`前方${Math.round(dCur/10)*10}公尺，${cur_.label}`)
+      if(speakNav(`前方${Math.round(dCur/10)*10}公尺，${cur_.label}`)) cur_.said1=true
     }
     return
   }
