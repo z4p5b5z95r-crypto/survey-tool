@@ -1734,7 +1734,11 @@ function renderDelayTable(){
   const dBase = t => (t?.roadTotalS||0)+(t?.intTotalS||0)
   const dPct  = (t,v) => dBase(t)>0 ? ((v/dBase(t))*100).toFixed(1) : null
   const sec = (label,pick) => r(label+' (秒)', trips.map(pick))
-  const grp = (title) => `<tr><td colspan="5" style="background:#fef9c3;font-weight:700;padding:6px 8px">${title}</td></tr>`
+  // 整列橫跨＝1（指標欄）＋ 每個時段兩欄（去程／回程）。
+  // 以前寫死 5，只有兩個時段時剛好對；加到三個時段以後，黃色分段列與淡灰間隔列
+  // 都只蓋到前四欄，右邊新增的時段就露白。
+  const SPAN = 1 + PDS.length * 2
+  const grp = (title) => `<tr><td colspan="${SPAN}" style="background:#fef9c3;font-weight:700;padding:6px 8px">${title}</td></tr>`
   // 明細列往右縮排並轉灰、小計列貼齊左緣加粗，小計後再墊一條淡灰帶，
   // 這樣「路段延滯」與「交叉口延滯」兩群一眼就分得開。（只影響網頁，PDF 不動）
   const det = (label, vals) =>
@@ -1743,7 +1747,7 @@ function renderDelayTable(){
   const sub = (label, vals) =>
     `<tr class="dt-sub"><td>${label}</td>${vals.map(v=>`<td>${fmt(v)}</td>`).join('')}</tr>`
   const subSec = (label,pick) => sub(label+' (秒)', trips.map(pick))
-  const gap = () => `<tr class="dt-gap"><td colspan="5"></td></tr>`
+  const gap = () => `<tr class="dt-gap"><td colspan="${SPAN}"></td></tr>`
 
   html += r('平均總旅行速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.travelS)))
   html += r('平均總行駛速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.runS)))
