@@ -4352,39 +4352,18 @@ function classifyTurn(angle){
 // 語音的用詞仍然走 classifyTurn 的六分類——講「靠右」比講「偏右 43 度」好懂。
 //
 // ⚠️ 只有進出這兩個方向是真的，路口其他方向的岔路我們沒有資料，所以不畫。
-const _NA_LEN=9.4         // 折出去那一段的長度
-const _NA_HEAD=3.2        // 箭頭那兩撇的長度
-const _NA_SPREAD=30       // 箭頭張開的角度
-function _naPt(x,y){ return Math.round(x*100)/100+' '+Math.round(y*100)/100 }
-function navArrowSVG(deg){
-  const a=((deg+540)%360)-180
-  if(Math.abs(a)>=150){
-    // 台灣靠右行駛，迴轉是往左繞，所以 ±180 這個邊界一律當成左迴轉。
-    // 圓弧的 sweep flag 要跟著方向換，否則弧會往下凸、變成一個倒 U。
-    const s=a>0?1:-1
-    const x0=12-4*s, x1=12+4*s
-    return `<path d="M${_naPt(x0,21)}V12a4 4 0 0 0 ${8*s} 0v4"/>`.replace('0 0 0', s>0?'0 0 1':'0 0 0')
-         + `<path d="M${_naPt(x1-3,13)}L${_naPt(x1,16)}L${_naPt(x1+3,13)}"/>`
-  }
-  const rad=a*Math.PI/180
-  const dx=Math.sin(rad), dy=-Math.cos(rad)      // 出去的方向（SVG 的 y 往下）
-  // 轉角往「轉向的反方向」偏一點，整個圖形才會落在方框中央；
-  // 不偏的話右轉會整個擠到右半邊，看起來像沒對齊。
-  const jx=12-3.6*dx, jy=13.8
-  const ex=jx+_NA_LEN*dx, ey=jy+_NA_LEN*dy
-  // 轉角用一段二次曲線收圓；角度越小彎越淺，直行時等於沒有彎
-  const r=3*Math.min(1, Math.abs(a)/50)
-  const shaft = r>0.2
-    ? `<path d="M${_naPt(jx,21)}V${Math.round((jy+r)*100)/100}Q${_naPt(jx,jy)} ${_naPt(jx+r*dx,jy+r*dy)}L${_naPt(ex,ey)}"/>`
-    : `<path d="M${_naPt(jx,21)}L${_naPt(ex,ey)}"/>`
-  // 箭頭：從端點往回轉 ±30 度各畫一撇。
-  // 這兩撇不能太長——超過折出去那一段的三分之一就會把桿子蓋掉，看起來像旗子。
-  const head=(sign)=>{
-    const t=rad+Math.PI+sign*_NA_SPREAD*Math.PI/180
-    return [ex+_NA_HEAD*Math.sin(t), ey-_NA_HEAD*Math.cos(t)]
-  }
-  const h1=head(1), h2=head(-1)
-  return shaft+`<path d="M${_naPt(h1[0],h1[1])}L${_naPt(ex,ey)}L${_naPt(h2[0],h2[1])}"/>`
+// 每個轉向各有自己的圖形（A 版：線條轉彎箭頭）。
+// 舊做法是「一個向上箭頭轉 90/180 度」，所以直行跟迴轉其實是同一個圖形，
+// 也畫不出「靠左／靠右」這種斜的分岔。
+const NAV_ARROW={
+  straight:      '<path d="M12 21V6"/><path d="m6 12 6-6 6 6"/>',
+  'slight-right':'<path d="M11 21v-7l5-5"/><path d="M11 8h6v6"/>',
+  right:         '<path d="M8 21v-8a3 3 0 0 1 3-3h6"/><path d="m14 6 4 4-4 4"/>',
+  left:          '<path d="M16 21v-8a3 3 0 0 0-3-3H7"/><path d="m10 6-4 4 4 4"/>',
+  'slight-left': '<path d="M13 21v-7L8 9"/><path d="M13 8H7v6"/>',
+  uturn:         '<path d="M8 21v-9a4 4 0 0 1 8 0v4"/><path d="m12 13 4 4 4-4"/>',
+  // 最後一段沒有下一個路口，改顯示終點旗
+  finish:        '<path d="M6 21V4"/><path d="M6 5h12l-3 4 3 4H6"/>'
 }
 
 // ── 導航幾何：以「PM 畫的那條線」為準，不再用節點之間的直線 ──────────────
@@ -4455,7 +4434,34 @@ function updateNavBanner(lat,lng,nextNode,dist){
   if(!banner) return
   const ordered=getOrderedNodes()
   const afterNode=ordered[currentNodeIdx+1]
-  if(!nextNode||!afterNode){ banner.style.display='none'; _syncSurveyTopOffsets(); return }
+  if(!nextNode){ banner.style.display='none'; _syncSurveyTopOffsets(); return }
+  // ── 最後一段：沒有「下一個路口」可以轉，但不該就這樣把提示條收掉 ──
+  // 舊行為是整條隱藏，現場看到的是「過了倒數第二個節點，導航就消失了」，
+  // 反而是最需要知道還有多遠的時候。改成顯示終點與剩餘距離。
+  if(!afterNode){
+    const wasHidden0=banner.style.display==='none'||!banner.style.display
+    banner.style.display='flex'
+    if(wasHidden0) _syncSurveyTopOffsets()
+    const arrow0=$('nav-banner-arrow')
+    if(arrow0 && arrow0.dataset.turn!=='finish'){
+      arrow0.dataset.turn='finish'
+      arrow0.innerHTML=NAV_ARROW.finish
+    }
+    const polys0=_dirPolylines()
+    const along0=_distAlongToNode(polys0[currentNodeIdx-1]||null, lat, lng)
+    if(along0!=null) dist=along0
+    const dt0 = dist>=1000 ? (dist/1000).toFixed(1)+'km' : Math.round(dist/10)*10+'m'
+    $('nav-banner-dist').textContent = dist<NAV_NEAR_M ? '即將' : dt0+' 後'
+    $('nav-banner-turn').textContent = '抵達終點'
+    if(navVoiceEnabled){
+      if(dist<=NAV_NEAR_M && _navAnnouncedTier<2){
+        if(speakNav('即將抵達終點')) _navAnnouncedTier=2
+      }else if(dist<=getNavFarDist() && _navAnnouncedTier<1){
+        if(speakNav(`前方${Math.round(dist/10)*10}公尺，抵達終點`)) _navAnnouncedTier=1
+      }
+    }
+    return
+  }
   const prevNode=currentNodeIdx>0 ? ordered[currentNodeIdx-1] : null
   const polys=_dirPolylines()
   const inLine  = polys[currentNodeIdx-1] || null   // 正在走的這一段（終點是 nextNode）
@@ -4496,13 +4502,9 @@ function updateNavBanner(lat,lng,nextNode,dist){
   banner.style.display='flex'
   if(wasHidden) _syncSurveyTopOffsets()
   const arrow=$('nav-banner-arrow')
-  if(arrow){
-    // 角度差 3 度以內就不重畫，免得每次定位都動到 DOM
-    const deg=Math.round((((outBearing-inBearing)+540)%360)-180)
-    if(arrow.dataset.deg===undefined || Math.abs(+arrow.dataset.deg-deg)>=3){
-      arrow.dataset.deg=deg
-      arrow.innerHTML=navArrowSVG(deg)
-    }
+  if(arrow && arrow.dataset.turn!==turn.type){
+    arrow.dataset.turn=turn.type
+    arrow.innerHTML=NAV_ARROW[turn.type]||NAV_ARROW.straight
   }
   const distText = dist>=1000 ? (dist/1000).toFixed(1)+'km' : Math.round(dist/10)*10+'m'
   $('nav-banner-dist').textContent = dist<NAV_NEAR_M ? '即將' : distText+' 後'
