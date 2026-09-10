@@ -5010,7 +5010,6 @@ function _filterMine(list){
   return list.filter(sv=>{
     const rt=_calRoutes[sv.routeId]; if(!rt) return false
     const pj=_calProjects[rt.projectId]
-    if(isSupervisor()) return true
     return rt.owner===me || (pj && pj.owner===me)
   })
 }
@@ -5099,14 +5098,18 @@ async function loadAdminSurveys() {
   }
 }
 
-// ── 工程師端：只看自己的專案 ──
+// ── 工程師端：只看自己的專案；主管則是全部 ──
 async function openMyCalendar(){
   const ov=document.getElementById('mycal-overlay')
   const who=document.getElementById('mycal-who')
-  if(who) who.textContent=(getCurrentUser()||'')+'　只顯示你建立的專案'
+  // 主管走的是「不過濾」那條路，不是把過濾條件放寬——
+  // 這樣月曆的空狀態文字、以及只有全域檢視才有的「工程師」篩選下拉，
+  // 才會跟著一起正確，不必每個地方各判斷一次。
+  const all=isSupervisor()
+  if(who) who.textContent=(getCurrentUser()||'')+(all?'　顯示所有專案':'　只顯示你建立的專案')
   ov.classList.add('on')
   try{
-    await loadCalendarData('mycal-host', true)
+    await loadCalendarData('mycal-host', !all)
   }catch(e){
     document.getElementById('mycal-host').innerHTML=
       `<div style="color:#dc2626;padding:16px">載入失敗：${e.message}</div>`
