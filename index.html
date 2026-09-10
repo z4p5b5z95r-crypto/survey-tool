@@ -5441,8 +5441,12 @@ function srPick(cause, group){
   if(cur && d){
     const bucket = group==='int' ? cur.intDelays : cur.roadDelays
     bucket[cause]=(bucket[cause]||0)+p.sec
+    // ⚠️ 欄位名一定要是 durationS，跟現場即時記錄的那一筆一致。
+    // 之前寫成 sec，結果：延滯統計摘要（讀 cur.roadDelays）有數字，
+    // 但各路段的明細（segDelaysForIdx 讀 delayLog[].durationS）永遠是 0——
+    // 現場看到的就是「上面有行人穿越 8 秒，下面路段卻空的」。
     delayLog.push({cause, group, label:d.label, icon:d.icon,
-      startedAt:new Date(p.startedAt), endedAt:new Date(p.endedAt), sec:p.sec,
+      startedAt:new Date(p.startedAt), endedAt:new Date(p.endedAt), durationS:p.sec,
       pos:p.pos||null, _backfilled:true})
     showToast(`✓ 已補上 ${d.icon} ${d.label} ${_srFmt(p.sec)}`)
   }
