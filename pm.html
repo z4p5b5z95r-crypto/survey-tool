@@ -610,7 +610,15 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
   max-width:min(46vw,340px)}
 .cl-pm{flex:none;font-size:10px;font-weight:700;color:#475569;background:#e2e8f0;
   border-radius:20px;padding:2px 8px}
-.cl-meta{margin-left:auto;flex:none;font-size:11px;color:#94a3b8;font-weight:600}
+.cl-meta{flex:none;font-size:11px;color:#94a3b8;font-weight:600}
+/* 當天這個專案出動的調查人員。放在統計數字左邊，一起靠右。
+   人多時允許縮，超出就省略號，不能把「N 條路線・N 筆・N 趟」擠掉。 */
+.cl-svy{margin-left:auto;min-width:0;display:flex;align-items:center;gap:4px;
+  overflow:hidden;white-space:nowrap}
+.cl-svy .cl-ic{flex:none;font-size:10px;opacity:.75}
+.cl-svyn{flex:none;font-size:10px;font-weight:700;color:#334155;background:#eef2f7;
+  border:1px solid #e2e8f0;border-radius:20px;padding:2px 7px}
+.cl-svym{flex:none;font-size:10px;font-weight:700;color:#94a3b8}
 .cl-body{display:none}
 .cl-pj.open .cl-body{display:block}
 /* 六欄：調查人員／路線名稱／調查時間／趟次名稱／趟次／箭頭 */
@@ -4974,6 +4982,7 @@ let _calYM=null                                   // {y,m} 目前顯示的月份
 let _calFilt={ project:'', engineer:'' }
 let _calHost='admin-surveys-table'                // 渲染目標：後台分頁 or 工程師覆蓋層
 let _calMineOnly=false                            // 工程師端：只看自己建立的專案
+let _calPrefetchTimer=null                        // 前後月份的背景預抓（延後發，不跟當月搶）
 let _calLoading=false                             // 資料還在路上（月曆先出來，格子之後補）
 let _calLoadSeq=0                                 // 併發保護：只有最後一次載入可以寫入畫面
 let _calUserMovedMonth=false                      // 使用者自己翻過月份就別再自動跳月
@@ -5044,11 +5053,18 @@ async function _showMonth(seq){
     _calReady=true; _calLoading=false
     renderSurveyCalendar()
   }
-  // 背景預抓前後各一個月，之後按 ‹ › 就是即時的
-  ;[-1,1].forEach(d=>{
-    const k=_ymKey(_shiftYM(_calYM,d))
-    if(!_calMonthCache[k]) _fetchMonth(k).catch(()=>{})
-  })
+  // 背景預抓前後各一個月，之後按 ‹ › 就是即時的。
+  // ⚠️ 要等當月畫出來、而且一次只抓一個月。
+  // Apps Script 會把同一個使用者的執行排隊，三個月同時發等於自己跟自己搶，
+  // 當月那一份被夾在中間，畫面就卡在「調查資料下載中」。
+  clearTimeout(_calPrefetchTimer)
+  _calPrefetchTimer=setTimeout(async()=>{
+    for(const d of [1,-1]){                       // 先抓下個月：使用者比較常往後翻
+      if(seq!==_calLoadSeq) return
+      const k=_ymKey(_shiftYM(_calYM,d))
+      if(!_calMonthCache[k]) await _fetchMonth(k).catch(()=>{})
+    }
+  }, 1200)
 }
 
 async function loadCalendarData(hostId, mineOnly){
@@ -5273,7 +5289,12 @@ function calListHTML(){
           <span class="cl-caret">▸</span>
           <span class="cl-pjn" style="color:${col.c}" title="${esc(g.name)}">${esc(g.name)}</span>
           <span class="cl-pm" title="專案負責 PM">PM ${esc(g.pm)}</span>
-          <span class="cl-meta">${g.routes} 條路線・${g.items.length} 筆・${g.trips} 趟</span>
+          ${g.surveyors.length?`<span class="cl-svy" title="當天調查人員：${esc(g.surveyors.join('、'))}">
+            <span class="cl-ic">👷</span>
+            ${g.surveyors.slice(0,3).map(n=>`<span class="cl-svyn">${esc(n)}</span>`).join('')}
+            ${g.surveyors.length>3?`<span class="cl-svym">+${g.surveyors.length-3}</span>`:''}
+          </span>`:''}
+          <span class="cl-meta"${g.surveyors.length?'':' style="margin-left:auto"'}>${g.routes} 條路線・${g.items.length} 筆・${g.trips} 趟</span>
         </div>
         <div class="cl-body">
           <div class="cl-hd">
