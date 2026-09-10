@@ -877,7 +877,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 
   <div class="admin-tabs">
     <button class="admin-tab active" data-tab="routes" onclick="switchAdminTab('routes')">🗺 專案資料</button>
-    <button class="admin-tab" data-tab="link" onclick="switchAdminTab('link')">🔗 監測連結</button>
+    <button class="admin-tab" data-tab="link" onclick="switchAdminTab('link')">🔗 免 QR 入口</button>
     <button class="admin-tab" data-tab="audit" onclick="switchAdminTab('audit')">📝 操作紀錄</button>
     <button class="admin-tab" data-tab="logins" onclick="switchAdminTab('logins')">🔐 登入紀錄</button>
     <button class="admin-tab" data-tab="trash" onclick="switchAdminTab('trash')">🗑 垃圾桶</button>
@@ -920,8 +920,11 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     <div id="atab-link" style="display:none;padding:20px">
       <!-- QR Code 區塊 -->
       <div style="background:white;border-radius:14px;padding:24px;margin-bottom:16px;text-align:center;box-shadow:0 1px 4px #0001">
-        <div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:4px">📱 監測人員掃碼入口</div>
-        <div style="font-size:11px;color:#94a3b8;margin-bottom:20px">列印貼在現場，監測人員掃描後直接選案開始調查</div>
+        <div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:4px">📱 免 QR 入口（內部使用）</div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:20px">
+          開啟後需以工程師帳號登入，再選工程師與專案；開啟專案等同掃該專案的 QR。<br>
+          連結不含任何金鑰，不會過期，但請勿對外發放。
+        </div>
         <div id="qr-box" style="display:inline-block;padding:16px;background:white;border-radius:12px;
           border:2px solid #e2e8f0;margin-bottom:16px"></div>
         <div style="font-size:11px;color:#64748b;margin-bottom:16px" id="qr-url-short">—</div>
@@ -4730,8 +4733,11 @@ function getSelectUrl() {
     ? appUrl.replace(/\/[^\/]*\.html.*$/, '/').replace(/\/$/, '') + '/select.html'
     : location.href.replace(/\/[^\/]*$/, '/select.html')
   const u = new URL(base)
+  // ⚠️ 只帶 gs，不帶 sessionToken 也不帶 API key。
+  // 舊版把 sessionToken 寫進網址，那個會過期——連結存下來過幾天就打不開了，
+  // 而且 select.html 讀的是 k 不是 sessionToken，兩邊對不起來，等於一開始就是壞的。
+  // 現在改成 select.html 自己要求登入，登入成功後由後端把 apiKey 發下來。
   u.searchParams.set('gs', gsUrl)
-  u.searchParams.set('sessionToken', getSessionToken()||'')
   return u.toString()
 }
 
