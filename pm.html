@@ -228,6 +228,9 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .proj-group-rename{flex-shrink:0;background:none;border:none;font-size:12px;padding:2px 4px;cursor:pointer;opacity:.55}
 .proj-group-rename:hover{opacity:1}
 .proj-group-count{font-size:11px;color:#94a3b8;font-weight:700;white-space:nowrap}
+/* 專案負責的 PM，緊貼在專案名稱後面。名稱長的時候會自然換到下一行，不會把「N 條路線」擠掉 */
+.proj-group-pm{display:inline-block;margin-left:7px;font-size:11px;font-weight:700;color:#475569;
+  background:#eef2f7;border-radius:6px;padding:1px 7px;white-space:nowrap;vertical-align:1px}
 .proj-group-arrow{transition:transform .15s;color:#94a3b8;flex-shrink:0}
 .proj-group.open .proj-group-arrow{transform:rotate(180deg)}
 /* 四顆按鈕等寬排成一列，不換行；文字縮短、左右內距收窄，窄螢幕也放得下 */
@@ -3541,6 +3544,9 @@ async function syncProjectsFromCloud(me) {
         loc={id:'pj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cloudId:p.id,name:S(p.name)||'未命名專案',savedAt:S(p.createdAt).slice(0,10)||'雲端',creator:me}
         savedProjects.push(loc);changed=true
       }else if(loc.name!==S(p.name)){loc.name=S(p.name)||loc.name;changed=true}
+      // 記住雲端上的專案負責人（實際的 PM）。creator 是「本機這份資料是誰同步下來的」，
+      // 督導看得到別人的專案時 creator 會是督導自己，不能拿來當 PM 顯示。
+      if(loc.owner!==S(p.owner)){loc.owner=S(p.owner);changed=true}
       map[p.id]=loc.id
     }
 
@@ -3787,6 +3793,15 @@ function renderProjectRoutesMap(routes){
   })
   if(bounds.length) map.fitBounds(bounds,{padding:[40,40]})
 }
+// 這條路線實際的負責 PM。
+// 優先用路線自己的 owner，沒有就退回所屬專案的 owner（早期路線沒寫 owner，
+// 只有專案那層有），都沒有才用本機的 creator。
+function pmNameOf(t){
+  if(t.owner) return t.owner
+  const proj=savedProjects.find(p=>p.id===t.projectId)
+  if(proj&&proj.owner) return proj.owner
+  return t.creator||''
+}
 function renderProjects(filter='') {
   const me=getCurrentUser()||''
   const wrap=document.getElementById('projects-wrap')
@@ -3820,13 +3835,20 @@ function renderProjects(filter='') {
     const proj=savedProjects.find(p=>p.id===pid)
     const projName=proj?.name||'未分類路線'
     const routes=groups[pid]||[]
+    // 專案負責人：專案自己的 owner 優先，沒有就看底下路線是不是都同一個人
+    let projPm=proj?.owner||''
+    if(!projPm){
+      const set=[...new Set((groups[pid]||[]).map(pmNameOf).filter(Boolean))]
+      projPm = set.length===1 ? set[0] : ''
+    }
     const isOpen=filter?true:(_openProjectId===pid)
     const routesHtml=routes.map((t,ri)=>{
       const isEdit=t.id===currentTaskId&&_inEditView
       const rc=PJ_MAP_COLORS[ri%PJ_MAP_COLORS.length]   // 跟地圖上的編號同色
       const metaParts=[]
       if(t.cfg.ft) metaParts.push(`<span>📍 ${t.cfg.ft}</span>`)
-      if(t.creator&&t.creator!=='未知') metaParts.push(`<span>👤 ${t.creator}</span>`)
+      const pm=pmNameOf(t)
+      if(pm&&pm!=='未知') metaParts.push(`<span>👤 ${pm}</span>`)
       const metaHtml=metaParts.map((s,i)=>i<metaParts.length-1?s+`<span class="pc-dot">·</span>`:s).join('')
       // 整張卡片可點：跟現場 App 的選路線清單一致，點下去就進編輯
       return`<div class="pc${isEdit?' editing':''}" style="border-left:4px solid ${rc}"
@@ -3856,7 +3878,7 @@ function renderProjects(filter='') {
     }).join('') || `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12.5px">這個專案還沒有路線<br>按上面「＋ 新增路線」建立，或用其他路線卡片的「⋯」更多選單搬過來</div>`
     return`<div class="proj-group${isOpen?' open':''}">
       <div class="proj-group-hd" onclick="toggleProjectGroup('${pid}')">
-        <span class="proj-group-name">📁 ${projName}</span>
+        <span class="proj-group-name">📁 ${projName}${projPm?`<span class="proj-group-pm">👤 ${projPm}</span>`:''}</span>
         <button class="proj-group-rename" title="重新命名" onclick="event.stopPropagation();renameProject('${pid}')">✏️</button>
         <span class="proj-group-count">${routes.length} 條路線</span>
         <svg class="proj-group-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
