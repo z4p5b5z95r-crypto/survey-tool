@@ -1377,6 +1377,13 @@ let _askTimer = null       // 下一次重問的計時器
 let _pendingStops = []
 let _autoEndTimer=null   // 通過最後一個節點後自動結束的計時器（手動按結束時要取消，避免結算兩次）
 let _lastSpeedMs=null, _lastSpeedTs=0, _stopPollTimer=null   // 停止偵測輪詢用
+// 車子最後一次「真的在動」的時刻。停等的起算點一律以它為準：
+// 只要車子沒動過，不管面板中途被收掉幾次、停止偵測重新觸發幾次，
+// 秒數都從同一個時間點繼續累加，不會歸零。
+let _lastMovedAt=null
+// 這一輪詢問是掛在哪一次「開始停下」上。用它判斷是不是同一次停等，
+// 是的話詢問次數要接續數下去，不能又從第 1 次開始。
+let _askStopKey=null
 
 // Nodes
 let nodeTimestamps=[], currentNodeIdx=0
@@ -3575,6 +3582,8 @@ function evalStopDetection(){
   if(!onSurvey || activeDelay || currentNodeIdx<=0){ _stopSince=null; _stopResumeSince=null; return }
   // 速度資料太舊（超過 4 秒沒新定位）就不要拿來判斷，避免停在隧道裡誤判
   const speed = (Date.now()-_lastSpeedTs < 4000) ? _lastSpeedMs : null
+  // 速度讀得到、而且高於蠕行門檻＝車子真的在動
+  if(speed!=null && speed>=STOP_TH_CRAWL) _lastMovedAt=Date.now()
   if(speed!=null && speed<STOP_TH_CRAWL){
     _stopResumeSince=null
     if(_stopSince===null) _stopSince=Date.now()
@@ -3606,7 +3615,11 @@ function triggerStopDetection(){
   // 起算點＝速度第一次掉到門檻以下的那一刻，不是「觸發當下回推固定秒數」。
   // 舊版寫死回推 3 秒，是照當時較慢的偵測速度抓的；偵測一調快就會回推過頭、
   // 每筆延滯憑空多算 1.5~2 秒。改用 _stopSince 之後，門檻與 hold 怎麼調都自動對齊。
-  _stopEvent={startedAt: _stopSince || Date.now(), pos:lastPos}
+  // 起算點取「最後一次車子在動的時刻」與「這次偵測到靜止的時刻」中較早的那個。
+  // 面板若因為任何原因被收掉、停止偵測又重新觸發，車子其實一秒都沒動過——
+  // 這時若用新的 _stopSince，秒數就會歸零（現場回報的「計時重來」）。
+  const _startAt = Math.min(_stopSince || Date.now(), _lastMovedAt || Date.now())
+  _stopEvent={startedAt: _startAt, pos:lastPos}
   _stopActive=true; _stopSince=null
   _vrecDead=false; _vrecErr=''      // 新的一次停等，語音重新來過
   // 選項 A：不設逾時。面板一直留著，直到駕駛選了原因、按了忽略，
@@ -3628,9 +3641,25 @@ function triggerStopDetection(){
   // （現場症狀：提示語沒講完就卡掉）。所以一律用 listenAfterSpeech 等真的講完。
   // 沒開語音輸入就不開麥克風，提示語也要跟著換——
   // 唸「請說出」卻不收音，調查員會一直對著手機講話卻沒有反應。
-  _askCount=0
-  clearTimeout(_askTimer); _askTimer=null
-  askStopCause()
+  // 同一次停等（車子沒動過）＝詢問次數接著數，不重頭來；真的重新開動過才歸零。
+  const key=String(_lastMovedAt||0)
+  if(_askStopKey!==key){
+    // 全新的一次停等：歸零並立刻問第一次
+    _askStopKey=key; _askCount=0
+    clearTimeout(_askTimer); _askTimer=null
+    askStopCause()
+  }else{
+    // 同一次停等被重新觸發（面板中途被收掉）：把畫面救回來就好，
+    // 不能順手再問一次——那會讓總次數多出一次、也打亂 8 秒的節奏。
+    updateAskHint()
+    svyShowPanel('stop'); svySheetExpand()
+    if(_askCount<STOP_ASK_MAX && !_askTimer){
+      _askTimer=setTimeout(()=>{
+        _askTimer=null
+        if(_stopActive && !activeDelay) askStopCause()
+      }, STOP_ASK_GAP_MS)
+    }
+  }
   svySheetExpand()
   svyShowPanel('stop')
   startStopTicker()
@@ -3646,6 +3675,9 @@ function askStopCause(){
     speakNav('請選擇停止原因', null, {high:true})
   }
   updateAskHint()
+  // 每次重問都把面板叫回展開狀態。中途若有任何情況把它收起來，
+  // 下一次詢問就會自己救回來——駕駛不必自己再拉一次。
+  svyShowPanel('stop'); svySheetExpand()
   clearTimeout(_askTimer); _askTimer=null
   if(_askCount < STOP_ASK_MAX){
     _askTimer=setTimeout(()=>{
@@ -3826,6 +3858,7 @@ function svyDismissStop(byResume){
     ;[...document.querySelectorAll('.btn-dl.picked')].forEach(b=>b.classList.remove('picked')) }
   _stopEvent=null
   _stopResumeSince=null
+  if(byResume){ _askStopKey=null; _askCount=0 }   // 真的重新開動才把詢問次數歸零
   svyShowPanel('idle')
   svySheetCollapse()
   showToast(byResume
@@ -5306,6 +5339,7 @@ function resetSurveyRuntime(){
   endClarify(); stopCauseListening()
   clearTimeout(_askTimer); _askTimer=null; _askCount=0; _pendingStops=[]
   _stopPanelOpen=false; _stopActive=false; _stopEvent=null
+  _lastMovedAt=null; _askStopKey=null
   _stopSince=null; _stopResumeSince=null; _voicePick=null
   _resumeAboveSpeedSince=null; elapsedSec=0
   // 畫面：延滯按鈕的秒數、選中狀態、藍框提示、停止面板一律復原
@@ -5408,7 +5442,10 @@ function srRender(){
   document.getElementById('sr-foot').textContent=`第 ${_srIdx+1} / ${total} 段`
   document.getElementById('sr-dur').textContent='停等 '+_srFmt(p.sec)
   document.getElementById('sr-time').textContent=_srClock(p.startedAt)+' – '+_srClock(p.endedAt)
-  document.getElementById('sr-where').textContent=_srWhere(p)
+  // 位置後面附上「當時問了幾次」——這一段之所以沒有原因，是因為現場沒回答，
+  // 寫出來調查員才想得起來是哪一次、也才知道系統不是漏問。
+  document.getElementById('sr-where').textContent =
+    _srWhere(p) + (p.asked>0 ? `　·　當時已詢問 ${p.asked} 次未取得原因` : '')
   document.getElementById('sr-causes').innerHTML=''
   document.getElementById('sr-acts').style.display='flex'
   srDrawMap(p)
