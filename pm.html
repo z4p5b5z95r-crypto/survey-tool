@@ -1639,7 +1639,7 @@ function showListView() {
 
 function showEditView(title) {
   _inEditView = true
-  clearProjectRoutesOverview()   // 編輯時主地圖要留給節點編輯，不能疊著專案總覽
+  clearMapOverviews()            // 編輯時主地圖要留給節點編輯，不能疊著專案／全域總覽
   document.getElementById('view-list').style.display = 'none'
   document.getElementById('view-edit').style.display = 'flex'
   document.getElementById('map-toolbar').style.display = 'flex'
@@ -3804,6 +3804,12 @@ function clearProjectRoutesOverview(){
   _pjLayers.forEach(l=>{ try{ map.removeLayer(l) }catch(e){} })
   _pjLayers=[]
 }
+// 進編輯畫面前把兩種總覽都收乾淨：編輯時主地圖是拿來編節點的
+function clearMapOverviews(){
+  clearProjectRoutesOverview()
+  try{ clearAllRoutesOverview() }catch(e){}
+  _ovGroups=null; _ovHoverPid=null
+}
 // PM 建路線時每段已經算過貼路座標並存在 sg[i].ll，這裡直接重用，
 // 不必再跟 OSRM 要一次，也不會像直接連節點那樣畫成一條條斜線穿過房子。
 function _pjPolyline(nd, sg){
@@ -3820,6 +3826,123 @@ function _pjPolyline(nd, sg){
   }
   return lls
 }
+// ════════════════════════════════════════════════════════
+//  全域總覽：沒有展開任何專案時，右邊地圖顯示「所有專案的所有路線」
+// ════════════════════════════════════════════════════════
+// 路線幾何本來就在本機（savedTasks 裡有貼路座標），畫全部不用多打任何一支 API。
+// 真正的問題是尺度：專案從淡水到高雄港，全部框進來會縮到整個台灣，
+// 每條路線只剩幾個像素。所以拉遠時改用「一個專案一顆氣泡」，
+// 放大到看得清街道再換成實際路線。
+const OVERVIEW_ZOOM = 12          // 這個層級（含）以上才畫真正的路線，以下顯示氣泡
+let _ovLayers=[]                  // 總覽自己的圖層，跟單一專案的 _pjLayers 分開管理
+let _ovGroups=null                // [{pid, name, color, tasks:[], bounds:[], center:[]}]
+let _ovZoomBound=false
+let _ovHoverPid=null
+
+function clearAllRoutesOverview(){
+  if(!map) return
+  _ovLayers.forEach(l=>{ try{ map.removeLayer(l) }catch(e){} })
+  _ovLayers=[]
+}
+// 專案在清單上的顏色＝地圖上的顏色，兩邊要對得起來
+function ovColorOf(idx){ return PJ_MAP_COLORS[idx%PJ_MAP_COLORS.length] }
+
+// 依「目前看得到的路線」重算分組（已套用工程師篩選與搜尋）
+function buildOverviewGroups(groups, order){
+  const out=[]
+  order.forEach((pid,gi)=>{
+    const tasks=(groups[pid]||[]).filter(t=>((t.cfg&&t.cfg.nd)||[]).length>=2)
+    if(!tasks.length) return
+    const proj=savedProjects.find(p=>p.id===pid)
+    const bounds=[]
+    tasks.forEach(t=>{ _pjPolyline(t.cfg.nd, t.cfg.sg).forEach(pt=>bounds.push(pt)) })
+    if(!bounds.length) return
+    let la=0, lo=0
+    bounds.forEach(b=>{ la+=b[0]; lo+=b[1] })
+    out.push({ pid, name:(proj&&proj.name)||'未分類路線', color:ovColorOf(gi),
+               tasks, bounds, center:[la/bounds.length, lo/bounds.length] })
+  })
+  return out
+}
+
+function renderAllRoutesOverview(groups, order){
+  clearProjectRoutesOverview()
+  clearAllRoutesOverview()
+  if(!leafletReady() || !initMainMap()) return
+  _ovGroups = buildOverviewGroups(groups, order)
+  if(!_ovGroups.length) return
+
+  // 第一次進來把視野框到全部路線；之後使用者自己縮放就不再強制拉回，
+  // 否則每次側欄重繪（例如切篩選）都會把畫面彈回去，很煩。
+  // 側欄篩選／搜尋一變，畫在地圖上的路線就跟著變，視野也重新框到剩下的那些。
+  // 用「哪些專案、各幾條」當簽章：只是重繪（例如展開別的東西）不會亂動使用者調好的視野，
+  // 但篩選真的變了就重新對焦，否則篩到高雄港卻還停在台北，等於看不到東西。
+  const sig=_ovGroups.map(g=>g.pid+':'+g.tasks.length).join('|')
+  const all=[]
+  _ovGroups.forEach(g=>g.bounds.forEach(b=>all.push(b)))
+  if(sig!==_ovSig && all.length){ map.fitBounds(all,{padding:[40,40]}); _ovSig=sig }
+
+  if(!_ovZoomBound){
+    map.on('zoomend', ()=>{ if(_ovGroups && !_inEditView && !_openProjectId) drawOverviewLayer() })
+    _ovZoomBound=true
+  }
+  drawOverviewLayer()
+}
+let _ovSig=''      // 上一次畫的是哪一組專案（篩選變了才重新對焦視野）
+
+// 依目前縮放層級決定畫氣泡還是畫路線
+function drawOverviewLayer(){
+  clearAllRoutesOverview()
+  if(!_ovGroups || !map) return
+  const z=map.getZoom()
+  if(z < OVERVIEW_ZOOM) drawOverviewBubbles()
+  else drawOverviewRoutes()
+}
+
+function drawOverviewBubbles(){
+  _ovGroups.forEach(g=>{
+    const n=g.tasks.length
+    const size=Math.min(46, 26+n*2)
+    const mk=L.marker(g.center,{icon:L.divIcon({
+      html:`<div style="width:${size}px;height:${size}px;background:${g.color};border:3px solid #fff;`
+        +`border-radius:50%;display:flex;align-items:center;justify-content:center;`
+        +`font-size:${n>9?13:14}px;font-weight:800;color:#fff;cursor:pointer;`
+        +`box-shadow:0 3px 10px rgba(0,0,0,.35)">${n}</div>`,
+      className:'', iconSize:[size,size], iconAnchor:[size/2,size/2]
+    })}).addTo(map)
+    mk.bindTooltip(`${g.name}（${n} 條路線）`)
+    // 點氣泡＝展開那個專案：飛過去並在側欄打開它
+    mk.on('click',()=>{ _ovSig=''; toggleProjectGroup(g.pid) })
+    _ovLayers.push(mk)
+  })
+}
+
+function drawOverviewRoutes(){
+  _ovGroups.forEach(g=>{
+    const hot = !_ovHoverPid || _ovHoverPid===g.pid    // 沒有滑到任何專案時全部同樣亮度
+    g.tasks.forEach(t=>{
+      const lls=_pjPolyline(t.cfg.nd, t.cfg.sg)
+      if(lls.length<2) return
+      const poly=L.polyline(lls,{
+        color:g.color,
+        weight: hot?5:3,
+        opacity: hot?.85:.2,
+        interactive:true
+      }).addTo(map)
+      poly.bindTooltip(`${g.name}｜${t.cfg.rn||'未命名路線'}`,{sticky:true})
+      poly.on('click',()=>loadTask(t.id))
+      _ovLayers.push(poly)
+    })
+  })
+}
+
+// 滑過側欄的專案標題就把那個專案亮起來，其他壓淡
+function ovHover(pid){
+  if(_ovHoverPid===pid) return
+  _ovHoverPid=pid
+  if(_ovGroups && map && !_inEditView && !_openProjectId && map.getZoom()>=OVERVIEW_ZOOM) drawOverviewLayer()
+}
+
 function renderProjectRoutesMap(routes){
   clearProjectRoutesOverview()
   if(!leafletReady() || !initMainMap()) return
@@ -4073,7 +4196,8 @@ function renderProjects(filter='') {
       </div>`
     }).join('') || `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12.5px">這個專案還沒有路線<br>按上面「＋ 新增路線」建立，或用其他路線卡片的「⋯」更多選單搬過來</div>`
     return`<div class="proj-group${isOpen?' open':''}">
-      <div class="proj-group-hd" onclick="toggleProjectGroup('${pid}')">
+      <div class="proj-group-hd" onclick="toggleProjectGroup('${pid}')"
+           onmouseenter="ovHover('${pid}')" onmouseleave="ovHover(null)">
         <span class="proj-group-name">📁 ${projName}${projPm?`<span class="proj-group-pm">👤 ${projPm}</span>`:''}</span>
         <button class="proj-group-rename" title="重新命名" onclick="event.stopPropagation();renameProject('${pid}')">✏️</button>
         <span class="proj-group-count">${routes.length} 條路線</span>
@@ -4093,8 +4217,14 @@ function renderProjects(filter='') {
   if(!_inEditView){
     const openPid = filter ? order[0] : _openProjectId
     const openRoutes = openPid ? (groups[openPid]||[]) : []
-    if(openRoutes.length) renderProjectRoutesMap(openRoutes)
-    else clearProjectRoutesOverview()
+    if(openRoutes.length){
+      clearAllRoutesOverview()
+      _ovGroups=null; _ovSig=''; _ovHoverPid=null
+      renderProjectRoutesMap(openRoutes)
+    }else{
+      // 沒有展開任何專案 → 顯示所有專案的路線總覽
+      renderAllRoutesOverview(groups, order)
+    }
   }
 }
 
