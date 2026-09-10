@@ -4422,9 +4422,19 @@ function updateNavBanner(lat,lng,nextNode,dist){
   // 還是單行道繞到隔壁巷子，它都是對的——PM 只畫去程也不會報錯方向。
   // 車速太慢時 _navBearing 會退化成指南針（車內手機擺放角度會影響），不能信，
   // 這時才退回用畫的線；再不行才用節點直線。
+  // ⚠️ 剛過完上一個路口的那幾秒，車頭還停在「上一段」的方向——它還沒轉進來。
+  // 拿那個瞬間的實測方向當基準去算下一個路口，會少算掉剛剛轉的那個角度：
+  //   往東 → 在路口左轉往北 → 下一個路口要右轉往東
+  //   若基準誤用「還在往東」，90°−90°=0，就會播成「直行」。（現場回報的正是這個）
+  // 所以實測方向只在「跟這一段折線的走向大致一致」時才採用；差太多代表車頭正在轉，
+  // 這時改用折線本身的走向。PM 只畫去程、現場走對面車道那種情況差角不大，仍然採用實測值。
+  const geoIn = _bearingIntoEnd(inLine, NAV_GEOM_M)
+  const _diff = (a,b)=>Math.abs(((a-b+540)%360)-180)
+  const liveOK = _lastSpeed>=NAV_SPEED_MS && _navBearing!=null
+                 && (geoIn==null || _diff(_navBearing, geoIn)<=60)
   const inBearing =
-      (_lastSpeed>=NAV_SPEED_MS && _navBearing!=null) ? _navBearing
-    : (_bearingIntoEnd(inLine, NAV_GEOM_M)
+      liveOK ? _navBearing
+    : (geoIn
        ?? (prevNode ? calcBearing(prevNode.lat,prevNode.lng,nextNode.lat,nextNode.lng)
                     : calcBearing(lat,lng,nextNode.lat,nextNode.lng)))
 
@@ -4588,7 +4598,8 @@ function checkNodeProximity(lat,lng){
     if(!nodeAutoLock){
       nodeAutoLock=true
       setTimeout(()=>{nodeAutoLock=false},3000)  // always reset, even if recordNode throws
-      playApproachBeep()  // single beep at moment of crossing
+      // 這裡原本會先響一聲，但緊接著 recordNode() 就會唸「通過節點」，
+      // 兩個聲音疊在同一瞬間反而互相搶。統一交給 recordNode 的語音。
       try{ recordNode(true) }catch(e){ console.error('recordNode err',e) }
     }
   }
@@ -4597,42 +4608,6 @@ function manualRecordNode(){
   if(currentNodeIdx>=getNodeNames().length) return
   recordNode(false)
 }
-// ── Delay button sounds ─────────────────────────────────────────
-// async so we can await resume() — on iOS resume() is a Promise and must settle
-// before scheduling oscillators, otherwise the context is still suspended → silent
-async function playDelayBeep(isStart){
-  try{
-    if(!audioCtx||audioCtx.state==='closed'){
-      // We're inside a user gesture (button tap) — safe to create a fresh context
-      try{
-        audioCtx=new(window.AudioContext||window.webkitAudioContext)()
-        startAudioKeepAlive()
-      }catch(e){ return }
-    }
-    if(audioCtx.state==='suspended') await audioCtx.resume()
-    if(audioCtx.state!=='running') return   // give up if still not running
-    const ctx=audioCtx
-    const play=(freq,startT,dur,vol=0.45,type='square')=>{
-      const o=ctx.createOscillator(),g=ctx.createGain()
-      o.connect(g);g.connect(ctx.destination)
-      o.type=type;o.frequency.setValueAtTime(freq,startT)
-      g.gain.setValueAtTime(vol,startT)
-      g.gain.exponentialRampToValueAtTime(0.001,startT+dur)
-      o.start(startT);o.stop(startT+dur+0.02)
-    }
-    const t=ctx.currentTime
-    if(isStart){
-      // 「搭！」— low thunk：按下開始（比節點低沉）
-      play(440,t,0.15,0.5,'square')
-      play(280,t+0.12,0.18,0.3,'sine')
-    } else {
-      // 「啪！」— high pop：結束取消（比節點更短促）
-      play(660,t,0.12,0.5,'square')
-      play(440,t+0.10,0.15,0.3,'sine')
-    }
-  }catch(e){}
-}
-
 // 等待 AudioContext 真的醒過來，最多等 1 秒。
 // iOS 在語音合成播報期間常把 Web Audio 的工作階段搶走，這時 resume() 不會立刻生效；
 // 若不等就排程，聲音會被凍在時間軸上，等工作階段恢復才一次爆出來——
@@ -4649,49 +4624,6 @@ async function waitAudioReady(maxMs){
   }
   return audioCtx.state==='running'
 }
-async function playApproachBeep(){
-  try{
-    if(!(await waitAudioReady(600))) return
-    const ctx=audioCtx, t=ctx.currentTime
-    // Soft rising two-tone: gentle alert that node is coming up
-    const play=(freq,startT,dur,vol)=>{
-      const o=ctx.createOscillator(),g=ctx.createGain()
-      o.connect(g);g.connect(ctx.destination)
-      o.type='sine';o.frequency.setValueAtTime(freq,startT)
-      g.gain.setValueAtTime(vol||0.3,startT)
-      g.gain.exponentialRampToValueAtTime(0.001,startT+dur)
-      o.start(startT);o.stop(startT+dur)
-    }
-    play(660,t,0.1,0.25);play(780,t+0.12,0.15,0.2)
-  }catch(e){}
-}
-
-// 中間節點的提示音（兩聲）。第一個與最後一個節點改用語音，不走這裡。
-async function playNodeBeep(isFinal){
-  try{
-    // Reuse the unlocked AudioContext created on user gesture in startSurvey()
-    // Creating a new one here (inside GPS callback) would be suspended on iOS
-    // 跟 playDelayBeep() 一樣要 await；沒等就排程會被凍住、稍後才一次播出。
-    // 節點提示音比較重要，多等一點（最多 1.2 秒）。
-    if(!(await waitAudioReady(1200))) return
-    const ctx=audioCtx
-    const play=(freq,startT,dur)=>{
-      const o=ctx.createOscillator(),g=ctx.createGain()
-      o.connect(g);g.connect(ctx.destination)
-      o.type='sine';o.frequency.setValueAtTime(freq,startT)
-      g.gain.setValueAtTime(0.55,startT)
-      g.gain.exponentialRampToValueAtTime(0.001,startT+dur)
-      o.start(startT);o.stop(startT+dur)
-    }
-    const t=ctx.currentTime
-    if(isFinal){
-      play(660,t,0.12);play(880,t+0.13,0.12);play(1100,t+0.26,0.2)
-    } else {
-      play(880,t,0.12);play(1100,t+0.15,0.18)
-    }
-  }catch(e){}
-}
-
 function recordNode(auto){
   const names=getNodeNames()
   if(currentNodeIdx>=names.length) return
@@ -4723,9 +4655,12 @@ function recordNode(auto){
   const isFinal=currentNodeIdx>=names.length
   // 第一個與最後一個節點不響提示音，直接用語音取代；
   // 中間的節點維持原本的提示音。
+  // 全部走語音，不再用 AudioContext 的提示音。
+  // 兩套播放通道在 iOS 上會搶音訊工作階段：語音一開始播，同時排的提示音就被吃掉，
+  // 現場聽到的是「有時有嗶聲、有時沒有」。改成同一個佇列後就不會互相蓋掉。
   if(justRecorded===1)      speakNav('調查開始',null,{high:true})
   else if(isFinal)          speakNav('調查結束',null,{high:true})
-  else                      playNodeBeep(false)
+  else                      speakNav('通過節點',null,{high:true})
 
   // ── Last node: stop the clock ──
   if(isFinal){
@@ -5215,7 +5150,7 @@ function toggleDelay(d,group,opts){
     delayLog.push({cause:d.cause,group,label:d.label,icon:d.icon,startedAt:activeDelay.startedAt,endedAt:end,durationS:dur,pos:activeDelay.startPos})
     $(`dbtn-${d.cause}`).classList.remove('active')
     $(`dtime-${d.cause}`).textContent='';activeDelay=null
-    playDelayBeep(false)
+    speakNav('延滯結束',null,{high:true})
     if(navigator.vibrate) navigator.vibrate(60)
     // ── 結束提醒：藍框閃示已結束秒數，2 秒後消失 ──
     // 面板可能還留著（語音追問未結束），把計時顯示凍在實際記錄到的秒數
@@ -5268,7 +5203,8 @@ function toggleDelay(d,group,opts){
     $(`dbtn-${d.cause}`).classList.add('active')
     clearTimeout(_delayIndTimer)
     _setDelayInd(d.icon,d.label,'0:00','#fca5a5')
-    playDelayBeep(true)
+    // 開始延滯不另外唸——toggleDelay 緊接著就會唸出原因（例如「紅燈」），
+    // 那句本身就是最好的確認，多一句「延滯開始」只是拖慢。
     if(navigator.vibrate) navigator.vibrate(120)
     // 停止面板開著時不收——車子還停著，駕駛隨時可能改選原因。
     // ★ 手動點延滯按鈕（沒有經過自動偵測停止）以前會直接把面板收回去，
@@ -7401,7 +7337,8 @@ function _renderPrep(){
     +'<button class="pv-link" onclick="switchSurveyor()">我不是'+gn+'</button>'
 }
 // 播一聲雙音提示（跟裝置檢測用的是同一種聲音）。
-// 沒有現成的全域 beep()：導航那顆 playApproachBeep 是「接近節點」專用的。
+// 調查過程中的提示一律走語音，只有這裡的設備確認需要真正的「聲音」——
+// 要確認的就是喇叭出不出得了聲，用語音測不到（語音被靜音時一樣沒聲音，但成因不同）。
 function pvBeep(){
   try{
     const ctx=new(window.AudioContext||window.webkitAudioContext)()
