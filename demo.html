@@ -1384,6 +1384,9 @@ let _lastMovedAt=null
 // 這一輪詢問是掛在哪一次「開始停下」上。用它判斷是不是同一次停等，
 // 是的話詢問次數要接續數下去，不能又從第 1 次開始。
 let _askStopKey=null
+// 追問還沒答完、車子就先開走了：這是那一刻的時間戳。
+// 之後答案進來時，延滯要在這個時間點結束，不是在「答完」的時間點。
+let _resumedDuringClarifyAt=null
 
 // Nodes
 let nodeTimestamps=[], currentNodeIdx=0
@@ -3682,8 +3685,24 @@ function triggerStopDetection(){
 // 停止條件只有三個：駕駛給了原因、車子重新開動、問滿 STOP_ASK_MAX 次。
 function askStopCause(){
   if(!_stopActive || activeDelay) return
+  // 追問進行中（駕駛已經答了原因，系統正在問路口還是路段）就不要再問一次
+  // 「請說出車輛停止原因」——那會蓋掉追問、駕駛也不知道該回哪一題。
+  // 這裡只是跳過這一輪，計時器照排，追問結束後若仍然沒有原因才會再問。
+  if(_clarify){
+    clearTimeout(_askTimer)
+    _askTimer=setTimeout(()=>{
+      _askTimer=null
+      if(_stopActive && !activeDelay) askStopCause()
+    }, STOP_ASK_GAP_MS)
+    return
+  }
   _askCount++
   if(voicePickEnabled){
+    // ⚠️ 先把上一輪辨識收乾淨再開口。
+    // 不收的話：舊的辨識還開著（麥克風圖示還亮），但問句一播就把音訊
+    // session 從錄音切成播放，那一輪其實已經聾了——駕駛看到圖示以為可以講，
+    // 講了卻沒反應。收乾淨後由 listenAfterSpeech 在問句唸完重新開麥。
+    stopCauseListening()
     speakNav('請說出車輛停止原因', ()=>{ listenAfterSpeech(()=>_stopActive && !activeDelay) }, {high:true})
   }else{
     speakNav('請選擇停止原因', null, {high:true})
@@ -3833,6 +3852,9 @@ function svyDismissStop(byResume){
   if(byResume && _clarify){
     if(!_stopDeferTimer){
       vlog('▸ 車輛重新行駛，但追問進行中 — 延後收面板')
+      // 記下「車子真正開走」的時刻。追問可能還要好幾秒才有答案，
+      // 但這段停等在車子開走的那一刻就結束了，秒數不能算到答完為止。
+      if(_resumedDuringClarifyAt===null) _resumedDuringClarifyAt=Date.now()-RESUME_CONFIRM_MS
       _stopDeferTimer=setTimeout(()=>{
         _stopDeferTimer=null
         if(_stopActive) svyDismissStop(true)
@@ -3880,6 +3902,7 @@ function svyDismissStop(byResume){
   _stopEvent=null
   _stopResumeSince=null
   if(byResume){ _askStopKey=null; _askCount=0 }   // 真的重新開動才把詢問次數歸零
+  _resumedDuringClarifyAt=null
   svyShowPanel('idle')
   svySheetCollapse()
   showToast(byResume
@@ -4378,6 +4401,15 @@ function applyVoiceCause(c, sayAs){
   const name=sayAs||d.label
   svyStopPickDelay(d, c.group, true, name)
   showToast(`🎤 ${d.icon} ${name}`, true)
+  // 追問還沒答完、車子就先開走了：這段延滯在車子開走的那一刻就結束，
+  // 不是在「答完」的那一刻。直接把它結算掉並收面板，秒數才會停在正確的地方。
+  if(_resumedDuringClarifyAt!=null && activeDelay){
+    const over=Math.max(0,(Date.now()-_resumedDuringClarifyAt)/1000)
+    toggleDelay(d, c.group, {deductSeconds:over, silent:true, keepPanel:true})
+    _resumedDuringClarifyAt=null
+    clearTimeout(_stopDeferTimer); _stopDeferTimer=null
+    svyDismissStop(true)
+  }
 }
 // 提前提示的距離門檻：速度愈快，愈早提醒，給使用者足夠反應時間（沿用節點感應線同一套速度分級邏輯）
 function getNavFarDist(){
@@ -5360,7 +5392,7 @@ function resetSurveyRuntime(){
   endClarify(); stopCauseListening()
   clearTimeout(_askTimer); _askTimer=null; _askCount=0; _pendingStops=[]
   _stopPanelOpen=false; _stopActive=false; _stopEvent=null
-  _lastMovedAt=null; _askStopKey=null
+  _lastMovedAt=null; _askStopKey=null; _resumedDuringClarifyAt=null
   _stopSince=null; _stopResumeSince=null; _voicePick=null
   _resumeAboveSpeedSince=null; elapsedSec=0
   // 畫面：延滯按鈕的秒數、選中狀態、藍框提示、停止面板一律復原
