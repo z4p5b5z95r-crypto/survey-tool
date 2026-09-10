@@ -3880,7 +3880,7 @@ function renderAllRoutesOverview(groups, order){
   const sig=_ovGroups.map(g=>g.pid+':'+g.tasks.length).join('|')
   const all=[]
   _ovGroups.forEach(g=>g.bounds.forEach(b=>all.push(b)))
-  if(sig!==_ovSig && all.length){ map.fitBounds(all,{padding:[40,40]}); _ovSig=sig }
+  if(sig!==_ovSig && all.length){ _ovSig=sig; ovFitTo(all) }
 
   if(!_ovZoomBound){
     map.on('zoomend', ()=>{ if(_ovGroups && !_inEditView && !_openProjectId) drawOverviewLayer() })
@@ -3889,6 +3889,22 @@ function renderAllRoutesOverview(groups, order){
   drawOverviewLayer()
 }
 let _ovSig=''      // 上一次畫的是哪一組專案（篩選變了才重新對焦視野）
+
+// 對焦到這些座標。
+// ⚠️ 一定要先 invalidateSize() 再 fitBounds()。
+// 登入後 renderProjects() 跑得比地圖容器拿到最終寬高還早，
+// Leaflet 會拿「還沒撐開」的尺寸去算縮放，算出來的層級偏小——
+// 等版面穩定、容器變大之後，同一個縮放層級就變成看到一大片海。
+// 所以量一次尺寸再框，並在版面穩定後（動畫／側欄寬度）再框一次。
+function ovFitTo(pts){
+  if(!map||!pts||!pts.length) return
+  const doFit=()=>{
+    try{ map.invalidateSize({animate:false}) }catch(e){}
+    try{ map.fitBounds(pts,{padding:[28,28]}) }catch(e){}
+  }
+  doFit()
+  setTimeout(doFit, 260)
+}
 
 // 依目前縮放層級決定畫氣泡還是畫路線
 function drawOverviewLayer(){
@@ -3902,12 +3918,12 @@ function drawOverviewLayer(){
 function drawOverviewBubbles(){
   _ovGroups.forEach(g=>{
     const n=g.tasks.length
-    const size=Math.min(46, 26+n*2)
+    // 不放數字：拉遠時字太小反而變成雜訊，路線數在 tooltip 與左邊清單都看得到。
+    // 改用大小表示規模（條數多的圈稍大），一眼就分得出重心在哪。
+    const size=Math.min(30, 16+n*1.4)
     const mk=L.marker(g.center,{icon:L.divIcon({
       html:`<div style="width:${size}px;height:${size}px;background:${g.color};border:3px solid #fff;`
-        +`border-radius:50%;display:flex;align-items:center;justify-content:center;`
-        +`font-size:${n>9?13:14}px;font-weight:800;color:#fff;cursor:pointer;`
-        +`box-shadow:0 3px 10px rgba(0,0,0,.35)">${n}</div>`,
+        +`border-radius:50%;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.35)"></div>`,
       className:'', iconSize:[size,size], iconAnchor:[size/2,size/2]
     })}).addTo(map)
     mk.bindTooltip(`${g.name}（${n} 條路線）`)
@@ -3969,7 +3985,8 @@ function renderProjectRoutesMap(routes){
     mk.bindTooltip(`${i+1}. ${t.cfg.rn||'未命名路線'}`)
     _pjLayers.push(mk)
   })
-  if(bounds.length) map.fitBounds(bounds,{padding:[40,40]})
+  // 同樣走 ovFitTo：登入後第一次進來時容器可能還沒撐開，直接 fitBounds 會算出偏小的縮放
+  if(bounds.length) ovFitTo(bounds)
 }
 // ════════════════════════════════════════════════════════
 //  路線拖曳排序（專案內）
