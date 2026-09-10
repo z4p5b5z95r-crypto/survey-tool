@@ -1733,7 +1733,9 @@ function renderDelayTable(){
   const pctTravel = (t,key) => t?.travelS>0 ? ((t[key]/t.travelS)*100).toFixed(1) : null
   const dBase = t => (t?.roadTotalS||0)+(t?.intTotalS||0)
   const dPct  = (t,v) => dBase(t)>0 ? ((v/dBase(t))*100).toFixed(1) : null
-  const sec = (label,pick) => r(label+' (秒)', trips.map(pick))
+  // 秒數一律整數。速率那幾列用的是 spd()，不走這裡，不會被影響。
+  const S = v => (v==null||v===''||isNaN(v)) ? v : Math.round(v)
+  const sec = (label,pick) => r(label+' (秒)', trips.map(t=>S(pick(t))))
   // 整列橫跨＝1（指標欄）＋ 每個時段兩欄（去程／回程）。
   // 以前寫死 5，只有兩個時段時剛好對；加到三個時段以後，黃色分段列與淡灰間隔列
   // 都只蓋到前四欄，右邊新增的時段就露白。
@@ -1743,10 +1745,10 @@ function renderDelayTable(){
   // 這樣「路段延滯」與「交叉口延滯」兩群一眼就分得開。（只影響網頁，PDF 不動）
   const det = (label, vals) =>
     `<tr class="dt-detail"><td>${label}</td>${vals.map(v=>`<td>${fmt(v)}</td>`).join('')}</tr>`
-  const detSec = (label,pick) => det(label+' (秒)', trips.map(pick))
+  const detSec = (label,pick) => det(label+' (秒)', trips.map(t=>S(pick(t))))
   const sub = (label, vals) =>
     `<tr class="dt-sub"><td>${label}</td>${vals.map(v=>`<td>${fmt(v)}</td>`).join('')}</tr>`
-  const subSec = (label,pick) => sub(label+' (秒)', trips.map(pick))
+  const subSec = (label,pick) => sub(label+' (秒)', trips.map(t=>S(pick(t))))
   const gap = () => `<tr class="dt-gap"><td colspan="${SPAN}"></td></tr>`
 
   html += r('平均總旅行速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.travelS)))
@@ -1757,7 +1759,7 @@ function renderDelayTable(){
   html += sec('行駛時間',   t=>t?.runS)
   html += sec('路段延滯',   t=>t?.roadTotalS)
   html += sec('交叉口延滯', t=>t?.intTotalS)
-  html += `<tr class="total-row"><td><b>合計旅行時間 (秒)</b></td>${trips.map(t=>`<td class="highlight">${fmt(t?.travelS)}</td>`).join('')}</tr>`
+  html += `<tr class="total-row"><td><b>合計旅行時間 (秒)</b></td>${trips.map(t=>`<td class="highlight">${fmt(S(t?.travelS))}</td>`).join('')}</tr>`
 
   // ── ② 延滯明細的秒數 ──
   html += grp('總延滯時間（秒）')
@@ -1767,7 +1769,7 @@ function renderDelayTable(){
   INT_DELAYS.forEach(d=>{ html += detSec(d.label, t=>t?.intDelays?.[d.cause]||0) })
   html += subSec('交叉口延滯小計', t=>t?.intTotalS)
   html += gap()
-  html += `<tr class="total-row"><td><b>延滯合計 (秒)</b></td>${trips.map(t=>`<td class="highlight">${fmt(dBase(t)||null)}</td>`).join('')}</tr>`
+  html += `<tr class="total-row"><td><b>延滯合計 (秒)</b></td>${trips.map(t=>`<td class="highlight">${fmt(S(dBase(t))||null)}</td>`).join('')}</tr>`
 
   // ── ③ 百分比統計 ──
   html += grp('總旅行時間百分比（分母：旅行時間）')
@@ -2011,9 +2013,10 @@ function renderComboRecords(combo){
       const segIdx = isReturn ? segs.length-1-i : i
       const st2=_fixedSegTimes[segIdx]
       const sd=segD[i]
-      const segDelayTotal = Object.values(sd).reduce((a,v)=>a+(v||0),0)
-      const calcRunS = st2?.travelS != null ? Math.max(0, st2.travelS - segDelayTotal) : null
-      const dv = (v) => v>0 ? `<b style="color:#1d4ed8">${v}</b>` : ''
+      // 秒數一律整數：舊資料可能存進過小數（例如 10.187 秒），顯示端擋一層
+      const segDelayTotal = Math.round(Object.values(sd).reduce((a,v)=>a+(v||0),0))
+      const calcRunS = st2?.travelS != null ? Math.max(0, Math.round(st2.travelS - segDelayTotal)) : null
+      const dv = (v) => v>0 ? `<b style="color:#1d4ed8">${Math.round(v)}</b>` : ''
       const tCells=isEdit
         ?`<td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="23" data-ie="node-h-${i}" value="${fH==='—'?0:+fH}"></td><td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="node-m-${i}" value="${fM==='—'?0:+fM}"></td><td class="pf-time"><input class="pf-time-inp" type="number" min="0" max="59" data-ie="node-s-${i}" value="${fS==='—'?0:+fS}"></td>`
         :`<td class="pf-time">${fH}</td><td class="pf-time">${fM}</td><td class="pf-time">${fS}</td>`
@@ -2353,7 +2356,7 @@ function initTripMap(mapId, trip, combo){
     .bindPopup(`<div style="font-size:12px;min-width:160px;line-height:1.8">
       <div style="font-weight:700;margin-bottom:4px">${he(icon)} ${he(d.label||'')}</div>
       <div style="color:#475569">⏰ 按下時間：${timeStr}</div>
-      <div style="color:#475569">⌛ 延滯時長：${d.durationS||0} 秒</div>
+      <div style="color:#475569">⌛ 延滯時長：${Math.round(d.durationS||0)} 秒</div>
     </div>`,{maxWidth:220})
     .addTo(m)
   })
@@ -3347,8 +3350,8 @@ ${rows}</table>${segSlashes(grp)}</div>`
       // 免得假節點把一段時間拆成兩半、算出來的速率整個失真。
       const t = times[segIdx]||{}
       const sd = segD[i]
-      const segDelayTotal = Object.values(sd).reduce((a,v)=>a+(v||0),0)
-      const calcRunS = t.travelS != null ? Math.max(0, t.travelS - segDelayTotal) : null
+      const segDelayTotal = Math.round(Object.values(sd).reduce((a,v)=>a+(v||0),0))
+      const calcRunS = t.travelS != null ? Math.max(0, Math.round(t.travelS - segDelayTotal)) : null
       const _d = v => (v&&v!==0)?v:''
       return `<tr>
         <td class="ft-la">${segDisp(_flipSeg(seg.name))}</td>
@@ -3744,8 +3747,9 @@ function _recalcTrip(trip){
   trip.intDelays={}; trip.roadDelays={}
   IC.forEach(c=>trip.intDelays[c]=0); RC.forEach(c=>trip.roadDelays[c]=0)
   ;(trip.delayLog||[]).forEach(dl=>{
-    if(IC.includes(dl.cause))trip.intDelays[dl.cause]=(trip.intDelays[dl.cause]||0)+(dl.durationS||0)
-    else if(RC.includes(dl.cause))trip.roadDelays[dl.cause]=(trip.roadDelays[dl.cause]||0)+(dl.durationS||0)
+    // 舊資料的 durationS 可能是小數，這裡先取整再加總，後面所有統計才不會冒出小數
+    if(IC.includes(dl.cause))trip.intDelays[dl.cause]=(trip.intDelays[dl.cause]||0)+Math.round(dl.durationS||0)
+    else if(RC.includes(dl.cause))trip.roadDelays[dl.cause]=(trip.roadDelays[dl.cause]||0)+Math.round(dl.durationS||0)
   })
   trip.intTotalS=IC.reduce((s,c)=>s+(trip.intDelays[c]||0),0)
   trip.roadTotalS=RC.reduce((s,c)=>s+(trip.roadDelays[c]||0),0)

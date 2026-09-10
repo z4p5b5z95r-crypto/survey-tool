@@ -5289,7 +5289,11 @@ function toggleDelay(d,group,opts){
       if(t>activeDelay.startedAt && t<end) end=t
     }
     const rawDur=Math.round((end-activeDelay.startedAt)/1000)
-    const dur=Math.max(0,rawDur-(opts?.deductSeconds||0))
+    // ⚠️ 秒數一律取整數。deductSeconds 是由毫秒算出來的浮點數
+    //（例如「車子開走到選完原因」的 2.187 秒），直接相減會留下
+    // 10.187 秒、甚至 18.813000000000002 這種數字，一路帶進報告與匯出。
+    // 在資料寫入的這一刻就四捨五入，後面所有加總、百分比、上傳都乾淨。
+    const dur=Math.max(0,Math.round(rawDur-(opts?.deductSeconds||0)))
     if(group==='road')cur.roadDelays[d.cause]=(cur.roadDelays[d.cause]||0)+dur
     else cur.intDelays[d.cause]=(cur.intDelays[d.cause]||0)+dur
     delayLog.push({cause:d.cause,group,label:d.label,icon:d.icon,startedAt:activeDelay.startedAt,endedAt:end,durationS:dur,pos:activeDelay.startPos})
@@ -6006,7 +6010,8 @@ function buildSegmentCards(trip,pt,dir){
   const dRows=(cols,src,suffix)=>{
     const hit=cols.filter(c=>(src[c]||0)>0)
     if(!hit.length) return ''
-    return `<div class="sd-rows">${hit.map(c=>row(LBL[c]||c,(src[c]||0)+' 秒'+(suffix?suffix(c):''))).join('')}</div>`
+    // 每一項延滯的秒數也取整數（舊資料可能帶小數）
+    return `<div class="sd-rows">${hit.map(c=>row(LBL[c]||c,Math.round(src[c]||0)+' 秒'+(suffix?suffix(c):''))).join('')}</div>`
   }
 
   const segD = segs.map((_,i)=>segDelaysForIdx(trip,i))
@@ -6018,10 +6023,12 @@ function buildSegmentCards(trip,pt,dir){
     const sd=segD[i], st_=segT[i]||{}
     const ts=trip.nodeTimestamps?.[i+1]
     const arr = ts ? tpHMS(new Date(ts)).join(':') : '—'
-    const segDelayTotal=Object.values(sd).reduce((a,b)=>a+(b||0),0)
-    const runS = st_.travelS!=null ? Math.max(0, st_.travelS-segDelayTotal) : null
-    const roadSub=SGS_ROAD_COLS.reduce((s,c)=>s+(sd[c]||0),0)
-    const intSub =SGS_INT_COLS.reduce((s,c)=>s+(sd[c]||0),0)
+    // 秒數一律取整數顯示。新資料在寫入時就已經取整，
+    // 但雲端可能還留著舊版寫進去的小數（10.187 秒那種），顯示端再擋一層。
+    const segDelayTotal=Math.round(Object.values(sd).reduce((a,b)=>a+(b||0),0))
+    const runS = st_.travelS!=null ? Math.max(0, Math.round(st_.travelS-segDelayTotal)) : null
+    const roadSub=Math.round(SGS_ROAD_COLS.reduce((s,c)=>s+(sd[c]||0),0))
+    const intSub =Math.round(SGS_INT_COLS.reduce((s,c)=>s+(sd[c]||0),0))
     return `<div class="sd-card">
       <div class="sd-hd"><span>${i+1}. ${he(segDisp((nodes[i]&&nodes[i+1])?`${nodes[i].exitName||nodes[i].name||''} ～ ${nodes[i+1].name||''}`:(seg.name||'')))}</span><span class="sd-hd-t">${arr}</span></div>
       <div class="sd-rows">
@@ -6083,7 +6090,7 @@ function buildOneOfficialForm(trip,pt,dir){
   const spdFn = (d,s) => (d>0&&s>0)?(d/s*3.6).toFixed(1):''
   // ⚠️ 小數 2 位，不是四捨五入到整數
   const pct   = (v,t) => t>0?(v/t*100).toFixed(2)+'%':'0.00%'
-  const dv    = v => v>0 ? `<b style="color:#1d4ed8">${v}</b>` : ''
+  const dv    = v => v>0 ? `<b style="color:#1d4ed8">${Math.round(v)}</b>` : ''
 
   const _st=trip.startTime?new Date(trip.startTime):null
   const _et=trip.endTime?new Date(trip.endTime):null
@@ -6107,8 +6114,8 @@ function buildOneOfficialForm(trip,pt,dir){
     const ts=trip.nodeTimestamps?.[i+1]
     const [fH,fM,fS]= ts ? tpHMS(new Date(ts)) : ['','','']
     // 該段行駛時間 = 該段旅行時間 − 實際落在這一段的延滯（與桌機同一套）
-    const segDelayTotal=Object.values(sd).reduce((a,v)=>a+(v||0),0)
-    const calcRunS = st_.travelS!=null ? Math.max(0, st_.travelS-segDelayTotal) : null
+    const segDelayTotal=Math.round(Object.values(sd).reduce((a,v)=>a+(v||0),0))
+    const calcRunS = st_.travelS!=null ? Math.max(0, Math.round(st_.travelS-segDelayTotal)) : null
     // 路段名稱由「行進方向的節點」直接組出來，去程回程都讀得順
     const nm = (nodes[i] && nodes[i+1])
       ? `${nodes[i].exitName||nodes[i].name||''} ～ ${nodes[i+1].name||''}`
@@ -6420,7 +6427,7 @@ function exportReport(){
   COMBO_KEYS.forEach(k=>{
     const t=allTrips[k]; if(!t) return
     delayData[k]=(t.delayLog||[]).filter(d=>d.pos).map(d=>({
-      lat:d.pos.lat, lng:d.pos.lng, icon:d.icon, label:d.label, dur:d.durationS
+      lat:d.pos.lat, lng:d.pos.lng, icon:d.icon, label:d.label, dur:Math.round(d.durationS||0)
     }))
   })
 
@@ -6785,7 +6792,7 @@ function downloadCsv(){
     const [pt,dir]=parseComboKey(k)
     const tripLabel=(PL[pt]||pt)+(DL[dir]||dir)
     t.delayLog.forEach(d=>{
-      rows.push(['',tripLabel,d.label||d.cause,d.durationS,d.pos?d.pos.lat:'',d.pos?d.pos.lng:''])
+      rows.push(['',tripLabel,d.label||d.cause,Math.round(d.durationS||0),d.pos?d.pos.lat:'',d.pos?d.pos.lng:''])
     })
   })
   const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n')
