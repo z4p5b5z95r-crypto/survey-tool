@@ -260,6 +260,17 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 /* 整張路線卡可點進編輯；左邊色帶對應地圖上的編號顏色 */
 .proj-group-body .pc{cursor:pointer;padding-left:10px;transition:background .12s}
 .proj-group-body .pc:hover{background:#f8fafc}
+/* 拖曳排序：只有把手能拖，卡片其他地方照舊是「點一下進編輯」 */
+.pc-drag{position:absolute;left:0;top:0;bottom:0;width:22px;display:flex;align-items:center;
+  justify-content:center;cursor:grab;color:#cbd5e1;font-size:13px;line-height:1;
+  border-radius:13px 0 0 13px;touch-action:none;user-select:none}
+.pc-drag:hover{color:#64748b;background:#f1f5f9}
+.pc-drag:active{cursor:grabbing}
+.proj-group-body .pc{position:relative}
+.proj-group-body .pc.has-drag{padding-left:26px}
+.pc.dragging{opacity:.45}
+.pc.drop-before{box-shadow:0 -3px 0 -1px #2563eb}
+.pc.drop-after{box-shadow:0 3px 0 -1px #2563eb}
 .pc-no{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;
   border-radius:50%;color:#fff;font-size:11px;font-weight:800;margin-right:7px;flex:none;
   vertical-align:1px}
@@ -3641,12 +3652,15 @@ async function syncFromCloud(opts) {
         // 記住雲端上真正的負責人。主管看得到別人的路線，存檔時要沿用原負責人，
         // 不能因為「現在是誰在編輯」就把 owner 改掉。
         if(loc.owner!==S(r.owner)){loc.owner=S(r.owner);changed++}
+        // 專案內的路線順序（PM 拖曳決定）。沒有值就留 null，排序時視為「還沒排過」排到後面
+        const so=(r.sortOrder===''||r.sortOrder==null)?null:+r.sortOrder
+        if(loc.sortOrder!==so){loc.sortOrder=so;changed++}
         if(loc.projectId!==localProjectId){loc.projectId=localProjectId;changed++}
         const newCfg=normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',pds:r.periods||null,nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})})
         if(JSON.stringify(loc.cfg)!==JSON.stringify(newCfg)){loc.cfg=newCfg;changed++}
         continue
       }
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,projectId:localProjectId,creator:me,owner:S(r.owner),cfg:normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',pds:r.periods||null,nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}),savedAt:S(r.createdAt).slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,projectId:localProjectId,creator:me,owner:S(r.owner),sortOrder:(r.sortOrder===''||r.sortOrder==null)?null:+r.sortOrder,cfg:normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',pds:r.periods||null,nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}),savedAt:S(r.createdAt).slice(0,10)||'雲端'})
       changed++
     }
     // 移除本機有 cloudId 但雲端「我的路線」已不存在的項目（刪除同步 + 清除誤匯入的他人路線）
@@ -3801,6 +3815,84 @@ function renderProjectRoutesMap(routes){
   })
   if(bounds.length) map.fitBounds(bounds,{padding:[40,40]})
 }
+// ════════════════════════════════════════════════════════
+//  路線拖曳排序（專案內）
+// ════════════════════════════════════════════════════════
+// 只有左側把手 draggable，卡片本身仍是「點一下進編輯」，不會互相打架。
+// 拖曳範圍限制在同一個專案內——跨專案是「搬移」，走「⋯」選單那條路，
+// 語意不同（會改 projectId），混在一起做很容易誤操作。
+let _dragTid=null, _dragPid=null
+function pcDragStart(e,tid,pid){
+  _dragTid=tid; _dragPid=pid
+  try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',tid) }catch(_){}
+  const card=e.target.closest('.pc')
+  if(card){ try{ e.dataTransfer.setDragImage(card,20,card.offsetHeight/2) }catch(_){} 
+    setTimeout(()=>card.classList.add('dragging'),0) }
+}
+function pcDragEnd(){
+  _dragTid=null; _dragPid=null
+  document.querySelectorAll('.pc.dragging,.pc.drop-before,.pc.drop-after')
+    .forEach(el=>el.classList.remove('dragging','drop-before','drop-after'))
+}
+function _pcDropSide(e,card){
+  const r=card.getBoundingClientRect()
+  return (e.clientY < r.top + r.height/2) ? 'before' : 'after'
+}
+function pcDragOver(e){
+  if(!_dragTid) return
+  const card=e.currentTarget
+  if(card.dataset.pid!==_dragPid) return          // 不同專案不接受
+  if(card.dataset.tid===_dragTid) return
+  e.preventDefault()
+  try{ e.dataTransfer.dropEffect='move' }catch(_){}
+  const side=_pcDropSide(e,card)
+  card.classList.toggle('drop-before',side==='before')
+  card.classList.toggle('drop-after', side==='after')
+}
+function pcDragLeave(e){
+  e.currentTarget.classList.remove('drop-before','drop-after')
+}
+function pcDrop(e){
+  const card=e.currentTarget
+  card.classList.remove('drop-before','drop-after')
+  if(!_dragTid || card.dataset.pid!==_dragPid || card.dataset.tid===_dragTid) return
+  e.preventDefault(); e.stopPropagation()
+  reorderRoute(_dragPid, _dragTid, card.dataset.tid, _pcDropSide(e,card))
+}
+// 把 dragged 移到 target 的前／後，然後重新編號整個專案
+function reorderRoute(pid, draggedId, targetId, side){
+  const me=getCurrentUser()||''
+  // 取這個專案目前畫面上的順序（跟 renderProjects 用同一套排序規則）
+  const inPj=savedTasks
+    .filter(t=>t.creator===me && (t.projectId||'_none')===pid)
+    .map((t,i)=>({t,i}))
+    .sort((a,b)=>{
+      const av=(a.t.sortOrder==null)?ROUTE_SORT_LAST:+a.t.sortOrder
+      const bv=(b.t.sortOrder==null)?ROUTE_SORT_LAST:+b.t.sortOrder
+      return (av-bv)||(a.i-b.i)
+    })
+    .map(x=>x.t)
+  const from=inPj.findIndex(t=>t.id===draggedId)
+  if(from<0) return
+  const moved=inPj.splice(from,1)[0]
+  let to=inPj.findIndex(t=>t.id===targetId)
+  if(to<0){ inPj.splice(from,0,moved); return }
+  if(side==='after') to++
+  inPj.splice(to,0,moved)
+  // 整個專案重新編號 0..n-1。用連續整數而不是插值，
+  // 才不會反覆拖曳之後把小數位耗光、或跟別人的排序打架。
+  inPj.forEach((t,i)=>{ t.sortOrder=i })
+  localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))
+  renderProjects(document.getElementById('project-search')?.value||'')
+  // 寫回雲端：整個專案一次送，只有已經上傳過的路線需要送
+  const items=inPj.filter(t=>t.cloudId).map(t=>({id:t.cloudId,sortOrder:t.sortOrder}))
+  if(!items.length || !(gsUrl&&getSessionToken())) return
+  updateCloudDot('uploading')
+  cloudPost({action:'updateRouteOrder',items})
+    .then(()=>{ updateCloudDot('ok') })
+    .catch(e=>{ updateCloudDot('err'); toast('⚠️ 順序已改，但同步失敗：'+((e&&e.message)||e)) })
+}
+
 // 這條路線實際的負責 PM。
 // 優先用路線自己的 owner，沒有就退回所屬專案的 owner（早期路線沒寫 owner，
 // 只有專案那層有），都沒有才用本機的 creator。
@@ -3822,6 +3914,18 @@ function renderProjects(filter='') {
     const pid=t.projectId||'_none'
     if(!groups[pid])groups[pid]=[]
     groups[pid].push(t)
+  })
+  // 專案內的路線照 PM 排的順序。還沒排過的（sortOrder 是 null）排到最後，
+  // 並維持它們原本的相對次序——這樣加了排序功能之後，沒排過的專案看起來跟以前一樣。
+  Object.keys(groups).forEach(pid=>{
+    groups[pid]=groups[pid]
+      .map((t,i)=>({t,i}))
+      .sort((a,b)=>{
+        const av=(a.t.sortOrder==null)?ROUTE_SORT_LAST:+a.t.sortOrder
+        const bv=(b.t.sortOrder==null)?ROUTE_SORT_LAST:+b.t.sortOrder
+        return (av-bv)||(a.i-b.i)
+      })
+      .map(x=>x.t)
   })
   // 專案排列順序：沒有搜尋時，PM 自己的所有專案都列出來（包含還沒放路線的空專案），最新建立的排最前面；
   // 搜尋時只顯示有符合路線的專案，避免一堆不相關的空專案洗版
@@ -3859,8 +3963,13 @@ function renderProjects(filter='') {
       if(pm&&pm!=='未知') metaParts.push(`<span>👤 ${pm}</span>`)
       const metaHtml=metaParts.map((s,i)=>i<metaParts.length-1?s+`<span class="pc-dot">·</span>`:s).join('')
       // 整張卡片可點：跟現場 App 的選路線清單一致，點下去就進編輯
-      return`<div class="pc${isEdit?' editing':''}" style="border-left:4px solid ${rc}"
+      return`<div class="pc has-drag${isEdit?' editing':''}" style="border-left:4px solid ${rc}"
+                  data-tid="${t.id}" data-pid="${pid}"
+                  ondragover="pcDragOver(event)" ondrop="pcDrop(event)" ondragleave="pcDragLeave(event)"
                   onclick="loadTask('${t.id}')">
+        <div class="pc-drag" title="拖曳調整順序" draggable="true"
+             onclick="event.stopPropagation()"
+             ondragstart="pcDragStart(event,'${t.id}','${pid}')" ondragend="pcDragEnd(event)">⠿</div>
         <div class="pc-top">
           <div class="pc-name"><span class="pc-no" style="background:${rc}">${ri+1}</span>${t.cfg.rn||'未命名路線'}</div>
           <div class="pc-chips">
@@ -4982,6 +5091,7 @@ let _calYM=null                                   // {y,m} 目前顯示的月份
 let _calFilt={ project:'', engineer:'' }
 let _calHost='admin-surveys-table'                // 渲染目標：後台分頁 or 工程師覆蓋層
 let _calMineOnly=false                            // 工程師端：只看自己建立的專案
+const ROUTE_SORT_LAST=1e9                         // 還沒排過的路線排到最後（跟後端 SORT_LAST 一致）
 let _calPrefetchTimer=null                        // 前後月份的背景預抓（延後發，不跟當月搶）
 let _calLoading=false                             // 資料還在路上（月曆先出來，格子之後補）
 let _calLoadSeq=0                                 // 併發保護：只有最後一次載入可以寫入畫面
