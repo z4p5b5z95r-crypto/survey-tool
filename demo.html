@@ -5180,6 +5180,8 @@ function toggleDelay(d,group,opts){
     // 整段時間要算給新的原因，不能拆成「錯的幾秒 + 對的幾秒」。
     const _sameStop = _stopPanelOpen && _switching
     const _keepStart = _sameStop && activeDelay ? activeDelay.startedAt : null
+    // 位置也要跟著「起算時刻」走：改選原因時沿用原本那一筆的位置
+    const _keepPos = _sameStop && activeDelay ? activeDelay.startPos : null
     const _oldCause = _sameStop && activeDelay ? {cause:activeDelay.cause, group:activeDelay.group} : null
     if(activeDelay){const p=[...ROAD_DELAYS,...INT_DELAYS].find(x=>x.cause===activeDelay.cause)
       if(p) toggleDelay(p,activeDelay.group,{keepPanel:_sameStop})}
@@ -5192,7 +5194,15 @@ function toggleDelay(d,group,opts){
       speakNav(opts?.sayAs || (_switching ? ('修改為'+d.label) : d.label), null, {high:true})
     }
     // ── Start recording this delay ──
-    const s=new Date(),sp=lastPos?{...lastPos}:null;let el=0
+    // ⚠️ 延滯的位置要記「車子停下來的那一點」，不是「調查員選好原因的那一點」。
+    // lastPos 是當下的位置：等語音問完、或調查員低頭找按鈕，車子往往已經開走一段，
+    // 地圖上的標記就會掉在下一個路段上（現場回報的正是這個）。
+    // 起算時刻本來就用 _stopEvent 回推了，位置也要一起。
+    const s=new Date()
+    const sp = _keepPos
+            || (_stopEvent && _stopEvent.pos ? {..._stopEvent.pos} : null)
+            || (lastPos ? {...lastPos} : null)
+    let el=0
     const tid=setInterval(()=>{
       el++
       const e=$(`dtime-${d.cause}`);if(e)e.textContent=fmtSec(el)
