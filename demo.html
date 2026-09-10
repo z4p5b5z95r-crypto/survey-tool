@@ -1384,9 +1384,10 @@ let _lastMovedAt=null
 // 這一輪詢問是掛在哪一次「開始停下」上。用它判斷是不是同一次停等，
 // 是的話詢問次數要接續數下去，不能又從第 1 次開始。
 let _askStopKey=null
-// 追問還沒答完、車子就先開走了：這是那一刻的時間戳。
-// 之後答案進來時，延滯要在這個時間點結束，不是在「答完」的時間點。
-let _resumedDuringClarifyAt=null
+// 「目前這一段連續行駛是從什麼時候開始的」。車子停著時是 null。
+// 停等的結束時刻一律以它為準：不管原因是幾秒後才選的、中間有沒有追問，
+// 延滯都在車子真正開始動的那一刻結束。
+let _movingSince=null
 
 // Nodes
 let nodeTimestamps=[], currentNodeIdx=0
@@ -3591,7 +3592,12 @@ function evalStopDetection(){
   // 速度資料太舊（超過 4 秒沒新定位）就不要拿來判斷，避免停在隧道裡誤判
   const speed = (Date.now()-_lastSpeedTs < 4000) ? _lastSpeedMs : null
   // 速度讀得到、而且高於蠕行門檻＝車子真的在動
-  if(speed!=null && speed>=STOP_TH_CRAWL) _lastMovedAt=Date.now()
+  if(speed!=null && speed>=STOP_TH_CRAWL){
+    _lastMovedAt=Date.now()
+    if(_movingSince===null) _movingSince=_lastMovedAt   // 這一段行駛的起點
+  }else if(speed!=null){
+    _movingSince=null                                   // 又停下來了，重新算
+  }
   if(speed!=null && speed<STOP_TH_CRAWL){
     _stopResumeSince=null
     if(_stopSince===null) _stopSince=Date.now()
@@ -3763,6 +3769,19 @@ function svyStopPickDelay(d, group, byVoice, sayAs){
   markStopPanelPicked(d)
   // 播報已經由 toggleDelay 統一處理，這裡只補畫面提示
   if(!byVoice && firstPick) showToast(`⏱ ${d.icon} ${d.label} 計時中（可隨時改選）`)
+  // ★ 選到原因時，車子可能早就開走了（語音要唸、追問要一問一答，
+  //   十幾秒過去很正常）。這段停等在「車子開始動」的那一刻就結束了，
+  //   不能一路算到選完原因為止——現場看到的 00:12、報告記 12 秒就是這樣來的
+  //   （實際只停 10 秒）。
+  //   注意不能靠既有的「行駛滿確認窗自動解除」：那段邏輯只在 activeDelay
+  //   存在時才開始累積，而 activeDelay 是選了原因才誕生的，等於從選完才開始算。
+  if(_movingSince!=null && activeDelay){
+    const over=Math.max(0,(Date.now()-_movingSince)/1000)
+    toggleDelay(d, group, {deductSeconds:over, silent:true, keepPanel:true})
+    clearTimeout(_stopDeferTimer); _stopDeferTimer=null
+    svyDismissStop(true)
+    return
+  }
   // 面板維持展開到車子重新行駛為止——手動與語音行為一致
   svySheetExpand()
 }
@@ -3852,9 +3871,6 @@ function svyDismissStop(byResume){
   if(byResume && _clarify){
     if(!_stopDeferTimer){
       vlog('▸ 車輛重新行駛，但追問進行中 — 延後收面板')
-      // 記下「車子真正開走」的時刻。追問可能還要好幾秒才有答案，
-      // 但這段停等在車子開走的那一刻就結束了，秒數不能算到答完為止。
-      if(_resumedDuringClarifyAt===null) _resumedDuringClarifyAt=Date.now()-RESUME_CONFIRM_MS
       _stopDeferTimer=setTimeout(()=>{
         _stopDeferTimer=null
         if(_stopActive) svyDismissStop(true)
@@ -3902,7 +3918,6 @@ function svyDismissStop(byResume){
   _stopEvent=null
   _stopResumeSince=null
   if(byResume){ _askStopKey=null; _askCount=0 }   // 真的重新開動才把詢問次數歸零
-  _resumedDuringClarifyAt=null
   svyShowPanel('idle')
   svySheetCollapse()
   showToast(byResume
@@ -4401,15 +4416,6 @@ function applyVoiceCause(c, sayAs){
   const name=sayAs||d.label
   svyStopPickDelay(d, c.group, true, name)
   showToast(`🎤 ${d.icon} ${name}`, true)
-  // 追問還沒答完、車子就先開走了：這段延滯在車子開走的那一刻就結束，
-  // 不是在「答完」的那一刻。直接把它結算掉並收面板，秒數才會停在正確的地方。
-  if(_resumedDuringClarifyAt!=null && activeDelay){
-    const over=Math.max(0,(Date.now()-_resumedDuringClarifyAt)/1000)
-    toggleDelay(d, c.group, {deductSeconds:over, silent:true, keepPanel:true})
-    _resumedDuringClarifyAt=null
-    clearTimeout(_stopDeferTimer); _stopDeferTimer=null
-    svyDismissStop(true)
-  }
 }
 // 提前提示的距離門檻：速度愈快，愈早提醒，給使用者足夠反應時間（沿用節點感應線同一套速度分級邏輯）
 function getNavFarDist(){
@@ -5392,7 +5398,7 @@ function resetSurveyRuntime(){
   endClarify(); stopCauseListening()
   clearTimeout(_askTimer); _askTimer=null; _askCount=0; _pendingStops=[]
   _stopPanelOpen=false; _stopActive=false; _stopEvent=null
-  _lastMovedAt=null; _askStopKey=null; _resumedDuringClarifyAt=null
+  _lastMovedAt=null; _askStopKey=null; _movingSince=null
   _stopSince=null; _stopResumeSince=null; _voicePick=null
   _resumeAboveSpeedSince=null; elapsedSec=0
   // 畫面：延滯按鈕的秒數、選中狀態、藍框提示、停止面板一律復原
