@@ -1036,7 +1036,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     <div class="gps-badge" id="gps-badge">📡</div>
     <!-- 導航提示條：接近下個節點時顯示距離＋左右轉方向，可搭配語音提示 -->
     <div id="nav-banner" class="nav-banner" style="display:none">
-      <div class="nav-banner-icon"><svg id="nav-banner-arrow" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .25s"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></div>
+      <div class="nav-banner-icon"><svg id="nav-banner-arrow" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V6"/><path d="m6 12 6-6 6 6"/></svg></div>
       <div class="nav-banner-text">
         <div class="nav-banner-dist" id="nav-banner-dist">-</div>
         <div class="nav-banner-turn" id="nav-banner-turn">-</div>
@@ -4335,12 +4335,56 @@ function getNavFarDist(){
 }
 // 轉彎角度分類：進入節點的方位角 vs 離開節點的方位角，差值決定左轉/右轉/直行/迴轉
 // 直行門檻放寬到 32°：道路本身的緩彎（尤其是弧形路口、匝道）用 20° 會被誤報成轉彎。
+// 轉向分六類。原本只有四類，25~50 度的分岔一律被歸成「直行」——
+// 但那種路口實際上要偏一邊走，播「直行」會讓調查員開過頭。
 function classifyTurn(angle){
   const a=((angle+540)%360)-180   // normalize to -180..180
-  if(Math.abs(a)>=150) return {type:'uturn', label:'迴轉', rotate:180}
-  if(a>=32) return {type:'right', label:'右轉', rotate:90}
-  if(a<=-32) return {type:'left', label:'左轉', rotate:-90}
-  return {type:'straight', label:'直行', rotate:0}
+  if(Math.abs(a)>=150) return {type:'uturn',       label:'迴轉'}
+  if(a>=50)            return {type:'right',       label:'右轉'}
+  if(a>=25)            return {type:'slight-right',label:'靠右'}
+  if(a<=-50)           return {type:'left',        label:'左轉'}
+  if(a<=-25)           return {type:'slight-left', label:'靠左'}
+  return {type:'straight', label:'直行'}
+}
+// 箭頭依「實際轉角」畫出來，不是套六個固定圖示。
+// 桿子永遠從下方往上（代表車子怎麼進這個路口），到路口後照真實角度折出去：
+// 45 度的分岔就畫成 45 度，70 度就畫成 70 度，看得出這個彎有多急。
+// 語音的用詞仍然走 classifyTurn 的六分類——講「靠右」比講「偏右 43 度」好懂。
+//
+// ⚠️ 只有進出這兩個方向是真的，路口其他方向的岔路我們沒有資料，所以不畫。
+const _NA_LEN=9.4         // 折出去那一段的長度
+const _NA_HEAD=3.2        // 箭頭那兩撇的長度
+const _NA_SPREAD=30       // 箭頭張開的角度
+function _naPt(x,y){ return Math.round(x*100)/100+' '+Math.round(y*100)/100 }
+function navArrowSVG(deg){
+  const a=((deg+540)%360)-180
+  if(Math.abs(a)>=150){
+    // 台灣靠右行駛，迴轉是往左繞，所以 ±180 這個邊界一律當成左迴轉。
+    // 圓弧的 sweep flag 要跟著方向換，否則弧會往下凸、變成一個倒 U。
+    const s=a>0?1:-1
+    const x0=12-4*s, x1=12+4*s
+    return `<path d="M${_naPt(x0,21)}V12a4 4 0 0 0 ${8*s} 0v4"/>`.replace('0 0 0', s>0?'0 0 1':'0 0 0')
+         + `<path d="M${_naPt(x1-3,13)}L${_naPt(x1,16)}L${_naPt(x1+3,13)}"/>`
+  }
+  const rad=a*Math.PI/180
+  const dx=Math.sin(rad), dy=-Math.cos(rad)      // 出去的方向（SVG 的 y 往下）
+  // 轉角往「轉向的反方向」偏一點，整個圖形才會落在方框中央；
+  // 不偏的話右轉會整個擠到右半邊，看起來像沒對齊。
+  const jx=12-3.6*dx, jy=13.8
+  const ex=jx+_NA_LEN*dx, ey=jy+_NA_LEN*dy
+  // 轉角用一段二次曲線收圓；角度越小彎越淺，直行時等於沒有彎
+  const r=3*Math.min(1, Math.abs(a)/50)
+  const shaft = r>0.2
+    ? `<path d="M${_naPt(jx,21)}V${Math.round((jy+r)*100)/100}Q${_naPt(jx,jy)} ${_naPt(jx+r*dx,jy+r*dy)}L${_naPt(ex,ey)}"/>`
+    : `<path d="M${_naPt(jx,21)}L${_naPt(ex,ey)}"/>`
+  // 箭頭：從端點往回轉 ±30 度各畫一撇。
+  // 這兩撇不能太長——超過折出去那一段的三分之一就會把桿子蓋掉，看起來像旗子。
+  const head=(sign)=>{
+    const t=rad+Math.PI+sign*_NA_SPREAD*Math.PI/180
+    return [ex+_NA_HEAD*Math.sin(t), ey-_NA_HEAD*Math.cos(t)]
+  }
+  const h1=head(1), h2=head(-1)
+  return shaft+`<path d="M${_naPt(h1[0],h1[1])}L${_naPt(ex,ey)}L${_naPt(h2[0],h2[1])}"/>`
 }
 
 // ── 導航幾何：以「PM 畫的那條線」為準，不再用節點之間的直線 ──────────────
@@ -4452,7 +4496,14 @@ function updateNavBanner(lat,lng,nextNode,dist){
   banner.style.display='flex'
   if(wasHidden) _syncSurveyTopOffsets()
   const arrow=$('nav-banner-arrow')
-  if(arrow) arrow.style.transform=`rotate(${turn.rotate}deg)`
+  if(arrow){
+    // 角度差 3 度以內就不重畫，免得每次定位都動到 DOM
+    const deg=Math.round((((outBearing-inBearing)+540)%360)-180)
+    if(arrow.dataset.deg===undefined || Math.abs(+arrow.dataset.deg-deg)>=3){
+      arrow.dataset.deg=deg
+      arrow.innerHTML=navArrowSVG(deg)
+    }
+  }
   const distText = dist>=1000 ? (dist/1000).toFixed(1)+'km' : Math.round(dist/10)*10+'m'
   $('nav-banner-dist').textContent = dist<NAV_NEAR_M ? '即將' : distText+' 後'
   $('nav-banner-turn').textContent = turn.label
@@ -4476,7 +4527,7 @@ function updateNavBanner(lat,lng,nextNode,dist){
 // 但 PM 畫的路線在兩個節點之間常常還有好幾個轉折（繞街廓、切巷子），
 // 那些彎完全沒有被偵測過，所以一路上都沒有聲音——現場回報的就是這個。
 // 這裡把整條折線掃一遍，把「真的要轉」的地方抽出來，行進中一併播報。
-const TURN_MIN_DEG   = 35    // 小於這個角度算緩彎，不播報（跟 classifyTurn 的直行門檻一致）
+const TURN_MIN_DEG   = 25    // 小於這個角度算緩彎，不播報（跟 classifyTurn 的直行門檻一致）
 const TURN_WINDOW_M  = 25    // 用前後各 25 公尺的走向判斷，避免被單點 GPS 雜訊誤判
 const TURN_MERGE_M   = 35    // 同一個彎會被抓到好幾個點，這個距離內合併成一個
 const TURN_NODE_SKIP = 30    // 離節點這麼近的轉折交給節點邏輯播，不要重複
