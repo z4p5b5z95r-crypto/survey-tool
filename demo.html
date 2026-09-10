@@ -3535,6 +3535,11 @@ function svySheetExpand(){
   const h=$('svy-handle-hint');if(h) h.style.opacity='0'
 }
 function svySheetCollapse(){
+  // ⚠️ 停止面板開著＝車子還停著，這時面板一律不收。
+  // 之前是靠「哪裡都不要呼叫收合」來維持，但只要有任何一條路徑漏掉
+  // （語音重問、辨識重啟、改選原因…），面板就會在兩次詢問之間掉下去，
+  // 駕駛得自己再拉一次。改成在這裡擋掉，就不必再逐一追。
+  if(_stopPanelOpen) return
   const s=$('svy-sheet');if(!s) return
   s.style.transition='transform .38s cubic-bezier(.32,.72,0,1)'
   s.style.transform=`translateY(${_svySheetCollapsedPx}px)`
@@ -3693,9 +3698,11 @@ function askStopCause(){
 function updateAskHint(){
   const t=document.getElementById('svy-stop-title')
   if(!t || activeDelay) return
+  // 不顯示「第幾次詢問」：對調查員沒有意義，而且一直變動反而讓人以為又是新的一次停等。
+  // 一次停等（車子停下到重新開動）就是一個事件，中間問幾次都一樣。
   t.textContent = (_askCount>=STOP_ASK_MAX)
     ? '未取得原因 — 可手動選擇'
-    : `偵測到停止 — 選擇延滯類型或忽略（第 ${_askCount} 次詢問）`
+    : '偵測到停止 — 選擇延滯類型或忽略'
 }
 
 // Called when user picks a delay button while stop panel is shown
@@ -3833,11 +3840,16 @@ function svyDismissStop(byResume){
   //   補登時選了原因才會被扣出來變成延滯，不補就維持行駛時間，帳面永遠平。
   //   駕駛自己按「忽略」是明確表態不要記，不進清單。
   if(byResume && _stopEvent && !activeDelay){
-    const sec=Math.max(0,Math.round((Date.now()-_stopEvent.startedAt)/1000))
+    // 一次停等＝車子停下到重新開動，中間問過幾次都算同一個事件、只補一筆。
+    // ⚠️ 結束時刻要扣掉「確認窗」：這支函式是在車子開動並持續 RESUME_CONFIRM_MS
+    // 之後才被呼叫的，直接用現在的時間會把那幾秒也算進停等。
+    // 這跟延滯自動結束時 deductSeconds 用同一個常數，兩邊的秒數才會一致。
+    const endAt=Date.now()-RESUME_CONFIRM_MS
+    const sec=Math.max(0,Math.round((endAt-_stopEvent.startedAt)/1000))
     if(sec>=3){
       _pendingStops.push({
         startedAt: _stopEvent.startedAt,
-        endedAt:   Date.now(),
+        endedAt:   endAt,
         sec,
         pos:       _stopEvent.pos ? {lat:_stopEvent.pos.lat, lng:_stopEvent.pos.lng} : null,
         nodeIdx:   currentNodeIdx,
