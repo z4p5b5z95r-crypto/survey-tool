@@ -8304,7 +8304,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
 
   /* ── 模擬 GPS ── */
   const SPEED_MS=8                    // 約 29 km/h：語音講完車子只移動十幾公尺
-  const SIM={ i:0, running:false, stopped:false, stops:[], timer:null, cb:null, tick:null, path:[], t0:0 }
+  const SIM={ i:0, running:false, stopped:false, stops:[], timer:null, cb:null, tick:null, path:[], t0:0, holdUntil:0 }
   function emit(){
     if(!SIM.cb||!SIM.path.length) return
     const p=SIM.path[Math.min(SIM.i,SIM.path.length-1)]
@@ -8331,7 +8331,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   }
   function resume(){
     if(!SIM.stopped) return
-    clearTimeout(SIM.timer); SIM.stopped=false; hud('▶ 車輛重新起步')
+    clearTimeout(SIM.timer); SIM.stopped=false; SIM.holdUntil=0; hud('▶ 車輛重新起步')
   }
 
   /* 沒人選原因時，車子要停到「語音至少問滿兩次」才重新起步——
@@ -8346,9 +8346,11 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     // 有指定秒數就照秒數停（第二次停等用這個，時間好對）；
     // 沒指定就停到「語音至少問滿兩次沒回答」為止（第一次停等用這個）。
     if(holdSec>0){
+      SIM.holdUntil=Date.now()+holdSec*1000
       SIM.timer=setTimeout(()=>{ if(SIM.stopped){ hud('▶ 停滿 '+holdSec+' 秒 — 重新起步'); resume() } }, holdSec*1000)
       return
     }
+    SIM.holdUntil=0
     ;(function chk(){
       if(!SIM.stopped) return
       // 已經問滿兩次還是沒人回答 → 起步（面板會在車子開動 3 秒後自動收起）
@@ -8424,11 +8426,17 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       SIM.stops=[{at:25, hold:30}, {at:70, hold:10}]
       hud('🚗 模擬'+(back?'回程':'去程')+'行駛中 — 通過節點會自動記錄')
     })
-    // 選了原因後 12 秒才起步，方便當場示範「改選」
-    wrap('svyStopPickDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,12000) } })
-    wrap('svyDismissStop',()=>{ if(SIM.stopped) resume() })
-    wrap('toggleDelay',()=>{ if(SIM.stopped){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,12000) } })
-    wrap('svyManualEndDelay',()=>{ if(SIM.stopped) resume() })
+    // ⚠️ 這四個掛勾只在「沒有指定停留秒數」時才動車子。
+    // 之前它們無條件覆寫，所以設定停 30 秒也沒用：
+    //   ・選了原因 → 改成 12 秒後起步
+    //   ・面板收起（svyDismissStop）→ 立刻起步
+    // 現在停等有固定秒數（30／10）時，一律由 scheduleDemoResume 的計時器決定，
+    // 中途選原因、改選、收面板都不會提早開走。
+    const freeHold=()=>!SIM.holdUntil
+    wrap('svyStopPickDelay',()=>{ if(SIM.stopped&&freeHold()){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,12000) } })
+    wrap('svyDismissStop',()=>{ if(SIM.stopped&&freeHold()) resume() })
+    wrap('toggleDelay',()=>{ if(SIM.stopped&&freeHold()){ clearTimeout(SIM.timer); SIM.timer=setTimeout(resume,12000) } })
+    wrap('svyManualEndDelay',()=>{ if(SIM.stopped&&freeHold()) resume() })
 
     // 要在 recordNode 執行「之前」讀距離：它內部會把 currentNodeIdx 加一、
     // 把畫面換成「到下一個節點」的距離，事後才讀會得到毫無意義的數字。
