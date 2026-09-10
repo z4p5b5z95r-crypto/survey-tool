@@ -242,6 +242,9 @@ function selSessionLoad(){
   try{
     const o=JSON.parse(localStorage.getItem(SEL_SESS)||'null')
     if(!o||!o.apiKey||!o.expiresAt) return null
+    // sessionToken 是後來才存的。舊版留下來的紀錄只有 apiKey，
+    // 拿它進去會在 getProjects 撞 unauthorized，還不如當作沒登入、重登一次就好。
+    if(!o.sessionToken) return null
     if(new Date(o.expiresAt)<=new Date()) return null
     return o
   }catch(e){ return null }
@@ -387,6 +390,15 @@ async function bootSelect(){
     ])
     allRoutes   = routesRes.data || []
     allProjects = projectsRes.data || []
+    // session 過期／失效：退回登入畫面重新取得，不要讓使用者對著錯誤訊息乾瞪眼
+    if(_projErr && /unauthorized|sessionToken/i.test(_projErr)){
+      selSessionClear(); GS_KEY=''; GS_TOKEN=''
+      document.getElementById('loading-screen').style.display='none'
+      document.getElementById('login-screen').style.display='flex'
+      document.getElementById('lg-err').textContent='登入已過期，請重新登入'
+      setTimeout(()=>document.getElementById('lg-name')?.focus(), 80)
+      return
+    }
     setLoadProgress(100)
 
     await new Promise(r=>setTimeout(r,450))
