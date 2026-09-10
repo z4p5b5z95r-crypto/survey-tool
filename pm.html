@@ -1273,14 +1273,14 @@ function setSession(name, token, expiresAt, apiKey, empId) {
 function getCurrentEmpId()    { return localStorage.getItem('pm_emp_id') || '' }
 
 // ════════════════════════════════════════════════════════
-//  督導帳號：看得到「所有人」的專案與路線
+//  主管帳號：看得到「所有人」的專案與路線
 // ════════════════════════════════════════════════════════
-// 一般帳號只看得到自己名下（owner）的專案；督導要能綜覽全部。
+// 一般帳號只看得到自己名下（owner）的專案；主管要能綜覽全部。
 // 用工號比對，因為姓名可能重複、也可能之後改名；姓名只當備援
 // （早期登入的 localStorage 裡還沒有 pm_emp_id）。
 //
 // ⚠️ 只放寬「看得到」，不放寬「歸屬」：
-//    督導看到的別人專案不會被寫成她的 owner（見 repairCloudProjectIds），
+//    主管看到的別人專案不會被寫成她的 owner（見 repairCloudProjectIds），
 //    否則綜覽一次就會把全公司的專案都變成她的。
 const SUPERVISORS = [
   { empId: 'T22059', name: '劉元蕙' }
@@ -1293,7 +1293,7 @@ function isSupervisor() {
 }
 // 這筆專案／路線這個帳號看不看得到
 function canSee(ownerVal, me) {
-  if (isSupervisor()) return true          // 督導：全部看得到
+  if (isSupervisor()) return true          // 主管：全部看得到
   const o = String(ownerVal || '')
   return !o || o === me                    // 一般帳號：自己的，或還沒指派負責人的
 }
@@ -1517,9 +1517,9 @@ function enterApp(name) {
   // admin 帳號直接進管理後台
   if (name === 'admin') { enterAdminPanel(); return }
   document.getElementById('screen-app').classList.add('visible')
-  // 督導看到的是全公司的專案，要在畫面上講清楚，
+  // 主管看到的是全公司的專案，要在畫面上講清楚，
   // 否則會誤以為這些都是自己的、或以為別人的資料跑進自己帳號了。
-  document.getElementById('tb-username').textContent = name + (isSupervisor() ? '（督導：檢視全部專案）' : '')
+  document.getElementById('tb-username').textContent = name + (isSupervisor() ? '（主管：檢視全部專案）' : '')
   updateCloudDot('idle')
   migrateTaskCreators()   // 一次性：舊資料歸到「測試」
   renderProjects()
@@ -3218,7 +3218,7 @@ async function saveTask(silent) {
   }
   _currentProjectId=effectiveProjectId
   // owner／creator 要沿用既有的那一筆，不能每次存檔都蓋成「現在是誰在編輯」。
-  // 督導看得到別人的路線，若這裡照舊寫成當下使用者，她按一次存檔就把路線收歸己有了。
+  // 主管看得到別人的路線，若這裡照舊寫成當下使用者，她按一次存檔就把路線收歸己有了。
   const taskObj={id,cloudId:existingTask?.cloudId||null,projectId:effectiveProjectId,cfg,savedAt:new Date().toLocaleDateString('zh-TW'),
     creator:existingTask?.creator||getCurrentUser()||'未知',
     owner:existingTask?.owner||''}
@@ -3235,7 +3235,7 @@ async function saveTask(silent) {
       const proj=savedProjects.find(p=>p.id===_currentProjectId)
       const projectCloudId=await ensureProjectCloudSynced(proj)
       // owner 一律沿用這條路線原本的負責人；只有全新的路線才掛在自己名下。
-      // 沒有這一行，督導打開別人的路線按存檔，這條路線就會變成督導的。
+      // 沒有這一行，主管打開別人的路線按存檔，這條路線就會變成主管的。
       const routeOwner = taskObj.owner || taskObj.creator || getCurrentUser()
       const payload=buildRoutePayload(cfg, taskObj.cloudId, routeOwner, projectCloudId)
       const result=await cloudPost(payload)
@@ -3545,7 +3545,7 @@ async function syncProjectsFromCloud(me) {
         savedProjects.push(loc);changed=true
       }else if(loc.name!==S(p.name)){loc.name=S(p.name)||loc.name;changed=true}
       // 記住雲端上的專案負責人（實際的 PM）。creator 是「本機這份資料是誰同步下來的」，
-      // 督導看得到別人的專案時 creator 會是督導自己，不能拿來當 PM 顯示。
+      // 主管看得到別人的專案時 creator 會是主管自己，不能拿來當 PM 顯示。
       if(loc.owner!==S(p.owner)){loc.owner=S(p.owner);changed=true}
       map[p.id]=loc.id
     }
@@ -3608,7 +3608,7 @@ async function syncFromCloud(opts) {
         if(delIdx>=0){savedTasks.splice(delIdx,1);changed++}
         continue
       }
-      // owner filter：只同步看得到的路線（督導看得到全部）
+      // owner filter：只同步看得到的路線（主管看得到全部）
       if(!canSee(r.owner, me)) continue
       const existIdx=savedTasks.findIndex(t=>t.cloudId===r.id)
       // 路線的專案歸屬：本機已經有這條路線、且目前歸屬的專案還存在的話，一律以本機為準，
@@ -3630,7 +3630,7 @@ async function syncFromCloud(opts) {
         // 路線已在本機：用雲端資料更新（但 projectId 依上面邏輯，以本機既有歸屬為準）
         const loc=savedTasks[existIdx]
         if(loc.creator!==me){loc.creator=me;changed++}
-        // 記住雲端上真正的負責人。督導看得到別人的路線，存檔時要沿用原負責人，
+        // 記住雲端上真正的負責人。主管看得到別人的路線，存檔時要沿用原負責人，
         // 不能因為「現在是誰在編輯」就把 owner 改掉。
         if(loc.owner!==S(r.owner)){loc.owner=S(r.owner);changed++}
         if(loc.projectId!==localProjectId){loc.projectId=localProjectId;changed++}
@@ -3673,9 +3673,9 @@ async function repairCloudProjectIds(cloudRoutes, cloudProjects){
   if(!(gsUrl&&getSessionToken())) return
   const me=getCurrentUser()||''
   if(!me) return
-  // ⚠️ 督導帳號看得到所有人的專案，這些專案在本機也會被標成 creator=自己。
-  // 如果照常跑下面的補寫，等於「看一眼就把全公司的專案 owner 改成督導」，
-  // 而且 saveProject 沒有稽核紀錄，事後查不出來。督導一律不補寫負責人。
+  // ⚠️ 主管帳號看得到所有人的專案，這些專案在本機也會被標成 creator=自己。
+  // 如果照常跑下面的補寫，等於「看一眼就把全公司的專案 owner 改成主管」，
+  // 而且 saveProject 沒有稽核紀錄，事後查不出來。主管一律不補寫負責人。
   if(isSupervisor()) return
   let fixed=0
 
