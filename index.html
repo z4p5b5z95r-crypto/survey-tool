@@ -610,6 +610,36 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .prep-sw.on i{transform:translateX(22px)}
 .prep-btn{flex:1;padding:14px;border:none;border-radius:13px;font-size:16px;font-weight:800;
   cursor:pointer;font-family:inherit}
+/* ── 出發前確認：五個畫面合併成的單張卡 ── */
+.pv-hd{font-size:17px;font-weight:800;color:#0f172a;text-align:center}
+.pv-sub{font-size:12.5px;color:#64748b;text-align:center;margin:6px 0 14px;line-height:1.65}
+.pv-sec{font-size:11px;font-weight:800;color:#94a3b8;letter-spacing:.5px;margin:2px 0 2px}
+.pv-r{display:flex;align-items:center;gap:9px;padding:10px 2px;border-top:1px solid #f1f5f9;font-size:13.5px}
+.pv-r .ico{font-size:17px;width:22px;text-align:center;flex:none}
+.pv-r .nm{flex:1;min-width:0;font-weight:700;color:#0f172a}
+.pv-r .hint{display:block;font-size:11px;font-weight:600;color:#94a3b8;margin-top:1px;line-height:1.45}
+.pv-r .st{font-size:15px;flex:none;width:20px;text-align:center}
+.pv-r.tog{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.pv-r.tog:active{background:#f8fafc}
+.pv-sw{width:46px;height:27px;border-radius:15px;background:#cbd5e1;position:relative;flex:none;transition:background .18s}
+.pv-sw i{position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .18s}
+.pv-sw.on{background:#4f6ef7}
+.pv-sw.on i{transform:translateX(19px)}
+.pv-ask{background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:11px;margin-top:11px;text-align:center}
+.pv-ask .q{font-size:13.5px;font-weight:800;color:#0f172a}
+.pv-ask .s{font-size:11.5px;color:#94a3b8;margin-top:3px;line-height:1.5}
+.pv-ask .bs{display:flex;gap:7px;margin-top:9px}
+.pv-ask .bs button{flex:1;padding:10px;border:none;border-radius:10px;font-size:13.5px;font-weight:800;
+  font-family:inherit;cursor:pointer}
+.pv-ask .bs .y{background:#2563eb;color:#fff}
+.pv-ask .bs .n{background:#e2e8f0;color:#475569}
+.pv-go{width:100%;margin-top:14px;padding:14px;border:none;border-radius:13px;background:#2563eb;
+  color:#fff;font-size:15.5px;font-weight:800;font-family:inherit;cursor:pointer}
+.pv-go:disabled{background:#94a3b8;cursor:wait}
+.pv-go.ready{background:#16a34a}
+.pv-link{width:100%;margin-top:8px;padding:7px;background:transparent;border:none;color:#94a3b8;
+  font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer}
 .prep-btn.go{background:#4f6ef7;color:#fff}
 .prep-btn.no{background:#f1f5f9;color:#475569}
 /* 「我不是○○」：次要動作，放在主按鈕下方的文字連結。
@@ -6804,9 +6834,8 @@ async function showProjectRoutePicker(pid, gsParam, kParam){
     showScreen('screen-project-routes')
     setTimeout(()=>renderProjectRoutesMap(routes,gsParam,kParam), 120)
     if(!(progress && progress.length)) renderTodayProgress(pid, routes, gsParam, kParam)
-    // 當天第一次開這個專案：提醒手機設定（勿擾＋解除靜音）→ 設備檢測 → 授權，
-    // 一天只跑一次，之後同一天再回到這個畫面都不會再打擾
-    setTimeout(()=>maybeShowDailyReminder(pid), 350)
+    // 「出發前確認」那張卡已經把勿擾／靜音的提醒、語音開關、授權、裝置檢查
+    // 全部收在一起，這裡不再另外跳一張每日提醒。
   }catch(e){
     document.getElementById('fld-msg').textContent='❌ 載入失敗'
     document.getElementById('fld-sub').textContent=e.message
@@ -7182,7 +7211,7 @@ function showEmpLogin(next){
       const si=document.getElementById('si-name'); if(si) si.value=last.name
       const ss=document.getElementById('s-surveyor'); if(ss) ss.value=last.name
       next()                       // 直接進路線頁面
-      startPrepFlow(last.name)     // 再跳出問候與設備確認
+      maybeStartPrepFlow(last.name)  // 今天還沒走過（或權限被收回）才跳出發前確認
       return
     }
   }catch(e){}
@@ -7279,7 +7308,7 @@ function _empDone(empId, name){
   // 心裡有底之後再回答那兩個開關，比對著空白畫面問來得清楚
   const next=_empNext; _empNext=null
   if(next) next()
-  startPrepFlow(name)
+  maybeStartPrepFlow(name)
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -7301,37 +7330,201 @@ function givenName(full){
   return n
 }
 
-let _prepIdx=0, _prepName=''
+// ════════════════════════════════════
+//  出發前確認：一張卡完成
+// ════════════════════════════════════
+// 以前是五個畫面接力：每日提醒 → 問候 → 語音開關 → 開通權限 → 裝置檢查。
+// 每一關都要按一次「下一步」，現場最常抱怨的就是這一段。
+// 現在全部收在同一張卡：開關可以直接切，按下按鈕就地要權限並打勾，
+// 只有「有聽到提示音嗎」非問人不可（那是喇叭與靜音鍵的問題，程式測不出來）。
+// 深度的逐項檢測仍然保留在「?」選單的「🔬 測試設備」，需要時才進去。
+let _prepName=''
+const PV_ROWS=[
+  {id:'gps',   ico:'📍', name:'定位（GPS）',   tag:'必要', desc:'沒有定位就無法記錄軌跡與節點時間'},
+  {id:'audio', ico:'🔊', name:'聲音提示',      tag:'建議', desc:'沒有聲音仍可調查，但要一直盯著螢幕'},
+  {id:'mic',   ico:'🎤', name:'麥克風',        tag:'選配', desc:'停車時可直接說出原因'},
+  {id:'motion',ico:'🧭', name:'方向感應',      tag:'選配', desc:'地圖隨車頭轉向'},
+]
 function startPrepFlow(name){
   _prepName=name||config.surveyor||''
-  _prepIdx=0                      // 0=問候　1=設定卡
   _renderPrep()
   document.getElementById('prep-modal').classList.add('open')
+}
+// 同一支手機、同一天走過一次就好，重開網頁不會再跳這張卡。
+// 但「今天做過」只是我們自己的旗標——瀏覽器可能已經把定位權限收回去了
+// （iOS Safari 關掉分頁後常常就變回「詢問」），所以還要真的問一次權限狀態，
+// 兩個條件都成立才跳過。Safari 查不到狀態時就相信旗標，否則會變成每次都跳。
+//
+// 聲音解鎖不受影響：startSurvey() 在使用者按下「開始」的那一刻本來就會解鎖一次。
+// DEMO 版一律顯示，教學要看得到完整流程。
+async function maybeStartPrepFlow(name){
+  try{
+    if(!isDemoMode() && permGateDoneToday() && devTestDoneToday() && await allPermsGranted()) return
+  }catch(e){}
+  startPrepFlow(name)
+}
+function _pvTagColor(t){ return t==='必要'?'#ef4444':(t==='建議'?'#d97706':'#94a3b8') }
+function _pvSw(key,on){
+  return '<div class="pv-sw'+(on?' on':'')+'" id="prep-sw-'+key+'"><i></i></div>'
 }
 function _renderPrep(){
   const body=document.getElementById('prep-body')
   if(!body) return
-  if(_prepIdx===0){
-    const gn=he(givenName(_prepName))
-    body.innerHTML='<div class="prep-q"><div class="prep-ico">👋</div>'
-      +'<div class="prep-title">Hi '+gn+'</div>'
-      +'<div class="prep-sub prep-sub-hello">開始前<br>先來確認裝置及授權吧</div>'
-      +'<div class="prep-acts"><button class="prep-btn go" onclick="prepNext()">好</button></div>'
-      +'<button class="prep-link" onclick="switchSurveyor()">我不是'+gn+'</button>'
-      +'</div>'
-    return
+  const gn=he(givenName(_prepName))
+  body.innerHTML =
+     '<div class="pv-hd">Hi '+gn+'，出發前確認</div>'
+    +'<div class="pv-sub">請先關閉靜音、開啟勿擾模式<br>避免來電中斷調查、也才聽得到節點提示</div>'
+    +'<div class="pv-sec">語音功能</div>'
+    +'<div class="pv-r tog" onclick="prepToggle(\'nav\')"><span class="ico">🧭</span>'
+      +'<span class="nm">語音導航<span class="prep-beta">Beta</span></span>'+_pvSw('nav',navVoiceEnabled)+'</div>'
+    +'<div class="pv-r tog" onclick="prepToggle(\'mic\')"><span class="ico">🎤</span>'
+      +'<span class="nm">語音輸入<span class="prep-beta">Beta</span></span>'+_pvSw('mic',voicePickEnabled)+'</div>'
+    +'<div class="pv-sec" style="margin-top:12px">裝置與權限</div>'
+    +PV_ROWS.map(r=>
+       '<div class="pv-r" id="pv-'+r.id+'"><span class="ico">'+r.ico+'</span>'
+      +'<span class="nm">'+r.name
+        +'<span style="font-size:10px;font-weight:800;margin-left:4px;color:'+_pvTagColor(r.tag)+'">'+r.tag+'</span>'
+        +'<span class="hint">'+r.desc+'</span></span>'
+      +'<span class="st">·</span></div>').join('')
+    +'<div id="pv-ask"></div>'
+    +'<button class="pv-go" id="pv-go" onclick="pvRun()">開始授權與檢查</button>'
+    +'<button class="pv-link" onclick="switchSurveyor()">我不是'+gn+'</button>'
+}
+// 播一聲雙音提示（跟裝置檢測用的是同一種聲音）。
+// 沒有現成的全域 beep()：導航那顆 playApproachBeep 是「接近節點」專用的。
+function pvBeep(){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)()
+    const go=()=>{
+      const t=ctx.currentTime
+      ;[[880,t],[1100,t+0.28]].forEach(([f,at])=>{
+        const o=ctx.createOscillator(), g=ctx.createGain()
+        o.connect(g); g.connect(ctx.destination)
+        o.type='sine'; o.frequency.value=f
+        g.gain.setValueAtTime(0.5,at)
+        g.gain.exponentialRampToValueAtTime(0.001,at+0.25)
+        o.start(at); o.stop(at+0.25)
+      })
+    }
+    if(ctx.state==='suspended') ctx.resume().then(go).catch(()=>{})
+    else go()
+  }catch(e){}
+}
+function pvSet(id,state,msg){
+  const el=document.getElementById('pv-'+id); if(!el) return
+  const ic={wait:'⏳',pass:'✅',fail:'⚠️',skip:'—'}[state]||'·'
+  el.querySelector('.st').textContent=ic
+  if(msg){ const h=el.querySelector('.hint'); if(h) h.textContent=msg }
+  el.style.opacity = state==='wait' ? '.6' : '1'
+}
+function prepToggle(key){
+  if(key==='nav'){
+    navVoiceEnabled=!navVoiceEnabled
+    localStorage.setItem('nav_voice_enabled', navVoiceEnabled?'1':'0')
+    const b=document.getElementById('nav-banner-mute'); if(b) b.textContent=navVoiceEnabled?'🔊':'🔇'
+  }else{
+    voicePickEnabled=!voicePickEnabled
+    localStorage.setItem('voice_pick_enabled', voicePickEnabled?'1':'0')
   }
-  if(_prepIdx===1){
-    body.innerHTML='<div class="prep-set">'
-      +'<div class="prep-set-hd">語音功能</div>'
-      +_prepRow('nav','🧭','語音導航', navVoiceEnabled)
-      +_prepRow('mic','🎤','語音輸入', voicePickEnabled)
-      +'<div class="prep-acts" style="margin-top:16px">'
-      +'<button class="prep-btn go" onclick="prepNext()">開始檢查設備</button></div>'
-      +'</div>'
-    return
+  const sw=document.getElementById('prep-sw-'+key)
+  if(sw) sw.classList.toggle('on', key==='nav'?navVoiceEnabled:voicePickEnabled)
+}
+
+// 按下按鈕後：就地把四項跑完，全程不換畫面。
+// ⚠️ 解鎖聲音與發起 iOS 的方向感應授權，都必須在「使用者手勢當下」做，
+//    不能放在任何 await 後面，否則 iOS 會直接拒絕。
+async function pvRun(){
+  const btn=document.getElementById('pv-go')
+  if(btn){ btn.disabled=true; btn.textContent='處理中…' }
+  PV_ROWS.forEach(r=>pvSet(r.id,'wait'))
+
+  // ① 聲音：手勢當下解鎖
+  let audioOK=true
+  try{ unlockAudio(); unlockNavVoice() }catch(e){ audioOK=false }
+
+  // ② 方向感應：iOS 對手勢最敏感，只「發起」不 await
+  let motionP=null
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function')
+      motionP=DeviceOrientationEvent.requestPermission()
+  }catch(e){ motionP=Promise.reject(e) }
+
+  // ③ 麥克風：關掉語音輸入就不要跟人要一個他明確說不要的權限
+  if(!voicePickEnabled){
+    pvSet('mic','skip','你選擇不使用語音輸入，已略過')
+  }else{
+    try{
+      const st=await navigator.mediaDevices.getUserMedia({audio:true})
+      st.getTracks().forEach(t=>t.stop())
+      // iOS 把「麥克風」與「語音辨識」當成兩個權限，這裡先把第二個提示引出來，
+      // 免得它落在行車中第一次偵測到停止的時候
+      await warmUpSpeechPermission()
+      pvSet('mic','pass','已授權，停車時可直接說出原因')
+    }catch(e){
+      pvSet('mic','fail', e.name==='NotAllowedError'
+        ? '已拒絕，停車時請改用按鈕選擇原因'
+        : '無法使用麥克風，停車時請用按鈕')
+    }
   }
-  _finishPrep()
+
+  // ④ 定位：實際取一次位置，順便確認精度
+  await new Promise(res=>{
+    if(!navigator.geolocation){ pvSet('gps','fail','此瀏覽器不支援定位，無法進行監測'); return res() }
+    navigator.geolocation.getCurrentPosition(
+      p=>{ pvSet('gps','pass','已授權，目前精度 ±'+Math.round(p.coords.accuracy)+' 公尺'); res() },
+      err=>{ pvSet('gps','fail', err.code===1
+        ? '已拒絕定位，無法記錄軌跡——請到手機設定開啟後重新整理'
+        : '暫時取不到位置，請到空曠處再試'); res() },
+      {enableHighAccuracy:true,timeout:12000,maximumAge:0})
+  })
+
+  // ⑤ 收方向感應的結果
+  if(motionP){
+    try{
+      const st=await motionP
+      if(st==='granted'){ pvSet('motion','pass','已授權，地圖會隨車頭轉向'); initCompass() }
+      else pvSet('motion','fail','未授權，地圖將維持固定朝北')
+    }catch(e){ pvSet('motion','fail','未授權，地圖將維持固定朝北') }
+  }else{
+    pvSet('motion','skip','此裝置不需額外授權')
+    try{ initCompass() }catch(e){}
+  }
+
+  // ⑥ 聲音：播一聲再問人。程式測不出喇叭有沒有出聲，只有人聽得到。
+  if(!audioOK){ pvSet('audio','fail','解鎖失敗，請確認未開啟靜音'); pvFinish(); return }
+  pvBeep()
+  pvSet('audio','wait','剛才播了一聲提示音')
+  const ask=document.getElementById('pv-ask')
+  if(ask) ask.innerHTML='<div class="pv-ask"><div class="q">有聽到提示音嗎？</div>'
+    +'<div class="s">沒聽到請先確認手機側邊的靜音鍵已關閉</div>'
+    +'<div class="bs"><button class="y" onclick="pvAudio(true)">聽到了</button>'
+    +'<button class="n" onclick="pvAudio(false)">沒聽到</button></div></div>'
+  if(btn) btn.style.display='none'
+}
+function pvAudio(ok){
+  if(ok) pvSet('audio','pass','已確認，行車中聽得到節點與轉彎提示')
+  else{
+    pvSet('audio','fail','請關閉靜音並調高音量，之後可在「?」選單重新測試')
+  }
+  const ask=document.getElementById('pv-ask'); if(ask) ask.innerHTML=''
+  const btn=document.getElementById('pv-go'); if(btn) btn.style.display=''
+  pvFinish()
+}
+function pvFinish(){
+  const btn=document.getElementById('pv-go')
+  const gpsFail=(document.getElementById('pv-gps')?.querySelector('.st')?.textContent==='⚠️')
+  if(btn){
+    btn.disabled=false
+    if(gpsFail){ btn.textContent='沒有定位，仍要開始'; btn.className='pv-go' }
+    else{ btn.textContent='開始調查'; btn.className='pv-go ready' }
+    btn.onclick=_finishPrep
+  }
+  // 今天已經走過這一關，之後回到簽到頁不再打擾
+  try{ localStorage.setItem(PERM_GATE_KEY, todayStr()) }catch(e){}
+  try{ localStorage.setItem(DEVTEST_DAILY_KEY, todayStr()) }catch(e){}
+}
+function _finishPrep(){
+  document.getElementById('prep-modal').classList.remove('open')
 }
 
 // 「我不是○○」：換人接手同一支手機時回到工號輸入。
@@ -7350,28 +7543,6 @@ function switchSurveyor(){
   const idEl=document.getElementById('emp-id'); if(idEl) idEl.value=''   // 換人就不要帶前一個人的工號
 }
 
-function _prepRow(key,ico,label,on){
-  return '<div class="prep-row" onclick="prepToggle(\''+key+'\')">'
-    +'<span class="prep-row-l">'+ico+' '+label+'<span class="prep-beta">Beta</span></span>'
-    +'<span class="prep-sw'+(on?' on':'')+'" id="prep-sw-'+key+'"><i></i></span></div>'
-}
-function prepToggle(key){
-  if(key==='nav'){
-    navVoiceEnabled=!navVoiceEnabled
-    localStorage.setItem('nav_voice_enabled', navVoiceEnabled?'1':'0')
-    const b=document.getElementById('nav-banner-mute'); if(b) b.textContent=navVoiceEnabled?'🔊':'🔇'
-  }else{
-    voicePickEnabled=!voicePickEnabled
-    localStorage.setItem('voice_pick_enabled', voicePickEnabled?'1':'0')
-  }
-  const sw=document.getElementById('prep-sw-'+key)
-  if(sw) sw.classList.toggle('on', key==='nav'?navVoiceEnabled:voicePickEnabled)
-}
-function prepNext(){ _prepIdx++; _renderPrep() }
-function _finishPrep(){
-  document.getElementById('prep-modal').classList.remove('open')
-  openDevTest()
-}
 
 // 工號查詢／建檔都走 API key（現場端沒有登入流程）
 async function _empGet(params){
