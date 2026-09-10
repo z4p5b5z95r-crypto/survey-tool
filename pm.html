@@ -878,7 +878,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
   <div class="admin-tabs">
     <button class="admin-tab active" data-tab="routes" onclick="switchAdminTab('routes')">🗺 專案資料</button>
     <button class="admin-tab" data-tab="link" onclick="switchAdminTab('link')">🔗 監測連結</button>
-    <button class="admin-tab" data-tab="logins" onclick="switchAdminTab('logins')">🔐 稽核紀錄</button>
+    <button class="admin-tab" data-tab="audit" onclick="switchAdminTab('audit')">📝 操作紀錄</button>
+    <button class="admin-tab" data-tab="logins" onclick="switchAdminTab('logins')">🔐 登入紀錄</button>
     <button class="admin-tab" data-tab="trash" onclick="switchAdminTab('trash')">🗑 垃圾桶</button>
     <button class="admin-tab" data-tab="users" onclick="switchAdminTab('users')">👤 帳號管理</button>
   </div>
@@ -902,7 +903,12 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
       <div id="admin-routes-table"></div>
     </div>
 
-    <!-- 登入紀錄 -->
+    <!-- 操作紀錄（誰做了什麼） -->
+    <div id="atab-audit" style="display:none">
+      <div id="admin-audit-table"></div>
+    </div>
+
+    <!-- 登入紀錄（誰在什麼時候用了這個帳號） -->
     <div id="atab-logins" style="display:none">
       <div id="admin-logins-table"></div>
     </div>
@@ -4627,33 +4633,47 @@ function switchAdminTab(tab) {
   document.getElementById('atab-routes').style.display  = tab === 'routes'  ? '' : 'none'
   document.getElementById('atab-trash').style.display   = tab === 'trash'   ? '' : 'none'
   document.getElementById('atab-link').style.display    = tab === 'link'    ? '' : 'none'
+  document.getElementById('atab-audit').style.display   = tab === 'audit'   ? '' : 'none'
   document.getElementById('atab-logins').style.display  = tab === 'logins'  ? '' : 'none'
   if (tab === 'users')   loadAdminUsers()
   if (tab === 'routes')  loadAdminRoutes()
   if (tab === 'trash')   loadAdminTrash()
   if (tab === 'link')    renderSelectUrl()
+  if (tab === 'audit')   loadAdminAudit()
   if (tab === 'logins')  loadAdminLogins()
 }
 
-// ── 稽核紀錄 ──────────────────────────────────────────────
-// 兩份紀錄放同一頁：上面是「誰做了什麼」（真正用來追刪除責任的），
-// 下面是登入紀錄（用來佐證「那個時間點是誰在用這個帳號」）。
-async function loadAdminLogins(){
-  const el=document.getElementById('admin-logins-table')
+// ── 操作紀錄／登入紀錄 ────────────────────────────────────
+// 拆成兩個頁籤：
+//   操作紀錄＝「誰做了什麼」，是真正用來追刪除責任的
+//   登入紀錄＝「那個時間點是誰在用這個帳號」，用來佐證操作紀錄
+// 兩份資料量都不小，擠在同一頁要一直捲，而且會同時發兩支 API。
+
+// 試算表回來的時間可能是 Date 物件被序列化成 "Thu Sep 10 2026 14:03:38 GMT+0800 (台北標準時間)"，
+// 直接印出來又長又難掃。統一成 2026/09/10 14:03:38。
+function fmtLogTime(v){
+  const raw=String(v||'')
+  if(!raw) return '—'
+  const d=new Date(raw)
+  if(isNaN(d.getTime())) return raw          // 認不得就原樣顯示，不要把資料弄不見
+  const p=n=>String(n).padStart(2,'0')
+  return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} `
+       + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+async function loadAdminAudit(){
+  const el=document.getElementById('admin-audit-table')
   el.innerHTML = admLoadingHTML('下載中…')
   try{
-    const [ops, logins]=await Promise.all([
-      cloudGet({action:'getAuditLogs', limit:'300'}, 30000).catch(()=>[]),
-      cloudGet({action:'getLoginLogs', limit:'300'}, 30000).catch(()=>[])
-    ])
+    const ops=await cloudGet({action:'getAuditLogs', limit:'300'}, 30000).catch(()=>[])
     adminCloudOk()
     const DEL=/刪除|清空/
-    const opTable = ops.length ? `
+    const table = ops.length ? `
       <table class="admin-table">
-        <thead><tr><th style="width:170px">時間</th><th style="width:110px">操作者</th>
+        <thead><tr><th style="width:150px">時間</th><th style="width:110px">操作者</th>
           <th style="width:170px">動作</th><th>對象</th><th>備註</th></tr></thead>
         <tbody>${ops.map(r=>`<tr${DEL.test(r.action)?' style="background:#fef2f2"':''}>
-          <td style="color:#475569;font-size:12px">${esc(r.at)}</td>
+          <td style="color:#475569;font-size:12px;white-space:nowrap">${esc(fmtLogTime(r.at))}</td>
           <td><strong>${esc(r.actor)||'—'}</strong></td>
           <td style="${DEL.test(r.action)?'color:#dc2626;font-weight:700':'color:#475569'}">${esc(r.action)}</td>
           <td style="color:#64748b;font-size:12px;word-break:break-all">${esc(r.target)||'—'}</td>
@@ -4661,30 +4681,42 @@ async function loadAdminLogins(){
         </tr>`).join('')}</tbody>
       </table>`
       : '<div class="admin-empty">尚無操作紀錄（此功能上線後的操作才會被記錄）</div>'
+    el.innerHTML=`
+      <div style="font-size:14px;font-weight:800;margin:6px 0 4px">📝 操作紀錄</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:10px">
+        操作者一律由伺服器依 session 判定，前端無法偽造。刪除類動作以紅色標示。
+      </div>
+      ${table}`
+  }catch(e){
+    adminCloudErr()
+    el.innerHTML=`<div style="color:#dc2626;padding:16px">載入失敗：${esc(e.message)}</div>`
+  }
+}
 
-    const loginTable = logins.length ? `
+async function loadAdminLogins(){
+  const el=document.getElementById('admin-logins-table')
+  el.innerHTML = admLoadingHTML('下載中…')
+  try{
+    const logins=await cloudGet({action:'getLoginLogs', limit:'300'}, 30000).catch(()=>[])
+    adminCloudOk()
+    const table = logins.length ? `
       <table class="admin-table">
-        <thead><tr><th style="width:170px">時間</th><th>帳號</th><th>所在縣市</th><th>裝置</th></tr></thead>
+        <thead><tr><th style="width:150px">時間</th><th style="width:130px">帳號</th>
+          <th style="width:200px">所在縣市</th><th>裝置</th></tr></thead>
         <tbody>${logins.map(r=>`<tr>
-          <td style="color:#475569;font-size:12px">${esc(r.at)}</td>
+          <td style="color:#475569;font-size:12px;white-space:nowrap">${esc(fmtLogTime(r.at))}</td>
           <td><strong>${esc(r.name)||'—'}</strong></td>
           <td style="color:#475569">${esc(r.city)||'—'}</td>
           <td style="color:#475569;font-size:12px">${esc(r.device)||'—'}</td>
         </tr>`).join('')}</tbody>
       </table>`
       : '<div class="admin-empty">尚無登入紀錄</div>'
-
     el.innerHTML=`
-      <div style="font-size:14px;font-weight:800;margin:6px 0 4px">📝 操作紀錄</div>
-      <div style="font-size:12px;color:#64748b;margin-bottom:10px">
-        操作者一律由伺服器依 session 判定，前端無法偽造。刪除類動作以紅色標示。
-      </div>
-      ${opTable}
-      <div style="font-size:14px;font-weight:800;margin:22px 0 4px">🔐 登入紀錄</div>
+      <div style="font-size:14px;font-weight:800;margin:6px 0 4px">🔐 登入紀錄</div>
       <div style="font-size:12px;color:#64748b;margin-bottom:10px">
         只記成功登入。縣市由網路位址推估，僅供參考；未儲存 IP。
       </div>
-      ${loginTable}`
+      ${table}`
   }catch(e){
     adminCloudErr()
     el.innerHTML=`<div style="color:#dc2626;padding:16px">載入失敗：${esc(e.message)}</div>`
