@@ -5150,7 +5150,9 @@ function toggleDelay(d,group,opts){
     delayLog.push({cause:d.cause,group,label:d.label,icon:d.icon,startedAt:activeDelay.startedAt,endedAt:end,durationS:dur,pos:activeDelay.startPos})
     $(`dbtn-${d.cause}`).classList.remove('active')
     $(`dtime-${d.cause}`).textContent='';activeDelay=null
-    speakNav('延滯結束',null,{high:true})
+    // 延滯結束不出聲：車子重新開動本身就是最直接的回饋，
+    // 而且結束的當下常常緊接著轉彎提示，多一句只會擋到真正要聽的那一句。
+    // 畫面上的藍框會閃出實際記錄到的秒數，需要確認時看得到。
     if(navigator.vibrate) navigator.vibrate(60)
     // ── 結束提醒：藍框閃示已結束秒數，2 秒後消失 ──
     // 面板可能還留著（語音追問未結束），把計時顯示凍在實際記錄到的秒數
