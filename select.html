@@ -234,6 +234,7 @@ const urlP = new URLSearchParams(location.search)
 const GS_URL   = urlP.get('gs')  || localStorage.getItem('gs_url') || ''
 const INDEX_URL = urlP.get('index') || './index.html'
 let GS_KEY = ''                       // 登入成功後才有值
+let GS_TOKEN = ''                     // 同上；getProjects 這類管理端 action 要用它
 
 // 登入狀態存本機，有效期內重開不用再輸入一次
 const SEL_SESS='sel_session'
@@ -278,8 +279,8 @@ async function doSelectLogin(){
     if(!json.ok) throw new Error(json.error||'登入失敗')
     const d=json.data
     if(!d||!d.apiKey) throw new Error('此帳號無法使用本入口，請聯絡管理員')
-    GS_KEY=d.apiKey
-    selSessionSave({name:d.name||name, apiKey:d.apiKey, expiresAt:d.expiresAt})
+    GS_KEY=d.apiKey; GS_TOKEN=d.sessionToken||''
+    selSessionSave({name:d.name||name, apiKey:d.apiKey, sessionToken:d.sessionToken||'', expiresAt:d.expiresAt})
     document.getElementById('login-screen').style.display='none'
     bootSelect()
   }catch(e){
@@ -297,6 +298,7 @@ let allUsers = []
 let allRoutes = []
 let allProjects = []
 let selectedEng = null
+let _projErr = ''            // 專案清單載入失敗的原因（不要默默顯示成 0 個專案）
 let selectedProject = null   // 選到的專案 → 進 index.html 的專案選路線畫面
 let selectedRoute = null     // 沒有歸到任何專案的零散路線，才會直接選單一路線
 
@@ -306,9 +308,15 @@ let selectedRoute = null     // 沒有歸到任何專案的零散路線，才會
 // 而且過一陣子自己又好了——那是伺服器暫時性狀況，不是資料有問題。
 // 這裡先讀成文字判斷，暫時性問題就自動重試；原本連逾時都沒設，網路差時會一直卡著。
 const SEL_RETRY_DELAYS=[1200, 3000, 6000]
+// ⚠️ key 與 sessionToken 兩個都要帶。
+// 後端 doGet 先用 API key 放行一批唯讀 action（getRoutes / getUsers …），
+// 但 getProjects 不在那份白名單裡，是走 sessionToken 那條路——
+// 只帶 key 的話它會回 unauthorized，專案清單就會全部變成 0 個。
 async function cloudGet(params){
   const url = new URL(GS_URL)
-  Object.entries({...params, key: GS_KEY}).forEach(([k,v])=>url.searchParams.set(k,v))
+  const auth = {key: GS_KEY}
+  if(GS_TOKEN) auth.sessionToken = GS_TOKEN
+  Object.entries({...params, ...auth}).forEach(([k,v])=>url.searchParams.set(k,v))
   let lastErr
   for(let attempt=0; attempt<=SEL_RETRY_DELAYS.length; attempt++){
     try{
@@ -354,7 +362,7 @@ function _ldTick(){
 window.addEventListener('load', ()=>{
   if(!GS_URL){ showError('缺少 URL 參數 (gs)','請確認連結正確'); return }
   const sess=selSessionLoad()
-  if(sess){ GS_KEY=sess.apiKey; bootSelect(); return }
+  if(sess){ GS_KEY=sess.apiKey; GS_TOKEN=sess.sessionToken||''; bootSelect(); return }
   // 沒有有效登入 → 顯示登入畫面
   document.getElementById('loading-screen').style.display='none'
   document.getElementById('login-screen').style.display='flex'
@@ -375,7 +383,7 @@ async function bootSelect(){
     document.getElementById('ld-msg').textContent='載入專案資料...'
     const [routesRes, projectsRes] = await Promise.all([
       cloudGet({action:'getRoutes'}),
-      cloudGet({action:'getProjects'}).catch(()=>({data:[]}))
+      cloudGet({action:'getProjects'}).catch(e=>{ _projErr=String(e&&e.message||e); return {data:[]} })
     ])
     allRoutes   = routesRes.data || []
     allProjects = projectsRes.data || []
@@ -392,7 +400,7 @@ async function bootSelect(){
   }catch(e){
     // 金鑰失效（例如管理員換過 API key）就退回登入畫面重新取得，不要卡在錯誤頁
     if(/unauthorized|金鑰|key/i.test(String(e&&e.message||e))){
-      selSessionClear(); GS_KEY=''
+      selSessionClear(); GS_KEY=''; GS_TOKEN=''
       document.getElementById('loading-screen').style.display='none'
       document.getElementById('login-screen').style.display='flex'
       document.getElementById('lg-err').textContent='登入已失效，請重新登入'
@@ -403,7 +411,7 @@ async function bootSelect(){
 }
 
 function selLogout(){
-  selSessionClear(); GS_KEY=''
+  selSessionClear(); GS_KEY=''; GS_TOKEN=''
   location.reload()
 }
 function showError(msg, sub=''){
@@ -477,10 +485,19 @@ function showProjList(name){
   const el=document.getElementById('proj-list')
 
   if(!projects.length && !loose.length){
-    el.innerHTML=`<div class="empty">
-      <div class="empty-icon">📭</div>
-      <p>${name} 目前沒有指派的專案</p>
-    </div>`
+    // 分清楚兩件事：真的沒指派，還是專案清單根本沒載進來。
+    // 兩者都顯示「沒有專案」的話，載入失敗會被誤判成資料問題，查很久。
+    el.innerHTML = _projErr
+      ? `<div class="empty">
+          <div class="empty-icon">⚠️</div>
+          <p>專案清單載入失敗</p>
+          <p style="font-size:12px;color:#94a3b8;margin-top:6px">${_projErr}</p>
+          <p style="font-size:12px;color:#94a3b8;margin-top:6px">請按「換帳號」重新登入一次</p>
+        </div>`
+      : `<div class="empty">
+          <div class="empty-icon">📭</div>
+          <p>${name} 目前沒有指派的專案</p>
+        </div>`
     return
   }
 
