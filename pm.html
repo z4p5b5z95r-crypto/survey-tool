@@ -178,19 +178,26 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .mycal-body{padding:12px 16px;max-width:1180px;width:100%;margin:0 auto;--cal-off:186px}
 /* 工程師端的月曆同樣是白底格線，載入遮罩沿用淺色即可，這裡只微調文字對比 */
 .mycal-body .cal-loading .so-txt{color:#334155}
+/* 搜尋框與工程師篩選同一列。沒有篩選（一般帳號）時搜尋框自己佔滿整列。 */
+.lv-tools{display:flex;gap:7px;align-items:stretch}
 .lv-search{
   display:flex;align-items:center;background:#f8fafc;
   border:1.5px solid #e2e8f0;border-radius:9px;padding:7px 11px;gap:6px;
+  flex:1.15;min-width:0;
 }
-.lv-search input{border:none;outline:none;background:transparent;flex:1;font-size:13px;color:#1e293b}
+.lv-search input{border:none;outline:none;background:transparent;flex:1;min-width:0;font-size:13px;color:#1e293b}
 .lv-search input::placeholder{color:#94a3b8}
-/* PM 篩選：只有看得到全部專案的帳號（主管／admin）才需要，一般 PM 不顯示 */
-.lv-pm{display:none;align-items:center;gap:7px;margin-top:8px}
+/* 工程師篩選：只有看得到全部專案的帳號（主管／admin）才需要，一般帳號不顯示。
+   跟搜尋框做成同一種外框、同一個高度，兩個併排才不會一高一低。 */
+.lv-pm{display:none;flex:1;min-width:0;align-items:center;gap:5px;background:#f8fafc;
+  border:1.5px solid #e2e8f0;border-radius:9px;padding:0 9px 0 11px}
 .lv-pm.on{display:flex}
-.lv-pm label{font-size:12px;font-weight:700;color:#64748b;flex:none}
-.lv-pm select{flex:1;min-width:0;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:9px;
-  padding:6px 9px;font-size:13px;color:#1e293b;outline:none;font-family:inherit;cursor:pointer}
-.lv-pm select:focus{border-color:#93c5fd}
+.lv-pm .lv-pm-ico{font-size:13px;opacity:.55;flex:none}
+.lv-pm select{flex:1;min-width:0;border:none;outline:none;background:transparent;
+  padding:7px 0;font-size:13px;color:#1e293b;font-family:inherit;cursor:pointer;
+  -webkit-appearance:none;appearance:none;text-overflow:ellipsis}
+.lv-pm:focus-within{border-color:#93c5fd}
+.lv-pm .lv-pm-cv{font-size:11px;color:#94a3b8;flex:none;pointer-events:none}
 .projects-wrap{flex:1;overflow-y:auto;padding:10px 10px}
 
 /* Project cards */
@@ -870,8 +877,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
   </div>
 
   <div class="admin-tabs">
-    <button class="admin-tab active" data-tab="surveys" onclick="switchAdminTab('surveys')">📋 調查報告</button>
-    <button class="admin-tab" data-tab="routes" onclick="switchAdminTab('routes')">🗺 專案資料</button>
+    <button class="admin-tab active" data-tab="routes" onclick="switchAdminTab('routes')">🗺 專案資料</button>
     <button class="admin-tab" data-tab="link" onclick="switchAdminTab('link')">🔗 監測連結</button>
     <button class="admin-tab" data-tab="logins" onclick="switchAdminTab('logins')">🔐 稽核紀錄</button>
     <button class="admin-tab" data-tab="trash" onclick="switchAdminTab('trash')">🗑 垃圾桶</button>
@@ -895,11 +901,6 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     <!-- 專案資料 -->
     <div id="atab-routes" style="display:none">
       <div id="admin-routes-table"></div>
-    </div>
-
-    <!-- 調查報告（月曆） -->
-    <div id="atab-surveys" style="display:none">
-      <div id="admin-surveys-table"></div>
     </div>
 
     <!-- 登入紀錄 -->
@@ -994,15 +995,18 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
             <span class="lv-title">專案列表</span>
             <button class="btn-new" onclick="newProject()">＋ 新建專案</button>
           </div>
-          <div class="lv-search">
-            <span style="font-size:14px;color:#94a3b8">🔍</span>
-            <input id="project-search" placeholder="搜尋路線名稱..." oninput="filterProjects()"/>
-          </div>
-          <div class="lv-pm" id="lv-pm">
-            <label for="pm-filter">PM</label>
-            <select id="pm-filter" onchange="onPmFilterChange(this.value)">
-              <option value="">全部 PM</option>
-            </select>
+          <div class="lv-tools">
+            <div class="lv-search">
+              <span style="font-size:14px;color:#94a3b8">🔍</span>
+              <input id="project-search" placeholder="搜尋路線或專案..." oninput="filterProjects()"/>
+            </div>
+            <div class="lv-pm" id="lv-pm">
+              <span class="lv-pm-ico" aria-hidden="true">👤</span>
+              <select id="pm-filter" aria-label="依工程師篩選" onchange="onPmFilterChange(this.value)">
+                <option value="">全部</option>
+              </select>
+              <span class="lv-pm-cv" aria-hidden="true">⌄</span>
+            </div>
           </div>
         </div>
         <div class="projects-wrap" id="projects-wrap"></div>
@@ -1039,7 +1043,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
           <div class="acc-sec" id="acc-time">
             <div class="acc-hd" onclick="toggleAcc('acc-time')">
               <span class="acc-hd-icon">⏰</span>
-              <span class="acc-hd-label">調查時段設定</span>
+              <span class="acc-hd-label">調查時段及次數設定</span>
               <span class="acc-hd-badge" id="pd-count-badge">2 段</span>
               <svg class="acc-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
@@ -1058,7 +1062,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
               <input type="hidden" id="op" value="14:00~16:00"/>
               <input type="hidden" id="pk" value="17:00~19:00"/>
               <div class="field">
-                <label>調查次數設定（預設3次，可自行選擇調查次數）</label>
+                <label>請設定每日調查次數，系統將自動計算當日平均值以製作報告。</label>
                 <div class="rc-btn-row" id="rc-btn-row"></div>
                 <input type="hidden" id="rc" value="3"/>
               </div>
@@ -1558,7 +1562,9 @@ function enterApp(name) {
   { const b=document.getElementById('tb-admin'); if(b) b.style.display=isAdminUser()?'':'none' }
   // 主管看到的是全公司的專案，要在畫面上講清楚，
   // 否則會誤以為這些都是自己的、或以為別人的資料跑進自己帳號了。
-  document.getElementById('tb-username').textContent = name + (isSupervisor() ? '（主管：檢視全部專案）' : '')
+  // admin 不加這個標註——它本來就是管理帳號，掛「主管」反而不知道在說什麼。
+  document.getElementById('tb-username').textContent =
+    name + ((isSupervisor() && !isAdminUser()) ? '（主管：檢視全部專案）' : '')
   updateCloudDot('idle')
   migrateTaskCreators()   // 一次性：舊資料歸到「測試」
   renderProjects()
@@ -3922,14 +3928,15 @@ function pmNameOf(t){
   if(proj&&proj.owner) return proj.owner
   return t.creator||''
 }
-// 主管／admin 看得到所有人的專案，數量一多就需要「只看某個 PM」。
-// 一般 PM 本來就只有自己的專案，這個下拉不出現。
+// 主管／admin 看得到所有人的專案，數量一多就需要「只看某個工程師」。
+// 「工程師」＝路線的 owner，沒有就退回專案的 owner——跟調查行事曆的那個篩選同一個定義。
+// 一般帳號本來就只有自己的專案，這個下拉不出現。
 let _pmFilter=''
 function onPmFilterChange(v){
   _pmFilter=v||''
   renderProjects(document.getElementById('project-search')?.value.trim()||'')
 }
-// 依目前看得到的路線重建 PM 選項；選到的人如果已經沒有資料就自動回到「全部 PM」
+// 依目前看得到的路線重建工程師選項；選到的人如果已經沒有資料就自動回到「全部工程師」
 function syncPmFilterUI(tasks){
   const box=document.getElementById('lv-pm'); if(!box) return
   const on=isSupervisor()
@@ -3938,7 +3945,7 @@ function syncPmFilterUI(tasks){
   const names=[...new Set(tasks.map(pmNameOf).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh-TW'))
   if(_pmFilter && !names.includes(_pmFilter)) _pmFilter=''
   const sel=document.getElementById('pm-filter'); if(!sel) return
-  const html='<option value="">全部 PM</option>'
+  const html='<option value="">全部</option>'
     +names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')
   if(sel.innerHTML!==html) sel.innerHTML=html      // 只在選項真的變了才重建，避免打斷使用者操作
   sel.value=_pmFilter
@@ -3950,7 +3957,18 @@ function renderProjects(filter='') {
   let myTasks=savedTasks.filter(t=>t.creator===me)
   syncPmFilterUI(myTasks)
   if(_pmFilter) myTasks=myTasks.filter(t=>pmNameOf(t)===_pmFilter)
-  const list=filter ? myTasks.filter(t=>(t.cfg.rn||'').includes(filter)||(t.cfg.ft||'').includes(filter)) : myTasks
+  // 搜尋比對三個地方：路線名稱、起訖點、以及路線所屬的專案名稱。
+  // 打專案名字時，那個專案底下的路線要全部留著——只留「名字剛好也含關鍵字」的那幾條
+  // 等於搜尋專案卻看到殘缺的清單。
+  const _kw=(filter||'').toLowerCase()
+  const _hit=v=>String(v||'').toLowerCase().includes(_kw)
+  const projNameOf=t=>{
+    const pj=savedProjects.find(p=>p.id===t.projectId)
+    return pj?pj.name:''
+  }
+  const list=filter
+    ? myTasks.filter(t=>_hit(t.cfg.rn)||_hit(t.cfg.ft)||_hit(projNameOf(t)))
+    : myTasks
   // 依 projectId 分組路線（搜尋時若某專案內只有部分路線符合，仍只顯示符合的路線）
   const groups={}
   list.forEach(t=>{
@@ -3975,6 +3993,14 @@ function renderProjects(filter='') {
   let order
   if(filter){
     order=Object.keys(groups)
+    // 專案名字符合、但底下還沒有路線的空專案也要顯示，
+    // 不然使用者搜自己剛建好的專案會以為「搜不到」。
+    savedProjects.forEach(p=>{
+      if(p.creator!==me) return
+      if(_pmFilter && (p.owner||'')!==_pmFilter) return
+      if(!_hit(p.name)) return
+      if(!order.includes(p.id)) order.push(p.id)
+    })
   }else{
     order=savedProjects.filter(p=>p.creator===me)
       // 篩了某個 PM 時，只留下他名下的空專案；否則會把別人的空專案一起列出來
@@ -4582,7 +4608,8 @@ function enterAdminPanel() {
   document.getElementById('screen-app').classList.remove('visible')
   document.getElementById('screen-admin').classList.add('visible')
   document.getElementById('admin-cloud-dot').className = 'cloud-icon idle'
-  switchAdminTab('surveys')   // 預設落在第一個頁籤「調查報告」
+  switchAdminTab('routes')    // 預設落在第一個頁籤「專案資料」
+                              // 「調查報告」已移除：跟工具列的「🗓 調查行事曆」是同一個畫面
 }
 
 // 各頁籤共用的下載動畫，跟「專案資料下載中」那顆雲朵是同一個
@@ -4598,13 +4625,11 @@ function switchAdminTab(tab) {
   document.querySelectorAll('.admin-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab))
   document.getElementById('atab-users').style.display   = tab === 'users'   ? '' : 'none'
   document.getElementById('atab-routes').style.display  = tab === 'routes'  ? '' : 'none'
-  document.getElementById('atab-surveys').style.display = tab === 'surveys' ? '' : 'none'
   document.getElementById('atab-trash').style.display   = tab === 'trash'   ? '' : 'none'
   document.getElementById('atab-link').style.display    = tab === 'link'    ? '' : 'none'
   document.getElementById('atab-logins').style.display  = tab === 'logins'  ? '' : 'none'
   if (tab === 'users')   loadAdminUsers()
   if (tab === 'routes')  loadAdminRoutes()
-  if (tab === 'surveys') loadAdminSurveys()
   if (tab === 'trash')   loadAdminTrash()
   if (tab === 'link')    renderSelectUrl()
   if (tab === 'logins')  loadAdminLogins()
@@ -5142,7 +5167,7 @@ function jsArg(s){ return esc(JSON.stringify(String(s==null?'':s))) }
 let _calSurveys=[], _calRoutes={}, _calProjects={}, _calReady=false
 let _calYM=null                                   // {y,m} 目前顯示的月份
 let _calFilt={ project:'', engineer:'' }
-let _calHost='admin-surveys-table'                // 渲染目標：後台分頁 or 工程師覆蓋層
+let _calHost='mycal-host'                          // 渲染目標（月曆覆蓋層）
 let _calMineOnly=false                            // 工程師端：只看自己建立的專案
 const ROUTE_SORT_LAST=1e9                         // 還沒排過的路線排到最後（跟後端 SORT_LAST 一致）
 let _calPrefetchTimer=null                        // 前後月份的背景預抓（延後發，不跟當月搶）
@@ -5266,15 +5291,11 @@ async function loadCalendarData(hostId, mineOnly){
   await _showMonth(seq)
 }
 
-async function loadAdminSurveys() {
-  try {
-    await loadCalendarData('admin-surveys-table', false)
-    adminCloudOk()
-  } catch(e) {
-    adminCloudErr()
-    document.getElementById('admin-surveys-table').innerHTML =
-      `<div style="color:#dc2626;padding:16px">載入失敗：${e.message}</div>`
-  }
+// 月曆現在只有一個入口（工具列的「🗓 調查行事曆」覆蓋層），
+// 後台那個「調查報告」頁籤已移除。刪掉一筆之後就地重整這個覆蓋層。
+async function refreshCalendar() {
+  _calMonthCache={}; _calMonthPending={}      // 資料變了，快取要丟掉
+  try { await _showMonth(++_calLoadSeq) } catch(e) { /* 畫面上已有錯誤訊息 */ }
 }
 
 // ── 工程師端：只看自己的專案；主管則是全部 ──
@@ -5297,8 +5318,7 @@ async function openMyCalendar(){
 function closeMyCalendar(){
   document.getElementById('mycal-overlay').classList.remove('on')
   closeCalModal()
-  // 關掉後把渲染目標交還給後台，避免下次後台重整時寫到已隱藏的容器
-  _calHost='admin-surveys-table'; _calMineOnly=false
+  _calHost='mycal-host'; _calMineOnly=false
 }
 
 // 一筆 survey 屬於哪個專案（查不到就歸到「未分類」，不要整筆消失）
@@ -5451,7 +5471,7 @@ function calListHTML(){
         <div class="cl-pjhd" style="border-left-color:${col.c}" onclick="calToggleGroup(${jsArg(key)})">
           <span class="cl-caret">▸</span>
           <span class="cl-pjn" style="color:${col.c}" title="${esc(g.name)}">${esc(g.name)}</span>
-          <span class="cl-pm" title="專案負責 PM">PM ${esc(g.pm)}</span>
+          <span class="cl-pm" title="專案負責工程師">工程師 ${esc(g.pm)}</span>
           ${g.surveyors.length?`<span class="cl-svy" title="當天調查人員：${esc(g.surveyors.join('、'))}">
             <span class="cl-ic">👷</span>
             ${g.surveyors.slice(0,3).map(n=>`<span class="cl-svyn">${esc(n)}</span>`).join('')}
@@ -5719,7 +5739,7 @@ async function adminDeleteSurvey(id) {
   try {
     await cloudPost({ action: 'deleteSurvey', surveyId: id, deletedBy: getCurrentUser() || 'admin', note })
     toast('🗑 已移至垃圾桶')
-    loadAdminSurveys()
+    refreshCalendar()
   } catch(e) { toast('❌ ' + e.message) }
 }
 
