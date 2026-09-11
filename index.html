@@ -2662,6 +2662,11 @@ let compassHeading=0, compassListening=false, _smoothH=null
 // Nav-map rotation — hybrid GPS (Course Up) / compass (Heading Up)
 const NAV_SPEED_MS = 2.2   // 8 km/h threshold
 let _gpsNavHistory=[], _navBearing=null, _lastSpeed=0
+// 最新一筆「未平滑」的 GPS 行進方位。
+// _navBearing 是平滑值（α=0.3），轉完彎要 2~3 秒才追上；這幾秒它會停在「轉一半」
+// 的角度。拿那個角度去算下一個路口，90° 的彎會算成 46°，語音就從「右轉」降級成
+// 「靠右」。有了原始值就能判斷平滑值到底追上了沒有。
+let _navBearingRaw=null
 let _mapFollowing=true   // false when user manually pans/zooms
 let _mapFollowTimer=null  // auto re-center after 4s
 function _updateLocateBtn(){
@@ -2768,6 +2773,7 @@ function updateNavMapBearing(lat,lng,speed){
     const dist=haversine(prev.lat,prev.lng,lat,lng)
     if(dist<2) return                     // skip if GPS jitter (<2 m), not real movement
     const raw=calcBearing(prev.lat,prev.lng,lat,lng)
+    _navBearingRaw=raw
     if(_navBearing===null){ _navBearing=raw }
     else{
       const d=((raw-_navBearing+540)%360)-180
@@ -2777,6 +2783,7 @@ function updateNavMapBearing(lat,lng,speed){
   } else {
     // Low speed → compass takes over (handled in onCompassUpdate above)
     _gpsNavHistory=[]   // reset so next high-speed fix starts fresh
+    _navBearingRaw=null // 停下來時原始方位失效，導航改用折線走向
   }
 }
 
@@ -4489,6 +4496,7 @@ const NAV_ARROW={
 // 左右轉會報錯。routePolylines 裡本來就存著貼路的完整形狀（含鬼節點與 PM 手動拖曳），
 // 這裡改成取用它。
 const NAV_GEOM_M = 30    // 路口前後各取 30 公尺來判斷道路走向
+const NAV_SETTLE_DEG = 20 // 平滑車頭方位與原始 GPS 方位差這麼多以內，才算「已經轉好」
 
 // 目前行進方向下的分段折線：回程＝段順序反轉 + 每段內部反轉
 function _dirPolylines(){
@@ -4595,9 +4603,18 @@ function updateNavBanner(lat,lng,nextNode,dist){
   //   若基準誤用「還在往東」，90°−90°=0，就會播成「直行」。（現場回報的正是這個）
   // 所以實測方向只在「跟這一段折線的走向大致一致」時才採用；差太多代表車頭正在轉，
   // 這時改用折線本身的走向。PM 只畫去程、現場走對面車道那種情況差角不大，仍然採用實測值。
+  // ⚠️ 第二道守門：平滑值必須「已經追上」原始 GPS 方位。
+  // 只擋 60° 不夠。_navBearing 是 α=0.3 的平滑值，轉完 90° 的彎要 2~3 秒才收斂，
+  // 中間會落在 220~240° 這種轉一半的角度：落後 44° 時仍然通過 60° 檢查，
+  // 90°−44°=46° 剛好掉進 25~50 的「靠右」區間，語音就從「右轉」降級成「靠右」。
+  // 而 29 km/h 的遠距離提示距離是 180 公尺、比一個路段還長，提示正好卡在剛過完
+  // 上一個路口那一刻播——命中率很高。（現場回報的「該右轉卻說靠右」就是這個）
+  // 原始方位轉完彎的下一次定位就到位，所以「平滑值 vs 原始值」差多少，
+  // 直接反映平滑值還落後多少。差太多就先用折線，等車頭真的轉好再交還實測值。
   const geoIn = _bearingIntoEnd(inLine, NAV_GEOM_M)
   const _diff = (a,b)=>Math.abs(((a-b+540)%360)-180)
-  const liveOK = _lastSpeed>=NAV_SPEED_MS && _navBearing!=null
+  const settled = _navBearingRaw==null || _diff(_navBearing, _navBearingRaw)<=NAV_SETTLE_DEG
+  const liveOK = _lastSpeed>=NAV_SPEED_MS && _navBearing!=null && settled
                  && (geoIn==null || _diff(_navBearing, geoIn)<=60)
   const inBearing =
       liveOK ? _navBearing
