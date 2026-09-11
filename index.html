@@ -689,6 +689,8 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .emp-btn{width:100%;padding:16px;background:#4f6ef7;color:#fff;border:none;border-radius:14px;
   font-size:17px;font-weight:800;cursor:pointer;font-family:inherit;transition:opacity .15s}
 .emp-btn:disabled{opacity:.55}
+/* 登入中那句字比較長（繫好安全帶，小心駕駛！！），窄機身會擠成兩行，縮一點字 */
+.emp-btn.emp-btn-long{font-size:14px;letter-spacing:-.4px;white-space:nowrap}
 .emp-hello{font-size:14px;color:#16a34a;font-weight:800;margin-top:12px;min-height:20px}
 /* ── 工號登入的小動畫：查詢中車子發動冒煙，查到了就開出畫面 ──────────
    ⚠️ 車子改成絕對定位、脫離 .emp-logo 的 flex 排版：開出去時方框才不會塌成空的。
@@ -886,7 +888,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     </div>
 
     <div class="emp-err" id="emp-err"></div>
-    <button class="emp-btn" id="emp-btn" onclick="empSubmit()">下一步</button>
+    <button class="emp-btn" id="emp-btn" onclick="empSubmit()">上車</button>
     <div class="emp-hello" id="emp-hello"></div>
   </div>
 </div>
@@ -7459,7 +7461,7 @@ function _empResetForm(){
   const nameWrap=document.getElementById('emp-name-wrap')
   const btn=document.getElementById('emp-btn')
   if(nameWrap) nameWrap.style.display='none'
-  if(btn){ btn.disabled=false; btn.textContent='下一步' }
+  if(btn){ btn.disabled=false; btn.textContent='上車'; btn.classList.remove('emp-btn-long') }
   const err=document.getElementById('emp-err'); if(err) err.textContent=''
   const hi=document.getElementById('emp-hello'); if(hi) hi.textContent=''
   empCarReset()   // 車子回到方框裡（上一次是開走的狀態，不歸位就看不到車）
@@ -7530,7 +7532,7 @@ async function empSubmit(){
   if(nameWrap.style.display!=='none'){
     const nm=(nameEl.value||'').trim()
     if(!nm){ err.textContent='請輸入姓名'; nameEl.focus(); return }
-    btn.disabled=true; btn.textContent='建立中…'
+    btn.disabled=true; btn.textContent='建立中…'; btn.classList.remove('emp-btn-long')
     empCarStart()
     try{
       await _empPost({action:'registerSurveyor', empId, name:nm})
@@ -7540,13 +7542,13 @@ async function empSubmit(){
     }catch(e){
       empCarStop()
       err.textContent='建立失敗：'+((e&&e.message)||e)
-      btn.disabled=false; btn.textContent='建立並繼續'
+      btn.disabled=false; btn.textContent='建立並繼續'; btn.classList.remove('emp-btn-long')
     }
     return
   }
 
   // 第一階段：查名冊
-  btn.disabled=true; btn.textContent='查詢中…'
+  btn.disabled=true; btn.textContent='請繫好安全帶，小心駕駛！！'; btn.classList.add('emp-btn-long')
   empCarStart()          // 引擎發動，開始冒煙
   try{
     const found=await _empGet({action:'getSurveyor', empId})
@@ -7560,13 +7562,13 @@ async function empSubmit(){
       _empPendingId=empId
       nameWrap.style.display='block'
       err.textContent=''
-      btn.disabled=false; btn.textContent='建立並繼續'
+      btn.disabled=false; btn.textContent='建立並繼續'; btn.classList.remove('emp-btn-long')
       setTimeout(()=>{ if(nameEl) nameEl.focus() },80)
     }
   }catch(e){
     empCarStop()
     err.textContent='查詢失敗：'+((e&&e.message)||e)+'（請確認網路）'
-    btn.disabled=false; btn.textContent='下一步'
+    btn.disabled=false; btn.textContent='上車'; btn.classList.remove('emp-btn-long')
   }
 }
 
@@ -7664,7 +7666,7 @@ function _renderPrep(){
         +'<span class="hint">'+r.desc+'</span></span>'
       +'<span class="st">·</span></div>').join('')
     +'<div id="pv-ask"></div>'
-    +'<button class="pv-go" id="pv-go" onclick="pvRun()">🚀 裝備授權與確認</button>'
+    +'<button class="pv-go" id="pv-go" onclick="pvRun()">🚀 裝置確認與授權</button>'
     +'<button class="pv-link" onclick="switchSurveyor()">我不是'+gn+'</button>'
     +'</div>'
   _pvSyncDeps()
