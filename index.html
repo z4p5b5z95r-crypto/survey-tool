@@ -690,6 +690,49 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
   font-size:17px;font-weight:800;cursor:pointer;font-family:inherit;transition:opacity .15s}
 .emp-btn:disabled{opacity:.55}
 .emp-hello{font-size:14px;color:#16a34a;font-weight:800;margin-top:12px;min-height:20px}
+/* ── 工號登入的小動畫：查詢中車子發動冒煙，查到了就開出畫面 ──────────
+   ⚠️ 車子改成絕對定位、脫離 .emp-logo 的 flex 排版：開出去時方框才不會塌成空的。
+   方框 overflow:visible 讓車子出得去，外層 #screen-emp 用 overflow:hidden 把
+   畫面外的部分裁掉（否則 iOS Safari 會多出一條可以橫向捲動的空白）。
+   🚗 在 iOS 上車頭朝左，所以往左開、煙從右後方冒。 */
+#screen-emp{overflow:hidden}
+.emp-logo{position:relative;overflow:visible}
+.emp-car{position:absolute;left:50%;top:50%;translate:-50% -50%;font-size:42px;line-height:1;
+  will-change:transform;z-index:3}
+.emp-puff{position:absolute;top:56%;right:-2px;font-size:19px;opacity:0;z-index:2;
+  pointer-events:none;will-change:transform,opacity}
+.emp-bigpuff{position:absolute;top:54%;right:-6px;font-size:26px;opacity:0;z-index:1;pointer-events:none}
+.emp-dash{position:absolute;top:50%;right:-6px;height:3px;border-radius:2px;background:#64748b;
+  opacity:0;z-index:1;pointer-events:none}
+/* 怠速：車身上下彈跳，像引擎在轟 */
+.emp-idle .emp-car{animation:empShake .16s ease-in-out infinite}
+@keyframes empShake{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-3px) rotate(-2deg)}}
+/* 排氣：三團煙輪流由小變大往後上方飄散 */
+.emp-puffing .emp-puff{animation:empPuff 1.1s ease-out infinite}
+.emp-puffing .emp-puff:nth-of-type(2){animation-delay:.36s}
+.emp-puffing .emp-puff:nth-of-type(3){animation-delay:.72s}
+@keyframes empPuff{0%{opacity:0;transform:translate(0,0) scale(.4)}18%{opacity:.85}
+  100%{opacity:0;transform:translate(26px,-16px) scale(1.5)}}
+/* 出發：先往後蓄力再彈射出去 */
+.emp-go .emp-car{animation:empGo .8s forwards}
+@keyframes empGo{0%{transform:translateX(0) rotate(0) scaleX(1)}
+  30%{transform:translateX(22px) rotate(4deg) scaleX(.92)}
+  42%{transform:translateX(14px) rotate(2deg) scaleX(1.08)}
+  100%{transform:translateX(-340px) rotate(-3deg) scaleX(1.05)}}
+.emp-go .emp-bigpuff{animation:empBigPuff .75s ease-out forwards}
+@keyframes empBigPuff{0%{opacity:0;transform:scale(.5)}20%{opacity:.9;transform:scale(1.15)}
+  100%{opacity:0;transform:translate(34px,-12px) scale(1.9)}}
+.emp-go .emp-dash{animation:empDash .5s ease-out forwards}
+.emp-go .emp-dash:nth-of-type(1){width:22px;margin-top:-12px;animation-delay:.42s}
+.emp-go .emp-dash:nth-of-type(2){width:34px;margin-top:0;animation-delay:.46s}
+.emp-go .emp-dash:nth-of-type(3){width:18px;margin-top:12px;animation-delay:.5s}
+@keyframes empDash{0%{opacity:0;transform:translateX(20px) scaleX(.3)}35%{opacity:.9}
+  100%{opacity:0;transform:translateX(-60px) scaleX(1)}}
+/* 系統設定「減少動態效果」時整組關掉，只留靜止的車子 */
+@media (prefers-reduced-motion:reduce){
+  .emp-idle .emp-car,.emp-puffing .emp-puff,.emp-go .emp-car,
+  .emp-go .emp-bigpuff,.emp-go .emp-dash{animation:none!important}
+}
 /* ── SGS 表格：與桌機報告頁（survey-report.html）逐項對齊 ──────────
    樣式與算式都直接沿用桌機那份，兩邊看到的必須是同一張表。
    注意兩個容易被改壞的算式：
@@ -816,7 +859,13 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
      下一次同一個工號就不用再打名字了。 -->
 <div id="screen-emp" class="screen" style="background:linear-gradient(160deg,#1e293b 0%,#0f172a 100%);align-items:center;justify-content:center;padding:24px">
   <div class="emp-card">
-    <div class="emp-logo">🚗</div>
+    <!-- 車子與煙都是絕對定位的圖層，方框只負責當背景（開走時留在原位） -->
+    <div class="emp-logo" id="emp-logo">
+      <span class="emp-dash"></span><span class="emp-dash"></span><span class="emp-dash"></span>
+      <span class="emp-bigpuff">💨</span>
+      <span class="emp-puff">💨</span><span class="emp-puff">💨</span><span class="emp-puff">💨</span>
+      <span class="emp-car">🚗</span>
+    </div>
     <div class="emp-title">交通行駛速率與延滯調查</div>
 
     <div class="emp-f">
@@ -7413,6 +7462,7 @@ function _empResetForm(){
   if(btn){ btn.disabled=false; btn.textContent='下一步' }
   const err=document.getElementById('emp-err'); if(err) err.textContent=''
   const hi=document.getElementById('emp-hello'); if(hi) hi.textContent=''
+  empCarReset()   // 車子回到方框裡（上一次是開走的狀態，不歸位就看不到車）
   // 帶出上次用過的工號（只填數字，T 是固定前綴）
   try{
     const last=JSON.parse(localStorage.getItem(EMP_KEY)||'null')
@@ -7434,6 +7484,37 @@ function empDigits(full){
   return String(full||'').trim().toUpperCase().replace(/^T+/,'').replace(/[^0-9]/g,'')
 }
 
+// ── 工號登入的小動畫 ─────────────────────────────────────────────
+// 查詢中：車子發動、抖動冒煙；查到人：開出畫面，方框留在原位。
+const EMP_CAR_MIN_MS = 900   // 發動至少演這麼久
+const EMP_CAR_GO_MS  = 800   // 開出畫面的長度，與 CSS 的 empGo 對齊
+let _empCarT0=0
+function empCarStart(){
+  const lg=document.getElementById('emp-logo'); if(!lg) return
+  lg.classList.remove('emp-go')
+  lg.classList.add('emp-idle','emp-puffing')
+  _empCarT0=Date.now()
+}
+function empCarStop(){
+  const lg=document.getElementById('emp-logo'); if(!lg) return
+  lg.classList.remove('emp-idle','emp-puffing','emp-go')
+}
+// 查到人之後：先把發動補滿 EMP_CAR_MIN_MS（雲端常常 0.3 秒就回來，
+// 不補的話動畫只閃一下就跳頁），再開出畫面，回傳的 Promise 等車子離開才 resolve。
+async function empCarDriveOff(){
+  const lg=document.getElementById('emp-logo')
+  if(!lg) return
+  const spent=Date.now()-_empCarT0
+  if(spent<EMP_CAR_MIN_MS) await new Promise(r=>setTimeout(r, EMP_CAR_MIN_MS-spent))
+  lg.classList.remove('emp-idle')       // 停止抖動，改成往前衝
+  lg.classList.add('emp-go')
+  await new Promise(r=>setTimeout(r, 260))
+  lg.classList.remove('emp-puffing')    // 車子走遠了，排氣就不再冒
+  await new Promise(r=>setTimeout(r, EMP_CAR_GO_MS-260))
+}
+// 回到工號畫面時要把車子放回原位，否則上一次開出去的狀態會留著（畫面上沒有車）
+function empCarReset(){ empCarStop() }
+
 async function empSubmit(){
   const idEl=document.getElementById('emp-id')
   const nameEl=document.getElementById('emp-name')
@@ -7450,10 +7531,14 @@ async function empSubmit(){
     const nm=(nameEl.value||'').trim()
     if(!nm){ err.textContent='請輸入姓名'; nameEl.focus(); return }
     btn.disabled=true; btn.textContent='建立中…'
+    empCarStart()
     try{
       await _empPost({action:'registerSurveyor', empId, name:nm})
+      hello.textContent=(givenName(nm)||nm)+'出發囉！！'
+      await empCarDriveOff()
       _empDone(empId, nm)
     }catch(e){
+      empCarStop()
       err.textContent='建立失敗：'+((e&&e.message)||e)
       btn.disabled=false; btn.textContent='建立並繼續'
     }
@@ -7462,13 +7547,16 @@ async function empSubmit(){
 
   // 第一階段：查名冊
   btn.disabled=true; btn.textContent='查詢中…'
+  empCarStart()          // 引擎發動，開始冒煙
   try{
     const found=await _empGet({action:'getSurveyor', empId})
     if(found && found.name){
-      hello.textContent='　'+found.name+'，您好'
+      hello.textContent=(givenName(found.name)||found.name)+'出發囉！！'
+      await empCarDriveOff()   // 查到人才開走；等車子離開畫面再換頁
       _empDone(empId, found.name)
     }else{
-      // 查無此工號 → 追問姓名
+      // 查無此工號 → 追問姓名（還不能開走，熄火）
+      empCarStop()
       _empPendingId=empId
       nameWrap.style.display='block'
       err.textContent=''
@@ -7476,6 +7564,7 @@ async function empSubmit(){
       setTimeout(()=>{ if(nameEl) nameEl.focus() },80)
     }
   }catch(e){
+    empCarStop()
     err.textContent='查詢失敗：'+((e&&e.message)||e)+'（請確認網路）'
     btn.disabled=false; btn.textContent='下一步'
   }
