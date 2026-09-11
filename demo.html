@@ -1466,6 +1466,8 @@ function showScreen(id){
     if(id==='screen-survey'&&mapSurvey){ mapSurvey.invalidateSize(); requestAnimationFrame(()=>{ if(mapSurvey)mapSurvey.invalidateSize() }); _cssRotDeg=null; _lastRotated=null; rotateNavMap(_navBearing??compassHeading) }
     if(id==='screen-report'&&mapResult)  { mapResult.invalidateSize(); requestAnimationFrame(()=>{ if(mapResult)mapResult.invalidateSize() }) }
     if(id==='screen-ready'&&mapReady)    { mapReady.invalidateSize(); requestAnimationFrame(()=>{ if(mapReady)mapReady.invalidateSize() }) }
+    // 選路線頁的地圖以前沒有在這裡重量尺寸，從監測畫面返回時整張圖是空白的
+    if(id==='screen-project-routes'&&mapProjectRoutes){ mapProjectRoutes.invalidateSize(); requestAnimationFrame(()=>{ if(mapProjectRoutes)mapProjectRoutes.invalidateSize() }) }
   },120)
   // 進報告畫面時重設分頁。剛調查完只看得到「調查紀錄」——那時調查員關心的是
   // 自己剛跑的那一趟，而總覽是四個組合的平均，多數欄位都還是「—」，反而干擾。
@@ -6904,6 +6906,28 @@ async function loadCloudRouteAndProceed(routeId, gsParam, kParam){
 // 專案 QR（?pid=）：先下載專案底下的路線清單，讓現場人員選一條要調查的路線
 let _cameFromProjectPicker = false   // 這次是不是掃專案QR進來的（決定簽到頁要不要顯示「返回選路線」按鈕）
 let _pickerCtx = null                // 記住這次選路線用到的參數，返回清單時可以重查今日進度
+// 選路線清單。抽成獨立函式，因為「第一次進來」與「跑完一趟返回」都要畫一次。
+function renderRoutePickerList(routes, gsParam, kParam){
+  const box = document.getElementById('pr-list'); if(!box) return
+  if(!routes || !routes.length){
+    box.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8">這個專案還沒有任何路線，請聯絡PM新增路線後再掃一次</div>'
+    return
+  }
+  box.innerHTML = routes.map((r,i) => `
+    <button class="pr-item" onclick="loadCloudRouteAndProceed('${r.id}','${gsParam}','${kParam}')">
+      <span class="pr-bar" id="pr-bar-${i}" style="background:${PR_MAP_COLORS[i%PR_MAP_COLORS.length]}"></span>
+      <span class="pr-item-inner">
+        <span class="pr-item-body">
+          <span class="pr-item-name">${i+1}. ${r.routeName||'未命名路線'}</span>
+          <span class="pr-item-sub">${segDisp(r.routeFromTo||'未設定起訖點')}</span>
+        </span>
+        <!-- 版型 A：圓圈維持在右側固定欄位，名稱太長時自己折成兩行 -->
+        <span class="pr-rings" id="pr-state-${i}"></span>
+        <svg class="pr-item-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+      </span>
+    </button>
+  `).join('')
+}
 async function showProjectRoutePicker(pid, gsParam, kParam){
   showScreen('screen-loading-folder')
   markLoadingStart()
@@ -6921,25 +6945,7 @@ async function showProjectRoutePicker(pid, gsParam, kParam){
     setFolderLoadPct(100)
     const projBadge = document.getElementById('pr-proj-name')
     if(projBadge) projBadge.textContent = proj?.name||'專案'
-    const box = document.getElementById('pr-list')
-    if(!routes.length){
-      box.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8">這個專案還沒有任何路線，請聯絡PM新增路線後再掃一次</div>'
-    }else{
-      box.innerHTML = routes.map((r,i) => `
-        <button class="pr-item" onclick="loadCloudRouteAndProceed('${r.id}','${gsParam}','${kParam}')">
-          <span class="pr-bar" id="pr-bar-${i}" style="background:${PR_MAP_COLORS[i%PR_MAP_COLORS.length]}"></span>
-          <span class="pr-item-inner">
-            <span class="pr-item-body">
-              <span class="pr-item-name">${i+1}. ${r.routeName||'未命名路線'}</span>
-              <span class="pr-item-sub">${segDisp(r.routeFromTo||'未設定起訖點')}</span>
-            </span>
-            <!-- 版型 A：圓圈維持在右側固定欄位，名稱太長時自己折成兩行 -->
-            <span class="pr-rings" id="pr-state-${i}"></span>
-            <svg class="pr-item-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
-          </span>
-        </button>
-      `).join('')
-    }
+    renderRoutePickerList(routes, gsParam, kParam)
     _cameFromProjectPicker = true
     _pickerCtx = {pid, routes, gs:gsParam, k:kParam}
     // 進度已經一起抓好了，換頁前先套上去；主要端點失敗才退回後備方式補查
@@ -7143,10 +7149,17 @@ async function renderTodayProgress(pid, routes, gsParam, kParam){
 
 // 從任務路線頁按「返回」，回到剛剛選過的路線清單（清單畫面內容還在，不用重新下載）
 function backToRoutePicker(){
-  if(!_cameFromProjectPicker) return
+  if(!_cameFromProjectPicker || !_pickerCtx) return
   showScreen('screen-project-routes')
+  // ⚠️ 回到這一頁一定要重畫清單與地圖，不能只更新進度圓點。
+  //   ・地圖：Leaflet 在容器被隱藏（寬高 0）期間不會重算版面，跑完一趟回來
+  //     常常整張圖是空白的、路線全部不見——Android 上特別明顯，因為系統會把
+  //     背景分頁的繪圖資源回收掉。重新整理之所以「就好了」，正是因為整頁重建。
+  //   ・清單：一併重畫，萬一 DOM 在長時間調查中被回收，也不會變成空白一片。
+  renderRoutePickerList(_pickerCtx.routes,_pickerCtx.gs,_pickerCtx.k)
+  setTimeout(()=>renderProjectRoutesMap(_pickerCtx.routes,_pickerCtx.gs,_pickerCtx.k), 120)
   // 剛剛可能已經跑完一趟，回來時重新查一次進度，圓點才會即時反映
-  if(_pickerCtx) renderTodayProgress(_pickerCtx.pid,_pickerCtx.routes,_pickerCtx.gs,_pickerCtx.k)
+  renderTodayProgress(_pickerCtx.pid,_pickerCtx.routes,_pickerCtx.gs,_pickerCtx.k)
 }
 
 window.addEventListener('load', async () => {
