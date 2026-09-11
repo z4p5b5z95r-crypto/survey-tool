@@ -5311,10 +5311,13 @@ function toggleDelay(d,group,opts){
       toggleDelay(wrong, fix.group, {keepPanel:true})
       undoDelayRecord(fix.cause, fix.group)  // 再把它從紀錄裡整個撤掉
     }
-    toggleDelay(d, group)                    // 換成正確的原因
+    // ⚠️ 複誦交給 toggleDelay 裡那個唯一的播報點，用 sayAs 指定要唸的句子。
+    // 舊寫法是這裡先 toggleDelay(d, group)（它自己唸了一次「○○」，因為前一筆
+    // 已經在上面被結束掉，_switching 算出來是 false），然後下面再唸一次
+    // 「修改為○○」——現場聽到的就是「○○」「修改為○○」連著兩句。
+    toggleDelay(d, group, {sayAs:'修改為'+d.label})   // 換成正確的原因
     if(activeDelay && origStart) activeDelay.startedAt=origStart   // 起算點回到原本停下的時刻
     showToast(`✏️ 已更正為 ${d.icon} ${d.label}`, true)
-    speakNav('修改為'+d.label, null, {high:true})   // 手動更正也複誦一次，駕駛不用低頭確認
     return
   }
   if(d.cause!==_voicePick?.cause) _voicePick=null
@@ -7649,17 +7652,49 @@ async function pvRun(){
   let audioOK=true
   try{ unlockAudio(); unlockNavVoice() }catch(e){ audioOK=false }
 
-  // ② 方向感應：iOS 對手勢最敏感，只「發起」不 await
+  // ② 語音測試要排在麥克風之前。
+  // ⚠️ 順序不能反。iOS 開始語音辨識時會自己發出一聲系統提示音，那是系統音效，
+  // 手機側邊的靜音鍵關不掉；而這支 App 全程的播報走 speechSynthesis，靜音鍵一開
+  // 就完全沒聲音。若先跑麥克風授權，使用者會先聽到那一聲「嗶」，接著語音測試
+  // 其實沒出聲，他卻以為剛剛那一聲就是測試音而按下「聽到了」——出發後才發現
+  // 整趟都沒有語音。先問完語音、再碰麥克風，這個混淆就不存在。
+  if(!navVoiceEnabled){
+    pvSet('audio','skip','你選擇不使用語音導航，已略過')
+    return pvRunRest()
+  }
+  if(!audioOK){ pvSet('audio','fail','解鎖失敗，請確認未開啟靜音'); return pvRunRest() }
+  pvSpeakTest()
+  pvSet('audio','wait','剛才播了一段語音')
+  const ask=document.getElementById('pv-ask')
+  if(ask) ask.innerHTML='<div class="pv-ask"><div class="q">有聽到語音嗎？</div>'
+    +'<div class="s">要聽到的是一句<b>人聲</b>；沒聽到請確認手機側邊的靜音鍵已關閉、音量已調高</div>'
+    +'<button class="rp" onclick="pvSpeakTest()">🔁 再聽一次</button>'
+    +'<div class="bs"><button class="y" onclick="pvAudio(true)">聽到了</button>'
+    +'<button class="n" onclick="pvAudio(false)">沒聽到</button></div></div>'
+  if(btn) btn.style.display='none'
+}
+
+// 語音確認完才跑其餘四項。
+// ⚠️ 這個函式一定要從點擊事件裡同步呼叫（pvRun 或 pvAudio），而且方向感應的
+// requestPermission 必須在第一個 await 之前發起，否則 iOS 會判定「不是使用者手勢」
+// 直接拒絕。
+async function pvRunRest(){
+  const btn=document.getElementById('pv-go')
+  if(btn){ btn.disabled=true; btn.textContent='處理中…' }
+
+  // ③ 方向感應：iOS 對手勢最敏感，只「發起」不 await
   let motionP=null
   try{
     if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function')
       motionP=DeviceOrientationEvent.requestPermission()
   }catch(e){ motionP=Promise.reject(e) }
 
-  // ③ 麥克風：關掉語音輸入就不要跟人要一個他明確說不要的權限
+  // ④ 麥克風：關掉語音輸入就不要跟人要一個他明確說不要的權限
   if(!voicePickEnabled){
     pvSet('mic','skip','你選擇不使用語音輸入，已略過')
   }else{
+    // 先講清楚等一下那一聲是什麼，免得被當成語音播報的證據
+    pvSet('mic','wait','授權中，手機可能會「嗶」一聲（系統的收音提示音）')
     try{
       const st=await navigator.mediaDevices.getUserMedia({audio:true})
       st.getTracks().forEach(t=>t.stop())
@@ -7674,7 +7709,7 @@ async function pvRun(){
     }
   }
 
-  // ④ 定位：實際取一次位置，順便確認精度
+  // ⑤ 定位：實際取一次位置，順便確認精度
   await new Promise(res=>{
     if(!navigator.geolocation){ pvSet('gps','fail','此瀏覽器不支援定位，無法進行監測'); return res() }
     navigator.geolocation.getCurrentPosition(
@@ -7685,7 +7720,7 @@ async function pvRun(){
       {enableHighAccuracy:true,timeout:12000,maximumAge:0})
   })
 
-  // ⑤ 收方向感應的結果
+  // ⑥ 收方向感應的結果
   if(motionP){
     try{
       const st=await motionP
@@ -7697,22 +7732,7 @@ async function pvRun(){
     try{ initCompass() }catch(e){}
   }
 
-  // ⑥ 語音：播一段再問人。程式測不出手機有沒有真的出聲，只有人聽得到。
-  // 關掉語音導航就跳過這一關——畫面上那一列已經畫了刪除線，再問一次只是多一個步驟。
-  if(!navVoiceEnabled){
-    pvSet('audio','skip','你選擇不使用語音導航，已略過')
-    pvFinish(); return
-  }
-  if(!audioOK){ pvSet('audio','fail','解鎖失敗，請確認未開啟靜音'); pvFinish(); return }
-  pvSpeakTest()
-  pvSet('audio','wait','剛才播了一段語音')
-  const ask=document.getElementById('pv-ask')
-  if(ask) ask.innerHTML='<div class="pv-ask"><div class="q">有聽到語音嗎？</div>'
-    +'<div class="s">沒聽到請確認手機側邊的靜音鍵已關閉、音量已調高</div>'
-    +'<button class="rp" onclick="pvSpeakTest()">🔁 再聽一次</button>'
-    +'<div class="bs"><button class="y" onclick="pvAudio(true)">聽到了</button>'
-    +'<button class="n" onclick="pvAudio(false)">沒聽到</button></div></div>'
-  if(btn) btn.style.display='none'
+  pvFinish()
 }
 function pvAudio(ok){
   if(ok) pvSet('audio','pass','已確認，行車中聽得到語音播報')
@@ -7721,7 +7741,8 @@ function pvAudio(ok){
   }
   const ask=document.getElementById('pv-ask'); if(ask) ask.innerHTML=''
   const btn=document.getElementById('pv-go'); if(btn) btn.style.display=''
-  pvFinish()
+  // 這裡仍在點擊手勢中，接著去要麥克風、定位、方向感應的權限
+  pvRunRest()
 }
 function pvFinish(){
   const btn=document.getElementById('pv-go')
