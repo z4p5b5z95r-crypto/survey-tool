@@ -521,6 +521,10 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
   color:#64748b;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;
   flex-shrink:0;transition:all .15s;font-family:inherit}
 .rtab.active{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}
+/* 「這是剛跑完的那一趟」提示條 */
+.rpt-cur-bn{margin:2px 0 10px;padding:9px 12px;border-radius:10px;font-size:13px;
+  background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8}
+.rpt-cur-bn b{font-weight:800}
 /* History back button */
 #hist-report-back{position:fixed;top:16px;right:16px;z-index:9999;background:#1e293b;
   color:#f1f5f9;border:1.5px solid #475569;border-radius:20px;padding:8px 16px;
@@ -1488,6 +1492,12 @@ function showScreen(id){
 }
 // 剛調查完＝true，看歷史紀錄＝false
 let _reportOverviewHidden=false
+// 剛調查完的那一個組合（例如 peak_bound）。
+// 當天其他已完成的組合仍然看得到、可以切換，這個值只決定：
+//   ① 一進報告先打開哪一個分頁
+//   ② 哪一個分頁標「本次」、報告上方顯示「本次調查報告」
+// 從「過去調查記錄」進來是 null，那時沒有「本次」可言。
+let _reportThisCombo=null
 function applyReportTabMode(){
   const tabOv=document.getElementById('rpt-tab-overview')
   const tabOf=document.getElementById('rpt-tab-official')
@@ -2407,6 +2417,7 @@ async function viewHistoryReport(idx){
   allTrips=synth
   config.date=(g.date||'').slice(0,10)
   _reportOverviewHidden=false  // 回頭看舊紀錄：總覽仍然保留
+  _reportThisCombo=null        // 舊紀錄沒有「本次」，不標也不預選
   buildReport()
   const sub=document.getElementById('report-subtitle')
   if(sub) sub.textContent += `　第${g.round||1}次`
@@ -5680,6 +5691,9 @@ function goNextCombo(){showScreen('screen-ready');checkStart()}
 function goReport(){
   document.getElementById('hist-report-back')?.remove()
   _reportOverviewHidden=true   // 剛調查完：只給看這一趟的紀錄
+  // 當天其他組合仍然可以切過去看，但一進來要停在剛跑完的這一趟，
+  // 並且明確標示「本次調查報告」，避免把別趟的數字當成剛才那一趟。
+  _reportThisCombo = (cur && cur.key) || _reportThisCombo
   buildReport()
   showScreen('screen-report')
   // Cloud upload is handled automatically in endSurvey; hide the manual box
@@ -5879,10 +5893,13 @@ function buildOfficialForms(){
   const tabBar=$('report-combo-tabs')
   const box=$('official-forms'); if(!box) return
   box.innerHTML=''
-  const doneCombos=COMBO_KEYS.filter(k=>allTrips[k])
+  let doneCombos=COMBO_KEYS.filter(k=>allTrips[k])
+  // 剛調查完只給看那一趟；從歷史紀錄進來才列出全部
+  if(_reportThisCombo && allTrips[_reportThisCombo]) doneCombos=[_reportThisCombo]
   if(!doneCombos.length){if(tabBar)tabBar.innerHTML='';return}
-  // Build tab bar
+  // Build tab bar：只剩一個組合時不需要分頁列，直接收起來避免誤以為可以切換
   if(tabBar){
+    tabBar.style.display = doneCombos.length>1 ? 'flex' : 'none'
     tabBar.innerHTML=doneCombos.map((k,i)=>
       `<button class="rtab${i===0?' active':''}" data-tab="${k}" onclick="showComboTab('${k}')">${COMBO_ZH[k]||k}</button>`
     ).join('')
@@ -5901,6 +5918,14 @@ function showComboTab(key){
   box.innerHTML=''
   const trip=allTrips[key]; if(!trip) return
   const[pt,dir]=parseComboKey(key)
+  // 剛調查完進來時，最上面明白標示「本次調查報告」＋是哪一個組合，
+  // 讓調查員一眼確認看的就是剛跑完的那一趟。歷史紀錄進來不顯示。
+  if(_reportThisCombo && key===_reportThisCombo){
+    const bn=document.createElement('div')
+    bn.className='rpt-cur-bn'
+    bn.innerHTML=`<b>本次調查報告</b>　${COMBO_ZH[key]||key}`
+    box.appendChild(bn)
+  }
   const warn=_missingDetailWarning(trip)
   if(warn) box.appendChild(warn)
   box.appendChild(buildRptViewToggle())
@@ -8285,7 +8310,6 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   if(e.key==='Escape') closeManual()
 })
 </script>
-
 <!-- ═══════════════════════════════════════════════════════════════
      DEMO 模擬層
      這一頁就是正式的現場 App（index.html 原封不動複製），
