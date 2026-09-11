@@ -612,9 +612,9 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
   cursor:pointer;font-family:inherit}
 /* ── 出發前確認：五個畫面合併成的單張卡 ── */
 /* 深色抬頭：整塊反白，像任務簡報的開頭；關鍵那行用琥珀色，掃一眼就知道要動手做什麼 */
-.pv-head{background:#334155;margin:0;padding:22px 20px 20px;text-align:center}
-.pv-hd{font-size:17.5px;font-weight:800;color:#fff;letter-spacing:.3px}
-.pv-sub{font-size:12.5px;color:#94a3b8;text-align:center;margin:8px 0 0;line-height:1.8}
+.pv-head{background:#334155;margin:0;padding:15px 20px 14px;text-align:center}
+.pv-hd{font-size:20px;font-weight:800;color:#fff;letter-spacing:.3px;line-height:1.4}
+.pv-sub{font-size:14px;color:#cbd5e1;text-align:center;margin:6px 0 0;line-height:1.6}
 .pv-sub b{color:#fbbf24;font-weight:800}
 /* 抬頭以下的內容區自己吃內距（原本是整張卡一起給 padding） */
 .pv-body{padding:16px 20px 22px}
@@ -626,6 +626,10 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .pv-r .st{font-size:15px;flex:none;width:20px;text-align:center}
 .pv-r.tog{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .pv-r.tog:active{background:#f8fafc}
+/* 關掉的功能連帶用不到的那一項：整列畫刪除線並淡化，一眼看得出「這項不用檢查」 */
+.pv-r.pv-off{opacity:.45}
+.pv-r.pv-off .nm{text-decoration:line-through;text-decoration-thickness:1.5px}
+.pv-r.pv-off .hint{text-decoration:line-through}
 .pv-sw{width:46px;height:27px;border-radius:15px;background:#cbd5e1;position:relative;flex:none;transition:background .18s}
 .pv-sw i{position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;
   box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .18s}
@@ -637,6 +641,9 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .pv-ask .bs{display:flex;gap:7px;margin-top:9px}
 .pv-ask .bs button{flex:1;padding:10px;border:none;border-radius:10px;font-size:13.5px;font-weight:800;
   font-family:inherit;cursor:pointer}
+.pv-ask .rp{width:100%;margin-top:9px;padding:9px;border:1.5px solid #cbd5e1;border-radius:10px;
+  background:#fff;color:#334155;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer}
+.pv-ask .rp:active{background:#f1f5f9}
 .pv-ask .bs .y{background:#2563eb;color:#fff}
 .pv-ask .bs .n{background:#e2e8f0;color:#475569}
 .pv-go{width:100%;margin-top:14px;padding:14px;border:none;border-radius:13px;background:#2563eb;
@@ -7473,7 +7480,7 @@ function givenName(full){
 let _prepName=''
 const PV_ROWS=[
   {id:'gps',   ico:'📍', name:'定位（GPS）',   tag:'必要', desc:'沒有定位就無法記錄軌跡與節點時間'},
-  {id:'audio', ico:'🔊', name:'聲音提示',      tag:'建議', desc:'沒有聲音仍可調查，但要一直盯著螢幕'},
+  {id:'audio', ico:'🔊', name:'語音提示',      tag:'建議', desc:'整趟調查的節點與轉彎都靠語音播報'},
   {id:'mic',   ico:'🎤', name:'麥克風',        tag:'選配', desc:'停車時可直接說出原因'},
   {id:'motion',ico:'🧭', name:'方向感應',      tag:'選配', desc:'地圖隨車頭轉向'},
 ]
@@ -7515,7 +7522,7 @@ function _renderPrep(){
       +'<span class="nm">語音導航<span class="prep-beta">Beta</span></span>'+_pvSw('nav',navVoiceEnabled)+'</div>'
     +'<div class="pv-r tog" onclick="prepToggle(\'mic\')"><span class="ico">🎤</span>'
       +'<span class="nm">語音輸入<span class="prep-beta">Beta</span></span>'+_pvSw('mic',voicePickEnabled)+'</div>'
-    +'<div class="pv-sec" style="margin-top:12px">裝備檢查與授權</div>'
+    +'<div class="pv-sec" style="margin-top:12px">技能列表</div>'
     +PV_ROWS.map(r=>
        '<div class="pv-r" id="pv-'+r.id+'"><span class="ico">'+r.ico+'</span>'
       +'<span class="nm">'+r.name
@@ -7523,13 +7530,22 @@ function _renderPrep(){
         +'<span class="hint">'+r.desc+'</span></span>'
       +'<span class="st">·</span></div>').join('')
     +'<div id="pv-ask"></div>'
-    +'<button class="pv-go" id="pv-go" onclick="pvRun()">🚀 檢查裝備，準備出發</button>'
+    +'<button class="pv-go" id="pv-go" onclick="pvRun()">🚀 裝備授權與確認</button>'
     +'<button class="pv-link" onclick="switchSurveyor()">我不是'+gn+'</button>'
     +'</div>'
+  _pvSyncDeps()
 }
-// 播一聲雙音提示（跟裝置檢測用的是同一種聲音）。
-// 調查過程中的提示一律走語音，只有這裡的設備確認需要真正的「聲音」——
-// 要確認的就是喇叭出不出得了聲，用語音測不到（語音被靜音時一樣沒聲音，但成因不同）。
+// ⚠️ 這裡刻意用「語音」測試，不是嗶聲。
+// iOS 上 AudioContext 的嗶聲被歸類為媒體音，手機側邊靜音鍵關不掉；
+// 但這支 App 全程的提示是 speechSynthesis，那個會被靜音鍵直接關掉。
+// 用嗶聲測會得到「聽得到」的假通過，出發後卻整趟沒有播報——
+// 要測就要測真正會用到的那條通道。
+function pvSpeakTest(){
+  const gn=givenName(_prepName)||'你'
+  // 用 high 插播：確保不會排在其他提示後面，按「再聽一次」也能立刻重播
+  speakNav(gn+'你好，這是語音測試', null, {high:true})
+}
+// 舊的嗶聲留著給「🔬 測試設備」那個深度檢測用（那裡確實是要測喇叭本身）
 function pvBeep(){
   try{
     const ctx=new(window.AudioContext||window.webkitAudioContext)()
@@ -7555,6 +7571,16 @@ function pvSet(id,state,msg){
   if(msg){ const h=el.querySelector('.hint'); if(h) h.textContent=msg }
   el.style.opacity = state==='wait' ? '.6' : '1'
 }
+// 語音導航關掉 → 用不到語音提示；語音輸入關掉 → 用不到麥克風。
+// 這兩列直接畫刪除線，不必等按下檢查才知道系統會略過。
+function _pvSyncDeps(){
+  const set=(id,off)=>{
+    const el=document.getElementById('pv-'+id)
+    if(el) el.classList.toggle('pv-off', !!off)
+  }
+  set('audio', !navVoiceEnabled)
+  set('mic',   !voicePickEnabled)
+}
 function prepToggle(key){
   if(key==='nav'){
     navVoiceEnabled=!navVoiceEnabled
@@ -7566,6 +7592,7 @@ function prepToggle(key){
   }
   const sw=document.getElementById('prep-sw-'+key)
   if(sw) sw.classList.toggle('on', key==='nav'?navVoiceEnabled:voicePickEnabled)
+  _pvSyncDeps()
 }
 
 // 按下按鈕後：就地把四項跑完，全程不換畫面。
@@ -7628,21 +7655,27 @@ async function pvRun(){
     try{ initCompass() }catch(e){}
   }
 
-  // ⑥ 聲音：播一聲再問人。程式測不出喇叭有沒有出聲，只有人聽得到。
+  // ⑥ 語音：播一段再問人。程式測不出手機有沒有真的出聲，只有人聽得到。
+  // 關掉語音導航就跳過這一關——畫面上那一列已經畫了刪除線，再問一次只是多一個步驟。
+  if(!navVoiceEnabled){
+    pvSet('audio','skip','你選擇不使用語音導航，已略過')
+    pvFinish(); return
+  }
   if(!audioOK){ pvSet('audio','fail','解鎖失敗，請確認未開啟靜音'); pvFinish(); return }
-  pvBeep()
-  pvSet('audio','wait','剛才播了一聲提示音')
+  pvSpeakTest()
+  pvSet('audio','wait','剛才播了一段語音')
   const ask=document.getElementById('pv-ask')
-  if(ask) ask.innerHTML='<div class="pv-ask"><div class="q">有聽到提示音嗎？</div>'
-    +'<div class="s">沒聽到請先確認手機側邊的靜音鍵已關閉</div>'
+  if(ask) ask.innerHTML='<div class="pv-ask"><div class="q">有聽到語音嗎？</div>'
+    +'<div class="s">沒聽到請確認手機側邊的靜音鍵已關閉、音量已調高</div>'
+    +'<button class="rp" onclick="pvSpeakTest()">🔁 再聽一次</button>'
     +'<div class="bs"><button class="y" onclick="pvAudio(true)">聽到了</button>'
     +'<button class="n" onclick="pvAudio(false)">沒聽到</button></div></div>'
   if(btn) btn.style.display='none'
 }
 function pvAudio(ok){
-  if(ok) pvSet('audio','pass','已確認，行車中聽得到節點與轉彎提示')
+  if(ok) pvSet('audio','pass','已確認，行車中聽得到語音播報')
   else{
-    pvSet('audio','fail','請關閉靜音並調高音量，之後可在「?」選單重新測試')
+    pvSet('audio','fail','請關閉靜音並調高音量——整趟調查的提示都靠語音')
   }
   const ask=document.getElementById('pv-ask'); if(ask) ask.innerHTML=''
   const btn=document.getElementById('pv-go'); if(btn) btn.style.display=''
