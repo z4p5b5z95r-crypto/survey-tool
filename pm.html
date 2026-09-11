@@ -3945,8 +3945,12 @@ function drawOverviewRoutes(){
         opacity: hot?.85:.2,
         interactive:true
       }).addTo(map)
-      poly.bindTooltip(`${g.name}｜${t.cfg.rn||'未命名路線'}`,{sticky:true})
-      poly.on('click',()=>loadTask(t.id))
+      // 全域總覽下點線＝展開那個專案（跟點氣泡一樣），不是直接進編輯。
+      // 這裡看到的是「所有專案」，點一條線的意思通常是「我要看這個案子」，
+      // 直接跳進單一路線的編輯畫面會跳太快、也看不到同專案的其他路線。
+      // 進編輯統一走「展開專案後再點那條路線」這一條路。
+      poly.bindTooltip(`${g.name}｜${t.cfg.rn||'未命名路線'}　（點選展開此專案）`,{sticky:true})
+      poly.on('click',()=>{ _ovSig=''; toggleProjectGroup(g.pid) })
       _ovLayers.push(poly)
     })
   })
