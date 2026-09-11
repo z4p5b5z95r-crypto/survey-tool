@@ -612,7 +612,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
   cursor:pointer;font-family:inherit}
 /* ── 出發前確認：五個畫面合併成的單張卡 ── */
 /* 深色抬頭：整塊反白，像任務簡報的開頭；關鍵那行用琥珀色，掃一眼就知道要動手做什麼 */
-.pv-head{background:#0f172a;margin:0;padding:22px 20px 20px;text-align:center}
+.pv-head{background:#334155;margin:0;padding:22px 20px 20px;text-align:center}
 .pv-hd{font-size:17.5px;font-weight:800;color:#fff;letter-spacing:.3px}
 .pv-sub{font-size:12.5px;color:#94a3b8;text-align:center;margin:8px 0 0;line-height:1.8}
 .pv-sub b{color:#fbbf24;font-weight:800}
@@ -933,7 +933,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     </div>
 
     <button class="btn-signin" id="btn-signin" disabled onclick="startFromQR()">
-      ✓ 確認開始調查
+      ✓ 任務確認
     </button>
   </div>
 </div>
@@ -7654,7 +7654,7 @@ function pvFinish(){
   if(btn){
     btn.disabled=false
     if(gpsFail){ btn.textContent='沒有定位，仍要開始'; btn.className='pv-go' }
-    else{ btn.textContent='開始調查'; btn.className='pv-go ready' }
+    else{ btn.textContent='進入任務'; btn.className='pv-go ready' }
     btn.onclick=_finishPrep
   }
   // 今天已經走過這一關，之後回到簽到頁不再打擾
