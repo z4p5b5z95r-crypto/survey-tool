@@ -888,7 +888,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     </div>
 
     <div class="emp-err" id="emp-err"></div>
-    <button class="emp-btn" id="emp-btn" onclick="empSubmit()">上車</button>
+    <button class="emp-btn" id="emp-btn" onclick="empSubmit()">發車</button>
     <div class="emp-hello" id="emp-hello"></div>
   </div>
 </div>
@@ -7461,7 +7461,7 @@ function _empResetForm(){
   const nameWrap=document.getElementById('emp-name-wrap')
   const btn=document.getElementById('emp-btn')
   if(nameWrap) nameWrap.style.display='none'
-  if(btn){ btn.disabled=false; btn.textContent='上車'; btn.classList.remove('emp-btn-long') }
+  if(btn){ btn.disabled=false; btn.textContent='發車'; btn.classList.remove('emp-btn-long') }
   const err=document.getElementById('emp-err'); if(err) err.textContent=''
   const hi=document.getElementById('emp-hello'); if(hi) hi.textContent=''
   empCarReset()   // 車子回到方框裡（上一次是開走的狀態，不歸位就看不到車）
@@ -7568,7 +7568,7 @@ async function empSubmit(){
   }catch(e){
     empCarStop()
     err.textContent='查詢失敗：'+((e&&e.message)||e)+'（請確認網路）'
-    btn.disabled=false; btn.textContent='上車'; btn.classList.remove('emp-btn-long')
+    btn.disabled=false; btn.textContent='發車'; btn.classList.remove('emp-btn-long')
   }
 }
 
