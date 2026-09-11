@@ -1627,6 +1627,8 @@ function clearMapDisplay() {
 
 function showListView() {
   _inEditView = false
+  // 離開編輯＝這一次編輯結束，復原歷史一併作廢（按鈕也會跟著變回灰色）
+  resetEditHistory()
   document.getElementById('view-list').style.display = 'flex'
   document.getElementById('view-edit').style.display = 'none'
   document.getElementById('map-toolbar').style.display = 'none'
@@ -1906,6 +1908,16 @@ function pushHistory(){
   _undoHistory.push({nodes:JSON.parse(JSON.stringify(nodes)),segData:JSON.parse(JSON.stringify(segData))})
   if(_undoHistory.length>30)_undoHistory.shift()
   _redoHistory=[]  // new action clears redo stack
+  _syncHistoryBtns()
+}
+// 每一次進入編輯都從乾淨的歷史開始。
+// 復原只針對「這一次編輯」做的事——不能跨路線，更不能跨頁面。
+// 沒有這一步的話，開了 A 路線改幾筆、再開 B 路線按復原，
+// 會把 A 的節點套到 B 身上（歷史是全域變數，之前從來沒清過）。
+// 歷史本來就只存在記憶體，重新整理或關掉網頁自然就沒有上一步可回。
+function resetEditHistory(){
+  _undoHistory=[]
+  _redoHistory=[]
   _syncHistoryBtns()
 }
 async function undo(){
@@ -3346,6 +3358,7 @@ function newTask(projectId) {
   // 只有在「目前正在編輯、且有未儲存變更」時才需要提醒會被清掉；
   // 從專案列表頁按「新建路線」（還沒開啟任何路線）不用跳這個確認
   if(_inEditView && _dirty && !confirm('清除目前設定，開始新建路線？'))return
+  resetEditHistory()      // 新建路線一樣從乾淨的歷史開始
   currentTaskId=null
   _currentProjectId=projectId||null
   if(_currentProjectId)_openProjectId=_currentProjectId
@@ -3375,6 +3388,7 @@ function newTask(projectId) {
 
 async function loadTask(id) {
   const task=savedTasks.find(t=>t.id===id);if(!task)return
+  resetEditHistory()      // 這一次編輯重新開始算，不接續上一條路線的歷史
   currentTaskId=id
   _currentProjectId=task.projectId||null
   if(_currentProjectId)_openProjectId=_currentProjectId
