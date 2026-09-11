@@ -583,7 +583,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 #prep-modal{position:fixed;inset:0;z-index:9400;background:rgba(15,23,42,.72);
   display:none;align-items:center;justify-content:center;padding:22px}
 #prep-modal.open{display:flex}
-.prep-card{background:#fff;border-radius:20px;width:100%;max-width:360px;padding:26px 22px 30px;
+.prep-card{background:#fff;border-radius:20px;width:100%;max-width:360px;overflow:hidden;padding:0;
   box-shadow:0 18px 50px rgba(0,0,0,.35)}
 .prep-q{text-align:center}
 .prep-ico{font-size:42px;line-height:1;margin-bottom:12px}
@@ -611,8 +611,13 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 .prep-btn{flex:1;padding:14px;border:none;border-radius:13px;font-size:16px;font-weight:800;
   cursor:pointer;font-family:inherit}
 /* ── 出發前確認：五個畫面合併成的單張卡 ── */
-.pv-hd{font-size:17px;font-weight:800;color:#0f172a;text-align:center}
-.pv-sub{font-size:12.5px;color:#64748b;text-align:center;margin:6px 0 14px;line-height:1.65}
+/* 深色抬頭：整塊反白，像任務簡報的開頭；關鍵那行用琥珀色，掃一眼就知道要動手做什麼 */
+.pv-head{background:#0f172a;margin:0;padding:22px 20px 20px;text-align:center}
+.pv-hd{font-size:17.5px;font-weight:800;color:#fff;letter-spacing:.3px}
+.pv-sub{font-size:12.5px;color:#94a3b8;text-align:center;margin:8px 0 0;line-height:1.8}
+.pv-sub b{color:#fbbf24;font-weight:800}
+/* 抬頭以下的內容區自己吃內距（原本是整張卡一起給 padding） */
+.pv-body{padding:16px 20px 22px}
 .pv-sec{font-size:11px;font-weight:800;color:#94a3b8;letter-spacing:.5px;margin:2px 0 2px}
 .pv-r{display:flex;align-items:center;gap:9px;padding:10px 2px;border-top:1px solid #f1f5f9;font-size:13.5px}
 .pv-r .ico{font-size:17px;width:22px;text-align:center;flex:none}
@@ -7499,14 +7504,18 @@ function _renderPrep(){
   if(!body) return
   const gn=he(givenName(_prepName))
   body.innerHTML =
-     '<div class="pv-hd">Hi '+gn+'，出發前確認</div>'
-    +'<div class="pv-sub">請先關閉靜音、開啟勿擾模式<br>避免來電中斷調查、也才聽得到節點提示</div>'
-    +'<div class="pv-sec">語音功能</div>'
+     '<div class="pv-head">'
+      +'<div class="pv-hd">Hi '+gn+'，任務即將開始！</div>'
+      +'<div class="pv-sub">出發前，請完成任務準備<br>'
+        +'<b>開啟勿擾、關閉靜音</b></div>'
+    +'</div>'
+    +'<div class="pv-body">'
+    +'<div class="pv-sec">技能擴充選配</div>'
     +'<div class="pv-r tog" onclick="prepToggle(\'nav\')"><span class="ico">🧭</span>'
       +'<span class="nm">語音導航<span class="prep-beta">Beta</span></span>'+_pvSw('nav',navVoiceEnabled)+'</div>'
     +'<div class="pv-r tog" onclick="prepToggle(\'mic\')"><span class="ico">🎤</span>'
       +'<span class="nm">語音輸入<span class="prep-beta">Beta</span></span>'+_pvSw('mic',voicePickEnabled)+'</div>'
-    +'<div class="pv-sec" style="margin-top:12px">裝置與權限</div>'
+    +'<div class="pv-sec" style="margin-top:12px">裝備檢查與授權</div>'
     +PV_ROWS.map(r=>
        '<div class="pv-r" id="pv-'+r.id+'"><span class="ico">'+r.ico+'</span>'
       +'<span class="nm">'+r.name
@@ -7514,8 +7523,9 @@ function _renderPrep(){
         +'<span class="hint">'+r.desc+'</span></span>'
       +'<span class="st">·</span></div>').join('')
     +'<div id="pv-ask"></div>'
-    +'<button class="pv-go" id="pv-go" onclick="pvRun()">開始授權與檢查</button>'
+    +'<button class="pv-go" id="pv-go" onclick="pvRun()">🚀 檢查裝備，準備出發</button>'
     +'<button class="pv-link" onclick="switchSurveyor()">我不是'+gn+'</button>'
+    +'</div>'
 }
 // 播一聲雙音提示（跟裝置檢測用的是同一種聲音）。
 // 調查過程中的提示一律走語音，只有這裡的設備確認需要真正的「聲音」——
