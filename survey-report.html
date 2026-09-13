@@ -628,8 +628,10 @@ function execFlagBadge(sv){
 }
 
 // ── 調查進度圓環（與現場 App 選路線畫面同一套規則）──────────────
-// 一次完整調查 = 離峰去/回 + 尖峰去/回 共 4 趟。
-// 0 趟＝灰環、1~3 趟＝橘色扇形填 1/4・2/4・3/4、4 趟＝整圈綠。
+// 一次完整調查＝該路線每個時段的去程＋回程。
+// ⚠️ 趟數不是固定 4：時段由 PM 增減，2 時段＝4 趟、3 時段＝6 趟、1 時段＝2 趟，
+// 所以分母一律用後端算好的 comboTotal，不能寫死四等分。
+// 0 趟＝灰環、未滿＝橘色扇形（完成趟數 ÷ 應跑趟數）、全部跑完＝整圈綠。
 const RING_DONE='#16a34a', RING_PART='#f59e0b', RING_EMPTY='#e2e8f0'
 function ringStyle(done, total, emptyCol){
   const t = total||4
@@ -639,17 +641,19 @@ function ringStyle(done, total, emptyCol){
   if(d<=0) return `background:${empty}`
   return `background:conic-gradient(${RING_PART} 0 ${(d/t*100).toFixed(0)}%,${empty} 0)`
 }
-// 舊版後端沒有 roundDone 時，用 roundStates 反推：done→4 趟、part→2 趟（無法得知確切趟數）
-function roundDoneOf(p){
+// 舊版後端沒有 roundDone 時，用 roundStates 反推：
+// done→該路線的應跑趟數、part→一半（無法得知確切趟數）、todo→0。
+function roundDoneOf(p, total){
   if(p && Array.isArray(p.roundDone)) return p.roundDone
+  const t = total || (p && p.comboTotal) || 4
   const st = (p && Array.isArray(p.roundStates)) ? p.roundStates : []
-  return st.map(s=> s==='done' ? 4 : (s==='part' ? 2 : 0))
+  return st.map(s=> s==='done' ? t : (s==='part' ? Math.max(1,Math.round(t/2)) : 0))
 }
 // active 的膠囊底色是路線色，灰環會糊在上面，所以未完成的環改用半透明白
 function renderRouteRings(p, active){
   if(!p) return ''
   const t = (p.comboTotal)||4
-  const arr = roundDoneOf(p)
+  const arr = roundDoneOf(p, t)
   const n = arr.length || p.roundCount || 0
   if(!n) return ''
   const empty = active ? 'rgba(255,255,255,.34)' : RING_EMPTY

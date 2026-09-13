@@ -242,7 +242,8 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
   line-height:1.3;overflow-wrap:anywhere
 }
 .pr-item-sub{display:block;font-size:12px;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* 每一次調查＝一個圓環，橘色依完成趟數填 1/4、2/4、3/4，四趟做完整圈轉綠 */
+/* 每一次調查＝一個圓環，橘色依「完成趟數 ÷ 應跑趟數」填扇形，全部跑完整圈轉綠。
+   應跑趟數＝該路線的時段數 × 2，由 PM 設定，不是固定 4 */
 /* 一條路線最多 5 次，寬度固定預留 5 個圓的空間（5×13 + 4×4 = 81px），
    圓靠右對齊。這樣不論路線設幾次，所有卡片的圓都在同一條垂直線上，
    進度載入前後也不會讓路線名稱忽寬忽窄地跳動。 */
@@ -6621,7 +6622,7 @@ function exportReport(){
 '    <span class="chip">👤 ' + (config.surveyor||'') + '</span>\n' +
 '    <span class="chip">🌤 ' + wZh + '</span>\n' +
 '    <span class="chip">📏 ' + (config.totalLength||0) + 'm</span>\n' +
-'    <span class="chip">✅ 旅次 ' + tripCnt + '/4</span>\n' +
+'    <span class="chip">✅ 旅次 ' + tripCnt + '/' + COMBO_KEYS.length + '</span>\n' +
 '  </div>\n' +
 '</div>\n' +
 
@@ -7139,10 +7140,10 @@ function maybeShowDailyReminder(pid){
   if(btn) btn.onclick=()=>closeDailyReminder(pid)
 }
 
-// 一條路線今天的整體狀態。一次調查＝四趟（離峰去回、尖峰去回）都完成。
-// 回傳左側色帶要用的樣式，以及右側要顯示的文字。
-// 一次調查完整包含 4 趟。圓環用 conic-gradient 依趟數填色：
-// 0 趟＝灰、1~3 趟＝橘色 1/4、2/4、3/4、4 趟＝整圈綠。
+// 一條路線今天的整體狀態。一次調查＝該路線所有時段的去回程都完成。
+// ⚠️ 趟數不是固定 4：時段由 PM 增減，2 時段＝4 趟、3 時段＝6 趟、1 時段＝2 趟。
+// 圓環用 conic-gradient 依「完成趟數 ÷ 該路線應跑趟數」填色，不是固定四等分。
+// 0 趟＝灰、未滿＝橘色扇形、全部跑完＝整圈綠。
 const RING_DONE='#16a34a', RING_PART='#f59e0b', RING_EMPTY='#e2e8f0'
 function ringStyle(done, total){
   const t = total||4
@@ -7151,15 +7152,18 @@ function ringStyle(done, total){
   if(d<=0) return `background:${RING_EMPTY}`
   return `background:conic-gradient(${RING_PART} 0 ${(d/t*100).toFixed(0)}%,${RING_EMPTY} 0)`
 }
-// 舊版後端沒有 roundDone 時，用 roundStates 反推：done→4 趟、part→2 趟（無法得知確切趟數）
-function roundDoneOf(p){
+// 舊版後端沒有 roundDone 時，用 roundStates 反推：
+// done→該路線的應跑趟數、part→一半（無法得知確切趟數）、todo→0。
+// 這裡同樣不能寫死 4，否則三時段的路線「已完成」也只會填到 4/6。
+function roundDoneOf(p, total){
   if(p && Array.isArray(p.roundDone)) return p.roundDone
+  const t = total || (p && p.comboTotal) || 4
   const st = (p && Array.isArray(p.roundStates)) ? p.roundStates : []
-  return st.map(s=> s==='done' ? 4 : (s==='part' ? 2 : 0))
+  return st.map(s=> s==='done' ? t : (s==='part' ? Math.max(1,Math.round(t/2)) : 0))
 }
 function renderRouteRings(p, total){
   const t = total || (p && p.comboTotal) || 4
-  const arr = roundDoneOf(p)
+  const arr = roundDoneOf(p, t)
   const n = arr.length || (p && p.roundCount) || 0
   if(!n) return ''
   return arr.slice(0,n).map(d=>`<span class="pr-ring" style="${ringStyle(d,t)}"></span>`).join('')
@@ -7181,7 +7185,23 @@ function routeStateOf(roundStates){
 // 改用現場端本來就能呼叫的 getHistory 逐條路線查紀錄，自己在前端算出同樣的結果。
 // getHistory 回傳的 trips 是以「離峰去程/離峰回程/尖峰去程/尖峰回程」為鍵的物件。
 // 各路線平行查詢，不會因為路線多就一直等。
-const NEEDED_COMBOS=['off_peak_bound','off_peak_return','peak_bound','peak_return']
+// ⚠️ 不能寫死四個組合。時段由 PM 自行增減，一條路線可能是 2 個時段（4 趟）、
+// 3 個時段（6 趟）甚至只有 1 個（2 趟）。寫死 4 的話：三時段的路線永遠填不滿
+// 圓環（做完 6 趟仍顯示 4/4 以外的狀態不對），單時段的路線則永遠做不完。
+// 每條路線各自帶著自己的 periods，所以要逐條算。
+const DEFAULT_PERIODS=[{k:'off_peak'},{k:'peak'}]
+function routeCombos(r){
+  let ps=r && r.periods
+  if(typeof ps==='string'){ try{ ps=JSON.parse(ps) }catch(e){ ps=null } }
+  if(!Array.isArray(ps) || !ps.length) ps=DEFAULT_PERIODS
+  const ks=[]
+  ps.forEach(p=>{
+    const k=(p && (p.k||p.key))||''
+    if(!k) return
+    ks.push(k+'_bound'); ks.push(k+'_return')
+  })
+  return ks.length ? ks : ['off_peak_bound','off_peak_return','peak_bound','peak_return']
+}
 async function cloudFetchProgressFallback(routes, gsUrl, apiKey){
   const day=todayStr()
   return Promise.all(routes.map(async r=>{
@@ -7189,23 +7209,24 @@ async function cloudFetchProgressFallback(routes, gsUrl, apiKey){
       const p=new URLSearchParams({action:'getHistory',routeId:r.id,key:apiKey,t:Date.now()})
       const json={ok:true,data:await gsJson(`${gsUrl}?${p}`,{signal:AbortSignal.timeout(20000),cache:'no-store'})}
       const plan=Math.min(5,Math.max(1,parseInt(r.roundCount)||3))
+      const need=routeCombos(r)        // 這條路線自己的時段組合
       const byRound={}
       ;(json.data||[]).forEach(sv=>{
         if(String(sv.date||'').slice(0,10)!==day) return
         const n=Math.min(5,Math.max(1,parseInt(sv.round)||1))
         if(!byRound[n]) byRound[n]={}
         Object.keys(sv.trips||{}).forEach(key=>{
-          if(NEEDED_COMBOS.includes(key)) byRound[n][key]=true
+          if(need.includes(key)) byRound[n][key]=true
         })
       })
       const roundStates=[], roundDone=[]
       for(let n=1;n<=plan;n++){
         const got=byRound[n]||{}
-        const done=NEEDED_COMBOS.filter(k=>got[k]).length
+        const done=need.filter(k=>got[k]).length
         roundDone.push(done)
-        roundStates.push(done===0?'todo':(done>=NEEDED_COMBOS.length?'done':'part'))
+        roundStates.push(done===0?'todo':(done>=need.length?'done':'part'))
       }
-      return {routeId:r.id, roundCount:plan, roundStates, roundDone, comboTotal:NEEDED_COMBOS.length}
+      return {routeId:r.id, roundCount:plan, roundStates, roundDone, comboTotal:need.length}
     }catch(e){ return null }
   })).then(list=>list.filter(Boolean))
 }
