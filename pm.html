@@ -241,10 +241,21 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .proj-group-rename{flex-shrink:0;background:none;border:none;font-size:12px;padding:2px 4px;cursor:pointer;opacity:.55}
 .proj-group-rename:hover{opacity:1}
 .proj-group-count{font-size:11px;color:#94a3b8;font-weight:700;white-space:nowrap}
-/* 專案的路線總長，緊接在「N 條路線」後面 */
-.proj-group-km{margin-left:6px;padding:1px 6px;border-radius:6px;background:#eff6ff;color:#1d4ed8;font-weight:800}
-/* 個別路線的長度，跟在路線名稱後面，字級小一級、不搶名稱 */
-.pc-km{margin-left:4px;font-size:12px;font-weight:700;color:#64748b}
+/* ── 專案統計列（C 版）──────────────────────────────────────
+   標題列只放名稱＋工具按鈕，統計獨立成一條三格的列。
+   舊做法是把「N 條路線／總長／PM」全擠在標題右側，專案名一長就換行、
+   把數字擠成兩行，很難看。拆開之後名稱要多長都行。 */
+.ph-bar{display:flex;margin:0 14px 11px;background:#fff;
+  border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden}
+.ph-cell{flex:1;text-align:center;padding:7px 4px;min-width:0}
+.ph-cell+.ph-cell{border-left:1.5px solid #f1f5f9}
+.ph-cell b{display:block;font-size:13.5px;font-weight:900;color:#0f172a;
+  font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph-cell span{display:block;font-size:10px;color:#94a3b8;font-weight:700;margin-top:1px}
+.ph-cell.km b{color:#1d4ed8}
+/* 個別路線的長度：靠右的小膠囊，不跟名稱擠在一起 */
+.pc-kmpill{flex:none;font-size:11px;font-weight:800;color:#1d4ed8;background:#eff6ff;
+  border-radius:7px;padding:2px 8px;font-variant-numeric:tabular-nums;white-space:nowrap}
 /* 專案負責的 PM，緊貼在專案名稱後面。名稱長的時候會自然換到下一行，不會把「N 條路線」擠掉 */
 .proj-group-pm{display:inline-block;margin-left:7px;font-size:11px;font-weight:700;color:#475569;
   background:#eef2f7;border-radius:6px;padding:1px 7px;white-space:nowrap;vertical-align:1px}
@@ -4249,10 +4260,10 @@ function renderProjects(filter='') {
     const routesHtml=routes.map((t,ri)=>{
       const isEdit=t.id===currentTaskId&&_inEditView
       const rc=PJ_MAP_COLORS[ri%PJ_MAP_COLORS.length]   // 跟地圖上的編號同色
+      // 路線列不再顯示 PM——同一個專案底下的路線負責人都一樣，重複列只是佔空間，
+      // 負責人只留在上面的專案統計列。
       const metaParts=[]
-      if(t.cfg.ft) metaParts.push(`<span>📍 ${t.cfg.ft}</span>`)
-      const pm=pmNameOf(t)
-      if(pm&&pm!=='未知') metaParts.push(`<span>👤 ${pm}</span>`)
+      if(t.cfg.ft) metaParts.push(`<span>📍 ${String(t.cfg.ft).replace(/\s*—\s*/,' → ')}</span>`)
       const metaHtml=metaParts.map((s,i)=>i<metaParts.length-1?s+`<span class="pc-dot">·</span>`:s).join('')
       // 整張卡片可點：跟現場 App 的選路線清單一致，點下去就進編輯
       return`<div class="pc has-drag${isEdit?' editing':''}" style="border-left:4px solid ${rc}"
@@ -4263,7 +4274,8 @@ function renderProjects(filter='') {
              onclick="event.stopPropagation()"
              ondragstart="pcDragStart(event,'${t.id}','${pid}')" ondragend="pcDragEnd(event)">⠿</div>
         <div class="pc-top">
-          <div class="pc-name"><span class="pc-no" style="background:${rc}">${ri+1}</span>${t.cfg.rn||'未命名路線'}${_kmOf(t)?`<span class="pc-km">（${fmtKm(_kmOf(t))}）</span>`:''}</div>
+          <div class="pc-name"><span class="pc-no" style="background:${rc}">${ri+1}</span>${t.cfg.rn||'未命名路線'}</div>
+          ${_kmOf(t)?`<div class="pc-kmpill">${fmtKm(_kmOf(t))}</div>`:''}
           <div class="pc-chips">
             ${isEdit?'<span class="pc-chip editing-chip">▶ 編輯中</span>':''}
           </div>
@@ -4288,10 +4300,14 @@ function renderProjects(filter='') {
     return`<div class="proj-group${isOpen?' open':''}">
       <div class="proj-group-hd" onclick="toggleProjectGroup('${pid}')"
            onmouseenter="ovHover('${pid}')" onmouseleave="ovHover(null)">
-        <span class="proj-group-name">📁 ${projName}${projPm?`<span class="proj-group-pm">👤 ${projPm}</span>`:''}</span>
+        <span class="proj-group-name">📁 ${projName}</span>
         <button class="proj-group-rename" title="重新命名" onclick="event.stopPropagation();renameProject('${pid}')">✏️</button>
-        <span class="proj-group-count">${routes.length} 條路線${projKmTotal(routes)?`<span class="proj-group-km">${fmtKm(projKmTotal(routes))}</span>`:''}</span>
         <svg class="proj-group-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="ph-bar">
+        <div class="ph-cell"><b>${routes.length}</b><span>路線</span></div>
+        <div class="ph-cell km"><b>${projKmTotal(routes)?fmtKm(projKmTotal(routes)).replace(' km',''):'—'}</b><span>總公里</span></div>
+        <div class="ph-cell"><b>${projPm||'—'}</b><span>工程師</span></div>
       </div>
       <div class="proj-group-actions">
         <button class="pc-btn proj" title="專案 QR" onclick="event.stopPropagation();showProjectQR('${pid}')">🔲 QR</button>
