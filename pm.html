@@ -5,13 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>🚗交通速率與延滯調查🚗</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- crossorigin：讓瀏覽器願意把外部程式庫的錯誤訊息與行號交出來。
+     沒有這個屬性，任何跨網域腳本出錯都只會回報「Script error. 第 ? 行」，查不出原因。 -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
 <!-- Leaflet 是這頁的硬相依（74 個函式用到它）。unpkg 一旦連不到，L 就不存在，
      現場症狀是整頁功能全失效而不只是地圖出不來。這裡補一個不同來源的備援：
      document.write 在這個位置是同步插入，會在後面的主程式執行前先載完。 -->
-<script>window.L || document.write('<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"><\/script>')</script>
+<script>window.L || document.write('<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"><\/script>')</script>
 <script>window.L || document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>')</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" crossorigin="anonymous"></script>
 <!-- xlsx（930KB）改為按下「下載 SGS 表」時才載入 -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1298,6 +1300,17 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     }catch(e){}
   }
   window.addEventListener('error',function(e){
+    // 跨網域腳本（Leaflet／QR 這些 CDN）出錯時，瀏覽器基於安全只會給
+    // 「Script error.」而且沒有檔名行號。照原樣印出來會變成「第 ? 行」，
+    // 看的人完全不知道發生什麼事，也不知道該不該理它。
+    // 這裡改成明講是外部程式庫、並提示多半是網路擋掉或載入失敗。
+    var opaque = !e.filename && (!e.message || /^script error/i.test(e.message))
+    if(opaque){
+      showFatal('⚠️ 外部程式庫發生錯誤（瀏覽器未提供細節）\n'
+        + '多半是地圖或 QR 元件的連線被擋住／載入不完全。\n'
+        + '可先重新整理；若地圖仍打不開，請改用其他網路環境。')
+      return
+    }
     showFatal('❌ 程式錯誤：'+(e.message||'')+'\n位置：'+(e.filename||'').split('/').pop()+' 第 '+(e.lineno||'?')+' 行')
   })
   window.addEventListener('unhandledrejection',function(e){
