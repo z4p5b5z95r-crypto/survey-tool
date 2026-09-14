@@ -216,7 +216,10 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .pc-chip.local{background:#f1f5f9;color:#94a3b8}
 .pc-chip.editing-chip{background:#dcfce7;color:#16a34a}
 /* meta row */
-.pc-meta{font-size:11.5px;color:#94a3b8;margin-bottom:12px;display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+/* 起迄點在左、公里靠右；起迄點很長時自己換行，不會把公里擠掉 */
+.pc-meta{font-size:11.5px;color:#94a3b8;margin-bottom:12px;display:flex;gap:8px;
+  align-items:flex-start;justify-content:space-between}
+.pc-meta-txt{flex:1;min-width:0;display:flex;gap:5px;flex-wrap:wrap;align-items:center;line-height:1.6}
 .pc-dot{color:#cbd5e1;font-size:10px}
 /* actions */
 .pc-actions{display:flex;align-items:center;justify-content:space-between;gap:6px}
@@ -254,8 +257,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .ph-cell span{display:block;font-size:10px;color:#94a3b8;font-weight:700;margin-top:1px}
 .ph-cell.km b{color:#1d4ed8}
 /* 個別路線的長度：靠右的小膠囊，不跟名稱擠在一起 */
-.pc-kmpill{flex:none;font-size:11px;font-weight:800;color:#1d4ed8;background:#eff6ff;
-  border-radius:7px;padding:2px 8px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pc-kmpill{flex:none;align-self:flex-start;font-size:11px;font-weight:800;color:#1d4ed8;
+  background:#eff6ff;border-radius:7px;padding:2px 8px;font-variant-numeric:tabular-nums;white-space:nowrap}
 /* 專案負責的 PM，緊貼在專案名稱後面。名稱長的時候會自然換到下一行，不會把「N 條路線」擠掉 */
 .proj-group-pm{display:inline-block;margin-left:7px;font-size:11px;font-weight:700;color:#475569;
   background:#eef2f7;border-radius:6px;padding:1px 7px;white-space:nowrap;vertical-align:1px}
@@ -4275,12 +4278,11 @@ function renderProjects(filter='') {
              ondragstart="pcDragStart(event,'${t.id}','${pid}')" ondragend="pcDragEnd(event)">⠿</div>
         <div class="pc-top">
           <div class="pc-name"><span class="pc-no" style="background:${rc}">${ri+1}</span>${t.cfg.rn||'未命名路線'}</div>
-          ${_kmOf(t)?`<div class="pc-kmpill">${fmtKm(_kmOf(t))}</div>`:''}
           <div class="pc-chips">
             ${isEdit?'<span class="pc-chip editing-chip">▶ 編輯中</span>':''}
           </div>
         </div>
-        <div class="pc-meta">${metaHtml}</div>
+        <div class="pc-meta"><span class="pc-meta-txt">${metaHtml}</span>${_kmOf(t)?`<span class="pc-kmpill">${fmtKm(_kmOf(t))}</span>`:''}</div>
         <div class="pc-actions">
           <div class="pc-actions-l">
             ${isEdit
