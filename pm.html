@@ -340,6 +340,10 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
   border-radius:9px;font-size:14px;outline:none;background:white;transition:border-color .15s;
 }
 .field input:focus{border-color:#2563eb}
+/* 起迄點：兩格並排，中間一個箭頭 */
+.ft-pair{display:flex;align-items:center;gap:7px}
+.ft-pair input{flex:1;min-width:0}
+.ft-sep{flex:none;font-size:15px;font-weight:700;color:#94a3b8;user-select:none}
 .row2{display:flex;gap:8px}.row2 .field{flex:1}
 
 /* Nodes */
@@ -1042,7 +1046,17 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
             </div>
             <div class="acc-bd">
               <div class="field"><label>路線名稱</label><input id="rn" placeholder="台二省道轉新市二路到港子平" oninput="updateEvTitle();renderStepBar()"/></div>
-              <div class="field"><label>起迄點</label><input id="ft" placeholder="港子平 ↔ 台二線" oninput="renderStepBar()"/></div>
+              <!-- 起迄點拆成兩格輸入，實際仍存成單一欄位 routeFromTo（起點—迄點），
+                   報告與既有資料都不用改。空的那一邊不會留下多餘的破折號。 -->
+              <div class="field">
+                <label>起迄點</label>
+                <div class="ft-pair">
+                  <input id="ft-from" placeholder="起點（如 港子平）" oninput="syncFromTo()"/>
+                  <span class="ft-sep">→</span>
+                  <input id="ft-to" placeholder="迄點（如 台二線）" oninput="syncFromTo()"/>
+                </div>
+                <input id="ft" type="hidden"/>
+              </div>
             </div>
           </div>
 
@@ -1716,7 +1730,7 @@ function renderSegConfirmBanner(){
 // ── 頂部步驟條：①路線 ②時間 ③節點 ④路段，不強制順序，但用完成度＋目前位置提醒 PM 別漏填 ──
 // QR Code 現在改成專案層級產生（掃專案 QR 後現場選路線），單一路線編輯流程不再需要這一步
 const STEP_DEFS=[
-  {id:'acc-route', label:'路線', num:1, check:()=>document.getElementById('rn').value.trim()&&document.getElementById('ft').value.trim()},
+  {id:'acc-route', label:'路線', num:1, check:()=>document.getElementById('rn').value.trim()&&(document.getElementById('ft-from')?.value||'').trim()&&(document.getElementById('ft-to')?.value||'').trim()},
   {id:'acc-time',  label:'時間', num:2, check:()=>document.getElementById('op').value.trim()&&document.getElementById('pk').value.trim()},
   {id:'acc-nodes', label:'節點', num:3, check:()=>nodes.length>=2},
   {id:'acc-segs',  label:'路段', num:4, check:()=>segData.length>0&&(parseInt(document.getElementById('tl').value)||0)>0&&_segsConfirmed()},
@@ -3106,6 +3120,33 @@ function setPeriod(i,f,v){
 }
 // 舊欄位同步：QR 預覽、PDF 範例、以及還沒改寫的地方仍讀 opn/pkn/op/pk。
 // 一律以前兩個時段填充，這樣兩段的情況跟改版前完全一致。
+
+// ── 起迄點：兩格輸入 ↔ 單一欄位 ─────────────────────────────────
+// 儲存格式仍然是一個字串（起點—迄點），現場 App、報告、Excel 都沿用舊欄位，
+// 不必為了介面拆格而改動資料結構或既有紀錄。
+const FT_JOIN=' — '
+function syncFromTo(){
+  const g=id=>document.getElementById(id)
+  const a=(g('ft-from')?.value||'').trim(), b=(g('ft-to')?.value||'').trim()
+  // 只填一邊時不要留下孤單的破折號
+  if(g('ft')) g('ft').value = (a&&b) ? (a+FT_JOIN+b) : (a||b)
+  renderStepBar()
+}
+// 舊資料是一整串，載入時拆回兩格。常見的分隔符號都認（— – ~ ～ ↔ →，以及前後有空白的 -）。
+function splitFromTo(v){
+  const t=String(v||'').trim()
+  if(!t) return ['','']
+  const m=t.match(/^(.*?)\s*(?:—|–|↔|→|~|～|\s-\s|-)\s*(.*)$/)
+  if(m && m[1].trim() && m[2].trim()) return [m[1].trim(), m[2].trim()]
+  return [t,'']   // 拆不開就整串放在起點，使用者自己調整
+}
+function setFromToInputs(v){
+  const [a,b]=splitFromTo(v)
+  const g=id=>document.getElementById(id)
+  if(g('ft-from')) g('ft-from').value=a
+  if(g('ft-to'))   g('ft-to').value=b
+  if(g('ft'))      g('ft').value=String(v||'')
+}
 function syncLegacyPeakFields(){
   const g=id=>document.getElementById(id)
   const p0=periodData[0]||{n:'離峰',t:'14:00~16:00'}
@@ -3363,7 +3404,7 @@ function newTask(projectId) {
   _currentProjectId=projectId||null
   if(_currentProjectId)_openProjectId=_currentProjectId
   document.getElementById('rn').value=''
-  document.getElementById('ft').value=''
+  setFromToInputs('')
   document.getElementById('tl').value=''
   _tlManualOverride=false
   document.getElementById('rc').value='3'
@@ -3394,7 +3435,7 @@ async function loadTask(id) {
   if(_currentProjectId)_openProjectId=_currentProjectId
   const cfg=task.cfg
   document.getElementById('rn').value=cfg.rn||''
-  document.getElementById('ft').value=cfg.ft||''
+  setFromToInputs(cfg.ft||'')
   document.getElementById('tl').value=cfg.tl||''
   _tlManualOverride=true   // 載入節點時中途可能會重算路段長度，先鎖住不要把存好的全長蓋掉
   document.getElementById('rc').value=cfg.rc||3
