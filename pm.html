@@ -241,6 +241,10 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .proj-group-rename{flex-shrink:0;background:none;border:none;font-size:12px;padding:2px 4px;cursor:pointer;opacity:.55}
 .proj-group-rename:hover{opacity:1}
 .proj-group-count{font-size:11px;color:#94a3b8;font-weight:700;white-space:nowrap}
+/* 專案的路線總長，緊接在「N 條路線」後面 */
+.proj-group-km{margin-left:6px;padding:1px 6px;border-radius:6px;background:#eff6ff;color:#1d4ed8;font-weight:800}
+/* 個別路線的長度，跟在路線名稱後面，字級小一級、不搶名稱 */
+.pc-km{margin-left:4px;font-size:12px;font-weight:700;color:#64748b}
 /* 專案負責的 PM，緊貼在專案名稱後面。名稱長的時候會自然換到下一行，不會把「N 條路線」擠掉 */
 .proj-group-pm{display:inline-block;margin-left:7px;font-size:11px;font-weight:700;color:#475569;
   background:#eef2f7;border-radius:6px;padding:1px 7px;white-space:nowrap;vertical-align:1px}
@@ -4125,6 +4129,16 @@ function reorderRoute(pid, draggedId, targetId, side){
     .catch(e=>{ updateCloudDot('err'); toast('⚠️ 順序已改，但同步失敗：'+((e&&e.message)||e)) })
 }
 
+
+// ── 路線長度顯示 ──────────────────────────────────────────────
+// cfg.tl 是公尺（整數）。列表一律顯示公里，未滿 1 公里也用公里表示，
+// 這樣專案加總與個別路線的單位一致，PM 對表時不用換算。
+function _kmOf(t){ return (t && t.cfg && +t.cfg.tl) ? (+t.cfg.tl)/1000 : 0 }
+function fmtKm(km){
+  if(!km) return ''
+  return (km<10 ? km.toFixed(2) : km.toFixed(1)).replace(/\.0+$/,'').replace(/(\.\d)0$/,'$1') + ' km'
+}
+function projKmTotal(routes){ return (routes||[]).reduce((a,t)=>a+_kmOf(t), 0) }
 // 這條路線實際的負責 PM。
 // 優先用路線自己的 owner，沒有就退回所屬專案的 owner（早期路線沒寫 owner，
 // 只有專案那層有），都沒有才用本機的 creator。
@@ -4249,7 +4263,7 @@ function renderProjects(filter='') {
              onclick="event.stopPropagation()"
              ondragstart="pcDragStart(event,'${t.id}','${pid}')" ondragend="pcDragEnd(event)">⠿</div>
         <div class="pc-top">
-          <div class="pc-name"><span class="pc-no" style="background:${rc}">${ri+1}</span>${t.cfg.rn||'未命名路線'}</div>
+          <div class="pc-name"><span class="pc-no" style="background:${rc}">${ri+1}</span>${t.cfg.rn||'未命名路線'}${_kmOf(t)?`<span class="pc-km">（${fmtKm(_kmOf(t))}）</span>`:''}</div>
           <div class="pc-chips">
             ${isEdit?'<span class="pc-chip editing-chip">▶ 編輯中</span>':''}
           </div>
@@ -4276,7 +4290,7 @@ function renderProjects(filter='') {
            onmouseenter="ovHover('${pid}')" onmouseleave="ovHover(null)">
         <span class="proj-group-name">📁 ${projName}${projPm?`<span class="proj-group-pm">👤 ${projPm}</span>`:''}</span>
         <button class="proj-group-rename" title="重新命名" onclick="event.stopPropagation();renameProject('${pid}')">✏️</button>
-        <span class="proj-group-count">${routes.length} 條路線</span>
+        <span class="proj-group-count">${routes.length} 條路線${projKmTotal(routes)?`<span class="proj-group-km">${fmtKm(projKmTotal(routes))}</span>`:''}</span>
         <svg class="proj-group-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="proj-group-actions">
