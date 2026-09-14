@@ -1616,17 +1616,31 @@ function _ghostIdxSet(route){
   nodes.forEach((n,i)=>{ if(n&&(n.ghost||n.gh)) explicit.add(i) })
   if(explicit.size) return explicit          // 有明確資訊就信它，不要再猜
 
-  const guess = new Set()
+  // ⚠️ 沒有明確資訊時才推測，而且要分「確定」與「僅供參考」兩級。
+  //
+  // 確定證據：路段名稱是空的。PM 端把假節點前後兩段合併成一列時，
+  //          後面那一段的名稱會留空，正常路線不會出現空名稱。
+  //
+  // 弱證據：路段名稱開頭長得像「節點N」。這一條非常危險——
+  //        使用者若直接沿用預設名稱把節點取名 節點1／節點2／節點3，
+  //        每一段都長這樣，中間節點就會被誤判成假節點。
+  //        （實際回報：畫了 3 個節點，報告只剩節點1～節點3 一段。）
+  //        所以只有「這個節點自己根本沒有名字」時才採用，
+  //        有名字＝使用者刻意放的真節點，一律不動。
+  const strong = new Set(), weak = new Set()
   for(let k=1;k<rawSegs.length;k++){
     const nm = String(rawSegs[k].name||'')
+    if(!nm.trim()){ strong.add(k); continue }
     const segStart = nm.split(SEG_SEP)[0]?.trim()||''
-    if(/^節點\d/.test(segStart)) guess.add(k)
-    if(!nm.trim()) guess.add(k)              // 合併後其餘各段名稱留空
+    const nodeName = String((nodes[k]&&nodes[k].name)||'').trim()
+    if(!nodeName && /^節點\d/.test(segStart)) weak.add(k)
   }
-  // 防呆：中間節點若被吃掉九成以上，這組推測一定是錯的（正常路線不可能整條都是假節點）
+  if(strong.size) return strong
+
+  // 弱證據再加一道防呆：中間節點若被吃光，這組推測一定是錯的
   const interior = Math.max(0, nodes.length-2)
-  if(interior>=2 && guess.size>=interior) return new Set()
-  return guess
+  if(interior>=1 && weak.size>=interior) return new Set()
+  return weak
 }
 function _realNodes(){
   const route=_rt()
@@ -2775,12 +2789,22 @@ async function downloadRawTimeline(){
     const allDefs=[...ROAD_DELAYS,...INT_DELAYS]
     const isInt=c=>INT_DELAYS.some(d=>d.cause===c)
     const hmsStr=ts=>ts?new Date(ts).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false}):''
+    // 軌跡點的時間欄位有三種寫法：t（壓縮後的 epoch 毫秒，現行）、
+    // ts（現場端未壓縮時）、timestamp（更早的版本）。三種都要認，
+    // 只認 timestamp 的話現行資料一律找不到，這條後備路徑就形同虛設。
+    const _ptTime=pt=>{
+      const v = pt.t ?? pt.ts ?? pt.timestamp
+      if(v==null) return null
+      const ms = typeof v==='number' ? v : Date.parse(v)
+      return isNaN(ms) ? null : ms
+    }
     const findGps=(gpsTrack,isoTime)=>{
       if(!gpsTrack||!gpsTrack.length||!isoTime)return null
       const t=new Date(isoTime).getTime(); let best=null,bestD=Infinity
       for(const pt of gpsTrack){
-        if(!pt.timestamp||pt.lat==null||pt.lng==null)continue
-        const d=Math.abs(new Date(pt.timestamp).getTime()-t)
+        const pts=_ptTime(pt)
+        if(pts==null||pt.lat==null||pt.lng==null)continue
+        const d=Math.abs(pts-t)
         if(d<bestD){bestD=d;best=pt}
       }
       return best
