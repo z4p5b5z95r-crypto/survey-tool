@@ -525,6 +525,10 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .step-num{width:13px;height:13px;border-radius:50%;background:#e2e8f0;color:#64748b;font-size:8px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .step-item.done .step-num{background:#16a34a;color:white}
 .step-item.active .step-num{background:#2563eb;color:white}
+/* 已完成而且正停在這一步：底色維持綠色（代表填好了），外圈用藍框標示「你在這裡」。
+   原本 .active 排在 .done 後面，會把綠色整個蓋掉，填完卻還是藍的。 */
+.step-item.done.active{border-color:#16a34a;background:#f0fdf4;color:#15803d;box-shadow:0 0 0 2px #93c5fd}
+.step-item.done.active .step-num{background:#16a34a;color:white}
 .step-connector{width:5px;height:1px;background:#e2e8f0;flex-shrink:0}
 .step-connector.done{background:#86efac}
 .seg-confirm-banner{border-radius:10px;padding:10px 12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;line-height:1.5}
@@ -1706,11 +1710,13 @@ function toggleAcc(id) {
   const wasOpen=el.classList.contains('open')
   ;['acc-route','acc-time','acc-nodes','acc-segs'].forEach(i=>document.getElementById(i)?.classList.remove('open'))
   if(!wasOpen) el.classList.add('open')
+  if(id==='acc-time' && !wasOpen) markTimeTouched()
   renderStepBar()
 }
 function openAcc(id) {
   ;['acc-route','acc-time','acc-nodes','acc-segs'].forEach(i=>document.getElementById(i)?.classList.remove('open'))
   document.getElementById(id)?.classList.add('open')
+  if(id==='acc-time') markTimeTouched()
   renderStepBar()
 }
 // 進入編輯畫面（新建或載入既有專案）時，四個欄位全部收合，避免殘留上一次展開的狀態
@@ -1721,6 +1727,16 @@ function collapseAllAcc() {
   renderStepBar()
 }
 
+
+// ── 調查時段：預設就有離峰／尖峰，不能一進來就打勾 ──────────────
+// 這一步的欄位一開始就有預設值（14:00~16:00、17:00~19:00），照欄位有沒有值判斷的話，
+// 使用者根本還沒設定就先亮綠燈，等於這一格永遠不會提醒人去確認。
+// 改成要「真的動過或至少展開看過」才算完成：
+//   ・展開「調查時段及次數設定」一次    → 視為看過
+//   ・增刪時段、改名稱／時間／次數      → 視為設定過
+//   ・載入既有路線（雲端或本機存過的）  → 當初就設定過了，直接視為完成
+let _timeTouched=false
+function markTimeTouched(){ if(!_timeTouched){ _timeTouched=true; renderStepBar() } }
 // ── 路段資訊需要 PM 手動確認過車道/路寬/長度才算完成 ──
 // 節點一變動（新增/刪除/移動），簽章就對不上了，要求重新確認，不能讓它自動打勾
 let _segsConfirmedSig=null
@@ -1749,7 +1765,7 @@ function renderSegConfirmBanner(){
 // QR Code 現在改成專案層級產生（掃專案 QR 後現場選路線），單一路線編輯流程不再需要這一步
 const STEP_DEFS=[
   {id:'acc-route', label:'路線', num:1, check:()=>document.getElementById('rn').value.trim()&&(document.getElementById('ft-from')?.value||'').trim()&&(document.getElementById('ft-to')?.value||'').trim()},
-  {id:'acc-time',  label:'時間', num:2, check:()=>document.getElementById('op').value.trim()&&document.getElementById('pk').value.trim()},
+  {id:'acc-time',  label:'時間', num:2, check:()=>_timeTouched&&document.getElementById('op').value.trim()&&document.getElementById('pk').value.trim()},
   {id:'acc-nodes', label:'節點', num:3, check:()=>nodes.length>=2},
   {id:'acc-segs',  label:'路段', num:4, check:()=>segData.length>0&&(parseInt(document.getElementById('tl').value)||0)>0&&_segsConfirmed()},
 ]
@@ -3086,7 +3102,9 @@ function renderRcButtons() {
 }
 function selectRoundCount(n) {
   document.getElementById('rc').value = Math.min(RC_MAX, Math.max(1, n))
+  markTimeTouched()        // 調過每日次數也算設定過時段
   renderRcButtons()
+  renderStepBar()
 }
 // ════════════════════════════════════════════════════════
 //  調查時段（可增減 1~6 段）
@@ -3121,11 +3139,13 @@ function normPeriodList(arr){
 }
 function addPeriod(){
   if(periodData.length>=PD_MAX) return
+  markTimeTouched()
   periodData.push({k:nextPeriodKey(), n:'時段'+(periodData.length+1), t:'00:00~00:00'})
   renderPeriods()
 }
 function delPeriod(i){
   if(periodData.length<=1) return
+  markTimeTouched()
   const p=periodData[i]
   if(!confirm(`確定刪除「${p.n}」這個時段？\n\n已經調查過的這個時段紀錄不會被刪除，但之後現場 App 不會再出現這個時段的按鈕。`)) return
   periodData.splice(i,1)
@@ -3133,6 +3153,7 @@ function delPeriod(i){
 }
 function setPeriod(i,f,v){
   if(!periodData[i]) return
+  markTimeTouched()
   periodData[i][f]=v
   syncLegacyPeakFields(); renderPeriodTotal(); renderStepBar()
 }
@@ -3439,6 +3460,7 @@ function newTask(projectId) {
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   clearMidHandles();nodes=[];segData=[];stopMeasure()
   _segsConfirmedSig=null   // 新專案，路段資訊要重新確認
+  _timeTouched=false       // 新路線：時段還沒設定過，第 2 格不要先亮綠燈
   renderNodeList();renderSegTable()
   showEditView('新建路線')
   collapseAllAcc()   // 五個欄位全部先最小化
@@ -3448,6 +3470,7 @@ function newTask(projectId) {
 async function loadTask(id) {
   const task=savedTasks.find(t=>t.id===id);if(!task)return
   resetEditHistory()      // 這一次編輯重新開始算，不接續上一條路線的歷史
+  _timeTouched=true       // 既有路線：當初存檔時就設定過時段了，直接算完成
   currentTaskId=id
   _currentProjectId=task.projectId||null
   if(_currentProjectId)_openProjectId=_currentProjectId
