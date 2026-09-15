@@ -460,46 +460,78 @@ let currentCombo = 'peak_bound'
 let _filterDate = ''  // YYYY-MM-DD or ''
 let _filterRound = null  // 1/2/3 or null = 全部次數
 // ── 納入平均的次數 ────────────────────────────────────────────
-// 現場可能跑了 5 次，但只想拿其中幾次做平均（例如某一次遇到事故、或只跑了一半）。
-// null = 尚未挑選，套用預設（有資料的都算）；Set = 使用者挑過的那幾次。
-// 只影響「全部平均」模式，點單一次數時完全不生效。
-let _avgRounds = null
-function _avgKey(){ return 'avgRounds_'+(route&&route.id||'')+'_'+(_filterDate||'') }
-function loadAvgRounds(){
-  try{
-    const raw=localStorage.getItem(_avgKey())
-    _avgRounds = raw ? new Set(JSON.parse(raw).map(Number)) : null
-  }catch(e){ _avgRounds=null }
-}
-function saveAvgRounds(){
-  try{
-    if(_avgRounds) localStorage.setItem(_avgKey(), JSON.stringify([..._avgRounds]))
-    else localStorage.removeItem(_avgKey())
-  }catch(e){}
+// 現場可能跑了 5 次，但只想拿其中幾次做平均（某一次遇到事故、或只跑了一半）。
+// ⚠️ 這個選擇存在雲端（surveys.avgExcluded），不是瀏覽器。
+//    交件用的數字不能因為換一台電腦、換一個人開報告就變了；
+//    批次下載時每條路線各自讀自己的旗標，也才會跟畫面上看到的一致。
+function roundExcluded(n){
+  const rows=surveysOfDate().filter(sv=>(+sv.round||1)===n)
+  // 該次的每一筆都被標記才算排除（分次上傳時只要有一筆沒標就還是納入）
+  return rows.length>0 && rows.every(sv=>!!sv.avgExcluded)
 }
 // 預設納入哪幾次：有資料的都算（完全沒調查的那一次本來就沒東西可平均）。
 function defaultAvgRounds(){
   return new Set(availableRounds().filter(n=>roundProgress(n).done>0))
 }
-// 目前實際生效的集合。使用者沒挑過、或挑到一個都不剩時，一律回落到預設，
-// 避免整份報告變成空白卻找不到原因。
+// 目前實際生效的集合＝有資料 − 被標記排除的。
+// 全部都被排除時回落到預設，避免整份報告變成空白卻找不到原因。
 function effectiveAvgRounds(){
   const def=defaultAvgRounds()
-  if(!_avgRounds) return def
-  const keep=new Set([..._avgRounds].filter(n=>def.has(n)))
+  const keep=new Set([...def].filter(n=>!roundExcluded(n)))
   return keep.size ? keep : def
 }
-function toggleAvgRound(n){
-  const cur=new Set(effectiveAvgRounds())
-  if(cur.has(n)) cur.delete(n); else cur.add(n)
-  _avgRounds = cur.size ? cur : null
-  saveAvgRounds()
-  applyFilters(); calcAverages(); renderPage()
+let _avgBusy=false
+async function toggleAvgRound(n){
+  if(_avgBusy) return
+  const willExclude = effectiveAvgRounds().has(n)
+  if(willExclude && effectiveAvgRounds().size<=1){
+    alert('至少要保留一次納入平均'); return
+  }
+  _avgBusy=true
+  const box=document.getElementById('avg-pick-row')
+  if(box) box.style.opacity='.5'
+  try{
+    await cloudPost({
+      action:'setAvgExcluded', routeId:(route&&route.id)||(_pm&&_pm.routeId)||'',
+      date:_filterDate, round:n, excluded:willExclude
+    })
+    // 本機資料同步更新，不必為了一個勾選重抓整包
+    allSurveys.forEach(sv=>{
+      if(String(sv.date||'').slice(0,10)===_filterDate && (+sv.round||1)===n) sv.avgExcluded=willExclude
+    })
+    applyFilters(); calcAverages(); renderPage()
+  }catch(e){
+    alert('儲存失敗：'+(e.message||e)+'\n\n選擇沒有變更，請確認網路後再試一次。')
+  }finally{
+    _avgBusy=false
+    const bx=document.getElementById('avg-pick-row'); if(bx) bx.style.opacity=''
+  }
 }
-function resetAvgRounds(){
-  _avgRounds=null; saveAvgRounds()
-  applyFilters(); calcAverages(); renderPage()
+async function resetAvgRounds(){
+  if(_avgBusy) return
+  const off=availableRounds().filter(n=>roundExcluded(n))
+  if(!off.length) return
+  _avgBusy=true
+  const box=document.getElementById('avg-pick-row'); if(box) box.style.opacity='.5'
+  try{
+    for(const n of off){
+      await cloudPost({
+        action:'setAvgExcluded', routeId:(route&&route.id)||(_pm&&_pm.routeId)||'',
+        date:_filterDate, round:n, excluded:false
+      })
+      allSurveys.forEach(sv=>{
+        if(String(sv.date||'').slice(0,10)===_filterDate && (+sv.round||1)===n) sv.avgExcluded=false
+      })
+    }
+    applyFilters(); calcAverages(); renderPage()
+  }catch(e){
+    alert('還原失敗：'+(e.message||e))
+  }finally{
+    _avgBusy=false
+    const bx=document.getElementById('avg-pick-row'); if(bx) bx.style.opacity=''
+  }
 }
+
 let _tripMaps = {}       // mapId -> L.map instance
 let _tripMapBounds = {}  // mapId -> L.latLngBounds (for re-fitting after invalidateSize)
 
@@ -1121,7 +1153,6 @@ async function _loadRouteIntoGlobals(gs, sessionToken, routeId, date){
   rebuildComboKeys()
   _filterDate = date || ''
   _filterRound = null
-  loadAvgRounds()   // 換路線／換日期：讀回這一組曾經挑過的「納入平均」設定
   applyFilters()
   calcAverages()
 }
@@ -1337,8 +1368,8 @@ function applyFilters(){
   surveys = allSurveys.filter(sv=>{
     if(_filterDate && String(sv.date||'').slice(0,10)!==_filterDate) return false
     if(_filterRound && (+sv.round||1)!==_filterRound) return false
-    // 全部平均模式：只留使用者勾選要納入的次數
-    if(!_filterRound && !effectiveAvgRounds().has(+sv.round||1)) return false
+    // 全部平均模式：被標記為「不納入平均」的次數不參與計算
+    if(!_filterRound && sv.avgExcluded) return false
     return true
   })
 }
@@ -1408,7 +1439,7 @@ function renderRoundFilter(){
   }
   // 第1次／第2次／第3次 排在前面，「全部平均」放最後
   const incl=effectiveAvgRounds()
-  const allIn = incl.size>=defaultAvgRounds().size
+  const allIn = incl.size>=rounds.length   // 每一次都納入才叫「全部平均」
   el.innerHTML = rounds.map(roundBtn).join('')
     + `<button class="rf-btn${_filterRound===null?' active':''}" onclick="setRoundFilter(null)">`
     + (allIn ? '全部平均' : `平均（${incl.size} 次）`) + '</button>'
@@ -1421,6 +1452,7 @@ function renderAvgPicker(rounds){
   if(_filterRound!==null || !rounds || rounds.length<=1){ box.innerHTML=''; return }
   const incl=effectiveAvgRounds()
   const def=defaultAvgRounds()
+  const hasHidden = incl.size < def.size   // 有「有資料但被取消」的次數才需要「全選」
   box.innerHTML='<div class="avg-pick"><span class="ttl">納入平均</span>'
     + rounds.map(n=>{
         const has=incl.has(n), hasData=def.has(n)
@@ -1430,7 +1462,7 @@ function renderAvgPicker(rounds){
         return `<button class="${cls}" title="${tip}" ${click}><span class="mk">${has?'✓':(hasData?'＋':'—')}</span>第 ${n} 次</button>`
       }).join('')
     + `<span class="cnt">${incl.size} 次`
-    + (incl.size<def.size ? '<button onclick="resetAvgRounds()">全選</button>' : '')
+    + (hasHidden ? '<button onclick="resetAvgRounds()">全選</button>' : '')
     + '</span></div>'
 }
 function renderDlScopeNote(rounds){
@@ -1440,8 +1472,11 @@ function renderDlScopeNote(rounds){
     note.textContent = `📥 下載範圍：只包含「第${_filterRound}次」的資料`
     return
   }
+  // ⚠️ 比較的基準是「全部可選次數」，不是「有資料的次數」。
+  // 某一次沒調查而被自動排除時，仍然要明講平均了哪幾次——
+  // 顯示成「全部次數平均」會讓人以為 5 次都算進去了。
   const incl=[...effectiveAvgRounds()].sort((a,b)=>a-b)
-  const all = incl.length>=defaultAvgRounds().size
+  const all = incl.length>=availableRounds().length
   note.textContent = all
     ? `📥 下載範圍：全部次數平均（路線設定 ${plannedRoundCount()} 次）`
     : `📥 下載範圍：平均 ${incl.length} 次（${incl.map(n=>'第'+n+'次').join('、')}）`
