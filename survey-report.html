@@ -1538,7 +1538,13 @@ function renderRoundFilter(){
     const barCls = state==='todo' ? 'rf-bar-track' : (state==='done' ? 'rf-bar-done' : 'rf-bar-part')
     const width = state==='part' ? pct : 100
     const stateText = state==='todo' ? '尚未調查' : (state==='done' ? '已完成調查' : `調查中（已完成 ${done}/${total} 趟）`)
-    const title = stateText + (extra.has(n) ? '｜這一次超出路線設定的調查次數，可能是設定調整前留下的紀錄' : '')
+    // 這一次底下只要有任何一趟的時間掉出設定時段，就在文字前掛一個紅色 ⚠，
+    // 滑上去直接看到是哪一趟、差幾分鐘（依業主選定：N2 文字前加 ⚠）
+    const offs = (surveysOfDate()||[]).filter(sv=>(+sv.round||1)===n)
+      .reduce((a,sv)=>a.concat((sv.trips||[]).map(t=>tripOffTime(t)).filter(Boolean)), [])
+    const offMark = offs.length ? '<span class="rf-warn">⚠</span>' : ''
+    const offTitle = offs.length ? '｜超出設定時段：' + offs.map(o=>o.text).join('；') : ''
+    const title = stateText + (extra.has(n) ? '｜這一次超出路線設定的調查次數，可能是設定調整前留下的紀錄' : '') + offTitle
     return `<button class="rf-btn${_filterRound===n?' active':''}${state==='todo'?' rf-todo':''}" title="${title}" aria-label="第 ${n} 次，${stateText}" onclick="setRoundFilter(${n})">${offMark}第 ${n} 次${extra.has(n)?' ⚠':''}<span class="rf-bar ${barCls}" style="width:${width}%"></span></button>`
   }
   // 第1次／第2次／第3次 排在前面，「全部平均」放最後
