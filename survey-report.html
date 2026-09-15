@@ -242,6 +242,11 @@ td:first-child{text-align:left;font-weight:500}
 .pf-timeerr{outline:2px solid #dc2626;outline-offset:2px}
 .pf-timeerr-tip{background:#fee2e2;color:#991b1b;font-size:12.5px;font-weight:700;
   padding:9px 14px;border-bottom:1.5px solid #dc2626}
+/* 延滯合計超過該段旅行時間：整列標紅，並把延滯欄位框起來 */
+.pf-overrow td{background:#fef2f2!important}
+.pf-overrow td.pf-seg{background:#fee2e2!important;color:#991b1b!important}
+.pf-overrow .pf-edit-inp{border-color:#dc2626;background:#fff1f2;color:#991b1b}
+.pf-overrow td[data-calc^="segTravel-"],.pf-overrow td[data-calc^="segRun-"]{color:#dc2626!important}
 .pf-derived::after{content:'ƒ';position:absolute;top:1px;right:2px;font-size:8px;color:#94a3b8;font-style:normal}
 .pf-spd{font-size:15px;font-weight:800;color:#1e3a5f}
 .pf-pct{font-size:9.5px;background:#f0f4fa!important;color:#374151}
@@ -445,7 +450,8 @@ select.pf-meta-inp{padding:2px 3px}
     <div class="dl-section">
       <h3>下載報告</h3>
       <p style="font-size:13px;color:#64748b;margin:8px 0 20px">依據「主次要幹道行駛時間及延滯調查表」格式產出報告</p>
-      <div id="dl-scope-note" style="display:inline-block;font-size:12px;font-weight:700;color:#92400e;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:6px 12px;margin-bottom:14px"></div><br>
+      <!-- 沒有文字時整個藏起來，不然會留下一顆空的黃色橢圓 -->
+      <div id="dl-scope-note" style="display:none;font-size:12px;font-weight:700;color:#92400e;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:6px 12px;margin-bottom:14px"></div>
       <button class="dl-btn green" onclick="downloadSGS()">📥 下載 Excel (.xlsx)</button>
       <button class="dl-btn orange" onclick="downloadSGSPdf()">🖨️ 下載 SGS 公版報告 PDF</button>
       <div class="dl-note" style="margin-top:20px">
@@ -455,8 +461,7 @@ select.pf-meta-inp{padding:2px 3px}
         ・延滯統計表(續)<br>
         ・各路段平均旅行時間及平均行駛時間統計表<br>
         ・各路段平均旅行速率及平均行駛速率統計表（公里/時）<br>
-        後面接每一趟旅次的「主次要幹道行駛時間及延滯調查表」明細。<br>
-        <span style="color:#92400e">從 PM 後台按「📄 批次報告」時，只會產生上述四張平均表，不含每趟明細。</span>
+        後面接每一趟旅次的「主次要幹道行駛時間及延滯調查表」明細。
       </div>
       <div class="dl-note" style="margin-top:12px">
         <b>SGS Excel 包含：</b><br>
@@ -952,6 +957,13 @@ async function switchReportRoute(routeId){
     renderRouteTabs()   // 抓好了就把轉圈換成打勾
   }catch(e){ alert('載入失敗：'+e.message) }
   if(!cached) hideDlOverlay()
+  // 背景預抓的是不含軌跡的輕量版。已經停在「調查紀錄」分頁時 switchTab 不會被觸發，
+  // 這裡要自己把軌跡補上，否則切過來的地圖會是空的。
+  if(_curTab==='trips' && _rdata[_rkey(routeId, _pm.date||'')]?.light){
+    _ensureFullRouteData(routeId, _pm.date).then(()=>{
+      if(_curTab==='trips' && String(_pm.routeId)===String(routeId)) renderComboRecords(currentCombo)
+    })
+  }
 }
 async function onReportDateChange(date){
   if(!_pm) return
@@ -1122,7 +1134,7 @@ async function _prefetchAllRoutes(){
   for(const r of _pm.routes){
     if(day!==(_pm.date||'')) return      // 抓到一半使用者又換了日期，這批就作廢
     if(_rdata[_rkey(r.id, day)]) continue
-    try{ await _fetchRouteData(_pm.gs, _pm.sessionToken, r.id, day) }catch(e){}
+    try{ await _fetchRouteData(_pm.gs, _pm.sessionToken, r.id, day, true) }catch(e){}
     renderRouteTabs()
   }
   renderRouteTabs()   // 收尾再畫一次，確保沒有任何一顆轉圈被留下來
@@ -1277,19 +1289,26 @@ async function _ensureFullRouteData(routeId, date){
   _fullPending[k]=job
   return job
 }
-function _fetchRouteData(gs, sessionToken, routeId, date){
+// light=true：不要 gpsTrack。背景預抓其他路線時用這個——
+// 軌跡只有「切過去而且看調查紀錄分頁」才會用到，先抓回來多半是白抓，
+// 而且 Apps Script 同一個使用者的執行是排隊的，背景抓大包資料會把
+// 使用者自己點的動作卡在後面。真的要看時 _ensureFullRouteData 再補。
+function _fetchRouteData(gs, sessionToken, routeId, date, light){
   const k = _rkey(routeId, date)
   if(_rdata[k]) return Promise.resolve(_rdata[k])
   if(_rpending[k]) return _rpending[k]
   const job = (async()=>{
+    const q = {action:'getSurveys', routeId, date: date||''}
+    if(light) q.light='1'
     const [routeRes, surveyRes] = await Promise.all([
       cloudGet(gs, sessionToken, {action:'getRoute', id: routeId}),
-      cloudGet(gs, sessionToken, {action:'getSurveys', routeId, date: date||''})
+      cloudGet(gs, sessionToken, q)
     ])
     if(!routeRes.ok)  throw new Error(routeRes.error||'讀取路線失敗')
     if(!surveyRes.ok) throw new Error(surveyRes.error||'讀取調查結果失敗')
     _rdata[k] = { route: _normalizeRoute(routeRes.data),
-                  surveys: _normalizeSurveys(surveyRes.data||[]) }
+                  surveys: _normalizeSurveys(surveyRes.data||[]),
+                  light: !!light }
     delete _rpending[k]
     return _rdata[k]
   })()
@@ -1574,7 +1593,7 @@ function renderRoundFilter(){
     el.innerHTML=''
     const pick=document.getElementById('avg-pick-row'); if(pick) pick.innerHTML=''
     if(sep) sep.style.display='none'
-    const note=document.getElementById('dl-scope-note'); if(note) note.textContent=''
+    const note=document.getElementById('dl-scope-note'); if(note){ note.textContent=''; note.style.display='none' }
     return
   }
   if(sep) sep.style.display='block'
@@ -1628,8 +1647,10 @@ function renderAvgPicker(rounds){
 function renderDlScopeNote(rounds){
   const note = document.getElementById('dl-scope-note')
   if(!note) return
+  // 有字才顯示。空字串留著 inline-block 會變成一顆沒內容的黃色橢圓
+  const show = t => { note.textContent = t; note.style.display = t ? 'inline-block' : 'none' }
   if(_filterRound){
-    note.textContent = `📥 下載範圍：只包含「第${_filterRound}次」的資料`
+    show(`📥 下載範圍：只包含「第${_filterRound}次」的資料`)
     return
   }
   // ⚠️ 比較的基準是「全部可選次數」，不是「有資料的次數」。
@@ -1637,9 +1658,9 @@ function renderDlScopeNote(rounds){
   // 顯示成「全部次數平均」會讓人以為 5 次都算進去了。
   const incl=[...effectiveAvgRounds()].sort((a,b)=>a-b)
   const all = incl.length>=availableRounds().length
-  note.textContent = all
+  show(all
     ? `📥 下載範圍：全部次數平均（路線設定 ${plannedRoundCount()} 次）`
-    : `📥 下載範圍：平均 ${incl.length} 次（${incl.map(n=>'第'+n+'次').join('、')}）`
+    : `📥 下載範圍：平均 ${incl.length} 次（${incl.map(n=>'第'+n+'次').join('、')}）`)
 }
 function setRoundFilter(n){
   _filterRound = n
@@ -4096,6 +4117,9 @@ function startInlineEdit(si,combo){
     const el=document.querySelector(`[data-sv-key="${si}-${combo}"]`)
     if(!el) return
     _snapTimes(el)      // 記下所有時刻，改動時才算得出是哪一格、移多少
+    // 一進編輯就先驗一次：舊資料本來就有問題（例如延滯超過該段旅行時間）的話，
+    // 要馬上看得到，而不是等到動了某一格才突然跳紅字
+    _liveRecalc(el)
     el.scrollIntoView({behavior:'smooth',block:'nearest'})
   },120)
 }
@@ -4151,6 +4175,7 @@ function _liveRecalc(box){
 
   const rows=[...box.querySelectorAll('tr')].filter(tr=>tr.querySelector('[data-ie^="node-h-"]'))
   let hasNeg=false
+  const over=[]     // 延滯合計 > 該段旅行時間的段落
   for(let i=0;i<nSeg;i++){
     // ⚠️ 負數不要偷偷補一天。
     // 交通調查都在 9~11 點或 17~19 點跑，跨午夜幾乎不可能；
@@ -4170,6 +4195,14 @@ function _liveRecalc(box){
     setC(`segRun-${i}`,run)
     setC(`segSpdT-${i}`,spd(len,dur))
     setC(`segSpdR-${i}`,spd(len,run))
+    // 延滯不可能比「車子待在這一段的總時間」還長。
+    // 段旅行時間是兩個經過時刻相減來的，是實測值；延滯是人填的。
+    // 填超過就是打錯（多按一個 0、填到隔壁段、或時刻抄錯），
+    // 硬存下去會讓行駛時間被壓成 0、速率變成空白，整張表就廢了。
+    // 相等允許：整段都塞著沒動是有可能的。
+    const isOver = dur>=0 && dsum>dur
+    if(isOver) over.push({i, dur, dsum, name:_segNameOf(rows[i], i)})
+    if(rows[i]) rows[i].classList.toggle('pf-overrow', isOver)
   }
 
   const total=ts[nSeg]-ts[0]
@@ -4186,25 +4219,43 @@ function _liveRecalc(box){
   ;[...RCn,...ICn].forEach(c=>{ setC(`sum-${c}`,colT[c]||0); setC(`pct-${c}`,P2(colT[c],dBase)) })
   setC('roadT',roadT); setC('intT',intT)
   setC('pctRoadT',P2(roadT,dBase)); setC('pctIntT',P2(intT,dBase))
-  _markTimeError(box,hasNeg)
+  _markEditErrors(box,hasNeg,over)
 }
-// 時刻順序不合理（後面的比前面早）就整張標紅並擋住儲存，
-// 不要讓人存進一筆算出來是負數或八萬秒的資料
-function _markTimeError(box,bad){
-  box.classList.toggle('pf-timeerr',!!bad)
+// 表格裡的路段名稱（標紅訊息要講清楚是哪一段，不能只說「第 3 段」）
+function _segNameOf(row,i){
+  const c=row&&row.querySelector('.pf-seg')
+  const t=c?(c.textContent||'').trim():''
+  return t||`第 ${i+1} 段`
+}
+// 兩種擋人的錯誤，共用同一條紅色警示列與同一個「儲存」鎖：
+//   ① 時刻順序不合理（後面的比前面早）→ 會算出負數或八萬秒的鬼數字
+//   ② 某一段的延滯合計 > 該段旅行時間  → 行駛時間會被壓成 0，速率整欄空白
+// 兩者都是「存下去資料就壞掉」，所以一律擋在儲存前，而不是存完再修。
+function _markEditErrors(box,hasNeg,over){
+  over=over||[]
+  const bad=!!hasNeg||over.length>0
+  box.classList.toggle('pf-timeerr',bad)
+  const msgs=[]
+  if(hasNeg) msgs.push('⚠️ 時刻順序不合理：後面的時刻早於前面的，請檢查時／分／秒')
+  over.forEach(o=>{
+    msgs.push(`⚠️ ${o.name}：延滯合計 ${o.dsum} 秒，超過該段旅行時間 ${o.dur} 秒`
+      + `（旅行時間是兩個經過時刻相減來的，延滯最多只能等於它）`)
+  })
   const btn=box.querySelector('.em-save-inline')
   if(btn){
-    btn.disabled=!!bad
-    btn.title=bad?'時刻順序不合理：後面的時刻不能早於前面的':''
+    btn.disabled=bad
+    btn.title=bad?msgs.join('\n'):''
   }
   let tip=box.querySelector('.pf-timeerr-tip')
-  if(bad&&!tip){
-    tip=document.createElement('div')
-    tip.className='pf-timeerr-tip'
-    tip.textContent='⚠️ 時刻順序不合理：後面的時刻早於前面的，請檢查時／分／秒'
-    const hdr=box.querySelector('.sgs-pf-meta')
-    if(hdr&&hdr.parentNode) hdr.parentNode.insertBefore(tip,hdr.nextSibling)
-  }else if(!bad&&tip) tip.remove()
+  if(bad){
+    if(!tip){
+      tip=document.createElement('div')
+      tip.className='pf-timeerr-tip'
+      const hdr=box.querySelector('.sgs-pf-meta')
+      if(hdr&&hdr.parentNode) hdr.parentNode.insertBefore(tip,hdr.nextSibling)
+    }
+    if(tip) tip.innerHTML=msgs.map(m=>`<div>${he(m)}</div>`).join('')
+  }else if(tip) tip.remove()
 }
 // 總距離：各段距離相加（跟表格裡看到的一致，不另外從 route 讀，免得對不起來）
 function _liveTL(box){
@@ -4293,6 +4344,14 @@ function saveInlineEdit(si,combo){
   if(!trip)return
   const container=document.querySelector(`[data-sv-key="${key}"]`)
   if(!container)return
+  // 按鈕在有錯的時候是 disabled，但鍵盤 Enter、程式呼叫都繞得過去，
+  // 所以真正的門鎖放在這裡：重算一次，還是有錯就不存。
+  _liveRecalc(container)
+  if(container.classList.contains('pf-timeerr')){
+    _emToast('⚠️ 資料有誤，請先修正紅色標示的欄位再儲存')
+    container.querySelector('.pf-timeerr-tip')?.scrollIntoView({behavior:'smooth',block:'center'})
+    return
+  }
   const survDate=sv?.date||''
   const isReturn=dir==='return'
   // 一律用「真實節點／合併後路段」，跟畫面上顯示的列數一致，
