@@ -686,7 +686,9 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
   letter-spacing:1px}
 .emp-idwrap input:focus{border-color:transparent!important}
 .emp-note{font-size:11px;color:#94a3b8;margin-top:6px;line-height:1.6}
-.emp-err{font-size:13px;color:#dc2626;min-height:19px;margin-bottom:6px;font-weight:700}
+/* 錯誤訊息可能是一整句（例如姓名重複的說明），要能換行、靠左讀 */
+.emp-err{font-size:13px;color:#dc2626;min-height:19px;margin-bottom:6px;font-weight:700;
+  line-height:1.65;text-align:left;word-break:break-word}
 .emp-btn{width:100%;padding:16px;background:#4f6ef7;color:#fff;border:none;border-radius:14px;
   font-size:17px;font-weight:800;cursor:pointer;font-family:inherit;transition:opacity .15s}
 .emp-btn:disabled{opacity:.55}
@@ -7611,7 +7613,12 @@ async function empSubmit(){
       _empDone(empId, nm)
     }catch(e){
       empCarStop()
-      err.textContent='建立失敗：'+((e&&e.message)||e)
+      // 後端擋下「姓名已被其他工號使用」時，訊息本身就寫清楚了該怎麼辦，
+      // 前面再加「建立失敗：」只會把重點推到後面，現場看不到。
+      const msg=(e&&e.message)||String(e)
+      err.textContent = /名冊中已有/.test(msg) ? msg : ('建立失敗：'+msg)
+      // 姓名重複時焦點回到姓名欄，讓人直接改；其他錯誤（網路等）不動焦點，方便重試
+      if(/名冊中已有/.test(msg)){ nameEl.focus(); nameEl.select() }
       btn.disabled=false; btn.textContent='建立並繼續'; btn.classList.remove('emp-btn-long')
     }
     return
