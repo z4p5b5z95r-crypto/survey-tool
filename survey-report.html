@@ -131,6 +131,8 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color
 .avg-pick .cnt{margin-left:auto;font-size:11.5px;font-weight:800;color:#1d4ed8;flex:none}
 .avg-pick .cnt button{margin-left:9px;font-size:11px;font-weight:700;color:#2563eb;
   background:none;border:none;cursor:pointer;font-family:inherit}
+/* 背景寫入中的提示：只是一行小字，不擋任何操作 */
+.avg-pick .sav{margin-left:9px;font-size:10.5px;font-weight:700;color:#60a5fa}
 
 /* ── Panels ── */
 .panel{display:none;padding:20px;animation:fadeIn .2s;max-width:1200px;margin:0 auto}
@@ -142,6 +144,23 @@ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#f1f5f9;color
 .card{background:white;border-radius:14px;padding:16px;text-align:center;box-shadow:0 1px 4px #0001}
 .card .val{font-size:24px;font-weight:800;color:#1e40af}
 .card .lbl{font-size:11px;color:#64748b;margin-top:4px}
+/* ── 調查時間超出設定時段的標示 ────────────────────────────── */
+.card.warn{background:#fef2f2;border:1px solid #fecaca;cursor:pointer}
+.card.warn .val{color:#dc2626}
+.card.warn .lbl{color:#b91c1c;font-weight:700}
+.offtime-note{background:#fffbeb;border-left:3px solid #f59e0b;border-radius:0 10px 10px 0;
+  padding:11px 14px;margin:-8px 0 18px;font-size:12px;color:#92400e;line-height:2}
+.offtime-note b{color:#7c2d12}
+.offtime-tip{font-size:11px;color:#b45309;margin-top:6px;opacity:.85}
+/* 次數按鈕：文字前的紅色驚嘆號（N2） */
+.rf-warn{color:#dc2626;font-weight:900;margin-right:3px}
+.rf-btn.active .rf-warn{color:#fca5a5}
+/* 組合按鈕：右上角紅色三角旗（C1） */
+.combo-sel-btn{position:relative}
+.cs-corner{position:absolute;top:0;right:0;width:0;height:0;border-top:20px solid #ef4444;
+  border-left:20px solid transparent;border-radius:0 10px 0 0;pointer-events:none}
+.cs-corner-i{position:absolute;top:0;right:3px;font-size:10px;color:#fff;font-weight:900;
+  line-height:1.3;pointer-events:none}
 
 /* ── Tables ── */
 .section{background:white;border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 1px 4px #0001}
@@ -381,6 +400,7 @@ select.pf-meta-inp{padding:2px 3px}
   <!-- STATS -->
   <div id="panel-stats" class="panel active">
     <div class="cards" id="stat-cards"></div>
+    <div id="offtime-detail"></div>
     <div class="section">
       <h3>📋 各路段平均旅行時間及行駛時間統計表（秒）</h3>
       <div style="overflow-x:auto"><table id="tbl-travel"></table></div>
@@ -459,6 +479,96 @@ let avgTrips = {}  // {combo: {travelS, runS, intTotalS, roadTotalS, totalDelayS
 let currentCombo = 'peak_bound'
 let _filterDate = ''  // YYYY-MM-DD or ''
 let _filterRound = null  // 1/2/3 or null = 全部次數
+
+// ── 調查時間是否落在設定的時段內 ──────────────────────────────
+// PM 在路線設定寫了「離峰 14:00~16:00」這種時段，但現場實際跑的時間可能掉出去
+// （前一趟延誤、臨時改行程…）。這種資料照樣進平均，PM 卻不見得知道，
+// 所以要在報告裡標出來。
+//
+// 判定規則（依業主確認）：
+//   ・整趟都要在時段內 —— 開始與結束時刻都必須落在範圍裡
+//   ・不給容許誤差 —— 差一分鐘就算超出
+//   ・只標示，不影響平均的計算（要不要排除由「納入平均」那排自行決定）
+const OFFTIME_TOLERANCE_MIN = 0   // 容許誤差（分鐘）。之後若要放寬，只改這裡
+// "14:00~16:00" → {from:840, to:960}（以當日 0 點起算的分鐘數）
+function _parseWindow(txt){
+  const m=String(txt||'').match(/(\d{1,2})\s*:\s*(\d{2})\s*[~～\-–—]\s*(\d{1,2})\s*:\s*(\d{2})/)
+  if(!m) return null
+  const a=(+m[1])*60+(+m[2]), b=(+m[3])*60+(+m[4])
+  if(!(b>a)) return null      // 跨午夜或寫反了就不判定，寧可不標也不要誤標
+  return {from:a, to:b}
+}
+function _minOfDay(iso){
+  if(!iso) return null
+  const d=new Date(iso)
+  if(isNaN(d)) return null
+  const s=d.toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,hour:'2-digit',minute:'2-digit'})
+  const m=s.match(/(\d{1,2}):(\d{2})/)
+  return m ? (+m[1])*60+(+m[2]) : null
+}
+function _hhmm(iso){
+  if(!iso) return '—'
+  const d=new Date(iso); if(isNaN(d)) return '—'
+  return d.toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,hour:'2-digit',minute:'2-digit'})
+}
+// 回傳 null＝沒問題／無法判定；否則回傳 {win, startMin, endMin, early, late, text}
+function tripOffTime(trip){
+  if(!trip) return null
+  const pd=(PERIODS_ALL()||[]).find(p=>p.k===trip.peakType)
+  const win=_parseWindow(pd&&pd.t)
+  if(!win) return null                       // 時段沒設定時間就無從判定
+  const st=_minOfDay(trip.startTime), et=_minOfDay(trip.endTime)
+  if(st==null && et==null) return null
+  const tol=OFFTIME_TOLERANCE_MIN
+  const lo=win.from-tol, hi=win.to+tol
+  // 「整趟都要在時段內」：開始與結束任一端超出就算
+  const early=Math.max(st!=null?lo-st:0, et!=null?lo-et:0)
+  const late =Math.max(st!=null?st-hi:0, et!=null?et-hi:0)
+  if(early<=0 && late<=0) return null
+  const parts=[]
+  if(early>0) parts.push('早 '+early+' 分')
+  if(late>0)  parts.push('晚 '+late+' 分')
+  return {
+    win: (pd&&pd.t)||'', early, late,
+    text: (pd&&pd.n||trip.peakType)+(trip.direction==='return'?'回程':'去程')
+          +' '+_hhmm(trip.startTime)+'～'+_hhmm(trip.endTime)
+          +'（設定 '+((pd&&pd.t)||'')+'，'+parts.join('、')+'）'
+  }
+}
+// 這一天所有超出時段的趟次（不受「第幾次」篩選影響，統計表要看全部）
+function offTimeTrips(){
+  const out=[]
+  ;(surveysOfDate()||[]).forEach(sv=>{
+    ;(sv.trips||[]).forEach(t=>{
+      const off=tripOffTime(t)
+      if(off) out.push({round:+sv.round||1, trip:t, off})
+    })
+  })
+  return out.sort((a,b)=>a.round-b.round)
+}
+function roundHasOffTime(n){
+  return (surveysOfDate()||[]).some(sv=>(+sv.round||1)===n && (sv.trips||[]).some(t=>tripOffTime(t)))
+}
+// 目前篩選條件下，某個組合有沒有超時的趟次（組合按鈕的角旗用）
+function comboHasOffTime(comboKey){
+  const [pt,dir]=parseCombo(comboKey)
+  return (surveys||[]).some(sv=>(sv.trips||[]).some(t=>t.peakType===pt&&t.direction===dir&&tripOffTime(t)))
+}
+
+
+// S2 的明細：預設收起來，點卡片才展開
+let _offDetailOpen=false
+function toggleOffTimeDetail(){ _offDetailOpen=!_offDetailOpen; renderOffTimeDetail() }
+function renderOffTimeDetail(){
+  const box=document.getElementById('offtime-detail'); if(!box) return
+  const off=offTimeTrips()
+  if(!off.length || !_offDetailOpen){ box.innerHTML=''; return }
+  box.innerHTML = `<div class="offtime-note">
+      <b>不在設定時段內的調查（${off.length} 趟）</b><br>`
+    + off.map(o=>`第 ${o.round} 次　${he(o.off.text)}`).join('<br>')
+    + `<div class="offtime-tip">此標示僅供檢核，平均值仍依「納入平均」的設定計算。</div></div>`
+}
+
 // ── 納入平均的次數 ────────────────────────────────────────────
 // 現場可能跑了 5 次，但只想拿其中幾次做平均（某一次遇到事故、或只跑了一半）。
 // ⚠️ 這個選擇存在雲端（surveys.avgExcluded），不是瀏覽器。
@@ -480,57 +590,51 @@ function effectiveAvgRounds(){
   const keep=new Set([...def].filter(n=>!roundExcluded(n)))
   return keep.size ? keep : def
 }
-let _avgBusy=false
-async function toggleAvgRound(n){
-  if(_avgBusy) return
+// ── 寫入策略：先更新畫面，再背景送雲端 ────────────────────────
+// 勾選要立刻反應。Apps Script 一次寫入常常要 1~3 秒，等它回來才更新畫面的話，
+// 面板會反白卡住，使用者還以為當掉了。
+// 所以本機先改、畫面先動，雲端寫入排進佇列背景處理；只有失敗時才跳通知並還原。
+let _avgQueue = Promise.resolve()   // 依序送出，避免連點造成寫入順序錯亂
+let _avgPending = 0                 // 還在飛的請求數，用來顯示「儲存中…」
+function _setRoundExcludedLocal(n, excluded){
+  allSurveys.forEach(sv=>{
+    if(String(sv.date||'').slice(0,10)===_filterDate && (+sv.round||1)===n) sv.avgExcluded=excluded
+  })
+}
+function _avgRefresh(){ applyFilters(); calcAverages(); renderPage() }
+function _avgPush(n, excluded){
+  _avgPending++
+  const routeId=(route&&route.id)||(_pm&&_pm.routeId)||''
+  const date=_filterDate
+  _avgQueue = _avgQueue
+    .then(()=>cloudPost({action:'setAvgExcluded', routeId, date, round:n, excluded}))
+    .then(()=>{ _avgPending--; if(!_avgPending) _avgRefresh() })
+    .catch(err=>{
+      _avgPending--
+      // 只有在「畫面上仍然是我們剛寫的狀態」時才還原，
+      // 否則會把使用者在等待期間做的新選擇一起蓋掉。
+      if(roundExcluded(n)===excluded){ _setRoundExcludedLocal(n, !excluded) }
+      _avgRefresh()
+      toastSR('⚠️ 第 '+n+' 次的納入設定儲存失敗，已還原：'+((err&&err.message)||err))
+    })
+}
+function toggleAvgRound(n){
   const willExclude = effectiveAvgRounds().has(n)
   if(willExclude && effectiveAvgRounds().size<=1){
-    alert('至少要保留一次納入平均'); return
+    toastSR('至少要保留一次納入平均'); return
   }
-  _avgBusy=true
-  const box=document.getElementById('avg-pick-row')
-  if(box) box.style.opacity='.5'
-  try{
-    await cloudPost({
-      action:'setAvgExcluded', routeId:(route&&route.id)||(_pm&&_pm.routeId)||'',
-      date:_filterDate, round:n, excluded:willExclude
-    })
-    // 本機資料同步更新，不必為了一個勾選重抓整包
-    allSurveys.forEach(sv=>{
-      if(String(sv.date||'').slice(0,10)===_filterDate && (+sv.round||1)===n) sv.avgExcluded=willExclude
-    })
-    applyFilters(); calcAverages(); renderPage()
-  }catch(e){
-    alert('儲存失敗：'+(e.message||e)+'\n\n選擇沒有變更，請確認網路後再試一次。')
-  }finally{
-    _avgBusy=false
-    const bx=document.getElementById('avg-pick-row'); if(bx) bx.style.opacity=''
-  }
+  _setRoundExcludedLocal(n, willExclude)   // 畫面立刻反應
+  _avgRefresh()
+  _avgPush(n, willExclude)                 // 雲端背景寫入
 }
-async function resetAvgRounds(){
-  if(_avgBusy) return
+function resetAvgRounds(){
   const off=availableRounds().filter(n=>roundExcluded(n))
   if(!off.length) return
-  _avgBusy=true
-  const box=document.getElementById('avg-pick-row'); if(box) box.style.opacity='.5'
-  try{
-    for(const n of off){
-      await cloudPost({
-        action:'setAvgExcluded', routeId:(route&&route.id)||(_pm&&_pm.routeId)||'',
-        date:_filterDate, round:n, excluded:false
-      })
-      allSurveys.forEach(sv=>{
-        if(String(sv.date||'').slice(0,10)===_filterDate && (+sv.round||1)===n) sv.avgExcluded=false
-      })
-    }
-    applyFilters(); calcAverages(); renderPage()
-  }catch(e){
-    alert('還原失敗：'+(e.message||e))
-  }finally{
-    _avgBusy=false
-    const bx=document.getElementById('avg-pick-row'); if(bx) bx.style.opacity=''
-  }
+  off.forEach(n=>_setRoundExcludedLocal(n, false))
+  _avgRefresh()
+  off.forEach(n=>_avgPush(n, false))
 }
+
 
 let _tripMaps = {}       // mapId -> L.map instance
 let _tripMapBounds = {}  // mapId -> L.latLngBounds (for re-fitting after invalidateSize)
@@ -1435,7 +1539,7 @@ function renderRoundFilter(){
     const width = state==='part' ? pct : 100
     const stateText = state==='todo' ? '尚未調查' : (state==='done' ? '已完成調查' : `調查中（已完成 ${done}/${total} 趟）`)
     const title = stateText + (extra.has(n) ? '｜這一次超出路線設定的調查次數，可能是設定調整前留下的紀錄' : '')
-    return `<button class="rf-btn${_filterRound===n?' active':''}${state==='todo'?' rf-todo':''}" title="${title}" aria-label="第 ${n} 次，${stateText}" onclick="setRoundFilter(${n})">第 ${n} 次${extra.has(n)?' ⚠':''}<span class="rf-bar ${barCls}" style="width:${width}%"></span></button>`
+    return `<button class="rf-btn${_filterRound===n?' active':''}${state==='todo'?' rf-todo':''}" title="${title}" aria-label="第 ${n} 次，${stateText}" onclick="setRoundFilter(${n})">${offMark}第 ${n} 次${extra.has(n)?' ⚠':''}<span class="rf-bar ${barCls}" style="width:${width}%"></span></button>`
   }
   // 第1次／第2次／第3次 排在前面，「全部平均」放最後
   const incl=effectiveAvgRounds()
@@ -1462,6 +1566,7 @@ function renderAvgPicker(rounds){
         return `<button class="${cls}" title="${tip}" ${click}><span class="mk">${has?'✓':(hasData?'＋':'—')}</span>第 ${n} 次</button>`
       }).join('')
     + `<span class="cnt">${incl.size} 次`
+    + (_avgPending ? '<span class="sav">儲存中…</span>' : '')
     + (hasHidden ? '<button onclick="resetAvgRounds()">全選</button>' : '')
     + '</span></div>'
 }
@@ -1584,7 +1689,12 @@ function renderPage(){
     <div class="card"><div class="val">${surveys.length}</div><div class="lbl">調查次數</div></div>
     <div class="card"><div class="val">${totalTrips}</div><div class="lbl">總旅次數</div></div>
     <div class="card"><div class="val">${completedCombos}/${COMBO_KEYS.length}</div><div class="lbl">完成組合</div></div>
+    ${(()=>{ const off=offTimeTrips(); return off.length
+      ? `<div class="card warn" onclick="toggleOffTimeDetail()" title="點開查看是哪幾趟">
+           <div class="val">${off.length}</div><div class="lbl">時段異常 ⌄</div></div>`
+      : '' })()}
   `
+  renderOffTimeDetail()
   renderTravelTable()
   renderSpeedTable()
   renderDelayTable()
@@ -1944,9 +2054,15 @@ function renderComboSelector(){
   document.getElementById('combo-selector').innerHTML = COMBOS.map(c=>{
     const [pt,dir]=parseCombo(c.key)
     const count=surveys.filter(sv=>sv.trips?.find(t=>t.peakType===pt&&t.direction===dir)).length
-    return `<button class="combo-sel-btn ${c.cls}" data-combo="${c.key}" onclick="switchCombo('${c.key}')">
+    // 這個組合裡有任何一趟的時間掉出設定時段 → 右上角折一個紅角（依業主選定：C1）
+    const offs = (surveys||[]).flatMap(sv=>(sv.trips||[])
+      .filter(t=>t.peakType===pt&&t.direction===dir).map(t=>tripOffTime(t)).filter(Boolean))
+    const corner = offs.length
+      ? `<span class="cs-corner"></span><span class="cs-corner-i">!</span>` : ''
+    const cTitle = offs.length ? ' title="超出設定時段：' + he(offs.map(o=>o.text).join('；')) + '"' : ''
+    return `<button class="combo-sel-btn ${c.cls}" data-combo="${c.key}"${cTitle} onclick="switchCombo('${c.key}')">
       <span class="cs-label">${c.label}</span>
-      <span class="cs-sub">${count} 筆紀錄</span>
+      <span class="cs-sub">${count} 筆紀錄</span>${corner}
     </button>`
   }).join('')
 }
