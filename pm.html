@@ -1606,12 +1606,14 @@ async function doLogout() {
   // 伺服器那筆 session 讓它在背景銷毀就好（反正也有到期時間）。
   // 原本是等它回來才 reload，Apps Script 慢的時候要盯著畫面好幾秒。
   try { cloudPost({ action: 'logoutUser' }).catch(()=>{}) } catch(e) {}
+  stopIdleTimer()
   clearSession()
   location.reload()
 }
 
 function enterApp(name) {
   document.getElementById('screen-login').style.display = 'none'
+  startIdleTimer()          // 閒置 30 分鐘自動登出
   // admin 登入後跟主管一樣先看到專案列表（含右邊的地圖總覽），
   // 管理後台改成用工具列的「⚙ 管理後台」進去。
   // 舊行為是直接跳進後台，等於 admin 永遠看不到專案列表這一頁。
@@ -2093,9 +2095,10 @@ function _isAuthErr(msg){
   return /session\s*不存在|session\s*已過期|未提供\s*sessionToken|unauthorized|請重新登入/i.test(String(msg||''))
 }
 let _sessionLostShown = false
-function _sessionLost(){
+function _sessionLost(msg){
   if(_sessionLostShown) return       // 一次操作可能連發好幾個請求，只處理第一個
   _sessionLostShown = true
+  stopIdleTimer()
   clearSession()
   try{
     document.getElementById('screen-app').classList.remove('visible')
@@ -2103,9 +2106,48 @@ function _sessionLost(){
     if(ls) ls.style.display=''
     const err=document.getElementById('login-err')
     // 講清楚兩件事：為什麼被登出、以及剛才做的事有沒有不見
-    if(err) err.textContent='登入時效已過，請重新登入。（剛才的編輯已保留在這台電腦，登入後再存一次即可同步雲端）'
+    if(err) err.textContent = msg
+      || '登入時效已過，請重新登入。（剛才的編輯已保留在這台電腦，登入後再存一次即可同步雲端）'
   }catch(e){}
 }
+
+// ── 閒置自動登出 ────────────────────────────────────────────────
+// PM 後台看得到全公司的專案與調查資料，常常開著就去忙別的事。
+// 超過 30 分鐘沒有任何操作就自動登出、回到登入畫面。
+// 登出前 2 分鐘先提醒一次，讓還在看螢幕的人有機會動一下滑鼠。
+const IDLE_LOGOUT_MS = 30*60*1000
+const IDLE_WARN_MS   = 2*60*1000
+let _idleLast = Date.now(), _idleTimer = null, _idleWarned = false, _idleBound = false
+function bumpIdle(){ _idleLast = Date.now(); _idleWarned = false }
+function _idleTick(){
+  if(!getSessionToken()) return          // 已經登出就不用管了
+  const idle = Date.now() - _idleLast
+  if(idle >= IDLE_LOGOUT_MS){
+    _sessionLost('閒置超過 30 分鐘，已自動登出，請重新登入。（編輯內容仍保留在這台電腦）')
+    return
+  }
+  if(!_idleWarned && idle >= IDLE_LOGOUT_MS - IDLE_WARN_MS){
+    _idleWarned = true
+    try{ toast('⏳ 閒置太久，2 分鐘後將自動登出') }catch(e){}
+  }
+}
+function _idleOnVisible(){ if(!document.hidden) _idleTick() }
+function startIdleTimer(){
+  bumpIdle()
+  if(!_idleBound){
+    _idleBound = true
+    // capture:true——有些元件會把事件擋下來，在捕獲階段才一定收得到
+    ;['pointerdown','keydown','wheel','touchstart','scroll'].forEach(ev=>
+      document.addEventListener(ev, bumpIdle, {passive:true, capture:true}))
+    document.addEventListener('visibilitychange', _idleOnVisible)
+  }
+  // ⚠️ 判斷一律用時間戳相減，不靠 setInterval 的次數：
+  // 電腦休眠或分頁被丟到背景時，計時器會被瀏覽器降頻甚至停掉，
+  // 睡了一小時回來如果只數次數就會以為「才過幾分鐘」。
+  // 另外切回畫面的瞬間也立刻檢查一次，不必等下一次輪詢。
+  if(!_idleTimer) _idleTimer = setInterval(_idleTick, 15000)
+}
+function stopIdleTimer(){ if(_idleTimer){ clearInterval(_idleTimer); _idleTimer = null } }
 
 // cloudGet / cloudPost — 登入後改用 sessionToken，靜態 key 不再傳出
 // timeoutMs 可省略，預設 15 秒。資料量大的查詢（例如月曆一次要整批調查紀錄）
