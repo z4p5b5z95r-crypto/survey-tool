@@ -376,10 +376,17 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 .pd-rl{padding:9px 12px 6px;margin:0}
 #rd-rows{padding:0}
 .tr-row{display:flex;align-items:center;gap:8px;padding:0 10px 7px}
+/* 圓圈配色是「第幾次」的固定身分色，跟調查狀態無關——
+   狀態一律由格子裡的 ✓／⏳ 與文字顏色負責，兩者不混用。
+   六個色階深度一致，數字對比都在 5.9 以上，車上強光也讀得到。 */
 .tr-nb{flex:none;width:24px;height:24px;border-radius:50%;background:#1b2536;color:#8da2bd;
   font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center}
-.tr-nb.ok{background:#14532d;color:#bbf7d0}
-.tr-nb.part{background:#78350f;color:#fde68a}
+.tr-nb.n1{background:#78350f;color:#fde68a}   /* 棕橘 */
+.tr-nb.n2{background:#14532d;color:#bbf7d0}   /* 綠 */
+.tr-nb.n3{background:#1b2536;color:#8da2bd}   /* 深藍灰 */
+.tr-nb.n4{background:#4c1d95;color:#ddd6fe}   /* 深紫 */
+.tr-nb.n5{background:#164e63;color:#cffafe}   /* 深青 */
+.tr-nb.n6{background:#831843;color:#fbcfe8}   /* 深玫 */
 .tr-c{flex:1;min-width:0;height:38px;display:flex;align-items:center;justify-content:center;gap:5px;
   border:none;border-radius:10px;background:#131c2e;font-family:inherit;font-size:12.5px;
   cursor:pointer;transition:all .13s;text-align:center;overflow:hidden}
@@ -5179,11 +5186,9 @@ function renderComboGrid(){
     const byR = allTripsByRound[r] || {}
     // 這一次在這個時段底下的所有趟（去＋回）。沒選時段就一律視為無資料。
     const ts  = DIR_KEYS.map(d=>selPeakType ? byR[selPeakType+'_'+d] : null)
-    const allUp = ts.every(t=>tripUploaded(t))
-    const anyRec = ts.some(t=>!!t)
-    // 圓圈：綠＝這一次的去回都進雲端了、橘＝跑了一部分、灰＝還沒開始。
-    // 一列只有一顆，因為它講的是「整個回合」，不是單一方向。
-    const badge = 'tr-nb'+(allUp?' ok':(anyRec?' part':''))
+    // 圓圈＝這一次的身分色，固定不變（第 1 次永遠是棕橘、第 2 次永遠是綠…）。
+    // 超過 6 次就從頭輪替，顏色不會用完。
+    const badge = 'tr-nb n'+(((r-1)%6)+1)
     // 沒選時段時時段名留空白，格子就只剩「▶ 去程」
     const pdName = selPeakType ? esc(PEAK_LABEL_(selPeakType)) : ''
     const bs = DIR_KEYS.map((d,di)=>{
