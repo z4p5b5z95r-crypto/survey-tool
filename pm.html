@@ -1359,6 +1359,7 @@ function isSessionValid() {
   return true
 }
 function setSession(name, token, expiresAt, apiKey, empId) {
+  _sessionLostShown = false      // 重新登入成功 → 下次再過期時要能再次提示
   localStorage.setItem('pm_user',             name)
   localStorage.setItem('pm_session_token',    token)
   localStorage.setItem('pm_session_expires',  expiresAt)
@@ -2082,6 +2083,30 @@ async function cloudAuth(body) {
   if (!json.ok) throw new Error(json.error || 'auth error')
   return json.data
 }
+// ── session 失效的處理 ──────────────────────────────────────────
+// isSessionValid() 只看本機存的 expiresAt，但「後端那一邊的 session 不見了」
+// 它完全看不出來——重新部署 Apps Script、sessions 分頁被清掉、或後端自己判定過期，
+// 都會讓本機以為還登入著。結果就是每一次操作都跳一次「session 不存在，請重新登入」，
+// 卻沒有任何東西真的把人帶回登入頁，只能一直失敗下去。
+// 下面這兩支負責：認出這是身分過期（不是網路問題），清掉 session，把人帶回登入頁。
+function _isAuthErr(msg){
+  return /session\s*不存在|session\s*已過期|未提供\s*sessionToken|unauthorized|請重新登入/i.test(String(msg||''))
+}
+let _sessionLostShown = false
+function _sessionLost(){
+  if(_sessionLostShown) return       // 一次操作可能連發好幾個請求，只處理第一個
+  _sessionLostShown = true
+  clearSession()
+  try{
+    document.getElementById('screen-app').classList.remove('visible')
+    const ls=document.getElementById('screen-login')
+    if(ls) ls.style.display=''
+    const err=document.getElementById('login-err')
+    // 講清楚兩件事：為什麼被登出、以及剛才做的事有沒有不見
+    if(err) err.textContent='登入時效已過，請重新登入。（剛才的編輯已保留在這台電腦，登入後再存一次即可同步雲端）'
+  }catch(e){}
+}
+
 // cloudGet / cloudPost — 登入後改用 sessionToken，靜態 key 不再傳出
 // timeoutMs 可省略，預設 15 秒。資料量大的查詢（例如月曆一次要整批調查紀錄）
 // 可以自己指定更長的時間，不然 Apps Script 冷啟動就直接被 abort 掉。
@@ -2092,7 +2117,10 @@ async function cloudGet(params, timeoutMs) {
   const p = new URLSearchParams({ ...params, sessionToken: tok, _t: Date.now() })
   const res = await fetch(`${gsUrl}?${p}`, { signal: AbortSignal.timeout(timeoutMs||15000), cache: 'no-store' })
   const json = await res.json()
-  if (!json.ok) throw new Error(json.error || 'cloud error')
+  if (!json.ok) {
+    if (_isAuthErr(json.error)) _sessionLost()
+    throw new Error(json.error || 'cloud error')
+  }
   return json.data
 }
 async function cloudPost(body) {
@@ -2106,7 +2134,10 @@ async function cloudPost(body) {
     signal: AbortSignal.timeout(15000)
   })
   const json = await res.json()
-  if (!json.ok) throw new Error(json.error || 'cloud error')
+  if (!json.ok) {
+    if (_isAuthErr(json.error)) _sessionLost()
+    throw new Error(json.error || 'cloud error')
+  }
   return json.data
 }
 
@@ -3126,9 +3157,13 @@ function selectRoundCount(n) {
 //  ★ 舊路線一律用 off_peak / peak 這兩個原本就在用的代碼，歷史資料完全不用搬。
 // ════════════════════════════════════════════════════════
 const PD_MAX = 6
+// 新路線的預設時段（依時間先後）。
+// ⚠️ 代碼刻意沿用既有的：離峰＝off_peak、下午尖峰＝peak（跟改版前的「尖峰」同一個時段），
+//    所以舊資料完全對得上；只有「上午尖峰」是新增的 am_peak。
 let periodData = [
-  {k:'off_peak', n:'離峰', t:'14:00~16:00'},
-  {k:'peak',     n:'尖峰', t:'17:00~19:00'}
+  {k:'am_peak',  n:'上午尖峰', t:'07:00~09:00'},
+  {k:'off_peak', n:'離峰',     t:'14:00~16:00'},
+  {k:'peak',     n:'下午尖峰', t:'17:00~19:00'}
 ]
 const PD_COLORS = ['#dc2626','#2563eb','#ea580c','#0891b2','#7c3aed','#16a34a']
 // 新時段配一個沒被用過的代碼；永遠不重用已刪除的代碼，避免跟舊資料混淆
@@ -3329,6 +3364,21 @@ async function generateQR() {
   }
   renderStepBar()
 }
+// 貼到 LINE 時，連結預覽只能顯示固定標題（爬蟲不會執行 JavaScript，
+// 讀不到網址參數裡的專案）。所以「複製連結」改成連標題一起複製：
+//   淡水清潔　旅行時間與延滯調查
+//   https://...
+// 調查員在訊息裡直接看得到是哪一個專案，不必等預覽或點進去才知道。
+function shareText(title, url){
+  const t = String(title||'').trim()
+  return (t ? t + '　旅行時間與延滯調查\n' : '') + url
+}
+function copyShare(title, url){
+  const txt = shareText(title, url)
+  navigator.clipboard.writeText(txt)
+    .then(()=>toast('✅ 已複製（含專案名稱）'))
+    .catch(()=>prompt('複製連結：', txt))
+}
 async function copyLink() { await ensureCloudLinked(); const url=buildURL();if(!url)return; navigator.clipboard.writeText(url).then(()=>toast('✅ 連結已複製')).catch(()=>prompt('複製連結：',url)) }
 async function downloadQR() {
   if(!lastURL){await generateQR()}
@@ -3403,7 +3453,11 @@ async function saveTask(silent) {
       return true
     }catch(e){
       updateCloudDot('err','同步失敗')
-      if(!silent) toast('⚠️ 已儲存本地，雲端同步失敗：'+e.message)
+      // 身分過期時 _sessionLost() 已經把人帶回登入頁了，這裡只要說「東西還在」就好；
+      // 再把後端那句「session 不存在」原文丟出來只會讓人以為資料掉了
+      if(!silent) toast(_isAuthErr(e.message)
+        ? '⚠️ 登入時效已過，編輯已保留在本機，重新登入後再存一次即可同步'
+        : '⚠️ 已儲存本地，雲端同步失敗：'+e.message)
       return false
     }
   }else{
@@ -3461,12 +3515,16 @@ function newTask(projectId) {
   _tlManualOverride=false
   document.getElementById('rc').value='3'
   renderRcButtons()
-  document.getElementById('op').value='14:00~16:00'
-  document.getElementById('pk').value='17:00~19:00'
-  document.getElementById('opn').value='離峰'
-  document.getElementById('pkn').value='尖峰'
-  // 新路線預設兩段，跟改版前一模一樣
-  periodData=[{k:'off_peak',n:'離峰',t:'14:00~16:00'},{k:'peak',n:'尖峰',t:'17:00~19:00'}]
+  document.getElementById('op').value='07:00~09:00'
+  document.getElementById('pk').value='14:00~16:00'
+  document.getElementById('opn').value='上午尖峰'
+  document.getElementById('pkn').value='離峰'
+  // 新路線預設三段：上午尖峰／離峰／下午尖峰
+  periodData=[
+    {k:'am_peak',  n:'上午尖峰', t:'07:00~09:00'},
+    {k:'off_peak', n:'離峰',     t:'14:00~16:00'},
+    {k:'peak',     n:'下午尖峰', t:'17:00~19:00'}
+  ]
   renderPeriods()
   nodeMarkers.forEach(m=>map.removeLayer(m));nodeMarkers=[]
   radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
@@ -3603,9 +3661,7 @@ async function showListQR(taskId){
     </div>`
   overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()})
   overlay.querySelector('#lqr-close').addEventListener('click',()=>overlay.remove())
-  overlay.querySelector('#lqr-copy').addEventListener('click',()=>{
-    navigator.clipboard.writeText(url).then(()=>toast('✅ 連結已複製')).catch(()=>prompt('複製連結：',url))
-  })
+  overlay.querySelector('#lqr-copy').addEventListener('click',()=>copyShare(name, url))
   overlay.querySelector('#lqr-dl').addEventListener('click',()=>{
     const c=document.querySelector('#list-qr-box canvas'); if(!c)return
     const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download=`QR_${name}.png`;a.click()
@@ -4693,9 +4749,7 @@ async function showProjectQR(pid){
     </div>`
   overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()})
   overlay.querySelector('#lqr-close').addEventListener('click',()=>overlay.remove())
-  overlay.querySelector('#lqr-copy').addEventListener('click',()=>{
-    navigator.clipboard.writeText(url).then(()=>toast('✅ 連結已複製')).catch(()=>prompt('複製連結：',url))
-  })
+  overlay.querySelector('#lqr-copy').addEventListener('click',()=>copyShare(proj.name, url))
   overlay.querySelector('#lqr-dl').addEventListener('click',()=>{
     const c=document.querySelector('#list-qr-box canvas'); if(!c)return
     const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download=`QR_${proj.name}.png`;a.click()

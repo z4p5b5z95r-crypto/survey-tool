@@ -6,7 +6,21 @@
 <!-- Clickjacking 防護：靜態站無法設 HTTP header，以 frame-busting JS + CSP meta 替代 -->
 <!-- 伺服器端請另行配置：X-Frame-Options: SAMEORIGIN                                     -->
 <meta http-equiv="Content-Security-Policy" content="frame-ancestors 'self'"/>
-<title>---🚗---</title>
+<title>旅行時間與延滯調查</title>
+<!-- ── LINE／通訊軟體的連結預覽 ──────────────────────────────────
+     沒有這些標籤時，LINE 會退而求其次：抓 <title> 加上頁面上看得到的文字，
+     於是預覽就變成「---🚗--- 🚗任務下載中🚦🚗🚧🐄🚌⛔…」那一串載入畫面的表情符號。
+     ⚠️ 爬蟲不會執行 JavaScript，所以這裡只能放固定文字——
+     專案名稱是從網址參數在執行時才查得到的，沒辦法寫進預覽標題。
+     要讓調查員看到專案名稱，PM 端「複製連結」已改成連專案名稱一起複製（見 pm.html）。 -->
+<meta property="og:title" content="旅行時間與延滯調查"/>
+<meta property="og:description" content="請用手機開啟，並允許定位權限後開始調查。"/>
+<meta property="og:type" content="website"/>
+<meta property="og:site_name" content="交通行駛速率與延滯調查"/>
+<meta name="description" content="請用手機開啟，並允許定位權限後開始調查。"/>
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="旅行時間與延滯調查"/>
+<meta name="twitter:description" content="請用手機開啟，並允許定位權限後開始調查。"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/nosleep.js/dist/NoSleep.min.js"></script>
@@ -387,12 +401,16 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 .tr-nb.n4{background:#4c1d95;color:#ddd6fe}   /* 深紫 */
 .tr-nb.n5{background:#164e63;color:#cffafe}   /* 深青 */
 .tr-nb.n6{background:#831843;color:#fbcfe8}   /* 深玫 */
-.tr-c{flex:1;min-width:0;height:38px;display:flex;align-items:center;justify-content:center;gap:5px;
+.tr-c{flex:1;min-width:0;height:38px;display:flex;align-items:center;justify-content:center;gap:4px;
   border:none;border-radius:10px;background:#131c2e;font-family:inherit;font-size:12.5px;
   cursor:pointer;transition:all .13s;text-align:center;overflow:hidden}
 .tr-c:active{transform:scale(.96)}
 .tr-c.sel{background:#1d4ed8}
-.tr-pd{color:#5b6d85;font-weight:800;white-space:nowrap}    /* 時段名 */
+/* 時段名比方向小一號。PM 可以自訂名稱，四個字（上午尖峰／下午尖峰）在最窄的
+   iPhone SE 上剛好放得下；再長就讓它自己縮並以省略號收尾，
+   絕不擠掉右邊的方向與 ✓——那兩個才是按下去會發生什麼事的關鍵。 */
+.tr-pd{color:#5b6d85;font-weight:800;font-size:11px;
+  min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tr-ar{color:#5b6d85;font-weight:900;flex:none}             /* ▶ 去程 ／ ◀ 回程 */
 .tr-dir{color:#8da2bd;font-weight:800;white-space:nowrap}   /* 方向 */
 .tr-c.done .tr-ar,.tr-c.done .tr-dir{color:#4ade80}
@@ -8783,14 +8801,15 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
     ROUTES[def.id]={ id:def.id, routeName:def.name,
       routeFromTo:def.nodeNames[0]+'—'+def.nodeNames[def.nodeNames.length-1],
       totalLength:segs.reduce((s,x)=>s+x.length,0), roundCount:def.roundCount,
-      offPeakLabel:'14:00~16:00', peakLabel:'17:00~19:00', offPeakName:'離峰', peakName:'尖峰',
+      offPeakLabel:'14:00~16:00', peakLabel:'17:00~19:00', offPeakName:'離峰', peakName:'下午尖峰',
       // 三個時段（依時間先後排）。有了 periods，上面那組 offPeakLabel/peakLabel
       // 就只剩舊資料相容用途——PERIODS() 會優先讀這裡。
-      // 「中午」是新增的代碼，離峰/尖峰沿用原本的 off_peak/peak，歷史資料才對得上。
+      // 「上午尖峰」是新增的代碼 am_peak；離峰／下午尖峰沿用原本的 off_peak／peak，
+      // 跟 PM 端新路線的預設值一致，歷史資料也對得上。
       periods:[
-        {k:'noon',     n:'中午', t:'12:00~13:00'},
-        {k:'off_peak', n:'離峰', t:'14:00~16:00'},
-        {k:'peak',     n:'尖峰', t:'17:00~19:00'}
+        {k:'am_peak',  n:'上午尖峰', t:'07:00~09:00'},
+        {k:'off_peak', n:'離峰',     t:'14:00~16:00'},
+        {k:'peak',     n:'下午尖峰', t:'17:00~19:00'}
       ],
       nodes, segments:segs }
     GEOS[def.id]=geo
@@ -8819,7 +8838,7 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   }
 
   const PROGRESS=[
-    // comboTotal＝一個回合要跑幾趟＝時段數 × 去回。加了「中午」之後是 3×2＝6，
+    // comboTotal＝一個回合要跑幾趟＝時段數 × 去回。三個時段就是 3×2＝6，
     // roundDone 要跟著改，否則 R2 第 1 回合會標成「完成」卻只跑了 4/6 趟。
     {routeId:'R1',roundCount:2,roundStates:['part','todo'],roundDone:[2,0],comboTotal:6},
     {routeId:'R2',roundCount:3,roundStates:['done','part','todo'],roundDone:[6,1,0],comboTotal:6},
