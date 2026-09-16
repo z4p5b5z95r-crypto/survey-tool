@@ -365,28 +365,35 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 /* 不在時段內時才出現的一行提醒，就在分段控制底下 */
 .pd-warn{font-size:10.5px;font-weight:700;color:#f59e0b;background:#241a0c;
   padding:6px 12px;border-top:1px solid #16202f}
-.pd-divider{height:1.5px;background:#1e293b}
-.pd-rl{padding:8px 12px 4px;margin:0}
-#rd-rows{padding:0 10px 8px}
 
-/* ══ 調查次數與方向：行首圓徽章 ＋ 去程/回程各一個框 ══════════
-   徽章同時是那一次的進度：綠＝所有趟都上傳、橘＝跑了一部分。 */
-#rd-rows{margin-bottom:2px}
-.rw4{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.bg4{flex:none;width:28px;height:28px;border-radius:50%;background:#1e293b;color:#94a3b8;
-  font-size:12.5px;font-weight:900;display:flex;align-items:center;justify-content:center}
-.bg4.ok{background:#14532d;color:#bbf7d0}
-.bg4.part{background:#78350f;color:#fde68a}
-.b4{flex:1;min-width:0;height:36px;display:flex;align-items:center;justify-content:center;gap:5px;
-  background:#131c2e;border:1.5px solid #263449;border-radius:10px;font-family:inherit;
-  font-size:13px;font-weight:800;color:#94a3b8;cursor:pointer;transition:all .13s;
-  overflow:hidden;white-space:nowrap}
-.b4:active{transform:scale(.96)}
-.b4-mk{font-size:11px}
-.b4.sel{background:#0c2a4e;border-color:#3b82f6;color:#fff;box-shadow:0 0 0 1px #3b82f6}
-.b4.done{border-color:#16a34a;color:#4ade80}
-.b4.pend{border-color:#d97706;color:#fbbf24}
-.b4.done.sel,.b4.pend.sel{background:#0c2a4e;border-color:#3b82f6;color:#fff;box-shadow:0 0 0 1px #3b82f6}
+/* ══ 趟次卡：跟時段卡分開的第二張卡 ══════════════════════════
+   一列 = 一顆圓圈次數 ＋ 去程／回程兩格。
+   圓圈是「這一次」整體的狀態（綠＝去回都上傳、橘＝跑了一半、灰＝還沒開始），
+   所以一列只有一顆；格子裡則寫出完整的「時段 ▶ 方向」，
+   每顆按鈕都自己說清楚按下去會記到哪裡，不必抬頭確認。 */
+.rd-card{background:#0d1524;border:1.5px solid #1e293b;border-radius:16px;overflow:hidden;
+  margin-top:10px}
+.pd-rl{padding:9px 12px 6px;margin:0}
+#rd-rows{padding:0}
+.tr-row{display:flex;align-items:center;gap:8px;padding:0 10px 7px}
+.tr-nb{flex:none;width:24px;height:24px;border-radius:50%;background:#1b2536;color:#8da2bd;
+  font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center}
+.tr-nb.ok{background:#14532d;color:#bbf7d0}
+.tr-nb.part{background:#78350f;color:#fde68a}
+.tr-c{flex:1;min-width:0;height:38px;display:flex;align-items:center;justify-content:center;gap:5px;
+  border:none;border-radius:10px;background:#131c2e;font-family:inherit;font-size:12.5px;
+  cursor:pointer;transition:all .13s;text-align:center;overflow:hidden}
+.tr-c:active{transform:scale(.96)}
+.tr-c.sel{background:#1d4ed8}
+.tr-pd{color:#5b6d85;font-weight:800;white-space:nowrap}    /* 時段名 */
+.tr-ar{color:#5b6d85;font-weight:900;flex:none}             /* ▶ 去程 ／ ◀ 回程 */
+.tr-dir{color:#8da2bd;font-weight:800;white-space:nowrap}   /* 方向 */
+.tr-c.done .tr-ar,.tr-c.done .tr-dir{color:#4ade80}
+.tr-c.pend .tr-ar,.tr-c.pend .tr-dir{color:#fbbf24}
+.tr-c.sel .tr-pd,.tr-c.sel .tr-ar,.tr-c.sel .tr-dir{color:#fff}
+.tr-mk{font-size:11px;flex:none;padding-left:2px}
+.tr-c.done .tr-mk{color:#4ade80} .tr-c.pend .tr-mk{color:#fbbf24} .tr-c.sel .tr-mk{color:#fff}
+
 .rd-hint{color:#64748b;font-weight:700;letter-spacing:0;text-transform:none}
 
 .round-pill-wrap{display:flex;gap:4px;background:#0b1220;border:1.5px solid #263449;border-radius:14px;padding:4px;flex-wrap:wrap}
@@ -1130,12 +1137,13 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
       <span id="gps-text">等待 GPS 訊號...</span>
     </div>
     <div>
-      <!-- 單卡整合：時段（分段控制）＋ 趟次（次數×方向）同在一張卡裡 -->
+      <!-- 兩張卡：上面選時段、下面選第幾次與方向 -->
       <div class="pd-card">
         <div id="period-row"><!-- renderPeriodRow()：分段控制，時間寫在名稱下方 --></div>
-        <div class="pd-divider"></div>
+      </div>
+      <div class="rd-card">
         <div class="combo-label pd-rl" id="rd-label">調查次數與方向</div>
-        <div id="rd-rows"><!-- renderComboGrid()：每一次一列，行首圓徽章＋去程/回程各一個框 --></div>
+        <div id="rd-rows"><!-- renderComboGrid()：每列一顆圓圈次數＋「時段 ▶ 方向」兩格 --></div>
       </div>
     </div>
     <button class="btn-start" id="btn-start" disabled onclick="onStartBtnClick()">▶ 開始調查</button>
@@ -5173,20 +5181,25 @@ function renderComboGrid(){
     const ts  = DIR_KEYS.map(d=>selPeakType ? byR[selPeakType+'_'+d] : null)
     const allUp = ts.every(t=>tripUploaded(t))
     const anyRec = ts.some(t=>!!t)
-    // 徽章：綠＝這一次的去回都進雲端了、橘＝跑了一部分、灰＝還沒開始
-    const badge = 'bg4'+(allUp?' ok':(anyRec?' part':''))
+    // 圓圈：綠＝這一次的去回都進雲端了、橘＝跑了一部分、灰＝還沒開始。
+    // 一列只有一顆，因為它講的是「整個回合」，不是單一方向。
+    const badge = 'tr-nb'+(allUp?' ok':(anyRec?' part':''))
+    // 沒選時段時時段名留空白，格子就只剩「▶ 去程」
+    const pdName = selPeakType ? esc(PEAK_LABEL_(selPeakType)) : ''
     const bs = DIR_KEYS.map((d,di)=>{
       const t   = ts[di]          // 沒選時段時是 null → 不帶任何狀態
       const up  = tripUploaded(t)
       const pend= !!t && !up
       const sel = selRound===r && selDirection===d
-      const mark = up ? '<span class="b4-mk">✓</span>'
-                 : pend ? '<span class="b4-mk" title="已記錄，尚未上傳雲端">⏳</span>' : ''
+      const mark = up ? '<span class="tr-mk">✓</span>'
+                 : pend ? '<span class="tr-mk" title="已記錄，尚未上傳雲端">⏳</span>' : ''
       const icon = d==='bound' ? '▶' : '◀'
-      return `<button class="b4${sel?' sel':''}${up?' done':''}${pend?' pend':''}"
-        onclick="pickRoundDir(${r},'${d}')">${icon} ${DIR_LABEL[d]}${mark}</button>`
+      // 每格自己寫出完整的「時段 ▶ 方向」，按下去會記到哪裡一目了然
+      return `<button class="tr-c${sel?' sel':''}${up?' done':''}${pend?' pend':''}"
+        onclick="pickRoundDir(${r},'${d}')">${pdName?`<span class="tr-pd">${pdName}</span>`:''}<span
+        class="tr-ar">${icon}</span><span class="tr-dir">${DIR_LABEL[d]}</span>${mark}</button>`
     }).join('')
-    return `<div class="rw4"><div class="${badge}">${r}</div>${bs}</div>`
+    return `<div class="tr-row"><div class="${badge}">${r}</div>${bs}</div>`
   }).join('')
 }
 // 點一格＝同時決定第幾次與哪個方向
