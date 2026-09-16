@@ -384,8 +384,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 .b4.done{border-color:#16a34a;color:#4ade80}
 .b4.pend{border-color:#d97706;color:#fbbf24}
 .b4.done.sel,.b4.pend.sel{background:#0c2a4e;border-color:#3b82f6;color:#fff;box-shadow:0 0 0 1px #3b82f6}
-.rd-empty{font-size:12px;color:#64748b;background:#131c2e;border:1.5px dashed #263449;border-radius:12px;
-  padding:16px 12px;text-align:center;line-height:1.6}
+.rd-hint{color:#64748b;font-weight:700;letter-spacing:0;text-transform:none}
 
 .round-pill-wrap{display:flex;gap:4px;background:#0b1220;border:1.5px solid #263449;border-radius:14px;padding:4px;flex-wrap:wrap}
 .round-pill{flex:1 1 auto;min-width:56px;padding:9px 6px;border-radius:10px;border:none;background:transparent;color:#64748b;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px}
@@ -1131,7 +1130,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
       <div class="combo-label" id="pd-label">時段選擇</div>
       <div class="pd-row" id="period-row"><!-- renderPeriodRow()：依 PM 設定的時段動態產生，現在所在的時段會亮綠燈 --></div>
       <div id="pd-nolive"><!-- 現在不在任何時段內時的提醒 --></div>
-      <div class="combo-label">調查次數與方向</div>
+      <div class="combo-label" id="rd-label">調查次數與方向</div>
       <div id="rd-rows"><!-- renderComboGrid()：每一次一列，行首圓徽章＋去程/回程各一個框 --></div>
     </div>
     <button class="btn-start" id="btn-start" disabled onclick="onStartBtnClick()">▶ 開始調查</button>
@@ -2769,30 +2768,16 @@ function livePeriod(curMin){
       : (cur>=r.start || cur<r.end))
   return PERIODS().find(p=>inRange(_pdRange(p.t||''))) || null
 }
-// 一天是循環的，所以 23:50 到 00:10 的距離是 20 分鐘，不是 23 小時 40 分
-function _cycDist(a, b){ const d=Math.abs(a-b)%1440; return Math.min(d, 1440-d) }
-// 現在不在任何時段內時，挑「時間上最接近」的那一段先選起來。
-// 這樣下面的次數與方向可以先顯示出來、直接開始調查，不用先點一下時段；
-// 但時段列不會亮綠燈，而且上面會掛警告條，不會讓人誤以為現在正在時段內。
-function nearestPeriod(curMin){
-  const now = new Date()
-  const cur = (curMin==null) ? now.getHours()*60+now.getMinutes() : curMin
-  let best=null, bestD=Infinity
-  PERIODS().forEach(p=>{
-    const r=_pdRange(p.t||''); if(!r) return
-    // 離起點或離終點，取比較近的那一個當作這一段的距離
-    const d=Math.min(_cycDist(cur, r.start), _cycDist(cur, r.end))
-    if(d<bestD){ bestD=d; best=p }
-  })
-  return best
-}
 // 使用者自己點過時段之後，就不要再被時間自動蓋掉他的選擇
 let _pdUserPicked = false
 function autoSelectPeak(){
   // 只有「自動帶入」這件事會被跳過；畫面照樣要重畫，
   // 不然從別的畫面返回時整塊會是空的
   if(!_pdUserPicked){
-    const hit = livePeriod() || nearestPeriod()
+    // 只有「現在真的落在某個時段內」才自動帶入。
+    // 不在時段內時刻意不猜——猜了會讓人以為系統已經判斷好，
+    // 直接按下去就把資料記到錯的時段。寧可讓他自己選一次。
+    const hit = livePeriod()
     if(hit) selPeakType = hit.k
   }
   if(!selDirection) selDirection = 'bound'
@@ -2805,9 +2790,7 @@ function autoSelectPeak(){
 let _pdTickPrev
 function _pdTick(){
   if(!document.getElementById('screen-ready')?.classList.contains('active')) return
-  // 亮的那一段、以及「最接近的那一段」任一個變了就要重畫——
-  // 後者會影響警告條上寫的時段名稱
-  const k = ((livePeriod()||{}).k||'') + '|' + ((nearestPeriod()||{}).k||'')
+  const k = (livePeriod()||{}).k || ''
   if(k === _pdTickPrev) return
   _pdTickPrev = k
   autoSelectPeak()      // 使用者手動選過的話不會改動選擇，只更新畫面
@@ -5139,7 +5122,7 @@ function renderPeriodRow(){
     // 上面已經自動選了最接近的一段，這裡只要提醒「那是猜的、自己確認」就夠，
     // 把時間和段名寫進來反而變成兩行，太佔版面
     nl.innerHTML = lv ? ''
-      : '<div class="pd-nolive">⚠️ 目前不在時段內，請自行選擇調查時段</div>'
+      : '<div class="pd-nolive">⚠️ 目前不在指定調查時段內，請手動選擇欲執行的調查時段。</div>'
   }
 }
 function pickPeriod(k){
@@ -5156,20 +5139,22 @@ function pickPeriod(k){
 function renderComboGrid(){
   renderPeriodRow()
   const box=$('rd-rows'); if(!box) return
-  if(!selPeakType){
-    box.innerHTML='<div class="rd-empty">請先選擇上方的時段</div>'
-    return
-  }
+  // 還沒選時段時照樣把整排趟次畫出來（使用者可以先點好要跑哪一趟），
+  // 只是「有沒有調查過」要等選了時段才知道，所以標記一律留白。
+  // 標題補一句說明，免得有人以為這些趟次真的都還沒跑。
+  const lab=$('rd-label')
+  if(lab) lab.innerHTML = '調查次數與方向'
+    + (selPeakType ? '' : ' <span class="rd-hint">· 選擇時段後才會顯示調查狀態</span>')
   box.innerHTML = ROUND_KEYS.map(r=>{
     const byR = allTripsByRound[r] || {}
-    // 這一次在這個時段底下的所有趟（去＋回）
-    const ts  = DIR_KEYS.map(d=>byR[selPeakType+'_'+d])
+    // 這一次在這個時段底下的所有趟（去＋回）。沒選時段就一律視為無資料。
+    const ts  = DIR_KEYS.map(d=>selPeakType ? byR[selPeakType+'_'+d] : null)
     const allUp = ts.every(t=>tripUploaded(t))
     const anyRec = ts.some(t=>!!t)
     // 徽章：綠＝這一次的去回都進雲端了、橘＝跑了一部分、灰＝還沒開始
     const badge = 'bg4'+(allUp?' ok':(anyRec?' part':''))
-    const bs = DIR_KEYS.map(d=>{
-      const t   = byR[selPeakType+'_'+d]
+    const bs = DIR_KEYS.map((d,di)=>{
+      const t   = ts[di]          // 沒選時段時是 null → 不帶任何狀態
       const up  = tripUploaded(t)
       const pend= !!t && !up
       const sel = selRound===r && selDirection===d
