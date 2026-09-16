@@ -8766,6 +8766,14 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
       routeFromTo:def.nodeNames[0]+'—'+def.nodeNames[def.nodeNames.length-1],
       totalLength:segs.reduce((s,x)=>s+x.length,0), roundCount:def.roundCount,
       offPeakLabel:'14:00~16:00', peakLabel:'17:00~19:00', offPeakName:'離峰', peakName:'尖峰',
+      // 三個時段（依時間先後排）。有了 periods，上面那組 offPeakLabel/peakLabel
+      // 就只剩舊資料相容用途——PERIODS() 會優先讀這裡。
+      // 「中午」是新增的代碼，離峰/尖峰沿用原本的 off_peak/peak，歷史資料才對得上。
+      periods:[
+        {k:'noon',     n:'中午', t:'12:00~13:00'},
+        {k:'off_peak', n:'離峰', t:'14:00~16:00'},
+        {k:'peak',     n:'尖峰', t:'17:00~19:00'}
+      ],
       nodes, segments:segs }
     GEOS[def.id]=geo
   }
@@ -8793,9 +8801,11 @@ document.getElementById('manual-modal').addEventListener('keydown',function(e){
   }
 
   const PROGRESS=[
-    {routeId:'R1',roundCount:2,roundStates:['part','todo'],roundDone:[2,0],comboTotal:4},
-    {routeId:'R2',roundCount:3,roundStates:['done','part','todo'],roundDone:[4,1,0],comboTotal:4},
-    {routeId:'R3',roundCount:3,roundStates:['todo','todo','todo'],roundDone:[0,0,0],comboTotal:4}]
+    // comboTotal＝一個回合要跑幾趟＝時段數 × 去回。加了「中午」之後是 3×2＝6，
+    // roundDone 要跟著改，否則 R2 第 1 回合會標成「完成」卻只跑了 4/6 趟。
+    {routeId:'R1',roundCount:2,roundStates:['part','todo'],roundDone:[2,0],comboTotal:6},
+    {routeId:'R2',roundCount:3,roundStates:['done','part','todo'],roundDone:[6,1,0],comboTotal:6},
+    {routeId:'R3',roundCount:3,roundStates:['todo','todo','todo'],roundDone:[0,0,0],comboTotal:6}]
 
   /* ── 攔截雲端請求 ── */
   /* 工號登入是唯一「不模擬」的部分：直接打正式後端查真名冊，
