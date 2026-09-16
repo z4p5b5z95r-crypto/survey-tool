@@ -5136,14 +5136,10 @@ function renderPeriodRow(){
   if(lab) lab.innerHTML = '時段選擇'+(lv?' <span class="pd-hint">· 已依現在時間自動選取</span>':'')
   const nl=$('pd-nolive')
   if(nl){
-    const d=new Date(), hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')
-    // 不在時段內時已經幫他選了最接近的一段，警告條要講明是哪一段，
-    // 免得人沒注意到、把資料記到錯的時段去
-    const cur = selPeakType ? PEAK_LABEL_(selPeakType) : ''
+    // 上面已經自動選了最接近的一段，這裡只要提醒「那是猜的、自己確認」就夠，
+    // 把時間和段名寫進來反而變成兩行，太佔版面
     nl.innerHTML = lv ? ''
-      : `<div class="pd-nolive">⚠️ 現在 ${hm} 不在任何設定的時段內`
-        + (cur ? `，已先選最接近的「<b>${esc(cur)}</b>」，請確認是否正確。` : '，請自行選擇要記在哪一段。')
-        + `</div>`
+      : '<div class="pd-nolive">⚠️ 目前不在時段內，請自行選擇調查時段</div>'
   }
 }
 function pickPeriod(k){
