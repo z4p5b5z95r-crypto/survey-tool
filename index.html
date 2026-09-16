@@ -338,36 +338,36 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 /* ══ 時段選擇列 ══════════════════════════════════════════════
    時段數量由 PM 決定，所以用 flex-wrap，兩個一行、多了自動換行。
    「現在」正好落在哪個時段，那一顆就亮綠框並掛一顆會閃的標籤。 */
-/* ══ 時段：24 小時時間軸 ══════════════════════════════════════
-   一天畫成一條軸，時段是軸上的色塊，紅線就是「現在」。
-   「在不在時段內、離下一段還有多久」用看的就知道，不必讀字。
-   色塊本身就是選擇鈕。 */
-.pd-tl{background:#0d1524;border:1.5px solid #1e293b;border-radius:14px;
-  padding:11px 12px 9px;margin-bottom:12px}
-.pd-bar{position:relative;height:26px}          /* 不裁切，紅線的圓點才露得出來 */
-.pd-track{position:absolute;inset:0;background:#0a101d;border-radius:7px;overflow:hidden}
-.pd-blk{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
-  font-size:10px;font-weight:800;color:#93c5fd;background:#1e3a5f;cursor:pointer;
-  border:none;padding:0;margin:0;font-family:inherit;overflow:hidden;white-space:nowrap;
-  box-shadow:inset 1px 0 0 #0b1120, inset -1px 0 0 #0b1120;transition:background .15s}
-.pd-blk.sel{background:#2563eb;color:#fff;z-index:2}
-.pd-blk.live{background:#14532d;color:#bbf7d0}
-.pd-blk.live.sel{background:#2563eb;color:#fff}
-.pd-now{position:absolute;top:-4px;bottom:-4px;width:2px;background:#f43f5e;z-index:3;
-  pointer-events:none;border-radius:1px}
-.pd-now::before{content:'';position:absolute;top:-4px;left:-3px;width:8px;height:8px;
-  border-radius:50%;background:#f43f5e}
-.pd-ax{display:flex;justify-content:space-between;font-size:8.5px;color:#334155;margin-top:4px}
-.pd-cap{font-size:11px;color:#64748b;text-align:center;margin-top:6px;line-height:1.7}
-.pd-cap b{color:#93c5fd;font-weight:800;font-variant-numeric:tabular-nums}
-.pd-cap .w{color:#f59e0b;font-weight:700}
-.pd-cap .pick{display:block;color:#94a3b8}
-.pd-cap .pick b{color:#fff}
-/* 沒設定時間的時段畫不到軸上，用小膠囊補在下面，才不會變成選不到 */
-.pd-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;justify-content:center}
-.pd-chip{font-size:11px;font-weight:800;color:#8da2bd;background:#131c2e;border:none;
-  border-radius:8px;padding:5px 11px;font-family:inherit;cursor:pointer}
-.pd-chip.sel{background:#1d4ed8;color:#fff}
+/* ══ 開始調查面板：單卡整合 ══════════════════════════════════
+   時段與趟次收進同一張卡，外框從 8 個降到 1 個，其餘靠底色與細線分層。
+   時段做成分段控制：選中的那一格滑成藍色色塊，時間直接寫在名稱下面。 */
+.pd-card{background:#0d1524;border:1.5px solid #1e293b;border-radius:16px;overflow:hidden;
+  margin-bottom:2px}
+.pd-seg{display:flex;gap:3px;padding:4px;background:#0a101d}
+.pd-sb{flex:1;min-width:0;padding:7px 4px 6px;border:none;border-radius:11px;background:none;
+  font-family:inherit;cursor:pointer;transition:all .15s;text-align:center}
+.pd-sb:active{transform:scale(.97)}
+.pd-sn{display:flex;align-items:center;justify-content:center;gap:4px;
+  font-size:13px;font-weight:800;color:#64748b;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 時間：直接掛在名稱下面，字比名稱小一級 */
+.pd-st{display:block;font-size:9.5px;font-weight:700;color:#3f4e63;margin-top:2px;
+  font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pd-sb.live .pd-sn{color:#86efac} .pd-sb.live .pd-st{color:#4d7c5f}
+.pd-sb.sel{background:#2563eb;box-shadow:0 2px 8px rgba(37,99,235,.35)}
+.pd-sb.sel .pd-sn,.pd-sb.sel.live .pd-sn{color:#fff}
+.pd-sb.sel .pd-st,.pd-sb.sel.live .pd-st{color:#bfdbfe}
+/* 「現在」＝名稱前一顆會閃的綠點，不再是浮在框線上的標籤 */
+.pd-nd{flex:none;width:6px;height:6px;border-radius:50%;background:#22c55e;
+  animation:pdBlip 1.6s ease-in-out infinite}
+@keyframes pdBlip{0%,100%{opacity:1}50%{opacity:.25}}
+.pd-sb.sel .pd-nd{background:#fff}
+/* 不在時段內時才出現的一行提醒，就在分段控制底下 */
+.pd-warn{font-size:10.5px;font-weight:700;color:#f59e0b;background:#241a0c;
+  padding:6px 12px;border-top:1px solid #16202f}
+.pd-divider{height:1.5px;background:#1e293b}
+.pd-rl{padding:8px 12px 4px;margin:0}
+#rd-rows{padding:0 10px 8px}
 
 /* ══ 調查次數與方向：行首圓徽章 ＋ 去程/回程各一個框 ══════════
    徽章同時是那一次的進度：綠＝所有趟都上傳、橘＝跑了一部分。 */
@@ -1130,9 +1130,13 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
       <span id="gps-text">等待 GPS 訊號...</span>
     </div>
     <div>
-      <div id="period-row"><!-- renderPeriodRow()：24 小時時間軸，色塊＝時段，紅線＝現在 --></div>
-      <div class="combo-label" id="rd-label">調查次數與方向</div>
-      <div id="rd-rows"><!-- renderComboGrid()：每一次一列，行首圓徽章＋去程/回程各一個框 --></div>
+      <!-- 單卡整合：時段（分段控制）＋ 趟次（次數×方向）同在一張卡裡 -->
+      <div class="pd-card">
+        <div id="period-row"><!-- renderPeriodRow()：分段控制，時間寫在名稱下方 --></div>
+        <div class="pd-divider"></div>
+        <div class="combo-label pd-rl" id="rd-label">調查次數與方向</div>
+        <div id="rd-rows"><!-- renderComboGrid()：每一次一列，行首圓徽章＋去程/回程各一個框 --></div>
+      </div>
     </div>
     <button class="btn-start" id="btn-start" disabled onclick="onStartBtnClick()">▶ 開始調查</button>
   </div>
@@ -2811,13 +2815,11 @@ function autoSelectPeak(){
 let _pdTickPrev
 function _pdTick(){
   if(!document.getElementById('screen-ready')?.classList.contains('active')) return
+  // 畫面上跟時間有關的只剩「哪一段亮著綠點」，所以時段沒變就不用重畫
   const k = (livePeriod()||{}).k || ''
-  if(k !== _pdTickPrev){
-    _pdTickPrev = k
-    autoSelectPeak()    // 跨過時段邊界：重新判斷要不要自動帶入（手動選過的話不會被改）
-    return              // autoSelectPeak 裡面已經重畫過了
-  }
-  renderPeriodRow()     // 時段沒變也要重畫——那條紅線得跟著時間往前走
+  if(k === _pdTickPrev) return
+  _pdTickPrev = k
+  autoSelectPeak()      // 跨過時段邊界：重新判斷要不要自動帶入（手動選過的話不會被改）
 }
 setInterval(_pdTick, 30000)
 
@@ -5126,53 +5128,24 @@ function updateProgressChips(){ renderComboGrid() }
 // 時段數量由 PM 決定（1~N），所以整列是動態產生的。
 // 「現在」所在的那一段亮綠框＋掛一顆會閃的「現在」標籤；都不在就整列不亮，
 // 底下出現橘色提醒，並且「開始調查」會鎖住直到使用者自己選一段。
-// 一天 = 1440 分鐘，換算成軸上的百分比
-const _pdPct = m => (m/1440*100)
 function renderPeriodRow(){
   const box=$('period-row'); if(!box) return
   const lv = livePeriod()
   const ps = PERIODS()
-  const curMin = _nowMin()
-  const hm = String(Math.floor(curMin/60)).padStart(2,'0')+':'+String(curMin%60).padStart(2,'0')
-
-  const blocks=[], loose=[]
-  ps.forEach(p=>{
-    const r = _pdRange(p.t||'')
-    const cls = 'pd-blk'+((lv&&lv.k===p.k)?' live':'')+((selPeakType===p.k)?' sel':'')
-    const nm  = PEAK_LABEL_(p.k)
-    if(!r){ loose.push(p); return }          // PM 沒填時間 → 畫不到軸上，改用下面的膠囊
-    // 跨午夜（22:00~02:00）在軸上是「尾巴一段 ＋ 開頭一段」，要拆成兩塊畫
-    const segs = (r.start<=r.end) ? [[r.start, r.end]] : [[r.start,1440],[0,r.end]]
-    segs.forEach(([a,b])=>{
-      // 起訖相同（00:00~00:00 這種設定）寬度會是 0，撐到 4% 才看得見也點得到
-      const w = Math.max(4, _pdPct(b-a))
-      blocks.push(`<button class="${cls}" style="left:${_pdPct(a).toFixed(2)}%;width:${w.toFixed(2)}%"
-        onclick="pickPeriod('${p.k}')" title="${esc(nm+'　'+(p.t||''))}">${esc(nm)}</button>`)
-    })
-  })
-
-  // 說明行：第一行講「現在在不在時段內」，第二行講「這一趟要記到哪一段」。
-  // 兩件事分開寫，使用者自己改選時段時才不會跟第一行打架。
-  const cur = ps.find(p=>p.k===selPeakType)
-  const l1 = lv
-    ? `現在 <b>${hm}</b>　在「${esc(PEAK_LABEL_(lv.k))}」時段內`
-    : `<span class="w">⚠️ 目前不在指定調查時段內</span>`
-  const l2 = cur
-    ? `<span class="pick">記錄到：<b>${esc(PEAK_LABEL_(cur.k))}</b> ${esc(PEAK_TIME_(cur.k))}</span>`
-    : `<span class="pick">請點選上方時段</span>`
-
-  box.innerHTML =
-    `<div class="pd-tl">
-       <div class="pd-bar">
-         <div class="pd-track">${blocks.join('')}</div>
-         <div class="pd-now" style="left:${_pdPct(curMin).toFixed(2)}%"></div>
-       </div>
-       <div class="pd-ax"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
-       ${loose.length ? `<div class="pd-chips">`+loose.map(p=>
-           `<button class="pd-chip${selPeakType===p.k?' sel':''}" onclick="pickPeriod('${p.k}')"
-             >${esc(PEAK_LABEL_(p.k))}</button>`).join('')+`</div>` : ''}
-       <div class="pd-cap">${l1}${l2}</div>
-     </div>`
+  // 時段做成一排分段控制。名稱一行、時間掛在名稱下面一行（字小一級），
+  // 「現在」是名稱前一顆會閃的綠點——不再用浮在框線上的標籤，那個最吵。
+  const seg = ps.map(p=>{
+    const live = !!lv && lv.k===p.k
+    const sel  = selPeakType===p.k
+    const tm   = PEAK_TIME_(p.k)
+    return `<button class="pd-sb${live?' live':''}${sel?' sel':''}" onclick="pickPeriod('${p.k}')"
+      title="${esc(PEAK_LABEL_(p.k)+(tm?'　'+tm:''))}">
+      <span class="pd-sn">${live?'<span class="pd-nd"></span>':''}${esc(PEAK_LABEL_(p.k))}</span>
+      <span class="pd-st">${esc(tm||'—')}</span>
+    </button>`
+  }).join('')
+  box.innerHTML = `<div class="pd-seg">${seg}</div>`
+    + (lv ? '' : '<div class="pd-warn">⚠️ 目前不在指定調查時段內，請手動選擇欲執行的調查時段。</div>')
 }
 function pickPeriod(k){
   selPeakType=k
