@@ -338,33 +338,36 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 /* ══ 時段選擇列 ══════════════════════════════════════════════
    時段數量由 PM 決定，所以用 flex-wrap，兩個一行、多了自動換行。
    「現在」正好落在哪個時段，那一顆就亮綠框並掛一顆會閃的標籤。 */
-/* 一行放三個；第四個以後才換到下一行。
-   calc(33.333% - 5px) 搭配 gap:7px，三顆剛好填滿又不會擠到換行。 */
-.pd-row{display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap}
-.pd{flex:1 1 calc(33.333% - 5px);min-width:0;position:relative;padding:8px 5px 7px;background:#131c2e;
-  border:1.5px solid #263449;border-radius:12px;cursor:pointer;font-family:inherit;text-align:center;
-  transition:all .15s}
-.pd:active{transform:scale(.97)}
-.pd-name{font-size:13.5px;font-weight:800;color:#cbd5e1;line-height:1.2;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pd-time{font-size:10px;color:#64748b;margin-top:2px;font-variant-numeric:tabular-nums;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pd.sel{background:#0c2a4e;border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f6}
-.pd.sel .pd-name{color:#fff} .pd.sel .pd-time{color:#93c5fd}
-.pd.live{border-color:#22c55e;background:#0d2318}
-.pd.live .pd-name{color:#bbf7d0} .pd.live .pd-time{color:#86efac}
-.pd.live.sel{background:#0c2a4e;border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f6}
-.pd.live.sel .pd-name{color:#fff} .pd.live.sel .pd-time{color:#93c5fd}
-.pd-live-dot{position:absolute;top:-7px;left:50%;transform:translateX(-50%);
-  background:#16a34a;color:#fff;font-size:9.5px;font-weight:900;padding:1.5px 8px;border-radius:7px;
-  letter-spacing:.5px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.4)}
-.pd-live-dot::before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;
-  background:#fff;margin-right:4px;vertical-align:1px;animation:pdBlip 1.6s ease-in-out infinite}
-@keyframes pdBlip{0%,100%{opacity:1}50%{opacity:.25}}
-.pd-hint{color:#3b82f6;font-weight:800;letter-spacing:0;text-transform:none}
-.pd-nolive{font-size:10.5px;color:#f59e0b;background:#2a1f0f;border:1px solid #78350f;border-radius:8px;
-  padding:5px 9px;margin:-4px 0 11px;line-height:1.5}
-.pd-nolive b{color:#fcd34d}
+/* ══ 時段：24 小時時間軸 ══════════════════════════════════════
+   一天畫成一條軸，時段是軸上的色塊，紅線就是「現在」。
+   「在不在時段內、離下一段還有多久」用看的就知道，不必讀字。
+   色塊本身就是選擇鈕。 */
+.pd-tl{background:#0d1524;border:1.5px solid #1e293b;border-radius:14px;
+  padding:11px 12px 9px;margin-bottom:12px}
+.pd-bar{position:relative;height:26px}          /* 不裁切，紅線的圓點才露得出來 */
+.pd-track{position:absolute;inset:0;background:#0a101d;border-radius:7px;overflow:hidden}
+.pd-blk{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:800;color:#93c5fd;background:#1e3a5f;cursor:pointer;
+  border:none;padding:0;margin:0;font-family:inherit;overflow:hidden;white-space:nowrap;
+  box-shadow:inset 1px 0 0 #0b1120, inset -1px 0 0 #0b1120;transition:background .15s}
+.pd-blk.sel{background:#2563eb;color:#fff;z-index:2}
+.pd-blk.live{background:#14532d;color:#bbf7d0}
+.pd-blk.live.sel{background:#2563eb;color:#fff}
+.pd-now{position:absolute;top:-4px;bottom:-4px;width:2px;background:#f43f5e;z-index:3;
+  pointer-events:none;border-radius:1px}
+.pd-now::before{content:'';position:absolute;top:-4px;left:-3px;width:8px;height:8px;
+  border-radius:50%;background:#f43f5e}
+.pd-ax{display:flex;justify-content:space-between;font-size:8.5px;color:#334155;margin-top:4px}
+.pd-cap{font-size:11px;color:#64748b;text-align:center;margin-top:6px;line-height:1.7}
+.pd-cap b{color:#93c5fd;font-weight:800;font-variant-numeric:tabular-nums}
+.pd-cap .w{color:#f59e0b;font-weight:700}
+.pd-cap .pick{display:block;color:#94a3b8}
+.pd-cap .pick b{color:#fff}
+/* 沒設定時間的時段畫不到軸上，用小膠囊補在下面，才不會變成選不到 */
+.pd-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;justify-content:center}
+.pd-chip{font-size:11px;font-weight:800;color:#8da2bd;background:#131c2e;border:none;
+  border-radius:8px;padding:5px 11px;font-family:inherit;cursor:pointer}
+.pd-chip.sel{background:#1d4ed8;color:#fff}
 
 /* ══ 調查次數與方向：行首圓徽章 ＋ 去程/回程各一個框 ══════════
    徽章同時是那一次的進度：綠＝所有趟都上傳、橘＝跑了一部分。 */
@@ -1127,9 +1130,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
       <span id="gps-text">等待 GPS 訊號...</span>
     </div>
     <div>
-      <div class="combo-label" id="pd-label">時段選擇</div>
-      <div class="pd-row" id="period-row"><!-- renderPeriodRow()：依 PM 設定的時段動態產生，現在所在的時段會亮綠燈 --></div>
-      <div id="pd-nolive"><!-- 現在不在任何時段內時的提醒 --></div>
+      <div id="period-row"><!-- renderPeriodRow()：24 小時時間軸，色塊＝時段，紅線＝現在 --></div>
       <div class="combo-label" id="rd-label">調查次數與方向</div>
       <div id="rd-rows"><!-- renderComboGrid()：每一次一列，行首圓徽章＋去程/回程各一個框 --></div>
     </div>
@@ -1920,8 +1921,26 @@ function applyConfig(cfg){
 // 所以統一走 gsJson()：先讀成文字判斷是不是 JSON，是暫時性問題就自動重試，
 // 重試完仍失敗才丟出看得懂的訊息。
 const GS_RETRY_DELAYS=[1200, 3000, 6000]   // 重試間隔，總共嘗試 4 次
+// ⚠️ 各家瀏覽器對「逾時」與「連不上」的用字完全不同，這裡必須全部認得，
+//    否則該重試的狀況會被當成資料錯誤直接丟出去——
+//    現場最常見的畫面「查詢失敗：Fetch is aborted」就是這樣來的：
+//    iOS Safari 的 AbortSignal.timeout() 丟的是 "Fetch is aborted"，
+//    舊的規則只認 timeout / Failed to fetch，所以 iPhone 上一次都沒重試過。
+//      Chrome  逾時 → TimeoutError: The operation timed out
+//      Safari  逾時 → Fetch is aborted
+//      Firefox 逾時 → The operation was aborted
+//      Chrome  斷線 → Failed to fetch
+//      Safari  斷線 → Load failed        ← 這個也漏掉了
 function _isTransient(msg){
-  return /忙碌|逾時|timed out|timeout|Failed to fetch|NetworkError|載入中斷/i.test(msg||'')
+  return /忙碌|逾時|中斷|timed out|timeout|TimeoutError|abort|Failed to fetch|Load failed|NetworkError|network error|connection/i
+    .test(msg||'')
+}
+// 瀏覽器原文對現場人員沒有意義，換成看得懂的說法
+function _netMsg(e){
+  const m=String((e&&e.message)||e||'')
+  if(/abort|timed out|timeout|TimeoutError|逾時/i.test(m)) return '連線逾時，雲端可能正在喚醒'
+  if(/Failed to fetch|Load failed|NetworkError|network error/i.test(m)) return '連不上網路'
+  return m
 }
 async function gsJson(url, opts, onRetry){
   let lastErr
@@ -1953,7 +1972,7 @@ async function gsJson(url, opts, onRetry){
     }
   }
   throw new Error('雲端連線不穩定，已重試多次仍失敗。請確認網路後再試一次。'
-    +'（原因：'+String(lastErr&&lastErr.message||lastErr)+'）')
+    +'（原因：'+_netMsg(lastErr)+'）')
 }
 // 重試時把狀況寫在載入畫面上，讓現場知道程式還在努力、不是當掉了
 function _loadingRetryNote(n, total){
@@ -2760,9 +2779,11 @@ function _pdRange(label){
   if(!m) return null
   return { start:+m[1]*60+ +m[2], end:+m[3]*60+ +m[4] }
 }
+// 「現在是今天的第幾分鐘」。時間軸上的紅線與「哪一段亮著」都從這裡取，
+// 兩邊共用同一個來源，才不會出現「紅線明明在色塊裡、色塊卻沒亮」這種矛盾。
+function _nowMin(){ const d=new Date(); return d.getHours()*60+d.getMinutes() }
 function livePeriod(curMin){
-  const now = new Date()
-  const cur = (curMin==null) ? now.getHours()*60+now.getMinutes() : curMin
+  const cur = (curMin==null) ? _nowMin() : curMin
   const inRange = r => r && (r.start<=r.end
       ? (cur>=r.start && cur<r.end)
       : (cur>=r.start || cur<r.end))
@@ -2791,10 +2812,12 @@ let _pdTickPrev
 function _pdTick(){
   if(!document.getElementById('screen-ready')?.classList.contains('active')) return
   const k = (livePeriod()||{}).k || ''
-  if(k === _pdTickPrev) return
-  _pdTickPrev = k
-  autoSelectPeak()      // 使用者手動選過的話不會改動選擇，只更新畫面
-  renderPeriodRow()
+  if(k !== _pdTickPrev){
+    _pdTickPrev = k
+    autoSelectPeak()    // 跨過時段邊界：重新判斷要不要自動帶入（手動選過的話不會被改）
+    return              // autoSelectPeak 裡面已經重畫過了
+  }
+  renderPeriodRow()     // 時段沒變也要重畫——那條紅線得跟著時間往前走
 }
 setInterval(_pdTick, 30000)
 
@@ -5103,27 +5126,53 @@ function updateProgressChips(){ renderComboGrid() }
 // 時段數量由 PM 決定（1~N），所以整列是動態產生的。
 // 「現在」所在的那一段亮綠框＋掛一顆會閃的「現在」標籤；都不在就整列不亮，
 // 底下出現橘色提醒，並且「開始調查」會鎖住直到使用者自己選一段。
+// 一天 = 1440 分鐘，換算成軸上的百分比
+const _pdPct = m => (m/1440*100)
 function renderPeriodRow(){
   const box=$('period-row'); if(!box) return
-  const lv=livePeriod()
-  box.innerHTML = PERIODS().map(p=>{
-    const live = !!lv && lv.k===p.k
-    const sel  = selPeakType===p.k
-    return `<button class="pd${live?' live':''}${sel?' sel':''}" onclick="pickPeriod('${p.k}')">
-      ${live?'<span class="pd-live-dot">現在</span>':''}
-      <div class="pd-name">${esc(PEAK_LABEL_(p.k))}</div>
-      <div class="pd-time">${esc(PEAK_TIME_(p.k))}</div>
-    </button>`
-  }).join('')
-  const lab=$('pd-label')
-  if(lab) lab.innerHTML = '時段選擇'+(lv?' <span class="pd-hint">· 已依現在時間自動選取</span>':'')
-  const nl=$('pd-nolive')
-  if(nl){
-    // 上面已經自動選了最接近的一段，這裡只要提醒「那是猜的、自己確認」就夠，
-    // 把時間和段名寫進來反而變成兩行，太佔版面
-    nl.innerHTML = lv ? ''
-      : '<div class="pd-nolive">⚠️ 目前不在指定調查時段內，請手動選擇欲執行的調查時段。</div>'
-  }
+  const lv = livePeriod()
+  const ps = PERIODS()
+  const curMin = _nowMin()
+  const hm = String(Math.floor(curMin/60)).padStart(2,'0')+':'+String(curMin%60).padStart(2,'0')
+
+  const blocks=[], loose=[]
+  ps.forEach(p=>{
+    const r = _pdRange(p.t||'')
+    const cls = 'pd-blk'+((lv&&lv.k===p.k)?' live':'')+((selPeakType===p.k)?' sel':'')
+    const nm  = PEAK_LABEL_(p.k)
+    if(!r){ loose.push(p); return }          // PM 沒填時間 → 畫不到軸上，改用下面的膠囊
+    // 跨午夜（22:00~02:00）在軸上是「尾巴一段 ＋ 開頭一段」，要拆成兩塊畫
+    const segs = (r.start<=r.end) ? [[r.start, r.end]] : [[r.start,1440],[0,r.end]]
+    segs.forEach(([a,b])=>{
+      // 起訖相同（00:00~00:00 這種設定）寬度會是 0，撐到 4% 才看得見也點得到
+      const w = Math.max(4, _pdPct(b-a))
+      blocks.push(`<button class="${cls}" style="left:${_pdPct(a).toFixed(2)}%;width:${w.toFixed(2)}%"
+        onclick="pickPeriod('${p.k}')" title="${esc(nm+'　'+(p.t||''))}">${esc(nm)}</button>`)
+    })
+  })
+
+  // 說明行：第一行講「現在在不在時段內」，第二行講「這一趟要記到哪一段」。
+  // 兩件事分開寫，使用者自己改選時段時才不會跟第一行打架。
+  const cur = ps.find(p=>p.k===selPeakType)
+  const l1 = lv
+    ? `現在 <b>${hm}</b>　在「${esc(PEAK_LABEL_(lv.k))}」時段內`
+    : `<span class="w">⚠️ 目前不在指定調查時段內</span>`
+  const l2 = cur
+    ? `<span class="pick">記錄到：<b>${esc(PEAK_LABEL_(cur.k))}</b> ${esc(PEAK_TIME_(cur.k))}</span>`
+    : `<span class="pick">請點選上方時段</span>`
+
+  box.innerHTML =
+    `<div class="pd-tl">
+       <div class="pd-bar">
+         <div class="pd-track">${blocks.join('')}</div>
+         <div class="pd-now" style="left:${_pdPct(curMin).toFixed(2)}%"></div>
+       </div>
+       <div class="pd-ax"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+       ${loose.length ? `<div class="pd-chips">`+loose.map(p=>
+           `<button class="pd-chip${selPeakType===p.k?' sel':''}" onclick="pickPeriod('${p.k}')"
+             >${esc(PEAK_LABEL_(p.k))}</button>`).join('')+`</div>` : ''}
+       <div class="pd-cap">${l1}${l2}</div>
+     </div>`
 }
 function pickPeriod(k){
   selPeakType=k
@@ -7729,7 +7778,8 @@ async function empSubmit(){
       empCarStop()
       // 後端擋下「姓名已被其他工號使用」時，訊息本身就寫清楚了該怎麼辦，
       // 前面再加「建立失敗：」只會把重點推到後面，現場看不到。
-      const msg=(e&&e.message)||String(e)
+      const msg=_netMsg(e)
+      err.style.color=''          // 還原成紅色（重試提示時被改成橘色）
       err.textContent = /名冊中已有/.test(msg) ? msg : ('建立失敗：'+msg)
       // 姓名重複時焦點回到姓名欄，讓人直接改；其他錯誤（網路等）不動焦點，方便重試
       if(/名冊中已有/.test(msg)){ nameEl.focus(); nameEl.select() }
@@ -7742,7 +7792,10 @@ async function empSubmit(){
   btn.disabled=true; btn.textContent='請繫好安全帶，小心駕駛！！'; btn.classList.add('emp-btn-long')
   empCarStart()          // 引擎發動，開始冒煙
   try{
-    const found=await _empGet({action:'getSurveyor', empId})
+    // 重試中要讓人看到程式還在跑。冷啟動最久可能等到將近一分鐘，
+    // 畫面若完全沒動靜，現場只會以為當掉了然後一直重按。
+    const found=await _empGet({action:'getSurveyor', empId},
+      (n,total)=>{ err.style.color='#f59e0b'; err.textContent=`雲端喚醒中，重試 ${n}/${total}…` })
     if(found && found.name){
       hello.textContent=(givenName(found.name)||found.name)+'出發囉！！'
       await empCarDriveOff()   // 查到人才開走；等車子離開畫面再換頁
@@ -7758,7 +7811,8 @@ async function empSubmit(){
     }
   }catch(e){
     empCarStop()
-    err.textContent='查詢失敗：'+((e&&e.message)||e)+'（請確認網路）'
+    err.style.color=''            // 還原成紅色（重試提示時被改成橘色）
+    err.textContent='查詢失敗：'+_netMsg(e)
     btn.disabled=false; btn.textContent='發車'; btn.classList.remove('emp-btn-long')
   }
 }
@@ -8061,20 +8115,38 @@ function switchSurveyor(){
 
 
 // 工號查詢／建檔都走 API key（現場端沒有登入流程）
-async function _empGet(params){
+// 登入是現場的第一道關卡，而且常常是在車上用行動網路開。
+// Apps Script 冷啟動動輒十幾秒，逾時拉到 25 秒，加上 gsJson 的 3 次重試才夠用。
+async function _empGet(params, onRetry){
   if(!cloudScriptUrl||!cloudApiKey) throw new Error('未設定雲端')
   const p=new URLSearchParams({...params, key:cloudApiKey, t:Date.now()})
-  return await gsJson(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(15000)})
+  return await gsJson(`${cloudScriptUrl}?${p}`,{signal:AbortSignal.timeout(25000)}, onRetry)
 }
+// 以前這支是自己 fetch，完全沒有重試——網路抖一下就直接失敗。
+// 改成跟 _empGet 同一套：一樣的錯誤判讀、一樣會自動重試。
 async function _empPost(body){
   if(!cloudScriptUrl||!cloudApiKey) throw new Error('未設定雲端')
-  const res=await fetch(cloudScriptUrl,{method:'POST',headers:{'Content-Type':'text/plain'},
-    body:JSON.stringify({...body, key:cloudApiKey}), signal:AbortSignal.timeout(15000)})
-  const txt=await res.text()
-  if(txt.trim().startsWith('<')) throw new Error('伺服器回應異常')
-  const json=JSON.parse(txt)
-  if(!json.ok) throw new Error(json.error||'寫入失敗')
-  return json.data
+  let lastErr
+  for(let attempt=0; attempt<=GS_RETRY_DELAYS.length; attempt++){
+    try{
+      const res=await fetch(cloudScriptUrl,{method:'POST',headers:{'Content-Type':'text/plain'},
+        body:JSON.stringify({...body, key:cloudApiKey}), signal:AbortSignal.timeout(25000)})
+      const txt=await res.text()
+      if(txt.trim().startsWith('<')) throw new Error('雲端伺服器忙碌中')
+      let json
+      try{ json=JSON.parse(txt) }catch(e){ throw new Error('雲端回應無法解析') }
+      if(!json.ok) throw new Error(json.error||'寫入失敗')
+      return json.data
+    }catch(e){
+      lastErr=e
+      const msg=String(e&&e.message||e)
+      // 「名冊中已有…」這種資料面的錯誤重試也沒用，直接往外丟
+      if(!_isTransient(msg) && !/忙碌|無法解析/.test(msg)) throw e
+      if(attempt===GS_RETRY_DELAYS.length) break
+      await new Promise(r=>setTimeout(r, GS_RETRY_DELAYS[attempt]))
+    }
+  }
+  throw new Error('雲端連線不穩定，已重試多次仍失敗。請確認網路後再試一次。（原因：'+_netMsg(lastErr)+'）')
 }
 
 // ── Device test ──
