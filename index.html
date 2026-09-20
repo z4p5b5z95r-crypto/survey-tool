@@ -1555,6 +1555,11 @@ let _movingSince=null
 let nodeTimestamps=[], currentNodeIdx=0
 let nodeAutoLock = false   // prevent double-trigger within 3s
 let nodeApproaching = false  // true while within 40m of next node (to fire approach beep once)
+// 出發時車子就已經在起點感應線的「線後」——回程最常見的狀況。
+// 詳細成因見 checkNodeProximity 裡的說明。
+let _startPastLine = false
+// 漏判保險：某個節點沒被感應到時，不要讓整趟後面全部停擺
+let _missGuardArmed = false
 let nodeDirections=[]      // unit direction vectors along route at each node
 let nodeLineSide=[]        // last GPS side of each node's detection line (null=uninit,-1=before,1=past)
 
@@ -4985,6 +4990,35 @@ function checkNodeProximity(lat,lng){
   const side=dot>=0?1:-1
   const prev=nodeLineSide[currentNodeIdx]
   nodeLineSide[currentNodeIdx]=side
+
+  // ── 出發時就已經在起點感應線的「線後」 ────────────────────────
+  // 感應線靠「線前(-1) → 線後(+1)」的穿越來觸發。去程沒問題：車子從路線外面
+  // 開過來，一定是從線前進入。但【回程】是「剛跑完去程、停在終點附近」才開始的，
+  // 而去程的終點就是回程的第 1 個節點，方向一翻轉，「線後」的定義也跟著翻。
+  // 只要停在終點【前方】幾公尺（停在停止線前等紅燈是最常見的情形），
+  // 對回程而言就已經站在線後，起始 side 直接是 +1，
+  // 永遠不會發生 -1 → +1，第 1 個節點就不會觸發。
+  //
+  // 而 checkNodeProximity 只檢查 ordered[currentNodeIdx] 這一個節點，
+  // 第 1 個卡住 → currentNodeIdx 永遠是 0 → 後面每個節點都不會被檢查，
+  // 現場症狀就是「整趟回程完全沒有感應」，不是只漏第一個。
+  //
+  // 處理方式：第 1 個節點如果一開始就在線後，不立刻記（人可能還在等時段），
+  // 等車子真的起步（超過 3 km/h）再記——那一刻才是這一趟的起點。
+  if(currentNodeIdx===0){
+    if(prev===null && side===1){ _startPastLine=true; return }
+    if(_startPastLine){
+      if(side===-1){ _startPastLine=false }        // 倒回線前了，交給正常的穿越判定
+      else if(_lastSpeed>=0.83 && !nodeAutoLock){  // 0.83 m/s ≈ 3 km/h：確定起步了
+        _startPastLine=false
+        nodeAutoLock=true
+        setTimeout(()=>{nodeAutoLock=false},3000)
+        try{ recordNode(true) }catch(e){ console.error('recordNode err',e) }
+        return
+      }
+    }
+  }
+
   if(prev===null) return   // first GPS reading: just initialize side
   if(prev===-1&&side===1){ // crossed from before → past (forward crossing)
     if(!nodeAutoLock){
@@ -4994,7 +5028,30 @@ function checkNodeProximity(lat,lng){
       // 兩個聲音疊在同一瞬間反而互相搶。統一交給 recordNode 的語音。
       try{ recordNode(true) }catch(e){ console.error('recordNode err',e) }
     }
+    return
   }
+
+  // ── 漏判保險 ────────────────────────────────────────────────
+  // 萬一某個節點還是沒被感應到（GPS 飄掉、繞道、感應線角度設歪），
+  // 現行邏輯會整趟卡在那裡，後面的節點一個都不會被檢查。
+  // 這裡再看一眼「下一個」節點：如果車子已經明確通過了下一個節點，
+  // 代表當前這個一定是漏掉了，就把它補記起來讓流程往前走。
+  // 門檻抓得很保守（要離開當前節點 80 公尺以上、而且下一個節點也已在線後），
+  // 免得在路線自己繞回來、兩個節點靠很近的地方誤判。
+  const after=ordered[currentNodeIdx+1], afterDir=nodeDirections[currentNodeIdx+1]
+  if(after&&afterDir&&dist>80&&!nodeAutoLock){
+    const aLat=lat-after.lat, aLng=(lng-after.lng)*afterDir.cosLat
+    const aDot=aLat*afterDir.dlat+aLng*afterDir.dlng
+    if(aDot>=0 && haversine(lat,lng,after.lat,after.lng)>80){
+      if(!_missGuardArmed){ _missGuardArmed=true; return }   // 連兩次定位都成立才動作
+      _missGuardArmed=false
+      nodeAutoLock=true
+      setTimeout(()=>{nodeAutoLock=false},3000)
+      try{ recordNode(true) }catch(e){ console.error('recordNode err',e) }
+      return
+    }
+  }
+  _missGuardArmed=false
 }
 function manualRecordNode(){
   if(currentNodeIdx>=getNodeNames().length) return
@@ -5325,6 +5382,8 @@ function startSurvey(){
   buildNavTurns()     // 這一趟（去/回程）路徑中的轉折點
   nodeAutoLock=false
   nodeApproaching=false
+  _startPastLine=false
+  _missGuardArmed=false
   _navAnnouncedTier=0
   {const nb=$('nav-banner'); if(nb) nb.style.display='none'; _syncSurveyTopOffsets()}   // 等第一次 GPS 定位算出方向後才顯示
   totalPausedMs=0
