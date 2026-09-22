@@ -240,7 +240,14 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .no-projects p{font-size:14px;line-height:1.6}
 .no-projects b{color:#64748b}
 /* project group（專案分組） */
-.proj-group{background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;margin-bottom:12px;overflow:hidden}
+.proj-group{background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;margin-bottom:12px;overflow:hidden;
+  scroll-margin-top:12px}
+/* 專案色塊：跟這個專案畫在地圖上的路線同色，左右兩邊才對得起來 */
+.pg-dot{flex:none;width:11px;height:11px;border-radius:3px;box-shadow:0 0 0 1.5px rgba(255,255,255,.9)}
+/* 從地圖點過來時閃一下，讓人看得到清單捲到哪裡了 */
+@keyframes pgFlash{0%,100%{box-shadow:0 0 0 0 rgba(37,99,235,0)}
+  30%{box-shadow:0 0 0 4px rgba(37,99,235,.35)}}
+.proj-group.pg-flash{animation:pgFlash 1.4s ease-out 2;border-color:#3b82f6}
 .proj-group-hd{display:flex;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;user-select:none}
 .proj-group-name{font-size:14.5px;font-weight:800;color:#0f172a;flex:1;line-height:1.3}
 .proj-group-rename{flex-shrink:0;background:none;border:none;font-size:12px;padding:2px 4px;cursor:pointer;opacity:.55}
@@ -859,7 +866,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
       <div class="login-title">交通行駛速率與延滯調查</div>
     </div>
     <div id="form-login">
-      <div class="login-field"><label>帳號</label><input id="li-name" placeholder="輸入您的工號" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('li-pwd').focus()"/></div>
+      <div class="login-field"><label>工號</label><input id="li-name" placeholder="請輸入工號（不可用姓名）" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('li-pwd').focus()"/></div>
       <div class="login-field"><label>密碼</label><input id="li-pwd" type="password" placeholder="預設為分機" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
       <button class="login-btn" onclick="doLogin()">登入</button>
       <div class="login-err" id="login-err"></div>
@@ -867,9 +874,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     <!-- 版本標記：純粹用來確認「畫面上跑的是不是最新那份檔案」。
          GitHub Pages ＋ 瀏覽器快取常常讓人分不清看到的是新版還是舊版，
          有這行就不必再猜。不需要時整段刪掉即可，沒有其他程式依賴它。 -->
-    <div style="text-align:center;margin-top:18px;font-size:10px;color:#cbd5e1;letter-spacing:.5px">
-      build 2026-09-05a
-    </div>
+    <div style="text-align:center;margin-top:18px;font-size:10.5px;color:#94a3b8;letter-spacing:.5px"
+         id="login-version">—</div>
   </div>
 </div>
 
@@ -1441,8 +1447,8 @@ async function doLogin() {
     console.error('登入驗證失敗：', m)
     err.textContent =
         /停用/.test(m)            ? '此帳號已停用，請聯絡管理員'
-      : /帳號或密碼/.test(m)      ? '帳號或密碼錯誤'
-      : /找不到使用者/.test(m)    ? '查無此帳號'
+      : /帳號或密碼/.test(m)      ? '工號或密碼錯誤（帳號請輸入工號，不是姓名）'
+      : /找不到使用者/.test(m)    ? '查無此工號'
       : /Unexpected token|JSON/i.test(m) ? '伺服器回應異常，請稍後再試'
       : ('連線失敗：' + m)
     btn.disabled = false; btn.textContent = '登入'
@@ -2012,6 +2018,15 @@ let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], mea
 // Google 試算表會把「123」「321」這種看起來像數字的內容自動存成數字型別，
 // 讀回來就不是字串了。前端很多地方把這些欄位當字串用（.replace()、.includes()…），
 // 一碰到數字就整段程式中斷、專案列表變成空白。這裡統一強制轉成字串。
+// ── 版本號 ──────────────────────────────────────────────────
+// 每次改版就更新這一行；登入畫面會顯示它。
+// GitHub Pages ＋ 瀏覽器快取常讓人分不清看到的是新版還是舊版，
+// 現場回報問題時先問這個號碼，可以省掉一半的猜測。
+const APP_VERSION = '2026-09-22a'
+;(function showVersion(){
+  const el=document.getElementById('login-version')
+  if(el) el.textContent = 'build ' + APP_VERSION
+})()
 function S(v){ return (v===null||v===undefined)?'':String(v) }
 // 路段名稱一律顯示成「起點 ～ 終點」。舊資料存的是「—」或「→」，這裡在顯示時統一轉換。
 // 只有前後都有文字時才算分隔符號——單獨一個「—」是「沒有資料」的佔位符，不能被換掉。
@@ -4000,11 +4015,33 @@ function toggleProjectGroup(pid){
   _openProjectId = (_openProjectId===pid) ? null : pid
   renderProjects(document.getElementById('project-search')?.value.trim()||'')
 }
+// 從地圖點路線／氣泡進來時用這支，不要用 toggle：
+//  ① 地圖上點一條線的意思一定是「我要看這個案子」，
+//     如果它剛好已經展開，toggle 會把它關掉——完全相反的結果。
+//  ② 專案一多，要找的那個常常在側欄最下面，展開了也看不到。
+//     所以展開後把它捲進視野，並閃一下讓人知道跑到哪裡去了。
+function openProjectFromMap(pid){
+  _openProjectId = pid                 // 一律展開，不 toggle
+  renderProjects(document.getElementById('project-search')?.value.trim()||'')
+  // renderProjects 是同步重建 DOM，但捲動要等版面算完才準
+  requestAnimationFrame(()=>{
+    const el=document.getElementById('pg-'+pid)
+    if(!el) return
+    try{ el.scrollIntoView({behavior:'smooth', block:'start'}) }
+    catch(e){ el.scrollIntoView() }    // 舊瀏覽器不吃 options
+    el.classList.remove('pg-flash')
+    void el.offsetWidth               // 強制重排，動畫才會重新播
+    el.classList.add('pg-flash')
+    setTimeout(()=>{ try{ el.classList.remove('pg-flash') }catch(e){} }, 3200)
+  })
+}
 // ── 專案路線總覽：畫在右邊的主地圖上 ──────────────────────
 // 展開某個專案時，右邊主地圖直接把該專案「所有路線」一次畫出來，
 // 每條一個顏色＋中點編號，跟左邊清單的編號和色帶對得起來。
 // 點線或點編號就進入該路線的編輯。
-const PJ_MAP_COLORS=['#2563eb','#ea580c','#0d9488','#dc2626','#7c3aed','#0891b2','#ca8a04','#db2777']
+// 相鄰兩個刻意跳色（藍→橘→綠→紅…），專案一多也不會出現兩條看起來一樣的線
+const PJ_MAP_COLORS=['#2563eb','#ea580c','#0d9488','#dc2626','#7c3aed','#0891b2',
+                     '#ca8a04','#db2777','#4338ca','#65a30d','#b45309','#9333ea']
 let _pjLayers=[]   // 目前畫在主地圖上的專案路線圖層
 function clearProjectRoutesOverview(){
   if(!map) return
@@ -4135,7 +4172,7 @@ function drawOverviewBubbles(){
     })}).addTo(map)
     mk.bindTooltip(`${g.name}（${n} 條路線）`)
     // 點氣泡＝展開那個專案：飛過去並在側欄打開它
-    mk.on('click',()=>{ _ovSig=''; toggleProjectGroup(g.pid) })
+    mk.on('click',()=>{ _ovSig=''; openProjectFromMap(g.pid) })
     _ovLayers.push(mk)
   })
 }
@@ -4157,7 +4194,7 @@ function drawOverviewRoutes(){
       // 直接跳進單一路線的編輯畫面會跳太快、也看不到同專案的其他路線。
       // 進編輯統一走「展開專案後再點那條路線」這一條路。
       poly.bindTooltip(`${g.name}｜${t.cfg.rn||'未命名路線'}　（點選展開此專案）`,{sticky:true})
-      poly.on('click',()=>{ _ovSig=''; toggleProjectGroup(g.pid) })
+      poly.on('click',()=>{ _ovSig=''; openProjectFromMap(g.pid) })
       _ovLayers.push(poly)
     })
   })
@@ -4383,7 +4420,7 @@ function renderProjects(filter='') {
     </div>`
     return
   }
-  wrap.innerHTML=order.map(pid=>{
+  wrap.innerHTML=order.map((pid,gi)=>{
     const proj=savedProjects.find(p=>p.id===pid)
     const projName=proj?.name||'未分類路線'
     const routes=groups[pid]||[]
@@ -4433,10 +4470,11 @@ function renderProjects(filter='') {
         </div>
       </div>`
     }).join('') || `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12.5px">這個專案還沒有路線<br>按上面「＋ 新增路線」建立，或用其他路線卡片的「⋯」更多選單搬過來</div>`
-    return`<div class="proj-group${isOpen?' open':''}">
+    return`<div class="proj-group${isOpen?' open':''}" id="pg-${pid}">
       <div class="proj-group-hd" onclick="toggleProjectGroup('${pid}')"
            onmouseenter="ovHover('${pid}')" onmouseleave="ovHover(null)">
-        <span class="proj-group-name">📁 ${projName}</span>
+        <span class="pg-dot" style="background:${ovColorOf(gi)}"></span>
+        <span class="proj-group-name">${projName}</span>
         <button class="proj-group-rename" title="重新命名" onclick="event.stopPropagation();renameProject('${pid}')">✏️</button>
         <svg class="proj-group-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
@@ -6167,12 +6205,12 @@ async function loadAdminTrash() {
       <table class="admin-table" style="margin-bottom:16px">
         <thead><tr><th>路線名稱</th><th>刪除者</th><th>刪除原因</th><th>刪除時間</th><th>到期時間</th><th style="width:90px">操作</th></tr></thead>
         <tbody>${routes.map(r => `<tr style="${r.expired ? 'opacity:.5' : ''}">
-          <td><strong>${r.routeName || '—'}</strong><br><span style="font-size:11px;color:#94a3b8">${r.routeFromTo || ''}</span></td>
-          <td style="color:#64748b;font-size:12px">${r.deletedBy || '—'}</td>
-          <td style="color:#64748b;font-size:12px;max-width:160px">${r.deletedNote ? r.deletedNote.replace(/</g,'&lt;') : '<span style="color:#cbd5e1">—</span>'}</td>
-          <td style="color:#94a3b8;font-size:12px">${r.deletedAt || '—'}</td>
-          <td style="font-size:12px;color:${r.expired ? '#dc2626' : '#f59e0b'}">${r.expired ? '已過期' : r.expiresAt}</td>
-          <td>${r.expired ? '<span style="font-size:12px;color:#94a3b8">已永久刪除</span>' : `<button class="adm-btn" onclick="adminRestoreRoute('${r.id}','${(r.routeName||'').replace(/'/g,"\\'")}')">↩ 還原</button>`}</td>
+          <td><strong>${esc(r.routeName) || '—'}</strong><br><span style="font-size:11px;color:#94a3b8">${esc(r.routeFromTo)}</span></td>
+          <td style="color:#64748b;font-size:12px">${esc(r.deletedBy) || '—'}</td>
+          <td style="color:#64748b;font-size:12px;max-width:160px">${r.deletedNote ? esc(r.deletedNote) : '<span style="color:#cbd5e1">—</span>'}</td>
+          <td style="color:#94a3b8;font-size:12px">${esc(r.deletedAt) || '—'}</td>
+          <td style="font-size:12px;color:${r.expired ? '#dc2626' : '#f59e0b'}">${r.expired ? '已過期' : esc(r.expiresAt)}</td>
+          <td>${r.expired ? '<span style="font-size:12px;color:#94a3b8">已永久刪除</span>' : `<button class="adm-btn" onclick="adminRestoreRoute(${jsArg(r.id)},${jsArg(r.routeName)})">↩ 還原</button>`}</td>
         </tr>`).join('')}</tbody>
       </table>`
     }
@@ -6181,13 +6219,13 @@ async function loadAdminTrash() {
       <table class="admin-table">
         <thead><tr><th>路線</th><th>調查員</th><th>日期</th><th>刪除者</th><th>刪除原因</th><th>到期時間</th><th style="width:90px">操作</th></tr></thead>
         <tbody>${surveys.map(s => `<tr style="${s.expired ? 'opacity:.5' : ''}">
-          <td><strong>${s.routeName || '—'}</strong></td>
-          <td>${s.surveyor || '—'}</td>
-          <td style="color:#64748b;font-size:12px">${s.date || '—'}</td>
-          <td style="color:#64748b;font-size:12px">${s.deletedBy || '—'}</td>
-          <td style="color:#64748b;font-size:12px;max-width:160px">${s.deletedNote ? s.deletedNote.replace(/</g,'&lt;') : '<span style="color:#cbd5e1">—</span>'}</td>
-          <td style="font-size:12px;color:${s.expired ? '#dc2626' : '#f59e0b'}">${s.expired ? '已過期' : s.expiresAt}</td>
-          <td>${s.expired ? '<span style="font-size:12px;color:#94a3b8">已永久刪除</span>' : `<button class="adm-btn" onclick="adminRestoreSurvey('${s.id}')">↩ 還原</button>`}</td>
+          <td><strong>${esc(s.routeName) || '—'}</strong></td>
+          <td>${esc(s.surveyor) || '—'}</td>
+          <td style="color:#64748b;font-size:12px">${esc(s.date) || '—'}</td>
+          <td style="color:#64748b;font-size:12px">${esc(s.deletedBy) || '—'}</td>
+          <td style="color:#64748b;font-size:12px;max-width:160px">${s.deletedNote ? esc(s.deletedNote) : '<span style="color:#cbd5e1">—</span>'}</td>
+          <td style="font-size:12px;color:${s.expired ? '#dc2626' : '#f59e0b'}">${s.expired ? '已過期' : esc(s.expiresAt)}</td>
+          <td>${s.expired ? '<span style="font-size:12px;color:#94a3b8">已永久刪除</span>' : `<button class="adm-btn" onclick="adminRestoreSurvey(${jsArg(s.id)})">↩ 還原</button>`}</td>
         </tr>`).join('')}</tbody>
       </table>`
     }

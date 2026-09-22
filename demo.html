@@ -460,6 +460,13 @@ input[type="date"]::-webkit-calendar-picker-indicator{margin-left:auto;opacity:.
 #map-survey-wrap{position:absolute;width:max(185vw,185dvh);height:max(185vw,185dvh);top:50%;left:50%;transform:translate(-50%,-50%);transition:transform 0.7s cubic-bezier(0.25,0.46,0.45,0.94);will-change:transform}
 #map-survey{width:100%;height:100%}
 .gps-badge{position:absolute;bottom:6px;right:8px;background:rgba(0,0,0,.65);color:#4ade80;padding:3px 8px;border-radius:10px;font-size:11px;z-index:999}
+/* 已越過起點的警示橫幅。z-index 比導航橫幅高——這件事沒處理好，
+   整趟資料都是錯的，必須蓋過其他資訊。 */
+#start-past-bar{position:absolute;top:0;left:0;right:0;z-index:960;background:#b91c1c;
+  border-radius:0 0 18px 18px;padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 13px;
+  align-items:center;gap:12px;color:#fff;box-shadow:0 4px 20px rgba(0,0,0,.35);
+  animation:spbPulse 1.8s ease-in-out infinite}
+@keyframes spbPulse{0%,100%{background:#b91c1c}50%{background:#dc2626}}
 .nav-banner{position:absolute;top:0;left:0;right:0;z-index:950;background:#1d4ed8;border-radius:0 0 18px 18px;padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 14px;display:flex;align-items:center;gap:14px;color:white;box-shadow:0 4px 20px rgba(0,0,0,.3)}
 .nav-banner-icon{width:44px;height:44px;background:rgba(255,255,255,.15);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .nav-banner-text{flex:1;min-width:0}
@@ -1196,6 +1203,14 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     </div>
     <div class="gps-badge" id="gps-badge">📡</div>
     <!-- 導航提示條：接近下個節點時顯示距離＋左右轉方向，可搭配語音提示 -->
+    <!-- 出發時就已經越過起點：一直掛在畫面上直到退回起點前為止 -->
+    <div id="start-past-bar" style="display:none">
+      <span style="font-size:20px;flex:none">⚠️</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:900;line-height:1.35">車輛已越過起點</div>
+        <div style="font-size:12px;opacity:.9;margin-top:1px;line-height:1.5">請退回起點前，重新開始這一趟調查</div>
+      </div>
+    </div>
     <div id="nav-banner" class="nav-banner" style="display:none">
       <div class="nav-banner-icon"><svg id="nav-banner-arrow" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V6"/><path d="m6 12 6-6 6 6"/></svg></div>
       <div class="nav-banner-text">
@@ -1558,6 +1573,7 @@ let nodeApproaching = false  // true while within 40m of next node (to fire appr
 // 出發時車子就已經在起點感應線的「線後」——回程最常見的狀況。
 // 詳細成因見 checkNodeProximity 裡的說明。
 let _startPastLine = false
+let _startPastWarnTs = 0        // 上次語音提醒的時間，避免一直重複唸
 // 漏判保險：某個節點沒被感應到時，不要讓整趟後面全部停擺
 let _missGuardArmed = false
 let nodeDirections=[]      // unit direction vectors along route at each node
@@ -4959,6 +4975,24 @@ function updateTurnAlerts(lat,lng){
   }
 }
 
+// ── 出發時已越過起點的提醒 ────────────────────────────────────
+// 不自動補記起點：起點時刻是整趟數據的基準，用猜的會讓旅行時間失真。
+// 改成講清楚要他怎麼做，並且在畫面上留一條橫幅，直到他退回起點前為止。
+// 語音每 20 秒才重複一次——車上已經夠吵，一直唸反而讓人忽略。
+function warnStartPastLine(){
+  const now=Date.now()
+  const bar=$('start-past-bar')
+  if(bar) bar.style.display='flex'
+  if(now-_startPastWarnTs < 20000) return
+  _startPastWarnTs=now
+  try{ speakNav('車輛已越過起點，請退回起點前重新開始調查') }catch(e){}
+  try{ showToast('⚠️ 已越過起點，請退回起點前') }catch(e){}
+}
+function clearStartPastLine(){
+  _startPastWarnTs=0
+  const bar=$('start-past-bar'); if(bar) bar.style.display='none'
+  try{ speakNav('已回到起點前，可以開始調查') }catch(e){}
+}
 function checkNodeProximity(lat,lng){
   const names=getNodeNames()
   if(currentNodeIdx>=names.length) return
@@ -5003,19 +5037,15 @@ function checkNodeProximity(lat,lng){
   // 第 1 個卡住 → currentNodeIdx 永遠是 0 → 後面每個節點都不會被檢查，
   // 現場症狀就是「整趟回程完全沒有感應」，不是只漏第一個。
   //
-  // 處理方式：第 1 個節點如果一開始就在線後，不立刻記（人可能還在等時段），
-  // 等車子真的起步（超過 3 km/h）再記——那一刻才是這一趟的起點。
+  // 處理方式：不自動幫他記——起點時刻是這一趟所有數據的基準，
+  // 用「大概起步的那一刻」去補會讓整趟的旅行時間失真。
+  // 改成明確告訴調查員：你已經越過起點了，請退回起點前重新開始。
   if(currentNodeIdx===0){
-    if(prev===null && side===1){ _startPastLine=true; return }
+    if(prev===null && side===1) _startPastLine=true
     if(_startPastLine){
-      if(side===-1){ _startPastLine=false }        // 倒回線前了，交給正常的穿越判定
-      else if(_lastSpeed>=0.83 && !nodeAutoLock){  // 0.83 m/s ≈ 3 km/h：確定起步了
-        _startPastLine=false
-        nodeAutoLock=true
-        setTimeout(()=>{nodeAutoLock=false},3000)
-        try{ recordNode(true) }catch(e){ console.error('recordNode err',e) }
-        return
-      }
+      if(side===1){ warnStartPastLine(); return }   // 還在線後 → 持續提醒（語音每 20 秒一次）
+      _startPastLine=false                          // 退回起點前了
+      clearStartPastLine()                          // 接下來正常穿越就會正確記錄
     }
   }
 
@@ -5027,6 +5057,8 @@ function checkNodeProximity(lat,lng){
       // 這裡原本會先響一聲，但緊接著 recordNode() 就會唸「通過節點」，
       // 兩個聲音疊在同一瞬間反而互相搶。統一交給 recordNode 的語音。
       try{ recordNode(true) }catch(e){ console.error('recordNode err',e) }
+      // 正常通過起點了，把警示橫幅收掉（沒亮過也不影響）
+      {const b=$('start-past-bar'); if(b) b.style.display='none'}
     }
     return
   }
@@ -5383,6 +5415,8 @@ function startSurvey(){
   nodeAutoLock=false
   nodeApproaching=false
   _startPastLine=false
+  _startPastWarnTs=0
+  {const b=$('start-past-bar'); if(b) b.style.display='none'}
   _missGuardArmed=false
   _navAnnouncedTier=0
   {const nb=$('nav-banner'); if(nb) nb.style.display='none'; _syncSurveyTopOffsets()}   // 等第一次 GPS 定位算出方向後才顯示
