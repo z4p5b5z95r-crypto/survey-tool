@@ -598,6 +598,7 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
 }
 
 /* 與「重新調查」同一個橘（.btn-start.redo）：代表「重來一次」這類動作 */
+.btn-teal{width:100%;padding:16px;background:#0f766e;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;margin-top:8px}
 .btn-orange{width:100%;padding:16px;background:#ea580c;color:white;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(234,88,12,.35)}
 
 /* ── Report ── */
@@ -1349,6 +1350,11 @@ body.survey-lock .svy-reason-grid{touch-action:pan-y}
     <button class="btn-blue" id="btn-next-combo" onclick="goNextCombo()">繼續調查 →</button>
     <button class="btn-purple" onclick="goReport()">📊 查看調查報告</button>
     <button class="btn-orange" id="btn-redo-trip" onclick="redoThisTrip()">🔄 重新調查</button>
+    <!-- 同一個專案下常常一天要跑好幾條路線。原本只能重新掃 QR 才能換，
+         這顆直接清掉目前路線的狀態、回到本案路線選擇頁。
+         只有「掃專案 QR 進來」才有清單可以回，單一路線 QR 時隱藏。 -->
+    <button class="btn-teal" id="btn-other-route" style="display:none"
+            onclick="goOtherRouteInProject()">🗺 調查本案其他路線</button>
   </div>
 </div>
 
@@ -3484,12 +3490,17 @@ function saveSetup(){
 // ════════════════════════════════════
 function drawRouteOnMap(targetMap, layerKey){
   if(!config.nodes||config.nodes.length<2) return
-  if(window[layerKey]) targetMap.removeLayer(window[layerKey])
+  if(window[layerKey]){ try{ targetMap.removeLayer(window[layerKey]) }catch(e){} window[layerKey]=null }
+  // 路線與節點圖釘要放在同一個 featureGroup 裡。
+  // 原本圖釘是直接 addTo(targetMap)，只有折線被記在 window[layerKey]，
+  // 換路線重畫時舊圖釘清不掉，上一條路線的節點編號會一直疊在圖上。
+  // 用 featureGroup（不是 layerGroup）是因為底下 onPos 要 getBounds()。
+  const grp=L.featureGroup()
   // Use OSRM route if available, else straight lines between nodes
   const allLls=routePolylines.length>0
     ?routePolylines.flat()
     :config.nodes.map(n=>[n.lat,n.lng])
-  window[layerKey]=L.polyline(allLls,{color:'#3b82f6',weight:4,opacity:.8}).addTo(targetMap)
+  L.polyline(allLls,{color:'#3b82f6',weight:4,opacity:.8}).addTo(grp)
   config.nodes.forEach((n,i)=>{
     const color=i===0?'#16a34a':i===config.nodes.length-1?'#dc2626':'#4f46e5'
     L.marker([n.lat,n.lng],{icon:L.divIcon({
@@ -3498,9 +3509,24 @@ function drawRouteOnMap(targetMap, layerKey){
         display:flex;align-items:center;justify-content:center;
         box-shadow:0 2px 8px rgba(0,0,0,.45);line-height:1">${i+1}</div>`,
       className:'',iconSize:[22,22],iconAnchor:[11,11]
-    })}).bindTooltip(n.name,{direction:'top',offset:[0,-6]}).addTo(targetMap)
+    })}).bindTooltip(n.name,{direction:'top',offset:[0,-6]}).addTo(grp)
   })
-  targetMap.fitBounds(window[layerKey].getBounds(),{padding:[30,30]})
+  grp.addTo(targetMap)
+  window[layerKey]=grp
+  targetMap.fitBounds(grp.getBounds(),{padding:[30,30]})
+}
+
+// 換路線後重畫待命頁地圖。
+// initMaps() 第二行就是 `if(mapReady) return`，所以第二次載入路線時
+// 建圖與 drawRouteOnMap 整段都被跳過 —— 而 drawRouteArrows() 是在選趟次時
+// 獨立呼叫的，每次都會重畫。這就是現場看到的「箭頭換了、路線沒換」。
+function refreshReadyRouteMap(){
+  if(!mapReady) return
+  if(routeArrowLayer){ try{ mapReady.removeLayer(routeArrowLayer) }catch(e){} routeArrowLayer=null }
+  mapReady._gpsFitted=false          // 讓下一筆定位重新把 GPS 位置納入視野
+  drawRouteOnMap(mapReady,'routeLayerReady')
+  // 容器在切換畫面期間寬高可能是 0，Leaflet 不會自己重算版面
+  try{ mapReady.invalidateSize() }catch(e){}
 }
 
 function initMaps(){
@@ -3532,7 +3558,31 @@ function initMaps(){
 // ════════════════════════════════════
 function smooth(lat,lng,alpha=0.3){
   if(!lastPos)return{lat,lng}
+  if(alpha>=1) return{lat,lng}
   return{lat:lastPos.lat*(1-alpha)+lat*alpha,lng:lastPos.lng*(1-alpha)+lng*alpha}
+}
+// 平滑係數要隨速度調整。
+// 原本固定 alpha=0.3，時間常數約 3.3 個定位（≈3 秒），
+// 行駛中就變成「節點都過了、語音都播了，圖上的車還在後面」——
+// 因為節點判定吃的是原始座標（rl,ro），Marker 吃的是平滑後座標，兩者本來就會差一段。
+// 靜止時需要重平滑（不然 GPS 抖動會讓車頭亂轉），行駛中幾乎不需要，
+// 所以改成：越快越接近原始值，停下來才壓抖動；大跳點直接跟上（換路線／重新定位）。
+function _smoothAlpha(speed,accuracy,rl,ro){
+  // 位置大跳（>60 m）：多半是剛開 GPS、隧道出口或換路線，硬平滑會拖出一條假軌跡
+  if(lastPos){
+    const d=haversine(lastPos.lat,lastPos.lng,rl,ro)
+    if(d>60) return 1
+  }
+  const kmh = speed!=null ? speed*3.6 : null
+  let a
+  if(kmh===null)      a=0.5            // 裝置沒給速度：折衷
+  else if(kmh>=15)    a=0.9            // 正常行駛：幾乎即時，Marker 與節點判定同步
+  else if(kmh>=5)     a=0.7            // 慢行／壅塞
+  else if(kmh>=2)     a=0.45           // 蠕行
+  else                a=0.2            // 停等：重平滑，壓掉原地漂移
+  // 定位精度差時放寬平滑，免得把大誤差原封不動畫上去
+  if(accuracy!=null && accuracy>40) a=Math.min(a,0.4)
+  return a
 }
 // ════════════════════════════════════
 //  LOCATE ME
@@ -3631,7 +3681,7 @@ function startGPS(){
 }
 function onPos(p){
   const{latitude:rl,longitude:ro,accuracy,speed}=p.coords
-  const{lat,lng}=smooth(rl,ro);lastPos={lat,lng}
+  const{lat,lng}=smooth(rl,ro,_smoothAlpha(speed,accuracy,rl,ro));lastPos={lat,lng}
   const dot=$('gps-dot'),txt=$('gps-text')
   if(accuracy<30){dot.className='gps-dot good';txt.textContent=`GPS良好 ±${Math.round(accuracy)}m`}
   else{dot.className='gps-dot poor';txt.textContent=`GPS ±${Math.round(accuracy)}m`}
@@ -5087,6 +5137,15 @@ function checkNodeProximity(lat,lng){
 }
 function manualRecordNode(){
   if(currentNodeIdx>=getNodeNames().length) return
+  // 手動按「開始第一個節點」＝調查人員自己確認要從這裡起算，
+  // 「已越過起點」的紅色提示就沒有意義了，必須一起收掉。
+  // 注意不能呼叫 clearStartPastLine()——那會播「已回到起點前」的語音，
+  // 但人並沒有退回去，只是手動起算，播了會誤導。
+  if(_startPastLine || ($('start-past-bar')&&$('start-past-bar').style.display!=='none')){
+    _startPastLine=false
+    _startPastWarnTs=0
+    const bar=$('start-past-bar'); if(bar) bar.style.display='none'
+  }
   recordNode(false)
 }
 // 等待 AudioContext 真的醒過來，最多等 1 秒。
@@ -6024,6 +6083,9 @@ function buildTripDoneUI(travelS,totalDelayS,runS){
       <span class="${allTrips[k]?'badge-done':'badge-todo'}">${allTrips[k]?'✓ 完成':'待執行'}</span></div>`
   }).join('')
   $('btn-next-combo').style.display=COMBO_KEYS.some(k=>!allTrips[k])?'block':'none'
+  // 只有掃專案 QR 進來才有路線清單可以回
+  const ob=$('btn-other-route')
+  if(ob) ob.style.display=(_cameFromProjectPicker&&_pickerCtx)?'block':'none'
   updateProgressChips()
 }
 // 組合鍵 = 「時段代碼_方向」。時段代碼由 PM 自訂（也可能是舊的 peak / off_peak，
@@ -6035,6 +6097,24 @@ function parseComboKey(k){
   return [s,'bound']
 }
 function goNextCombo(){showScreen('screen-ready');checkStart()}
+// 「調查本案其他路線」：把目前這條路線的狀態全部清掉，回到本案路線選擇頁。
+// 不清乾淨的話，下一條路線會沿用上一條的趟次選擇與完成頁狀態。
+// 路線資料本身（config / routePolylines / allTrips）由 loadCloudRouteAndProceed
+// 裡的 _resetRouteScopedState() 負責，這裡只處理「這一趟」與選單狀態。
+function goOtherRouteInProject(){
+  if(!_cameFromProjectPicker || !_pickerCtx){ showToast('這次不是從專案清單進來的'); return }
+  if(clockTimer){ clearInterval(clockTimer); clockTimer=null }
+  stopAudioKeepAlive(); releaseWakeLock(); disableNoSleep()
+  resetSurveyRuntime()
+  cur=null
+  _tripDoneKey=null
+  selPeakType=null; selDirection=null
+  nodeTimestamps=[]; currentNodeIdx=0
+  // 越線提醒屬於上一條路線，一併收掉
+  _startPastLine=false; _startPastWarnTs=0
+  const bar=$('start-past-bar'); if(bar) bar.style.display='none'
+  backToRoutePicker()
+}
 function goReport(){
   document.getElementById('hist-report-back')?.remove()
   _reportOverviewHidden=true   // 剛調查完：只給看這一趟的紀錄
@@ -7315,6 +7395,9 @@ async function loadCloudRouteAndProceed(routeId, gsParam, kParam){
     document.getElementById('loading-sub').textContent=''
     await prefetchRoutes(gen)
     if(gen!==_routeGen) return
+    // 路徑算好了才重畫地圖（routePolylines 這時才有值），
+    // 否則第二條路線會畫成節點直線。
+    refreshReadyRouteMap()
     setLoadPct(100)
     await new Promise(r=>setTimeout(r,700))  // let car reach 🏁
     if(gen!==_routeGen) return
