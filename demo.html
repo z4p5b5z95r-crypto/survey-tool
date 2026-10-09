@@ -32,6 +32,12 @@ if(window.top!==window.self){
 }
 </script>
 <style>
+/* OSM 圖磚使用政策要求清楚顯示授權標示。原本十張地圖都設了 attributionControl:false，
+   等於完全沒有標示。這裡把它縮到最小但仍清楚可讀：行車中不佔畫面，又符合政策。 */
+.leaflet-control-attribution{font-size:9px!important;line-height:1.3;padding:1px 5px!important;
+  background:rgba(255,255,255,.72)!important;color:#475569;border-radius:4px 0 0 0}
+.leaflet-control-attribution a{color:#475569;text-decoration:none}
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:#0f172a;font-family:-apple-system,'PingFang TC',sans-serif;touch-action:pan-x pan-y}
 /* 監測中鎖頁：由 JS 動態加上 body.survey-lock */
@@ -1532,6 +1538,55 @@ let selRound = 1
 let allTrips = allTripsByRound[selRound]   // 目前選取回合的四趟資料（其餘程式碼皆透過此別名讀寫，不需個別修改）
 let cur = null
 
+// ── 圖磚來源（可由 PM 後台變更，不需要重新發版）──────────────────
+// OSM 圖磚使用政策明確要求「不要把圖磚網址寫死」：服務中斷或被擋時，
+// 必須能在不改程式、不重新發版的情況下換供應商。
+// 三層取值，確保「現場地圖開不出來」永遠不會因為這個設定而發生：
+//   1) localStorage 上次拿到的設定 —— 同步讀取，開頁瞬間就有值，不會閃一下空白地圖
+//   2) 程式內建預設 —— 第一次使用、localStorage 被清掉、或存的值壞掉
+//   3) 背景向後端要最新設定，寫回 localStorage，下次開頁生效
+//      （刻意不即時換圖層：調查進行中抽換底圖會讓畫面閃動，也沒有急迫性）
+const TILE_DEFAULT = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+const TILE_ATTRIB_DEFAULT = '© OpenStreetMap'
+let TILE_URL = TILE_DEFAULT
+let TILE_ATTRIB = TILE_ATTRIB_DEFAULT
+function _tileUrlValid(u){
+  return typeof u==='string' && /^https:\/\//.test(u)
+      && u.indexOf('{z}')>=0 && u.indexOf('{x}')>=0 && u.indexOf('{y}')>=0
+}
+function loadTileCfg(){
+  try{
+    const c=JSON.parse(localStorage.getItem('tileCfg')||'null')
+    // ⚠️ 網址與標示必須一起採用或一起退回。
+    //    若網址被判定不合法而退回 OSM，卻還套用自訂的標示，地圖右下角就會
+    //    在 OSM 的圖磚上掛著別家的來源——標錯來源比沒標還糟，也違反使用政策。
+    if(c && _tileUrlValid(c.url)){
+      TILE_URL=c.url
+      if(typeof c.attrib==='string' && c.attrib.trim()) TILE_ATTRIB=c.attrib
+    }
+  }catch(e){}   // 壞值一律忽略，照內建預設走
+}
+loadTileCfg()
+// 所有 L.tileLayer 共用這組參數：maxZoom 各張地圖自己決定，attribution 一致。
+function tileOpts(maxZoom){ return {maxZoom:maxZoom, attribution:TILE_ATTRIB} }
+// 要塞進「匯出的獨立 HTML」裡當 JS 字面值時用這支，不要直接用 JSON.stringify。
+// JSON.stringify 不會跳脫 `<`，字串裡若出現結束用的 script 標籤，會把匯出檔的
+// script 區塊提早關掉，整份報告就壞了。改成 < 之後 JS 解讀結果完全相同，
+// 但不再被當成標籤。（這段註解本身也刻意不寫出那個標籤字樣——寫了就會關掉本檔的 script。）
+function _jsStr(v){ return JSON.stringify(String(v==null?'':v)).replace(/</g,'\\u003c') }
+// 背景更新。失敗完全不影響使用，所以不顯示任何錯誤。
+async function refreshTileCfg(gs,k){
+  if(!gs||!k) return
+  try{
+    const r=await fetch(`${gs}?action=getSettings&key=${encodeURIComponent(k)}`,
+      {signal:AbortSignal.timeout(8000)})
+    const j=await r.json()
+    const d=j&&(j.data||j)
+    if(!d||!_tileUrlValid(d.TILE_URL)) return
+    localStorage.setItem('tileCfg',JSON.stringify({url:d.TILE_URL,attrib:d.TILE_ATTRIB||TILE_ATTRIB_DEFAULT}))
+  }catch(e){}
+}
+
 // Cloud connection (populated when URL uses ?id=...&gs=...&k=...)
 let cloudRouteId  = ''
 let cloudScriptUrl = ''
@@ -2688,8 +2743,8 @@ function confirmClearStorage(){
 function initSigninMap(){
   if(!config.nodes||config.nodes.length<2) return
   if(mapSignin){mapSignin.remove();mapSignin=null}
-  mapSignin=L.map('map-signin',{zoomControl:true,attributionControl:false,dragging:true,scrollWheelZoom:true,touchZoom:true})
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(mapSignin)
+  mapSignin=L.map('map-signin',{zoomControl:true,dragging:true,scrollWheelZoom:true,touchZoom:true})
+  L.tileLayer(TILE_URL,tileOpts(18)).addTo(mapSignin)
 
   // Single route line
   const lls=routePolylines.length>0?routePolylines.flat():config.nodes.map(n=>[n.lat,n.lng])
@@ -2737,8 +2792,8 @@ function buildRoutePolylineFromCache(nodes, segments){
 function renderProjectRoutesMap(routes, gsParam, kParam){
   const box=document.getElementById('map-project-routes'); if(!box) return
   if(mapProjectRoutes){ try{mapProjectRoutes.remove()}catch(e){} mapProjectRoutes=null }
-  mapProjectRoutes=L.map('map-project-routes',{zoomControl:true,attributionControl:false,dragging:true,scrollWheelZoom:true,touchZoom:true})
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(mapProjectRoutes)
+  mapProjectRoutes=L.map('map-project-routes',{zoomControl:true,dragging:true,scrollWheelZoom:true,touchZoom:true})
+  L.tileLayer(TILE_URL,tileOpts(18)).addTo(mapProjectRoutes)
 
   const bounds=[]
   routes.forEach((r,i)=>{
@@ -3532,8 +3587,8 @@ function refreshReadyRouteMap(){
 function initMaps(){
   startGPS()
   if(mapReady) return
-  mapReady=L.map('map-ready',{zoomControl:false,attributionControl:false})
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapReady)
+  mapReady=L.map('map-ready',{zoomControl:false})
+  L.tileLayer(TILE_URL,tileOpts(19)).addTo(mapReady)
   const initPos=config.nodes.length?[config.nodes[0].lat,config.nodes[0].lng]:[25.04776,121.51755]
   mapReady.setView(initPos,14)
   // Place GPS marker at current position if known, else at route start
@@ -5499,7 +5554,7 @@ function startSurvey(){
   initCompass()   // request compass permission on user gesture
 
   if(!mapSurvey){
-    mapSurvey=L.map('map-survey',{zoomControl:false,attributionControl:false})
+    mapSurvey=L.map('map-survey',{zoomControl:false})
     // Disable Leaflet's built-in drag — use custom handler to compensate for CSS rotation
     mapSurvey.dragging.disable()
     mapSurvey.on('zoomstart',()=>{ _mapFollowing=false; _updateLocateBtn(); _startFollowTimer() })
@@ -5528,7 +5583,7 @@ function startSurvey(){
       },{passive:true})
       mc.addEventListener('touchend',()=>{ _td=null },{passive:true})
     })()
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapSurvey)
+    L.tileLayer(TILE_URL,tileOpts(19)).addTo(mapSurvey)
     const ip=lastPos?[lastPos.lat,lastPos.lng]:[25.04776,121.51755]
     mapSurvey.setView(ip,17)
     // Heading-aware marker (Google Maps style: circle + direction arrow)
@@ -5948,8 +6003,8 @@ function srRender(){
 function srDrawMap(p){
   const el=document.getElementById('sr-map'); if(!el || typeof L==='undefined') return
   if(_srMap){ try{_srMap.remove()}catch(e){} _srMap=null }
-  _srMap=L.map('sr-map',{zoomControl:false,attributionControl:false,dragging:true,scrollWheelZoom:false})
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(_srMap)
+  _srMap=L.map('sr-map',{zoomControl:false,dragging:true,scrollWheelZoom:false})
+  L.tileLayer(TILE_URL,tileOpts(18)).addTo(_srMap)
   const lls=routePolylines.length?routePolylines.flat():config.nodes.map(n=>[n.lat,n.lng])
   if(lls.length>=2) L.polyline(lls,{color:'#f97316',weight:5,opacity:.85}).addTo(_srMap)
   if(p.pos){
@@ -6765,8 +6820,8 @@ let _resultPlanBounds=null   // bounds of planned route (never changes)
 
 function buildResultMap(){
   if(mapResult){mapResult.remove();mapResult=null;_resultTrackGroup=null;_resultDelayGroup=null;_resultPlanBounds=null}
-  mapResult=L.map('map-result',{zoomControl:true,attributionControl:false,scrollWheelZoom:true,dragging:true,touchZoom:true,doubleClickZoom:true,boxZoom:true,keyboard:false})
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapResult)
+  mapResult=L.map('map-result',{zoomControl:true,scrollWheelZoom:true,dragging:true,touchZoom:true,doubleClickZoom:true,boxZoom:true,keyboard:false})
+  L.tileLayer(TILE_URL,tileOpts(19)).addTo(mapResult)
   // Planned route (grey dashed) — always visible regardless of active tab
   if(config.nodes&&config.nodes.length>=2){
     const lls=routePolylines.length>0?routePolylines.flat():config.nodes.map(n=>[n.lat,n.lng])
@@ -7054,8 +7109,11 @@ function exportReport(){
 'window.addEventListener("load",function(){\n' +
 '  if(typeof L==="undefined") return;\n' +
 '  try{\n' +
-'    var map=L.map("rpt-map",{zoomControl:true,attributionControl:false});\n' +
-'    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map);\n' +
+'    var map=L.map("rpt-map",{zoomControl:true});\n' +
+// ⚠️ 這裡是在「組一份離線單檔報告」的字串，匯出的檔案讀不到本頁的 TILE_URL 變數，
+//    所以必須在產生字串時把值內插進去，不能寫成變數名。
+//    用 JSON.stringify 而不是手動加引號：圖磚網址或標示文字裡若有引號才不會把字串打斷。
+'    L.tileLayer(' + _jsStr(TILE_URL) + ',{maxZoom:19,attribution:' + _jsStr(TILE_ATTRIB) + '}).addTo(map);\n' +
 '    var colors=["#3b82f6","#ef4444","#16a34a","#f59e0b"],bounds=null;\n' +
 '    KEYS.forEach(function(k,i){\n' +
 '      var tr=TRACKS[k]; if(!tr||tr.length<2) return;\n' +
@@ -7696,6 +7754,10 @@ window.addEventListener('load', async () => {
   const pidParam = params.get('pid')
   const gsParam = params.get('gs')
   const kParam  = params.get('k')
+
+  // 背景更新圖磚設定。不 await：這件事不該讓現場人員多等一秒，
+  // 本次仍用 localStorage／內建預設的網址，拿到新值是下次開頁生效。
+  refreshTileCfg(gsParam, kParam)
 
   if(pidParam && gsParam && kParam){
     // ── 專案 QR：工號登入 → 裝置檢查與授權 → 選路線 ──

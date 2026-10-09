@@ -16,6 +16,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" crossorigin="anonymous"></script>
 <!-- xlsx（930KB）改為按下「下載 SGS 表」時才載入 -->
 <style>
+/* OSM 圖磚使用政策要求清楚顯示授權標示。原本十張地圖都設了 attributionControl:false，
+   等於完全沒有標示。這裡把它縮到最小但仍清楚可讀：行車中不佔畫面，又符合政策。 */
+.leaflet-control-attribution{font-size:9px!important;line-height:1.3;padding:1px 5px!important;
+  background:rgba(255,255,255,.72)!important;color:#475569;border-radius:4px 0 0 0}
+.leaflet-control-attribution a{color:#475569;text-decoration:none}
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#1e293b;height:100vh;overflow:hidden}
 
@@ -914,6 +920,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     <button class="admin-tab" data-tab="logins" onclick="switchAdminTab('logins')">🔐 登入紀錄</button>
     <button class="admin-tab" data-tab="trash" onclick="switchAdminTab('trash')">🗑 垃圾桶</button>
     <button class="admin-tab" data-tab="users" onclick="switchAdminTab('users')">👤 帳號管理</button>
+    <button class="admin-tab" data-tab="sys" onclick="switchAdminTab('sys')">🧩 系統設定</button>
   </div>
 
   <div class="admin-body">
@@ -933,6 +940,41 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
     <!-- 專案資料 -->
     <div id="atab-routes" style="display:none">
       <div id="admin-routes-table"></div>
+    </div>
+
+    <!-- 系統設定：圖磚來源 -->
+    <!-- OSM 圖磚使用政策要求不要把圖磚網址寫死在程式裡，必須能在不發版的情況下更換。
+         這一頁就是那個「單一設定點」：改完三端（現場 App／PM／報告）下次開啟就吃到。 -->
+    <div id="atab-sys" style="display:none;padding:20px">
+      <div style="background:white;border-radius:14px;padding:22px;max-width:760px;box-shadow:0 1px 4px #0001">
+        <div style="font-size:13px;font-weight:800;color:#334155;margin-bottom:4px">🗺 地圖圖磚來源</div>
+        <div style="font-size:11px;color:#94a3b8;line-height:1.6;margin-bottom:16px">
+          現場 App、PM 圖台、調查報告三端共用這個設定。圖磚服務中斷或被限流時，
+          改這裡就能立刻換供應商，不需要重新上傳程式。<br>
+          網址必須是 https，並且包含 <code>{z}</code>、<code>{x}</code>、<code>{y}</code>；
+          <code>{s}</code> 為選用的子網域輪替。留空儲存＝還原成預設的 OpenStreetMap。
+        </div>
+        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:5px">圖磚網址</label>
+        <input id="sys-tile-url" placeholder="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          autocomplete="off" spellcheck="false"
+          style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:9px;
+                 font-size:12px;font-family:ui-monospace,monospace;margin-bottom:14px"/>
+        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:5px">
+          來源標示（顯示在地圖右下角）</label>
+        <input id="sys-tile-attrib" placeholder="© OpenStreetMap" autocomplete="off"
+          style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:9px;
+                 font-size:12px;margin-bottom:8px"/>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:16px">
+          圖磚授權條款幾乎都要求標示來源，換供應商時這行也要跟著換。
+        </div>
+        <div id="sys-tile-msg" style="font-size:12px;font-weight:700;margin-bottom:12px;min-height:17px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="saveTileSetting()" style="background:#3b82f6;color:white;border:none;
+            border-radius:10px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer">💾 儲存</button>
+          <button onclick="resetTileSetting()" style="background:#64748b;color:white;border:none;
+            border-radius:10px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer">↺ 還原預設</button>
+        </div>
+      </div>
     </div>
 
     <!-- 操作紀錄（誰做了什麼） -->
@@ -1335,6 +1377,47 @@ const HARDCODED_GS_URL = 'https://script.google.com/macros/s/AKfycbx0NO47Q0fbMv6
 
 let gsUrl = HARDCODED_GS_URL || ''
 
+// ── 圖磚來源（可由 PM 後台變更，不需要重新發版）──────────────────
+// OSM 圖磚使用政策明確要求「不要把圖磚網址寫死」：服務中斷或被擋時，
+// 必須能在不改程式、不重新發版的情況下換供應商。
+// 取值順序：localStorage 上次設定 → 程式內建預設；背景再向後端要最新值。
+const TILE_DEFAULT = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+const TILE_ATTRIB_DEFAULT = '© OpenStreetMap'
+let TILE_URL = TILE_DEFAULT
+let TILE_ATTRIB = TILE_ATTRIB_DEFAULT
+function _tileUrlValid(u){
+  return typeof u==='string' && /^https:\/\//.test(u)
+      && u.indexOf('{z}')>=0 && u.indexOf('{x}')>=0 && u.indexOf('{y}')>=0
+}
+function loadTileCfg(){
+  try{
+    const c=JSON.parse(localStorage.getItem('tileCfg')||'null')
+    // ⚠️ 網址與標示必須一起採用或一起退回。
+    //    若網址被判定不合法而退回 OSM，卻還套用自訂的標示，地圖右下角就會
+    //    在 OSM 的圖磚上掛著別家的來源——標錯來源比沒標還糟，也違反使用政策。
+    if(c && _tileUrlValid(c.url)){
+      TILE_URL=c.url
+      if(typeof c.attrib==='string' && c.attrib.trim()) TILE_ATTRIB=c.attrib
+    }
+  }catch(e){}   // 壞值一律忽略，照內建預設走
+}
+loadTileCfg()
+function tileOpts(maxZoom){ return {maxZoom:maxZoom, attribution:TILE_ATTRIB} }
+// 背景更新：失敗完全不影響使用，所以不顯示任何錯誤。
+async function refreshTileCfg(gs, token){
+  if(!gs) return
+  try{
+    const q = token ? ('&sessionToken='+encodeURIComponent(token)) : ''
+    const r = await fetch(gs+'?action=getSettings'+q, {signal:AbortSignal.timeout(8000)})
+    const j = await r.json()
+    const d = j && (j.data || j)
+    if(!d || !_tileUrlValid(d.TILE_URL)) return
+    localStorage.setItem('tileCfg', JSON.stringify({url:d.TILE_URL, attrib:d.TILE_ATTRIB||TILE_ATTRIB_DEFAULT}))
+    TILE_URL = d.TILE_URL
+    TILE_ATTRIB = d.TILE_ATTRIB || TILE_ATTRIB_DEFAULT
+  }catch(e){}
+}
+
 // ════════════════════════════════════════════════════════
 //  AUTH — Session Token 機制
 //  登入 → 後端回傳 sessionToken + apiKey → 存 localStorage / sessionStorage
@@ -1620,6 +1703,9 @@ async function doLogout() {
 function enterApp(name) {
   document.getElementById('screen-login').style.display = 'none'
   startIdleTimer()          // 閒置 30 分鐘自動登出
+  // 圖磚設定背景更新。PM 端允許即時套用（不像現場端在行車中），
+  // 不過地圖多半還沒建立，所以實際是下一次建圖就吃到新值。
+  refreshTileCfg(gsUrl, getSessionToken && getSessionToken())
   // admin 登入後跟主管一樣先看到專案列表（含右邊的地圖總覽），
   // 管理後台改成用工具列的「⚙ 管理後台」進去。
   // 舊行為是直接跳進後台，等於 admin 永遠看不到專案列表這一頁。
@@ -1826,14 +1912,14 @@ function leafletReady(){ return typeof L!=='undefined' && !!L.map }
 function initMainMap(){
   if(map) return map
   if(!leafletReady()) return null
-  osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 })
+  osmLayer = L.tileLayer(TILE_URL,tileOpts(19))
   satLayer = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     { maxZoom:19 })
   satLabels = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
     { maxZoom:19, opacity:0.85 })
-  map = L.map('map', { zoomControl:false, attributionControl:false })
+  map = L.map('map', { zoomControl:false})
   L.control.zoom({ position:'bottomright' }).addTo(map)
   osmLayer.addTo(map)
   map.setView([25.04776, 121.51755], 14)
@@ -2022,7 +2108,7 @@ let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], mea
 // 每次改版就更新這一行；登入畫面會顯示它。
 // GitHub Pages ＋ 瀏覽器快取常讓人分不清看到的是新版還是舊版，
 // 現場回報問題時先問這個號碼，可以省掉一半的猜測。
-const APP_VERSION = '2026-09-22a'
+const APP_VERSION = '2026-10-09a'
 ;(function showVersion(){
   const el=document.getElementById('login-version')
   if(el) el.textContent = 'build ' + APP_VERSION
@@ -5036,6 +5122,52 @@ function admLoadingHTML(msg){
     + '<polyline points="8.5,13 11,15.5 13.5,13"/>'
     + '</svg></div><div>' + (msg || '下載中…') + '</div></div>'
 }
+// ── 系統設定：圖磚來源 ──────────────────────────────────────
+function _sysMsg(text, ok){
+  const el=document.getElementById('sys-tile-msg'); if(!el) return
+  el.textContent=text||''
+  el.style.color = ok===false ? '#dc2626' : (ok===true ? '#16a34a' : '#64748b')
+}
+async function loadSysSettings(){
+  _sysMsg('讀取中…')
+  try{
+    const d=await cloudGet({action:'getSettings'})
+    document.getElementById('sys-tile-url').value    = d.TILE_URL||''
+    document.getElementById('sys-tile-attrib').value = d.TILE_ATTRIB||''
+    _sysMsg('')
+  }catch(e){ _sysMsg('讀取失敗：'+e.message, false) }
+}
+async function saveTileSetting(){
+  const url=document.getElementById('sys-tile-url').value.trim()
+  const at =document.getElementById('sys-tile-attrib').value.trim()
+  // 前端先擋一次，純粹是為了讓錯誤訊息即時；真正的把關在後端 SETTING_DEFS.check。
+  if(url && !_tileUrlValid(url)){
+    _sysMsg('網址必須是 https，且包含 {z}、{x}、{y}', false); return
+  }
+  _sysMsg('儲存中…')
+  try{
+    await cloudPost({action:'saveSetting', key:'TILE_URL',    value:url})
+    await cloudPost({action:'saveSetting', key:'TILE_ATTRIB', value:at})
+    await loadSysSettings()
+    // 本機也同步更新，PM 自己不必重新整理就能在下一次建圖看到新底圖
+    const d={url:document.getElementById('sys-tile-url').value.trim(),
+             attrib:document.getElementById('sys-tile-attrib').value.trim()||TILE_ATTRIB_DEFAULT}
+    if(_tileUrlValid(d.url)){
+      localStorage.setItem('tileCfg',JSON.stringify(d))
+      TILE_URL=d.url; TILE_ATTRIB=d.attrib
+    }else{
+      localStorage.removeItem('tileCfg')
+      TILE_URL=TILE_DEFAULT; TILE_ATTRIB=TILE_ATTRIB_DEFAULT
+    }
+    _sysMsg('✓ 已儲存。現場 App 與報告端下次開啟時生效。', true)
+  }catch(e){ _sysMsg('儲存失敗：'+e.message, false) }
+}
+function resetTileSetting(){
+  document.getElementById('sys-tile-url').value=''
+  document.getElementById('sys-tile-attrib').value=''
+  saveTileSetting()
+}
+
 function switchAdminTab(tab) {
   document.querySelectorAll('.admin-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab))
   document.getElementById('atab-users').style.display   = tab === 'users'   ? '' : 'none'
@@ -5044,6 +5176,8 @@ function switchAdminTab(tab) {
   document.getElementById('atab-link').style.display    = tab === 'link'    ? '' : 'none'
   document.getElementById('atab-audit').style.display   = tab === 'audit'   ? '' : 'none'
   document.getElementById('atab-logins').style.display  = tab === 'logins'  ? '' : 'none'
+  document.getElementById('atab-sys').style.display     = tab === 'sys'     ? '' : 'none'
+  if (tab === 'sys')     loadSysSettings()
   if (tab === 'users')   loadAdminUsers()
   if (tab === 'routes')  loadAdminRoutes()
   if (tab === 'trash')   loadAdminTrash()
