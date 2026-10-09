@@ -1284,7 +1284,9 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
         <div class="map-search-results" id="search-results"></div>
       </div>
 
-      <button class="sat-btn" id="sat-btn" onclick="toggleSat()">🛰 衛星影像</button>
+      <!-- 標籤由 renderBaseBtn() 依目前底圖填入；這裡的初始值對應第一個底圖，
+           萬一 Leaflet 載入失敗（按鈕不會被更新）也不會顯示錯的狀態。 -->
+      <button class="sat-btn" id="sat-btn" onclick="toggleSat()">🗺 街道地圖</button>
 
       <button id="pm-locate-btn" onclick="pmLocateMe()" title="定位目前位置"
         style="position:absolute;bottom:72px;right:10px;z-index:999;width:36px;height:36px;background:white;border:1.5px solid #cbd5e1;border-radius:10px;font-size:18px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.14);display:flex;align-items:center;justify-content:center">📍</button>
@@ -1907,21 +1909,48 @@ function jumpToStep(id) {
 // （登入、專案列表、按鈕全部沒反應）。現場回報的正是這個。
 //
 // 改成延後到 Leaflet 真的就緒才建立，CDN 掛掉時只有地圖區塊顯示提示，其他照常。
-let osmLayer=null, satLayer=null, satLabels=null, map=null
+// ── 底圖定義（單一定義點：要增減底圖只改這個陣列）────────────────
+// 原本的衛星影像用的是 Esri 的 server.arcgisonline.com，那是沒有授權的專有服務。
+// 改用內政部國土測繪中心（NLSC）的 WMTS：政府開放資料，臺灣境內的影像與圖資
+// 也比國外底圖新、比例尺更適合這個案子。
+//
+// ⚠️ 路徑格式取自官方 GetCapabilities 的 ResourceURL：
+//      .../{Style}/{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}
+//    TileRow 是 y、TileCol 是 x，所以網址是 {z}/{y}/{x}——不是常見的 {z}/{x}/{y}。
+//    這兩個寫反不會報錯，只會整張圖默默錯位，改這裡務必確認過。
+const NLSC_WMTS = 'https://wmts.nlsc.gov.tw/wmts'
+const NLSC_ATTRIB = '© 內政部國土測繪中心'
+const BASEMAPS = [
+  { id:'street', label:'🗺 街道地圖',
+    build:()=>L.tileLayer(TILE_URL, tileOpts(19)) },
+  // EMAP＝臺灣通用電子地圖
+  { id:'emap',   label:'📍 電子地圖',
+    build:()=>L.tileLayer(NLSC_WMTS+'/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}',
+      { maxZoom:19, attribution:NLSC_ATTRIB }) },
+  // PHOTO2＝正射影像圖(通用)。再疊一層 EMAP2（通用電子地圖透明版）補上路名與地名，
+  // 作用等同原本 Esri 的 World_Boundaries_and_Places 標註層。
+  { id:'photo',  label:'🛰 正射影像',
+    build:()=>L.tileLayer(NLSC_WMTS+'/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}',
+      { maxZoom:19, attribution:NLSC_ATTRIB }),
+    overlay:()=>L.tileLayer(NLSC_WMTS+'/EMAP2/default/GoogleMapsCompatible/{z}/{y}/{x}',
+      { maxZoom:19, opacity:0.9 }) },
+]
+let map=null
+const _baseCache={}          // id → {base, overlay}；圖層只建一次，切換時重複使用
+let _baseIdx=0               // 目前用第幾個底圖
+function _baseLayers(i){
+  const d=BASEMAPS[i]
+  if(!_baseCache[d.id]) _baseCache[d.id]={ base:d.build(), overlay:d.overlay?d.overlay():null }
+  return _baseCache[d.id]
+}
 function leafletReady(){ return typeof L!=='undefined' && !!L.map }
 function initMainMap(){
   if(map) return map
   if(!leafletReady()) return null
-  osmLayer = L.tileLayer(TILE_URL,tileOpts(19))
-  satLayer = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom:19 })
-  satLabels = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom:19, opacity:0.85 })
   map = L.map('map', { zoomControl:false})
   L.control.zoom({ position:'bottomright' }).addTo(map)
-  osmLayer.addTo(map)
+  { const l=_baseLayers(0); l.base.addTo(map); if(l.overlay) l.overlay.addTo(map) }
+  renderBaseBtn()
   map.setView([25.04776, 121.51755], 14)
   // ⚠️ 這兩步要延到「整份腳本跑完」才做，不能在這裡直接呼叫。
   // initMainMap() 位在檔案偏前面（約 1400 行）就會執行，但 setMode() 內部用到的
@@ -1946,15 +1975,27 @@ function initMainMap(){
   setTimeout(()=>waitLeaflet(tries+1), 250)
 })()
 
-let isSat = false
+// 按鈕顯示「目前用的底圖」。原本只有兩種可以用「下一個是什麼」當標籤，
+// 現在有三種，顯示下一個反而看不出自己正在看什麼。
+function renderBaseBtn(){
+  const btn=document.getElementById('sat-btn'); if(!btn) return
+  const d=BASEMAPS[_baseIdx], next=BASEMAPS[(_baseIdx+1)%BASEMAPS.length]
+  btn.textContent=d.label
+  btn.title='目前：'+d.label.replace(/^\S+\s*/,'')+'（點擊切換為 '+next.label.replace(/^\S+\s*/,'')+'）'
+  btn.classList.toggle('active', _baseIdx!==0)
+}
 function toggleSat() {
   if(!map) return          // 地圖還沒就緒（CDN 慢或掛掉）就當作沒這個按鈕
-  isSat = !isSat
-  const btn = document.getElementById('sat-btn')
-  btn.classList.toggle('active', isSat)
-  btn.textContent = isSat ? '🗺 街道地圖' : '🛰 衛星影像'
-  if (isSat) { map.removeLayer(osmLayer); satLayer.addTo(map); satLabels.addTo(map) }
-  else { map.removeLayer(satLayer); map.removeLayer(satLabels); osmLayer.addTo(map) }
+  const old=_baseLayers(_baseIdx)
+  map.removeLayer(old.base)
+  if(old.overlay) map.removeLayer(old.overlay)
+  _baseIdx=(_baseIdx+1)%BASEMAPS.length
+  const now=_baseLayers(_baseIdx)
+  now.base.addTo(map)
+  if(now.overlay) now.overlay.addTo(map)
+  // 底圖要壓在所有路線、節點、標記底下，否則切換後路線會被新底圖蓋住。
+  try{ now.base.bringToBack(); if(now.overlay) now.overlay.bringToBack(); now.base.bringToBack() }catch(e){}
+  renderBaseBtn()
 }
 
 // ════════════════════════════════════════════════════════
