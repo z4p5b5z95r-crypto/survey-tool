@@ -3027,6 +3027,52 @@ function buildDelaySheet(){
   ])
 }
 
+// 把每一筆延滯歸到它發生的那個路段。
+//
+// 這是 SGS 表單的核心：範本 (行駛數率與延滯表單.xls) 的小計列是
+//   G29 = SUM(G17:G23)
+// 也就是「小計＝逐列加總」。先前匯出把逐列 13 欄全部寫死成 0，
+// 只把該趟的總延滯塞進小計列，於是表上出現「有合計、各路段卻都是 0」——
+// 數字對不起來，而且審查時完全看不出延滯發生在哪一段。
+//
+// 歸屬依據：delayLog 的 startedAt，落在哪兩個節點通過時刻之間就算哪一段。
+// 用「開始時刻」而不是中點或結束時刻，是因為停等是在路段內發生的事件，
+// 而跨越節點的停等（例如停在路口前等紅燈、綠燈後才通過節點）本來就該算進
+// 「通過該節點之前」的那一段——那正是 startedAt 所在的區間。
+//
+// 回傳：以路線順序（非行進順序）排列，每段一個 {cause: 秒數} 物件。
+function _segDelaysFor(trip, segCount){
+  const out = Array.from({length:segCount}, ()=>({}))
+  const nodeTs = (trip?.nodeTimestamps||[]).map(t=>t?new Date(t):null)
+  const isReturn = trip?.direction==='return'
+  const log = Array.isArray(trip?.delayLog) ? trip.delayLog : []
+  log.forEach(d=>{
+    const sec = +d?.durationS
+    if(!(sec>0)) return
+    const cause = d?.cause
+    if(!cause) return
+    const at = d?.startedAt ? new Date(d.startedAt) : null
+    // 找出 startedAt 落在哪一段（ci＝行進順序的索引）
+    let ci = -1
+    if(at && !isNaN(at)){
+      for(let k=0; k<segCount; k++){
+        const t0=nodeTs[k], t1=nodeTs[k+1]
+        if(!t0||isNaN(t0)) continue
+        if(at>=t0 && (!t1||isNaN(t1) || at<t1)){ ci=k; break }
+      }
+      // 落在第一個節點之前（理論上不會，偵測是過了節點 1 才啟動）→ 算第一段；
+      // 落在最後一個節點之後 → 算最後一段。寧可歸到邊界，也不要整筆遺失，
+      // 否則小計會跟該趟的延滯總和對不起來。
+      if(ci<0 && nodeTs[0] && !isNaN(nodeTs[0])) ci = at<nodeTs[0] ? 0 : segCount-1
+    }
+    if(ci<0) ci = segCount-1   // 連時間都沒有的舊資料：全部掛到最後一段，至少總數守恆
+    const j = isReturn ? (segCount-1-ci) : ci   // 行進順序 → 路線順序
+    if(j<0 || j>=segCount) return
+    out[j][cause] = (out[j][cause]||0) + sec
+  })
+  return out
+}
+
 function buildTripSheet(trip, survey, combo){
   const isReturn = trip.direction === 'return'
   const isPeak   = trip.peakType  === 'peak'
@@ -3053,6 +3099,37 @@ function buildTripSheet(trip, survey, combo){
 
   const nodeTs = (trip.nodeTimestamps||[]).map(t=>t?new Date(t):null)
 
+  // ── 逐列延滯與逐列速率（依範本 行駛數率與延滯表單.xls）──────────────
+  const ALL_CAUSES = [...ROAD_DELAYS, ...INT_DELAYS].map(d=>d.cause)
+  const segDelays  = _segDelaysFor(trip, segs.length)      // 路線順序
+  const segT       = _segTimesFor(trip)                    // 路線順序
+  const colSum     = {}; ALL_CAUSES.forEach(c=>colSum[c]=0)
+  const num = v => (v==null||v==='' ) ? '' : v             // 0 要留著，不能被 || 吃掉
+
+  const segRows = segOrder.map((seg,i)=>{
+    const ci     = isReturn ? segs.length-1-i : i          // 行進順序索引
+    const [nH,nM,nS] = hms(nodeTs[ci])
+    const dl     = segDelays[ci] || {}
+    const cells  = ALL_CAUSES.map(c=>{ const v=+dl[c]||0; colSum[c]+=v; return v })
+    const dSum   = cells.reduce((a,b)=>a+b,0)
+    // 範本：T17 旅行時間、V17 行駛時間 = T17-SUM(G17:S17)
+    //       W17 旅行速率 = U17/T17*3.6、X17 行駛速率 = U17/V17*3.6
+    const travelS = segT[ci]?.travelS
+    const dist    = seg.length
+    const runS    = (travelS!=null) ? Math.max(0, travelS-dSum) : null
+    const rate    = (d,t)=> (d>0 && t>0) ? +(d/t*3.6).toFixed(1) : ''
+    return [
+      segDisp(flipSegXls(seg.name)),'',nH,nM,nS,
+      ...cells,
+      num(travelS), num(dist), num(runS),
+      rate(dist,travelS), rate(dist,runS)
+    ]
+  })
+  const roadTot = ROAD_DELAYS.reduce((a,d)=>a+colSum[d.cause],0)
+  const intTot  = INT_DELAYS .reduce((a,d)=>a+colSum[d.cause],0)
+  const denom   = roadTot + intTot
+  const pct     = v => denom>0 ? (v/denom*100).toFixed(1)+'%' : '0.0%'
+
   const rows = [
     ['','','','','','','','','主次要幹道行駛時間及延滯調查表'],
     ['站名:','',route.routeName,'','','','','日期：',survey.date||''],
@@ -3066,42 +3143,37 @@ function buildTripSheet(trip, survey, combo){
     [],
     ['路線','','','','距離(m)','起點','','','終點','','','合計(秒)','交叉口延滯(秒)','路段延滯(秒)','行駛時間(秒)','旅行速率(km/h)'],
     ['起點','','終點','','','時','分','秒','時','分','秒','','','','',''],
+    // ⚠️ 這裡以前用 `trip.roadTotalS||''`，路段延滯剛好是 0 時就被印成空白格
+    //    （截圖裡 N 欄空白就是這個）。0 是有意義的數值，必須印出來。
     [startNode.name,'',endNode.name,'',route.totalLength,
      sH,sM,sS,eH,eM,eS,
-     trip.travelS||'', trip.intTotalS||'', trip.roadTotalS||'', trip.runS||'',
+     num(trip.travelS), num(intTot), num(roadTot),
+     num(trip.travelS!=null ? Math.max(0, trip.travelS-denom) : null),
      spd(route.totalLength, trip.travelS)],
     [],
     ['經過路口','','時刻','','',
      '路段延滯(秒)','','','','','',
      '交叉口延滯(秒)','','','','','','',
-     '旅行時間(秒)','距離(m)'],
+     '旅行時間(秒)','距離(m)','行駛時間(秒)','旅行速率(km/h)','行駛速率(km/h)'],
     ['','','時','分','秒',
      '阻塞','公車停靠','計程車','路邊停車','行人穿越','其他',
      '紅燈','左轉同向','左轉對向','右轉','橫越車輛','行人','其他',
-     '',''],
-    ...segOrder.map((seg,i)=>{
-      const nodeTime = nodeTs[isReturn ? segs.length - 1 - i : i]
-      const [nH,nM,nS] = hms(nodeTime)
-      const segIdx = isReturn ? segs.length - 1 - i : i
-      return [
-        segDisp(flipSegXls(seg.name)),'',nH,nM,nS,
-        0,0,0,0,0,0,
-        0,0,0,0,0,0,0,
-        times[segIdx]?.travelS??'', seg.length||''
-      ]
-    }),
+     '','','','',''],
+    ...segRows,
     [],
+    // 小計＝逐列加總（範本 G29=SUM(G17:G23)），不是直接拿該趟的總延滯。
+    // 兩者應該相等；若因舊資料缺時刻而有差，以逐列為準才不會自相矛盾。
     ['延滯時間(秒)','小計','','','',
-     trip.roadDelays?.congestion||0, trip.roadDelays?.bus_stop||0, trip.roadDelays?.taxi_stop||0,
-     trip.roadDelays?.parking||0, trip.roadDelays?.ped_cross||0, trip.roadDelays?.road_other||0,
-     trip.intDelays?.red_light||0, trip.intDelays?.left_same||0, trip.intDelays?.left_opp||0,
-     trip.intDelays?.right_turn||0, trip.intDelays?.cross_veh||0, trip.intDelays?.ped_int||0,
-     trip.intDelays?.int_other||0,'',''],
-    ['','合計','','','',trip.roadTotalS||0,'','','','','',trip.intTotalS||0,'','','','','','','',''],
+     ...ALL_CAUSES.map(c=>colSum[c]), '',''],
+    // 合計：左半＝路段延滯小計總和(G30)，右半＝交叉口延滯小計總和(M30)
+    ['','合計','','','',roadTot,'','','','','',intTot,'','','','','','','',''],
+    // ⚠️ 百分比的分母是「延滯合計」(G30+M30)，不是旅行時間。
+    //    範本：G31 = IF(G30+M30>0, LEFT((G29/(G30+M30))*100,4)&"%", 0&"%")
+    //    所以各項相加必為 100%（PDF 範例中只有紅燈有值時就是 100.0%）。
+    //    先前這裡除以 trip.travelS，69/582 印成 11.9%，與範本不符。
     ['延滯時間百分比','小計','','','',
-     ...ROAD_DELAYS.map(d=>trip.travelS>0?((trip.roadDelays?.[d.cause]||0)/trip.travelS*100).toFixed(1)+'%':'0%'),
-     ...INT_DELAYS.map(d=>trip.travelS>0?((trip.intDelays?.[d.cause]||0)/trip.travelS*100).toFixed(1)+'%':'0%'),
-     '',''],
+     ...ALL_CAUSES.map(c=>pct(colSum[c])), '',''],
+    ['','合計','','','',pct(roadTot),'','','','','',pct(intTot),'','','','','','','',''],
   ]
   return XLSX.utils.aoa_to_sheet(rows)
 }
