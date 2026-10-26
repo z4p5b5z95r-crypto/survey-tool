@@ -2059,7 +2059,7 @@ function _netMsg(e){
   const m=String((e&&e.message)||e||'')
   if(/abort|timed out|timeout|TimeoutError|逾時/i.test(m)) return '連線逾時，雲端可能正在喚醒'
   if(/Failed to fetch|Load failed|NetworkError|network error/i.test(m)) return '連不上網路'
-  if(e&&e.code==='BUSY') return '系統忙碌中'
+  if(e&&e.code==='BUSY') return '系統目前忙碌中，請稍後再試'   // 跟其他畫面同一句話
   return m
 }
 async function gsJson(url, opts, onRetry){
@@ -2193,7 +2193,7 @@ function _verifyReceipt(gsUrl, body, data){
     else if(pin.db!==r.db){
       if(ep>(+pin.epoch||1)) save()                      // 管理員刻意搬遷
       else return {ok:false, dbChanged:true,
-        reason:'伺服器的資料庫與先前不同，資料已保留在手機上'}
+        reason:'伺服器的資料庫與先前不同'}   // 「資料已保留」由上傳失敗訊息統一補上，這裡不重複
     }
   }
   return {ok:true}
