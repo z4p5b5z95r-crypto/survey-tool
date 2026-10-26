@@ -2059,6 +2059,7 @@ function _netMsg(e){
   const m=String((e&&e.message)||e||'')
   if(/abort|timed out|timeout|TimeoutError|逾時/i.test(m)) return '連線逾時，雲端可能正在喚醒'
   if(/Failed to fetch|Load failed|NetworkError|network error/i.test(m)) return '連不上網路'
+  if(e&&e.code==='BUSY') return '系統忙碌中'
   return m
 }
 async function gsJson(url, opts, onRetry){
@@ -2077,18 +2078,36 @@ async function gsJson(url, opts, onRetry){
       let json
       try{ json=JSON.parse(text) }
       catch(e){ throw new Error('雲端回應無法解析') }
-      if(!json.ok && json.error) throw new Error(json.error)
+      if(!json.ok && json.error){
+        // 後端帶回的 code 是權威依據，優先於訊息內容判斷。
+        //   BUSY      → Google 服務忙碌／逾時，等一下會好 → 重試
+        //   DB_CONFIG → 資料庫設定壞了，重試一百次也一樣 → 立刻往外丟
+        // 不要用中文字串比對來分類：文案隨時會改，比對遲早失效。
+        const err=new Error(json.error)
+        err.code=json.code||''
+        err.detail=json.detail||''
+        throw err
+      }
       if(!json.ok) throw new Error('cloud error')
       return json.data
     }catch(e){
       lastErr=e
       const msg=String(e&&e.message||e)
+      if(e&&e.code==='DB_CONFIG') throw e            // 設定問題：重試無益
+      const retryable = (e&&e.code==='BUSY') || _isTransient(msg) || /忙碌|無法解析/.test(msg)
       // 資料面的錯誤（例如找不到路線）重試也沒用，直接往外丟
-      if(!_isTransient(msg) && !/忙碌|無法解析/.test(msg)) throw e
+      if(!retryable) throw e
       if(attempt===GS_RETRY_DELAYS.length) break
       if(onRetry) onRetry(attempt+1, GS_RETRY_DELAYS.length+1)
       await new Promise(r=>setTimeout(r, GS_RETRY_DELAYS[attempt]))
     }
+  }
+  // 重試用完了。若是伺服器忙碌，講「系統忙碌」而不是「網路不穩」——
+  // 調查員看到「連不上網路」會去重開網路、換位置，白忙一場（問題不在他那端）。
+  if(lastErr&&lastErr.code==='BUSY'){
+    const be=new Error('系統目前忙碌中，請稍後再試')
+    be.code='BUSY'
+    throw be
   }
   throw new Error('雲端連線不穩定，已重試多次仍失敗。請確認網路後再試一次。'
     +'（原因：'+_netMsg(lastErr)+'）')
@@ -2137,6 +2156,55 @@ async function cloudPostSurvey(gsUrl, apiKey, body){
 
 // Offline queue — save failed submissions so retry is possible
 const OFFLINE_QUEUE_KEY='cloud_submit_queue'
+
+// 佇列項目的身分：同組合（路線＋日期＋回合＋趟次）＋排入時間。
+// 補送時用它來精準移除「這一輪真的送達的那幾筆」，不影響期間新排入的。
+function _qsig(b){ b=b||{}; return [b.routeId,b.date,b.round,Object.keys(b.trips||{}).sort().join(',')].join('|') }
+function _qid(it){ return _qsig(it&&it.body)+'#'+((it&&it.ts)||0) }
+
+// ── 上傳收據驗證 ──────────────────────────────────────────────────
+// 這次事故的第二層原因：伺服器把資料寫進一個「錯的空資料庫」，照樣回 ok:true，
+// App 就把那幾趟標成「已上傳」，從此對帳、補送全部略過它們。
+// 單憑一句 ok 不夠，要核對兩件事才算真的送達：
+//   1) 寫入筆數＝送出筆數（避免寫到一半就回成功）
+//   2) 資料庫 ID 跟這支 App 先前寫入的是同一個（避免寫進被掉包的資料庫）
+// 第一次看到某個伺服器的資料庫 ID 時記下來，之後每次都比對。
+// 伺服器還沒更新（沒回收據）時照舊視為成功，不擋住正常使用。
+const DB_PIN_KEY='cloud_db_pin'
+function _dbPins(){ try{ return JSON.parse(localStorage.getItem(DB_PIN_KEY)||'{}') }catch(e){ return {} } }
+function _verifyReceipt(gsUrl, body, data){
+  const r=data&&data.receipt
+  if(!r) return {ok:true, legacy:true}                     // 舊版後端：沒有收據可驗
+  const want=Object.keys((body&&body.trips)||{}).length
+  // 搶救模式（ifAbsent）下，「伺服器已經有這一趟、所以略過」也是成功——資料在雲端了。
+  const got=(+r.written||0)+(+r.skipped||0)
+  if(got!==want){
+    return {ok:false, reason:`伺服器只處理 ${got}／${want} 筆`}
+  }
+  if(r.db){
+    // 合法的搬遷也會換資料庫，所以不能「一換就擋」。
+    // 管理員若是刻意搬遷，會在後端把 DB_EPOCH 加一；程式出錯造成的掉包不會動到它。
+    // 規則：資料庫 ID 不同時，只有 epoch 變大才接受，否則一律視為掉包。
+    const pins=_dbPins(), key=String(gsUrl||'')
+    const ep=+r.epoch||1, pin=pins[key]
+    const save=()=>{ pins[key]={db:r.db, epoch:ep}
+      try{ localStorage.setItem(DB_PIN_KEY, JSON.stringify(pins)) }catch(e){} }
+    if(!pin){ save() }
+    else if(pin.db!==r.db){
+      if(ep>(+pin.epoch||1)) save()                      // 管理員刻意搬遷
+      else return {ok:false, dbChanged:true,
+        reason:'伺服器的資料庫與先前不同，資料已保留在手機上'}
+    }
+  }
+  return {ok:true}
+}
+let _receiptWarnAt=0
+function _receiptWarn(reason){
+  // 這是「資料可能沒進對地方」等級的狀況，要讓調查員看到，但不要每次補送都轟炸一次
+  if(Date.now()-_receiptWarnAt<60000) return
+  _receiptWarnAt=Date.now()
+  try{ showToast('⚠️ 上傳未確認：'+reason+'。請通知管理員') }catch(e){}
+}
 function enqueueOffline(payload){
   try{
     const q=JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY)||'[]')
@@ -2227,19 +2295,29 @@ async function flushOfflineQueue(silent){
   _flushing=true
   if(!silent) renderPendingBar('busy')
   try{
-    const remaining=[]
+    // ⚠️ 不能在最後用「開始時的快照」整個覆寫佇列。
+    // 補送一輪可能要好幾分鐘（伺服器忙碌時會重試），這段期間若有另一趟
+    // 上傳失敗而排進佇列，舊寫法最後一行 setItem(remaining) 會把它整筆蓋掉——
+    // remaining 是從舊快照算出來的，根本不知道有新的那一筆。
+    // 改成：只記住「這一輪確定送達的是哪幾筆」，寫回前重讀最新佇列，只拿掉那幾筆。
+    const sentIds=new Set()
     for(const item of q){
       try{
-        await cloudPostSurvey(item.gsUrl,item.apiKey,item.body)
+        const data=await cloudPostSurvey(item.gsUrl,item.apiKey,item.body)
+        const v=_verifyReceipt(item.gsUrl, item.body, data)
+        if(!v.ok){ _receiptWarn(v.reason); continue }   // 收據不對＝不算送達，留在佇列
+        sentIds.add(_qid(item))
         // 補送成功：若補的正好是目前這個調查日期，組合按鈕要跟著變綠勾
         const b=item.body||{}
         if((b.date||'').slice(0,10)===(config.date||'').slice(0,10)){
-          markUploaded(b.round||1, Object.keys(b.trips||{}))
+          markUploaded(b.round||1, Object.keys(b.trips||{}), !v.legacy)
         }
-      }catch(e){ remaining.push(item) }
+      }catch(e){ /* 留在佇列，下次再送 */ }
     }
+    const latest=offlineQueue()                       // 重讀：包含補送期間新排入的
+    const remaining=latest.filter(it=>!sentIds.has(_qid(it)))
     localStorage.setItem(OFFLINE_QUEUE_KEY,JSON.stringify(remaining))
-    const sent=q.length-remaining.length
+    const sent=sentIds.size
     if(sent>0){
       showToast(`☁️ 離線佇列上傳 ${sent} 筆`)
       renderPendingBar(remaining.length?undefined:'done')
@@ -2306,8 +2384,28 @@ function saveTripsToStorage(){
   // 存的是「目前選擇的調查日期」（不是系統今天），這樣切換到補調查某一天時，本地暫存才對得起來
   // routeId 一起存。萬一哪天又有非同步的漏網之魚把別條路線的資料寫進來，
   // 下次還原時至少擋得住，不會變成「重開 App 還是打勾」的永久錯誤。
+  // surveyor／weather 也存：搶救舊趟次時要用當天的調查員，不能拿今天的人去頂。
   const payload={routeId:cloudRouteId||'', date:(config.date||todayStr()).slice(0,10),
+    surveyor:config.surveyor||'', weather:config.weather||'',
     tripsByRound:_thinTripsForStorage(allTripsByRound)}
+
+  // ⚠️ 本機鍵是「每條路線一個」，鍵裡沒有日期。
+  // 隔天在同一條路線存第一趟時，會把前一天的整份備份蓋掉。
+  // 若前一天有還沒確定進雲端的趟次（上傳前被關掉、或被寫進錯的資料庫而誤判成功），
+  // 那就是它唯一的一份——蓋掉就永遠找不回來。
+  // 所以覆蓋「別天／別條路線」的備份之前，先把未確認的趟次搶救進離線佇列（佇列跨日期保存）。
+  // 搶救不完整（通常是儲存空間滿了）就寧可不覆蓋：今天這趟還在記憶體裡、也會照常上傳，
+  // 但昨天那份一旦蓋掉就沒了。
+  try{
+    const prev=JSON.parse(localStorage.getItem(k)||'null')
+    const otherDay   = prev && (prev.date||'').slice(0,10)!==payload.date
+    const otherRoute = prev && prev.routeId && payload.routeId && prev.routeId!==payload.routeId
+    if(otherDay || otherRoute){
+      const r=_rescueUnverified(prev)
+      if(r.failed>0){ _storageFullWarn(); return false }
+    }
+  }catch(e){}
+
   try{
     localStorage.setItem(k, JSON.stringify(payload))
     return true
@@ -2325,16 +2423,69 @@ function saveTripsToStorage(){
   }
 }
 // 清掉其他日期／其他路線的本機暫存（那些不是當下要用的），保留離線佇列
+// 空間不足時騰出空間。原則：只刪「確定可以從雲端拿回來」的東西。
+//
+// 舊版比對 /^trips_|^svy_/，但現行的鍵是 survey_ 開頭——正則根本對不上，
+// 等於什麼都沒刪，「先清再存」的備援是假的。可是也不能直接把正則改成 survey_，
+// 那會把還沒確認上傳的趟次一起刪掉。所以改成逐份檢查：
+//   ・survey_hist_*：上傳成功後留的小摘要，雲端歷史可重建 → 可刪
+//   ・別條路線的趟次備份：裡面每一趟都已確認在雲端 → 可刪；有任何一趟未確認 → 保留
+//   ・離線佇列、資料庫 ID 記錄、看不懂格式的舊鍵 → 一律保留
 function _pruneOldStorage(keepKey){
   const drop=[]
   for(let i=0;i<localStorage.length;i++){
     const key=localStorage.key(i)
-    if(!key) continue
-    if(key===keepKey || key===OFFLINE_QUEUE_KEY) continue
-    if(/^trips_|^svy_/.test(key)) drop.push(key)
+    if(!key || key===keepKey || key===OFFLINE_QUEUE_KEY || key===DB_PIN_KEY) continue
+    if(key.indexOf(HIST_PREFIX)===0){ drop.push(key); continue }
+    if(key.indexOf(LS_PREFIX)===0){
+      try{
+        const v=JSON.parse(localStorage.getItem(key)||'null')
+        if(v && v.tripsByRound && _allConfirmed(v.tripsByRound)) drop.push(key)
+      }catch(e){}   // 解析不了 → 不知道裡面是什麼 → 不刪
+    }
   }
   drop.forEach(key=>{ try{ localStorage.removeItem(key) }catch(e){} })
   return drop.length
+}
+function _allConfirmed(byRound){
+  return Object.keys(byRound||{}).every(n=>
+    Object.keys(byRound[n]||{}).every(k=>{ const t=byRound[n][k]; return !t || tripConfirmed(t) }))
+}
+
+// 把一份本機備份裡「還沒確定進雲端」的趟次排進離線佇列。
+// 一律用 ifAbsent：雲端已經有的就略過，不會蓋掉 PM 在後台改過的內容；
+// 雲端沒有的（例如被寫進錯資料庫那幾趟）就補上。
+// 佇列裡已經有同一組合的就不重複排——那一筆是「上傳失敗待補送」的正常版本，
+// 用 ifAbsent 版蓋掉它，萬一雲端有舊版本，新資料反而會被略過。
+function _rescueUnverified(stored){
+  const out={queued:0, failed:0}
+  if(!stored || !stored.tripsByRound || !cloudScriptUrl || !cloudApiKey) return out
+  const rid=stored.routeId||cloudRouteId
+  const day=(stored.date||'').slice(0,10)
+  if(!rid || !day) return out
+  const queued=new Set()
+  offlineQueue().forEach(it=>{
+    const b=it.body||{}
+    if(b.routeId!==rid || (b.date||'').slice(0,10)!==day) return
+    Object.keys(b.trips||{}).forEach(k=>queued.add((b.round||1)+'|'+k))
+  })
+  Object.keys(stored.tripsByRound).forEach(n=>{
+    const bucket=stored.tripsByRound[n]||{}
+    Object.keys(bucket).forEach(k=>{
+      const t=bucket[k]
+      if(!t || tripConfirmed(t)) return
+      if(!t.startTime || !t.endTime) return          // 沒跑完的半趟不送
+      if(queued.has((+n||1)+'|'+k)) return
+      const ok=enqueueOffline({gsUrl:cloudScriptUrl, apiKey:cloudApiKey, body:{
+        action:'saveSurvey', routeId:rid, date:day, round:+n||1,
+        surveyor:stored.surveyor||config.surveyor||'', weather:stored.weather||config.weather||'',
+        trips:{[k]:buildTripEntry(t)}, ifAbsent:true
+      }})
+      if(ok) out.queued++; else out.failed++
+    })
+  })
+  if(out.queued>0) try{ showToast(`🛟 已保全 ${out.queued} 筆先前未確認上傳的調查`) }catch(e){}
+  return out
 }
 // 儲存空間不足的警告。這會讓調查白工，所以用最顯眼的方式講，而且不自動消失。
 let _storageWarnShown=false
@@ -2363,11 +2514,19 @@ function loadTripsFromStorage(){
     const parsed=JSON.parse(raw)
     const savedDate = parsed.date
     const workDate = (config.date||todayStr()).slice(0,10)
-    // 本地暫存跟目前選擇的調查日期不同，就不還原（換一天調查＝重新開始，避免跟別天的資料混在一起）
-    if(savedDate && savedDate.slice(0,10) !== workDate) return 0
-    // 存檔標記的路線跟現在這條不一樣＝這份備份不屬於這條路線，直接丟掉並清乾淨
+    // 本地暫存跟目前選擇的調查日期不同，就不還原（換一天調查＝重新開始，避免跟別天的資料混在一起）。
+    // 但不還原不等於不管它：裡面若有沒確定進雲端的趟次，現在就搶救進佇列開始補送，
+    // 不要等到今天第一趟存檔、差點把它蓋掉的時候才處理。
+    if(savedDate && savedDate.slice(0,10) !== workDate){
+      _rescueUnverified(parsed)
+      return 0
+    }
+    // 存檔標記的路線跟現在這條不一樣＝這份備份不屬於這條路線。
+    // ⚠️ 舊版直接 removeItem 刪掉——但那份可能有那條路線還沒上傳的趟次。先搶救，全部排進佇列了才刪。
     if(parsed.routeId && cloudRouteId && parsed.routeId !== cloudRouteId){
-      try{ localStorage.removeItem(k) }catch(e){}
+      const r=_rescueUnverified(parsed)
+      if(r.failed===0){ try{ localStorage.removeItem(k) }catch(e){} }
+      else _storageFullWarn()
       return 0
     }
     let count=0
@@ -6196,14 +6355,12 @@ function goReady(){
 let _uploadBusy=false
 async function submitToCloud(tripKey, round){
   if(!cloudRouteId||!cloudScriptUrl||!cloudApiKey) return
-  if(_uploadBusy) return
-  _uploadBusy=true
 
-  const statusEl=document.getElementById('cloud-upload-status')
-  const btnEl=document.getElementById('cloud-upload-btn')
-  if(statusEl) statusEl.textContent='⏳ 自動上傳中...'
-  if(btnEl){ btnEl.disabled=true; btnEl.style.display='none' }
-
+  // ⚠️ 先把要送的內容組好，再判斷能不能送。
+  // 舊寫法是 `if(_uploadBusy) return` 擺在最前面：上一趟還在重試上傳時，
+  // 下一趟一結束就呼叫這裡，結果被直接 return 掉——不排佇列、不重試，
+  // 只剩本機一份副本，而且要等下次重開 App 對帳才會被發現。
+  // 伺服器忙碌時重試會拖很久，這種「疊在一起」的情況反而更常見。
   const body={
     action:   'saveSurvey',
     routeId:  cloudRouteId,
@@ -6213,13 +6370,34 @@ async function submitToCloud(tripKey, round){
     round:    round || selRound || 1,
     trips:    buildTripsPayload(tripKey)
   }
+  if(_uploadBusy){
+    // 前一筆還在送 → 排進佇列。前一筆送完後會呼叫 flushOfflineQueue() 一併補送。
+    enqueueOffline({gsUrl:cloudScriptUrl,apiKey:cloudApiKey,body})
+    showToast('⏳ 前一筆仍在上傳，這一趟已排入佇列')
+    return
+  }
+  _uploadBusy=true
+
+  const statusEl=document.getElementById('cloud-upload-status')
+  const btnEl=document.getElementById('cloud-upload-btn')
+  if(statusEl) statusEl.textContent='⏳ 自動上傳中...'
+  if(btnEl){ btnEl.disabled=true; btnEl.style.display='none' }
 
   const tdStatus = document.getElementById('td-cloud-status')
   try{
-    await cloudPostSurvey(cloudScriptUrl, cloudApiKey, body)
+    const data=await cloudPostSurvey(cloudScriptUrl, cloudApiKey, body)
+    const v=_verifyReceipt(cloudScriptUrl, body, data)
+    if(!v.ok){
+      // 伺服器說成功，但收據對不上 → 不能標成已上傳。
+      // 丟進 catch 走跟上傳失敗一樣的路：保留、排入佇列、顯示原因。
+      // 資料庫被掉包的情況下，佇列會一直補送失敗，直到管理員把資料庫改回來，
+      // 屆時收據比對通過就自動補上——不需要任何人手動處理手機上的資料。
+      _receiptWarn(v.reason)
+      throw new Error(v.reason)
+    }
     cloudSubmitted=true
     // 確認進了雲端才把這幾趟標成已上傳，組合按鈕才會從橘色時鐘變綠勾
-    markUploaded(body.round, Object.keys(body.trips||{}))
+    markUploaded(body.round, Object.keys(body.trips||{}), !v.legacy)
     saveToLocalHistory()    // persist to device as offline backup
     _histCache=null; _histRouteId=null   // invalidate cache so cloud re-fetch gets fresh data
     loadCloudHistory()      // refresh history from cloud
@@ -6229,7 +6407,7 @@ async function submitToCloud(tripKey, round){
     showToast('☁️ 調查結果已上傳')
     flushOfflineQueue()
   }catch(e){
-    if(statusEl) statusEl.textContent='❌ 上傳失敗：'+e.message+'（已排入佇列，恢復連線會自動補送）'
+    if(statusEl) statusEl.textContent='❌ 上傳失敗：'+e.message+'（資料已保留，稍後會自動補送）'
     if(btnEl){ btnEl.disabled=false; btnEl.style.display='block'; btnEl.textContent='🔄 重新上傳' }
     if(tdStatus){ tdStatus.style.background='#fef2f2'; tdStatus.style.color='#dc2626'; tdStatus.textContent='❌ 上傳失敗：'+e.message }
     enqueueOffline({gsUrl:cloudScriptUrl,apiKey:cloudApiKey,body})
@@ -6316,14 +6494,24 @@ function reenqueueStrandedTrips(){
   return added
 }
 
-function markUploaded(round, keys){
+// verified＝伺服器回了收據且核對通過。只有這種（或本來就是從雲端載入的）
+// 才算「確定在雲端」，本機副本才可以在空間不足時被清掉。
+// 舊版後端只回 ok、沒有收據，那種只標 _uploaded（畫面打綠勾），但不標 _verified，
+// 本機副本會一直保留——這次事故中被寫進錯資料庫的趟次，就是這樣被誤判成已上傳的。
+function markUploaded(round, keys, verified){
   const bucket=allTripsByRound[round]; if(!bucket) return false
   let changed=false
-  ;(keys||[]).forEach(k=>{ if(bucket[k] && !bucket[k]._uploaded){ bucket[k]._uploaded=true; changed=true } })
+  ;(keys||[]).forEach(k=>{
+    const t=bucket[k]; if(!t) return
+    if(!t._uploaded){ t._uploaded=true; changed=true }
+    if(verified && !t._verified){ t._verified=true; changed=true }
+  })
   if(changed){ saveTripsToStorage(); renderComboGrid(); updateProgressChips() }
   return changed
 }
 function tripUploaded(t){ return !!(t && (t._uploaded || t._fromCloud)) }
+// 「確定在雲端」：可以安全地從本機刪掉的條件。比 tripUploaded 嚴格。
+function tripConfirmed(t){ return !!(t && (t._verified || t._fromCloud)) }
 
 function buildTripsPayload(tripKey){
   // Only send the specified trip — one cloud survey per combo
@@ -8382,16 +8570,25 @@ async function _empPost(body){
       if(txt.trim().startsWith('<')) throw new Error('雲端伺服器忙碌中')
       let json
       try{ json=JSON.parse(txt) }catch(e){ throw new Error('雲端回應無法解析') }
-      if(!json.ok) throw new Error(json.error||'寫入失敗')
+      if(!json.ok){
+        const err=new Error(json.error||'寫入失敗')
+        err.code=json.code||''; err.detail=json.detail||''
+        throw err
+      }
       return json.data
     }catch(e){
       lastErr=e
       const msg=String(e&&e.message||e)
+      if(e&&e.code==='DB_CONFIG') throw e            // 設定問題：重試無益
       // 「名冊中已有…」這種資料面的錯誤重試也沒用，直接往外丟
-      if(!_isTransient(msg) && !/忙碌|無法解析/.test(msg)) throw e
+      const retryable=(e&&e.code==='BUSY')||_isTransient(msg)||/忙碌|無法解析/.test(msg)
+      if(!retryable) throw e
       if(attempt===GS_RETRY_DELAYS.length) break
       await new Promise(r=>setTimeout(r, GS_RETRY_DELAYS[attempt]))
     }
+  }
+  if(lastErr&&lastErr.code==='BUSY'){
+    const be=new Error('系統目前忙碌中，請稍後再試'); be.code='BUSY'; throw be
   }
   throw new Error('雲端連線不穩定，已重試多次仍失敗。請確認網路後再試一次。（原因：'+_netMsg(lastErr)+'）')
 }
