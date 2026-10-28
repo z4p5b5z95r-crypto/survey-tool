@@ -6357,6 +6357,15 @@ function goReport(){
   _reportThisCombo = (cur && cur.key) || _reportThisCombo
   buildReport()
   showScreen('screen-report')
+  // 返回鈕＝回到「調查結束」那一頁（進報告的前一頁）。
+  // 舊版按鈕上寫死 goReady()，一按就跳到待命頁，調查結束頁上的
+  // 「繼續調查／重新調查／調查本案其他路線」都還沒機會按。
+  // ⚠️ 每次都要明確指定，不能沿用按鈕上一次的設定：
+  //    「過去調查記錄」那條路會把返回鈕暫時換成「還原暫存資料再回簽到頁」，
+  //    只有按了它才會換回來。若那次沒按返回就離開，沿用下去的話，
+  //    這裡按返回會把剛調查完的資料蓋成當時暫存的舊資料。
+  const backBtn=document.getElementById('report-back-btn')
+  if(backBtn) backBtn.onclick=()=>showScreen('screen-tripdone')
   // Cloud upload is handled automatically in endSurvey; hide the manual box
   const box=document.getElementById('cloud-upload-box')
   if(box) box.style.display='none'
