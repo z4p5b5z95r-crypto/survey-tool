@@ -4281,6 +4281,10 @@ function svyStopPickDelay(d, group, byVoice, sayAs){
   // 第一次選才需要把起算點回推到車子真正停下的時刻
   if(firstPick && activeDelay && _stopEvent){
     activeDelay.startedAt=new Date(_stopEvent.startedAt)
+    // 起算點回推了，按鈕計時與藍框要馬上跟著跳到正確秒數。
+    // 舊版這兩個顯示是自己從 0 累加，完全不知道起算點被回推——
+    // 停 8 秒才選原因，藍框從 0:00 開始，實際記錄卻從停下那一刻算，永遠差 8 秒。
+    if(activeDelay.paint) activeDelay.paint()
   }
   // 語音選的要記下來：若駕駛發現聽錯、改按別的原因，
   // 整段延滯會整筆改判給新的原因，不會被拆成「錯的幾秒 + 對的幾秒」。
@@ -5916,7 +5920,10 @@ function toggleDelay(d,group,opts){
     // 已經在上面被結束掉，_switching 算出來是 false），然後下面再唸一次
     // 「修改為○○」——現場聽到的就是「○○」「修改為○○」連著兩句。
     toggleDelay(d, group, {sayAs:'修改為'+d.label})   // 換成正確的原因
-    if(activeDelay && origStart) activeDelay.startedAt=origStart   // 起算點回到原本停下的時刻
+    if(activeDelay && origStart){
+      activeDelay.startedAt=origStart   // 起算點回到原本停下的時刻
+      if(activeDelay.paint) activeDelay.paint()   // 立刻重畫，不要先閃一下從 0 開始的秒數
+    }
     showToast(`✏️ 已更正為 ${d.icon} ${d.label}`, true)
     return
   }
@@ -5998,17 +6005,30 @@ function toggleDelay(d,group,opts){
     const sp = _keepPos
             || (_stopEvent && _stopEvent.pos ? {..._stopEvent.pos} : null)
             || (lastPos ? {...lastPos} : null)
-    let el=0
-    const tid=setInterval(()=>{
-      el++
-      const e=$(`dtime-${d.cause}`);if(e)e.textContent=fmtSec(el)
-      _setDelayInd(d.icon,d.label,fmtSec(el),'#fca5a5')  // 藍框實時更新
-    },1000)
-    activeDelay={cause:d.cause,group,startedAt:(_keepStart||s),timerId:tid,startPos:sp}
+    // ⚠️ 計時顯示一律「從 activeDelay.startedAt 算到現在」，不要自己 el++ 累加。
+    // 舊寫法 el 從 0 開始數，有兩個問題：
+    //  ① 改選原因時，起算時刻會沿用「車子停下的那一刻」（記錄是對的），
+    //     但 el 從 0 重數——按鈕與藍框顯示 0:05，實際記錄的是 0:45。
+    //  ② 手機螢幕變暗或切到背景時 setInterval 會被節流，el++ 會少算，越停越不準。
+    // 每次都從起算時刻重算，兩個問題一起消失；起算時刻事後被改（語音更正）也會立刻反映。
+    let tid=null
+    const paintDelay=()=>{
+      if(!activeDelay || activeDelay.timerId!==tid) return
+      const sec=Math.max(0,Math.round((Date.now()-activeDelay.startedAt.getTime())/1000))
+      const e=$(`dtime-${d.cause}`); if(e) e.textContent=fmtSec(sec)
+      _setDelayInd(d.icon,d.label,fmtSec(sec),'#fca5a5')  // 藍框實時更新
+    }
+    tid=setInterval(paintDelay,1000)
+    activeDelay={cause:d.cause,group,startedAt:(_keepStart||s),timerId:tid,startPos:sp,paint:paintDelay}
+    // 延滯正在進行 → 停止面板的大計時要恢復即時計算。
+    // 改選原因時，前一個原因會先被「內部結束」，那一步把 _stopFrozenSec 凍在當下秒數
+    // （那是給「車子開走、延滯真的結束」用的）。不在這裡解凍，
+    // 面板就會停在按下修改的那一秒，直到車子開走都不動——現場回報的正是這個。
+    _stopFrozenSec=null
     if(_stopPanelOpen) markStopPanelPicked(d)
     $(`dbtn-${d.cause}`).classList.add('active')
     clearTimeout(_delayIndTimer)
-    _setDelayInd(d.icon,d.label,'0:00','#fca5a5')
+    paintDelay()
     // 開始延滯不另外唸——toggleDelay 緊接著就會唸出原因（例如「紅燈」），
     // 那句本身就是最好的確認，多一句「延滯開始」只是拖慢。
     if(navigator.vibrate) navigator.vibrate(120)
