@@ -8,6 +8,27 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
+/* ── 技術主管唯讀：下載與修改的入口全部隱藏 ── */
+html.ro-mode [onclick*="downloadSGS("],
+html.ro-mode [onclick*="downloadSGSPdf("],
+html.ro-mode [onclick*="downloadRawTimeline("],
+html.ro-mode [onclick*="startBatchDownload("],
+html.ro-mode [onclick*="batchDownloadCurrentDate("],
+html.ro-mode [onclick*="downloadCSV("],
+html.ro-mode [onclick*="deleteOneSurvey("],
+html.ro-mode [onclick*="deleteWholeDay("],
+html.ro-mode [onclick*="startInlineEdit("],
+html.ro-mode [onclick*="saveInlineEdit("],
+html.ro-mode [onclick*="saveEdit("],
+html.ro-mode [onclick*="resetAvgRounds("],
+html.ro-mode [onclick*="_emAddDelay("],
+html.ro-mode [onclick*="_emRmDelay("],
+html.ro-mode .ph-dl { display:none !important }
+html.ro-mode body::before {
+  content:'🔒 唯讀檢視（技術主管）'; position:fixed; left:50%; bottom:14px; transform:translateX(-50%);
+  z-index:9999; background:rgba(15,23,42,.82); color:#fff; font-size:12px; font-weight:700;
+  padding:6px 14px; border-radius:999px; pointer-events:none }
+
 /* OSM 圖磚使用政策要求清楚顯示授權標示。原本十張地圖都設了 attributionControl:false，
    等於完全沒有標示。這裡把它縮到最小但仍清楚可讀：行車中不佔畫面，又符合政策。 */
 .leaflet-control-attribution{font-size:9px!important;line-height:1.3;padding:1px 5px!important;
@@ -492,6 +513,45 @@ select.pf-meta-inp{padding:2px 3px}
 </div>
 
 <script>
+// ════════════════════════════════════════════════════════════════
+//  技術主管：唯讀檢視（只能在畫面上看，不能下載、不能修改）
+// ════════════════════════════════════════════════════════════════
+// 兩層保護：
+//  ① CSS 依按鈕的 onclick 內容隱藏——連動態產生的按鈕都比對得到，不必逐一找
+//  ② 直接把這些函式換成「無權限」提示——就算哪個按鈕漏藏了，按下去也不會執行
+// 修改類的動作後端本來就會擋；下載是在瀏覽器裡產生檔案，只能靠這裡擋。
+// 注意：「只能在畫面上看」是畫面層的限制，資料既然顯示在螢幕上，
+//       瀏覽器本身的列印或截圖是擋不住的。
+const RO_BLOCK = [
+  // 下載
+  'downloadSGS','downloadSGSPdf','downloadRawTimeline','startBatchDownload','runBatchSgsPdf',
+  'batchDownloadCurrentDate','downloadCSV',
+  // 修改
+  'deleteOneSurvey','deleteWholeDay','startInlineEdit','saveInlineEdit','openEditModal','saveEdit',
+  'toggleAvgRound','resetAvgRounds','_emAddDelay','_emRmDelay'
+]
+let _roMode = false
+function enableReadOnly() {
+  if (_roMode) return
+  _roMode = true
+  document.documentElement.classList.add('ro-mode')
+  RO_BLOCK.forEach(fn => { if (typeof window[fn] === 'function') window[fn] = roBlocked })
+}
+function roBlocked() {
+  try { toastSR('🔒 技術主管帳號為唯讀：僅能在畫面上檢視報告') } catch (e) {}
+  return false
+}
+// 開報告的 PM 頁會在憑證裡帶上角色，有就立刻套用（避免按鈕先閃出來）；
+// 再向後端確認一次真正的角色——以後端為準，不只相信網址那一端傳來的資料。
+async function applyReportRole(c) {
+  if (c && c.role === 'tech_lead') enableReadOnly()
+  try {
+    const r = await cloudGet(c.gs, c.sessionToken, { action: 'ping' })
+    const role = (r && (r.data ? r.data.role : r.role)) || ''
+    if (role === 'tech_lead') enableReadOnly()
+  } catch (e) {}
+}
+
 // ── 圖磚來源（可由 PM 後台變更，不需要重新發版）──────────────────
 // OSM 圖磚使用政策明確要求「不要把圖磚網址寫死」：服務中斷或被擋時，
 // 必須能在不改程式、不重新發版的情況下換供應商。
@@ -1434,6 +1494,7 @@ function takeCreds(tok){
   const c = JSON.parse(raw)
   if(!c || !c.gs || !c.sessionToken) throw new Error('憑證格式錯誤')
   _creds = c   // 表頭修改要寫回雲端時用；所有進入路徑都會經過這裡
+  applyReportRole(c)   // 技術主管：唯讀
   // 圖磚設定背景更新。掛在這裡而不是各個進入點：三條進入路徑都會經過 takeCreds，
   // 只要改一個地方就全部涵蓋，以後新增進入點也不會漏掉。
   refreshTileCfg(c.gs, c.sessionToken)
