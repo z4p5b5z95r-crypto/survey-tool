@@ -2256,7 +2256,7 @@ let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], mea
 // 每次改版就更新這一行；登入畫面會顯示它。
 // GitHub Pages ＋ 瀏覽器快取常讓人分不清看到的是新版還是舊版，
 // 現場回報問題時先問這個號碼，可以省掉一半的猜測。
-const APP_VERSION = '2026-11-01a'
+const APP_VERSION = '2026-11-01b'
 ;(function showVersion(){
   const el=document.getElementById('login-version')
   if(el) el.textContent = 'build ' + APP_VERSION
@@ -2971,8 +2971,15 @@ async function addNode(lat,lng,name,radius=15,exitName='',polygon=null,lineAngle
     if(!segData[idx-1])segData[idx-1]={name:'',lanes:2,width:8,length:0,_auto:true,waypoints:[]}
     segData[idx-1]._latlngs=result.latlngs
     segData[idx-1]._latlngsStr=JSON.stringify(result.latlngs)
-    if(segData[idx-1]._auto!==false){segData[idx-1].length=result.distance;segData[idx-1]._source=result.source}
-    if(result.source==='straight')toast('⚠️ 使用直線距離（OSRM 無回應）')
+    // ⚠️ 開啟既有路線時（_loadingTask）不可以改動存好的長度——開啟只是讀，不能改資料。
+    //    沒存路線幾何的路段，開啟時會重新向 OSRM 要一次路線，算出來的距離常常跟當初差幾公尺；
+    //    若照樣寫回去，PM 什麼都沒動，長度就從 376 變成 373（現場回報的正是這個）。
+    //    只有「存的長度是 0（從來沒算過）」才在開啟時補算。
+    //    PM 實際編輯路線（拖節點、改途經點）時 _loadingTask 是 false，照常自動更新。
+    const _keepStored = _loadingTask && (+segData[idx-1].length>0)
+    if(segData[idx-1]._auto!==false && !_keepStored){segData[idx-1].length=result.distance;segData[idx-1]._source=result.source}
+    else if(_keepStored && !segData[idx-1]._source){segData[idx-1]._source=result.source}
+    if(result.source==='straight' && !_keepStored)toast('⚠️ 使用直線距離（OSRM 無回應）')
     updateTotalLength()
   }
   renderNodeList(); renderSegTable(); refreshMidHandles()
