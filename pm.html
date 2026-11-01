@@ -480,6 +480,9 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .seg-input:focus{border-color:#2563eb}
 .dist-auto{color:#16a34a;font-size:9px;margin-left:1px}
 .dist-manual{color:#94a3b8;font-size:9px;margin-left:1px}
+.dist-reset{margin-left:4px;padding:1px 6px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;
+  border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+.dist-reset:hover{background:#e0e7ff}
 
 /* QR */
 .qr-url-row input{width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;margin-bottom:8px}
@@ -2253,7 +2256,7 @@ let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], mea
 // 每次改版就更新這一行；登入畫面會顯示它。
 // GitHub Pages ＋ 瀏覽器快取常讓人分不清看到的是新版還是舊版，
 // 現場回報問題時先問這個號碼，可以省掉一半的猜測。
-const APP_VERSION = '2026-10-30a'
+const APP_VERSION = '2026-11-01a'
 ;(function showVersion(){
   const el=document.getElementById('login-version')
   if(el) el.textContent = 'build ' + APP_VERSION
@@ -2987,6 +2990,44 @@ function updateAllIcons() {
 }
 // 全長預設用路段長度自動加總；如果使用者已經手動改過（_tlManualOverride），就不要再覆蓋它
 let _tlManualOverride=false
+// 開啟路線時判斷一段長度是不是自動算的。
+//  ・存檔時標了 dm（手動）→ 手動
+//  ・長度是 0（還沒算）→ 自動，讓它之後被算出來
+//  ・舊資料沒有標記 → 跟路線量出來的長度比，差不到 1%（或 2 公尺內）就算自動；
+//    沒有路線幾何時改跟節點間直線距離比
+//  無法判斷（地圖還沒就緒等）時當自動，寧可之後被重算，也不要每一列都亮「手動」。
+function _segLenIsAuto(s, i, nd){
+  if(s && s.dm) return false
+  const d=+(s&&s.d)||0
+  if(!d) return true
+  try{
+    let ref=0
+    if(Array.isArray(s.ll) && s.ll.length>=2) ref=_llsMeters(s.ll)
+    else if(nd && nd[i] && nd[i+1]) ref=haversine(nd[i].a,nd[i].o,nd[i+1].a,nd[i+1].o)
+    if(!ref) return true
+    return Math.abs(d-ref) <= Math.max(2, ref*0.01)
+  }catch(e){ return true }
+}
+// 把手動改過的路段長度改回「依路線自動計算」。
+// 自動長度＝沿著畫出來的那條路線（OSRM 或直線）量的距離，跟一開始自動算的方式相同。
+// 路線幾何不在的話（極舊資料）才退回節點間直線距離。
+function resetSegAuto(indices){
+  ;(indices||[]).forEach(idx=>{
+    const sd=segData[idx]; if(!sd) return
+    let lls=sd._latlngs
+    if(!(Array.isArray(lls)&&lls.length>=2) && sd._latlngsStr){ try{ lls=JSON.parse(sd._latlngsStr) }catch(e){} }
+    if(!(Array.isArray(lls)&&lls.length>=2) && segPolylines[idx]){
+      const pts=segPolylines[idx].getLatLngs(); lls=Array.isArray(pts[0])?pts[0]:pts
+    }
+    let m=_llsMeters(lls)
+    if(!m && nodes[idx] && nodes[idx+1]) m=Math.round(haversine(nodes[idx].lat,nodes[idx].lng,nodes[idx+1].lat,nodes[idx+1].lng))
+    sd.length=m
+    sd._auto=true
+  })
+  updateTotalLength()
+  renderSegTable()
+  toast('↺ 已改回自動計算長度')
+}
 function updateTotalLength() {
   if(_tlManualOverride) return
   const total=segData.reduce((s,d)=>s+(d.length||0),0)
@@ -3372,11 +3413,17 @@ function renderSegTable() {
     // 使用者按下儲存時就會把新格式寫回去
     const defName=segDisp(segData[pi]._nameCustom?segData[pi].name:autoName)
     const isMerged=indices.length>1
-    const badge=isMerged
+    // 這一列有沒有被手動改過（合併列：任何一段被改過就算）
+    const isManual=indices.some(idx=>segData[idx]._auto===false)
+    // 手動改過的列旁邊放「↺ 自動」：PM 改完又想恢復自動計算時，不用自己去算原本是幾公尺
+    const resetBtn=isManual
+      ?`<button type="button" class="dist-reset" title="改回依路線自動計算長度" onclick="resetSegAuto(${JSON.stringify(indices)})">↺ 自動</button>`
+      :''
+    const badge=(isMerged
       ?'<span class="dist-manual" title="含假節點，距離已合併">合併</span>'
       :segData[pi]._source==='straight'?'<span class="dist-manual">直線</span>'
-      :segData[pi]._auto!==false?'<span class="dist-auto">✓</span>'
-      :'<span class="dist-manual">手動</span>'
+      :!isManual?'<span class="dist-auto">✓</span>'
+      :'<span class="dist-manual">手動</span>')+resetBtn
     const onLanes=indices.map(idx=>`segData[${idx}].lanes=+this.value||2`).join(';')
     const onWidth=indices.map(idx=>`segData[${idx}].width=+this.value||8`).join(';')
     // Length change on merged row: distribute proportionally across constituent segments
@@ -3572,7 +3619,7 @@ function buildConfig() {
     opn:document.getElementById('opn').value.trim()||'離峰',
     pkn:document.getElementById('pkn').value.trim()||'尖峰',
     nd:nodes.map(n=>({n:n.name,n2:n.exitName||'',a:parseFloat(n.lat.toFixed(6)),o:parseFloat(n.lng.toFixed(6)),r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n._ghost||false})),
-    sg:segData.map((s,i)=>{const obj={n:s.name,l:s.lanes||2,w:s.width||8,d:s.length||0};if(s.waypoints?.length)obj.wp=s.waypoints.map(w=>({a:+w.lat.toFixed(6),o:+w.lng.toFixed(6)}));if(s.mode&&s.mode!=='driving')obj.m=s.mode;let ll=s._latlngs;if(!ll&&s._latlngsStr){try{ll=JSON.parse(s._latlngsStr)}catch{}}if(!ll){const poly=segPolylines[i];if(poly){const pts=poly.getLatLngs();ll=Array.isArray(pts[0])?pts.map(p=>[+p[0].toFixed(6),+p[1].toFixed(6)]):pts.map(p=>[+p.lat.toFixed(6),+p.lng.toFixed(6)])}}if(ll?.length>=2)obj.ll=ll;return obj})
+    sg:segData.map((s,i)=>{const obj={n:s.name,l:s.lanes||2,w:s.width||8,d:s.length||0};if(s._auto===false)obj.dm=1;if(s.waypoints?.length)obj.wp=s.waypoints.map(w=>({a:+w.lat.toFixed(6),o:+w.lng.toFixed(6)}));if(s.mode&&s.mode!=='driving')obj.m=s.mode;let ll=s._latlngs;if(!ll&&s._latlngsStr){try{ll=JSON.parse(s._latlngsStr)}catch{}}if(!ll){const poly=segPolylines[i];if(poly){const pts=poly.getLatLngs();ll=Array.isArray(pts[0])?pts.map(p=>[+p[0].toFixed(6),+p[1].toFixed(6)]):pts.map(p=>[+p.lat.toFixed(6),+p.lng.toFixed(6)])}}if(ll?.length>=2)obj.ll=ll;return obj})
   }
 }
 function encodeConfig(cfg) { return btoa(unescape(encodeURIComponent(JSON.stringify(cfg)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'') }
@@ -3683,7 +3730,7 @@ async function downloadQR() {
 // ════════════════════════════════════════════════════════
 // 共用：把一個 cfg 物件包成 saveRoute 要送出的 payload（saveTask 及清單頁 QR 自動上傳都用這個，避免兩邊邏輯兜不起來）
 function buildRoutePayload(cfg, cloudId, owner, projectCloudId) {
-  return {action:'saveRoute',id:cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,roundCount:cfg.rc||3,offPeakLabel:cfg.op,peakLabel:cfg.pk,offPeakName:cfg.opn||'離峰',peakName:cfg.pkn||'尖峰',periods:cfg.pds||undefined,projectId:projectCloudId||'',owner:owner||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
+  return {action:'saveRoute',id:cloudId||undefined,routeName:cfg.rn,routeFromTo:cfg.ft,totalLength:cfg.tl,roundCount:cfg.rc||3,offPeakLabel:cfg.op,peakLabel:cfg.pk,offPeakName:cfg.opn||'離峰',peakName:cfg.pkn||'尖峰',periods:cfg.pds||undefined,projectId:projectCloudId||'',owner:owner||'',nodes:cfg.nd.map(n=>({name:n.n,exitName:n.n2||'',lat:n.a,lng:n.o,radius:n.r,polygon:n.pg||null,lineAngle:n.la??null,lineLength:n.ll||20,ghost:n.gh||false})),segments:cfg.sg.map(s=>{const seg={name:s.n,lanes:s.l,width:s.w,length:s.d,mode:s.m||'driving'};if(s.dm)seg.distManual=true;if(s.wp?.length)seg.waypoints=s.wp.map(w=>({lat:w.a,lng:w.o}));if(s.ll?.length)seg.latlngs=s.ll;return seg})}
 }
 // 把本機專案 id 解析成雲端專案 id；若專案還沒同步過雲端，先同步一次
 async function ensureProjectCloudSynced(proj) {
@@ -3865,7 +3912,10 @@ async function loadTask(id) {
   radiusCircles.forEach(c=>map.removeLayer(c));radiusCircles=[];_removeStopLineHandles()
   segPolylines.forEach(p=>map.removeLayer(p));segPolylines=[]
   nodes=[]
-  segData=cfg.sg?cfg.sg.map(s=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:false,waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o})),mode:s.m||'driving',_latlngs:s.ll||null})):[]
+  // ⚠️ 以前這裡一律 _auto:false：每條路線一重開，所有路段都顯示「手動」，
+  //    但 PM 根本沒改過——「手動／自動」的狀態從來沒有存下來。
+  //    現在：有存 dm（手動）標記就照標記；舊資料沒有標記，就看長度是否等於路線量出來的長度。
+  segData=cfg.sg?cfg.sg.map((s,i)=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:_segLenIsAuto(s,i,cfg.nd),waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o})),mode:s.m||'driving',_latlngs:s.ll||null})):[]
   _loadingTask=true
   if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||20,n.gh||false)}
   _loadingTask=false
@@ -4154,11 +4204,11 @@ async function syncFromCloud(opts) {
         const so=(r.sortOrder===''||r.sortOrder==null)?null:+r.sortOrder
         if(loc.sortOrder!==so){loc.sortOrder=so;changed++}
         if(loc.projectId!==localProjectId){loc.projectId=localProjectId;changed++}
-        const newCfg=normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',pds:r.periods||null,nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})})
+        const newCfg=normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',pds:r.periods||null,nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.distManual)seg.dm=1;if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})})
         if(JSON.stringify(loc.cfg)!==JSON.stringify(newCfg)){loc.cfg=newCfg;changed++}
         continue
       }
-      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,projectId:localProjectId,creator:me,owner:S(r.owner),sortOrder:(r.sortOrder===''||r.sortOrder==null)?null:+r.sortOrder,cfg:normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',pds:r.periods||null,nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}),savedAt:S(r.createdAt).slice(0,10)||'雲端'})
+      savedTasks.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),cloudId:r.id,projectId:localProjectId,creator:me,owner:S(r.owner),sortOrder:(r.sortOrder===''||r.sortOrder==null)?null:+r.sortOrder,cfg:normalizeCfg({v:1,rn:r.routeName||'',ft:r.routeFromTo||'',tl:r.totalLength||0,rc:Math.min(RC_MAX,Math.max(1,+r.roundCount||3)),op:r.offPeakLabel||'14:00~16:00',pk:r.peakLabel||'17:00~19:00',opn:r.offPeakName||'離峰',pkn:r.peakName||'尖峰',pds:r.periods||null,nd:(r.nodes||[]).map(n=>({n:n.name,n2:n.exitName||'',a:n.lat,o:n.lng,r:n.radius||15,pg:n.polygon||null,la:n.lineAngle??null,ll:n.lineLength||10,gh:n.ghost||false})),sg:(r.segments||[]).map(s=>{const seg={n:s.name,l:s.lanes,w:s.width,d:s.length};if(s.distManual)seg.dm=1;if(s.mode&&s.mode!=='driving')seg.m=s.mode;if(s.waypoints?.length)seg.wp=s.waypoints.map(w=>({a:w.lat,o:w.lng}));if(s.latlngs?.length)seg.ll=s.latlngs;return seg})}),savedAt:S(r.createdAt).slice(0,10)||'雲端'})
       changed++
     }
     // 移除本機有 cloudId 但雲端「我的路線」已不存在的項目（刪除同步 + 清除誤匯入的他人路線）
