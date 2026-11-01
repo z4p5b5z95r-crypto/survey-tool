@@ -2256,7 +2256,7 @@ let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], mea
 // 每次改版就更新這一行；登入畫面會顯示它。
 // GitHub Pages ＋ 瀏覽器快取常讓人分不清看到的是新版還是舊版，
 // 現場回報問題時先問這個號碼，可以省掉一半的猜測。
-const APP_VERSION = '2026-11-01c'
+const APP_VERSION = '2026-11-01d'
 ;(function showVersion(){
   const el=document.getElementById('login-version')
   if(el) el.textContent = 'build ' + APP_VERSION
@@ -6748,43 +6748,38 @@ async function downloadMonthlySchedule(){
     const [res]=await Promise.all([ cloudGet({action:'getMonthlySchedule', month:mon}, 45000), ensureXLSX() ])
     const rows=(res&&res.rows)||[]
     if(!rows.length){ toast(`${mon} 沒有任何調查紀錄`); return }
-    const perTxt=bp=>Object.keys(bp||{}).map(k=>`${k}×${bp[k]}`).join('、')
+    const pns=(res.periodNames&&res.periodNames.length)?res.periodNames
+      :[...new Set(rows.flatMap(r=>Object.keys(r.byPeriod||{})))]
 
-    // ① 每日明細：一列＝某天、某專案、某位調查員
-    const detail=[['日期','區域','專案','專案路線數','專案總里程(km)','調查員','當日調查路線數','完成趟數(單程)','完整來回數','時段明細']]
-    rows.forEach(r=>detail.push([r.date,r.region,r.projectName,r.projectRouteCount,r.projectLengthKm,
-      r.surveyor,r.routesSurveyed,r.trips,r.roundTrips,perTxt(r.byPeriod)]))
-
-    // ② 每人月彙總：算津貼通常以「人 × 專案」為單位
-    const agg={}
-    rows.forEach(r=>{
-      const k=r.surveyor+'|'+r.projectId
-      const a=agg[k]||(agg[k]={surveyor:r.surveyor,project:r.projectName,region:r.region,
-        routeCount:r.projectRouteCount,km:r.projectLengthKm,days:new Set(),trips:0,rts:0,bp:{}})
-      a.days.add(r.date); a.trips+=r.trips; a.rts+=r.roundTrips
-      Object.keys(r.byPeriod||{}).forEach(p=>a.bp[p]=(a.bp[p]||0)+r.byPeriod[p])
-    })
-    const sum=[['調查員','專案','區域','專案路線數','專案總里程(km)','調查天數','完成趟數(單程)','完整來回數','時段合計']]
-    Object.values(agg)
-      .sort((a,b)=>a.surveyor.localeCompare(b.surveyor,'zh-Hant')||a.project.localeCompare(b.project,'zh-Hant'))
-      .forEach(a=>sum.push([a.surveyor,a.project,a.region,a.routeCount,a.km,a.days.size,a.trips,a.rts,perTxt(a.bp)]))
+    // 一列＝某天、某專案。同一天同一專案有幾個人跑，調查人員就列幾個名字。
+    // 一趟＝同路線、同回合、同時段的去程＋回程（不必同一個人）；只有單程的列在「未完成」。
+    const head=['調查日期','調查人員','專案','專案路線數','專案里程(km)','PM設定時段數','PM要求每路線趟數',
+                ...pns.map(n=>`${n}完成趟數`),'完成趟數合計','未完成(只有單程)']
+    const sheet=[head]
+    rows.forEach(r=>sheet.push([
+      r.date, (r.surveyors||[]).join('、')||'（未填調查員）', r.projectName,
+      r.projectRouteCount, r.projectLengthKm, r.periodCount, r.requiredPerRoute,
+      ...pns.map(n=>(r.byPeriod&&r.byPeriod[n]?r.byPeriod[n].done:0)),
+      r.done, r.partial
+    ]))
 
     const note=[['當月行程說明'],[],
       ['月份',mon],['範圍',scope],['產製時間',new Date().toLocaleString('zh-TW',{hour12:false})],['產製人',getCurrentUser()||''],[],
+      ['欄位說明'],
+      ['・一列＝某一天、某一個專案；同一天同一專案有多位調查人員時，名字列在同一格'],
+      ['・一趟＝同一條路線、同一回合、同一時段的「去程＋回程」，去程與回程不必是同一個人'],
+      ['・PM要求每路線趟數＝PM 設定的時段數 × 每日調查次數；同專案各路線設定不同時以範圍表示（例：6~9）'],
+      ['・未完成＝只跑了單程（另一個方向沒有人跑），不計入完成趟數'],[],
       ['計算規則'],
-      ['・完成趟數只計有效趟次：被「重新調查」取代、或已刪除的紀錄不列入'],
-      ['・「排除平均」的趟次仍列入（只是不納入統計平均，調查員確實有跑）'],
-      ['・完整來回＝同路線、同回合、同時段，去程與回程都有才算一組'],
-      ['・同一天同一專案若有多位調查員，各自分列']]
+      ['・只計有效趟次：被「重新調查」取代、或已刪除的紀錄不列入'],
+      ['・「排除平均」的趟次仍列入（只是不納入統計平均，調查員確實有跑）']]
 
     const wb=XLSX.utils.book_new()
-    const ws1=XLSX.utils.aoa_to_sheet(detail), ws2=XLSX.utils.aoa_to_sheet(sum), ws3=XLSX.utils.aoa_to_sheet(note)
-    ws1['!cols']=[{wch:11},{wch:6},{wch:24},{wch:9},{wch:12},{wch:10},{wch:12},{wch:12},{wch:10},{wch:30}]
-    ws2['!cols']=[{wch:10},{wch:24},{wch:6},{wch:9},{wch:12},{wch:9},{wch:12},{wch:10},{wch:30}]
-    ws3['!cols']=[{wch:60},{wch:30}]
-    XLSX.utils.book_append_sheet(wb,ws2,'每人月彙總')
-    XLSX.utils.book_append_sheet(wb,ws1,'每日明細')
-    XLSX.utils.book_append_sheet(wb,ws3,'說明')
+    const ws=XLSX.utils.aoa_to_sheet(sheet), ws2=XLSX.utils.aoa_to_sheet(note)
+    ws['!cols']=[{wch:11},{wch:18},{wch:22},{wch:9},{wch:11},{wch:11},{wch:14},...pns.map(()=>({wch:13})),{wch:12},{wch:15}]
+    ws2['!cols']=[{wch:70},{wch:30}]
+    XLSX.utils.book_append_sheet(wb,ws,'當月行程')
+    XLSX.utils.book_append_sheet(wb,ws2,'說明')
     XLSX.writeFile(wb,`當月行程_${mon}_${scope}.xlsx`)
     toast(`✅ 已下載 ${mon} 當月行程（${rows.length} 筆）`)
   }catch(e){
@@ -6793,6 +6788,7 @@ async function downloadMonthlySchedule(){
     if(btn){ btn.disabled=false; btn.textContent='📥 下載當月行程' }
   }
 }
+
 
 // xlsx 是 930KB，只有下載 SGS 表時才需要，改成按下才載入
 let _xlsxLoading = null
