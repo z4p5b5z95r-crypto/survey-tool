@@ -2256,7 +2256,7 @@ let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], mea
 // 每次改版就更新這一行；登入畫面會顯示它。
 // GitHub Pages ＋ 瀏覽器快取常讓人分不清看到的是新版還是舊版，
 // 現場回報問題時先問這個號碼，可以省掉一半的猜測。
-const APP_VERSION = '2026-11-01d'
+const APP_VERSION='2026-11-01g'
 ;(function showVersion(){
   const el=document.getElementById('login-version')
   if(el) el.textContent = 'build ' + APP_VERSION
@@ -6748,36 +6748,64 @@ async function downloadMonthlySchedule(){
     const [res]=await Promise.all([ cloudGet({action:'getMonthlySchedule', month:mon}, 45000), ensureXLSX() ])
     const rows=(res&&res.rows)||[]
     if(!rows.length){ toast(`${mon} 沒有任何調查紀錄`); return }
-    const pns=(res.periodNames&&res.periodNames.length)?res.periodNames
-      :[...new Set(rows.flatMap(r=>Object.keys(r.byPeriod||{})))]
-
-    // 一列＝某天、某專案。同一天同一專案有幾個人跑，調查人員就列幾個名字。
-    // 一趟＝同路線、同回合、同時段的去程＋回程（不必同一個人）；只有單程的列在「未完成」。
-    const head=['調查日期','調查人員','專案','專案路線數','專案里程(km)','PM設定時段數','PM要求每路線趟數',
-                ...pns.map(n=>`${n}完成趟數`),'完成趟數合計','未完成(只有單程)']
-    const sheet=[head]
-    rows.forEach(r=>sheet.push([
-      r.date, (r.surveyors||[]).join('、')||'（未填調查員）', r.projectName,
-      r.projectRouteCount, r.projectLengthKm, r.periodCount, r.requiredPerRoute,
-      ...pns.map(n=>(r.byPeriod&&r.byPeriod[n]?r.byPeriod[n].done:0)),
-      r.done, r.partial
-    ]))
+    // 版面（依需求範本）：每筆＝某天某專案，佔兩列。
+    //   上列：A~I 基本資料（上下兩列合併）＋每條路線的名稱（橫跨「完成／未完成」兩格）
+    //   下列：每條路線的完成趟數、未完成趟數
+    // 一趟＝同路線、同回合、同時段的去程＋回程（不必同一個人）；只有單程算未完成。
+    const RATE_CELL="'說明'!$B$3"                       // 每趟津貼單價放在說明頁，改一格全部重算
+    const maxR=Math.max(1,...rows.map(r=>(r.byRoute||[]).length))
+    const FIX=['調查日期','調查人員','專案名稱','專案路線數','專案路線里程\n加總(km)','PM設定時段','PM要求每路線趟數','本次調查總里程數加總(km)','津貼估算(元)']
+    const head=[...FIX]
+    for(let i=0;i<maxR;i++) head.push('完成趟數','未完成趟數')
+    const sheet=[head], merges=[], fCells=[]
+    const col=i=>XLSX.utils.encode_col(i)
+    rows.forEach(r=>{
+      const top=sheet.length, br=r.byRoute||[]
+      const up=[r.date, (r.surveyors||[]).join('、')||'（未填調查員）', r.projectName,
+        r.projectRouteCount, r.projectLengthKm,
+        (r.periodList&&r.periodList.length)?r.periodList.join('、'):r.periodCount,
+        r.requiredPerRoute, (r.surveyKm!=null?r.surveyKm:''), null]
+      const dn=new Array(FIX.length).fill(null)
+      br.forEach((x,i)=>{ up.push(x.name,null); dn.push(x.done,x.partial) })
+      sheet.push(up, dn)
+      for(let c=0;c<FIX.length;c++) merges.push({s:{r:top,c},e:{r:top+1,c}})
+      br.forEach((x,i)=>{ const c=FIX.length+i*2; merges.push({s:{r:top,c},e:{r:top,c:c+1}}) })
+      // 津貼＝各路線完成趟數加總 × 單價
+      const sumDone=br.map((x,i)=>col(FIX.length+i*2)+(top+2)).join('+')||'0'
+      fCells.push({r:top, f:`(${sumDone})*${RATE_CELL}`})
+    })
+    // 合計列
+    const last=sheet.length
+    const tot=new Array(FIX.length).fill(null); tot[0]='合計'
+    sheet.push(tot)
+    const ws=XLSX.utils.aoa_to_sheet(sheet)
+    fCells.forEach(x=>{ ws[XLSX.utils.encode_cell({r:x.r,c:8})]={t:'n',f:x.f} })
+    if(last>1){
+      ws[XLSX.utils.encode_cell({r:last,c:7})]={t:'n',f:`SUM(H2:H${last})`}
+      ws[XLSX.utils.encode_cell({r:last,c:8})]={t:'n',f:`SUM(I2:I${last})`}
+    }
+    ws['!merges']=merges
+    ws['!cols']=[{wch:12},{wch:18},{wch:20},{wch:11},{wch:13},{wch:30},{wch:16},{wch:22},{wch:14},
+                 ...Array.from({length:maxR},()=>[{wch:16},{wch:12}]).flat()]
 
     const note=[['當月行程說明'],[],
+      ['每趟津貼單價(元)',200,'← 修改這一格，當月行程的「津貼估算」會自動重算'],[],
       ['月份',mon],['範圍',scope],['產製時間',new Date().toLocaleString('zh-TW',{hour12:false})],['產製人',getCurrentUser()||''],[],
       ['欄位說明'],
-      ['・一列＝某一天、某一個專案；同一天同一專案有多位調查人員時，名字列在同一格'],
+      ['・每筆＝某一天、某一個專案，佔兩列；同一天同一專案有多位調查人員時，名字列在同一格'],
+      ['・上列是路線名稱，下列是該路線的完成趟數／未完成趟數；專案的路線全部列出，當天沒跑的顯示 0'],
       ['・一趟＝同一條路線、同一回合、同一時段的「去程＋回程」，去程與回程不必是同一個人'],
-      ['・PM要求每路線趟數＝PM 設定的時段數 × 每日調查次數；同專案各路線設定不同時以範圍表示（例：6~9）'],
-      ['・未完成＝只跑了單程（另一個方向沒有人跑），不計入完成趟數'],[],
+      ['・未完成＝只跑了單程（另一個方向沒有人跑），不計入完成趟數'],
+      ['・PM要求每路線趟數＝PM 在路線設定的「每日調查次數」；同專案各路線設定不同時以範圍表示（例：2~3）'],
+      ['・本次調查總里程數＝當天實際跑過的每一個方向各算一次路線長度（單程也算，因為確實有開）'],
+      ['・津貼估算＝各路線完成趟數加總 × 每趟津貼單價（未完成不計）'],[],
       ['計算規則'],
       ['・只計有效趟次：被「重新調查」取代、或已刪除的紀錄不列入'],
       ['・「排除平均」的趟次仍列入（只是不納入統計平均，調查員確實有跑）']]
 
     const wb=XLSX.utils.book_new()
-    const ws=XLSX.utils.aoa_to_sheet(sheet), ws2=XLSX.utils.aoa_to_sheet(note)
-    ws['!cols']=[{wch:11},{wch:18},{wch:22},{wch:9},{wch:11},{wch:11},{wch:14},...pns.map(()=>({wch:13})),{wch:12},{wch:15}]
-    ws2['!cols']=[{wch:70},{wch:30}]
+    const ws2=XLSX.utils.aoa_to_sheet(note)
+    ws2['!cols']=[{wch:70},{wch:12},{wch:50}]
     XLSX.utils.book_append_sheet(wb,ws,'當月行程')
     XLSX.utils.book_append_sheet(wb,ws2,'說明')
     XLSX.writeFile(wb,`當月行程_${mon}_${scope}.xlsx`)
