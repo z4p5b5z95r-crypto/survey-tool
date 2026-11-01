@@ -2256,7 +2256,7 @@ let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], mea
 // 每次改版就更新這一行；登入畫面會顯示它。
 // GitHub Pages ＋ 瀏覽器快取常讓人分不清看到的是新版還是舊版，
 // 現場回報問題時先問這個號碼，可以省掉一半的猜測。
-const APP_VERSION = '2026-11-01b'
+const APP_VERSION = '2026-11-01c'
 ;(function showVersion(){
   const el=document.getElementById('login-version')
   if(el) el.textContent = 'build ' + APP_VERSION
@@ -2997,6 +2997,34 @@ function updateAllIcons() {
 }
 // 全長預設用路段長度自動加總；如果使用者已經手動改過（_tlManualOverride），就不要再覆蓋它
 let _tlManualOverride=false
+// 長度欄旁邊的標籤：✓ 自動／手動＋「↺ 自動」／合併／直線
+// 抽成獨立函式，讓 PM 一改數字就能只更新那一列，不必重畫整張表
+// （重畫整張表會讓剛按 Tab 跳到的下一格失去游標）。
+function segBadgeHtml(indices){
+  indices=indices||[]
+  const pi=indices[0]; const sd=segData[pi]||{}
+  const isMerged=indices.length>1
+  // 這一列有沒有被手動改過（合併列：任何一段被改過就算）
+  const isManual=indices.some(idx=>segData[idx] && segData[idx]._auto===false)
+  // 手動改過的列旁邊放「↺ 自動」：PM 改完又想恢復自動計算時，不用自己去算原本是幾公尺
+  const resetBtn=isManual
+    ?`<button type="button" class="dist-reset" title="改回依路線自動計算長度" onclick="resetSegAuto(${JSON.stringify(indices)})">↺ 自動</button>`
+    :''
+  return (isMerged
+    ?'<span class="dist-manual" title="含假節點，距離已合併">合併</span>'
+    :sd._source==='straight'?'<span class="dist-manual">直線</span>'
+    :!isManual?'<span class="dist-auto">✓</span>'
+    :'<span class="dist-manual">手動</span>')+resetBtn
+}
+function refreshSegBadge(ri){
+  const el=document.getElementById('segb-'+ri); if(!el) return
+  el.innerHTML=segBadgeHtml(_segDisplayMap[ri])
+}
+// 長度欄一有輸入（打字或按上下箭頭）就標成手動、立刻出現「↺ 自動」，不用等離開欄位或存檔
+function markSegManual(ri){
+  ;(_segDisplayMap[ri]||[]).forEach(idx=>{ if(segData[idx]) segData[idx]._auto=false })
+  refreshSegBadge(ri)
+}
 // 開啟路線時判斷一段長度是不是自動算的。
 //  ・存檔時標了 dm（手動）→ 手動
 //  ・長度是 0（還沒算）→ 自動，讓它之後被算出來
@@ -3414,23 +3442,13 @@ function renderSegTable() {
     _segDisplayMap.push(mergedIndices)
     i=endIdx
   }
-  tbody.innerHTML=displayRows.map(row=>{
+  tbody.innerHTML=displayRows.map((row,ri)=>{
     const{pi,indices,mergedLength,mergedLanes,mergedWidth,autoName}=row
     // 舊路線存的名稱可能還是「A—B」或「A→B」，這裡一併顯示成「A ～ B」，
     // 使用者按下儲存時就會把新格式寫回去
     const defName=segDisp(segData[pi]._nameCustom?segData[pi].name:autoName)
     const isMerged=indices.length>1
-    // 這一列有沒有被手動改過（合併列：任何一段被改過就算）
-    const isManual=indices.some(idx=>segData[idx]._auto===false)
-    // 手動改過的列旁邊放「↺ 自動」：PM 改完又想恢復自動計算時，不用自己去算原本是幾公尺
-    const resetBtn=isManual
-      ?`<button type="button" class="dist-reset" title="改回依路線自動計算長度" onclick="resetSegAuto(${JSON.stringify(indices)})">↺ 自動</button>`
-      :''
-    const badge=(isMerged
-      ?'<span class="dist-manual" title="含假節點，距離已合併">合併</span>'
-      :segData[pi]._source==='straight'?'<span class="dist-manual">直線</span>'
-      :!isManual?'<span class="dist-auto">✓</span>'
-      :'<span class="dist-manual">手動</span>')+resetBtn
+    const badge=`<span class="seg-badge" id="segb-${ri}">${segBadgeHtml(indices)}</span>`
     const onLanes=indices.map(idx=>`segData[${idx}].lanes=+this.value||2`).join(';')
     const onWidth=indices.map(idx=>`segData[${idx}].width=+this.value||8`).join(';')
     // Length change on merged row: distribute proportionally across constituent segments
@@ -3441,7 +3459,7 @@ function renderSegTable() {
       <td><input class="seg-input" style="text-align:left;min-width:90px" value="${defName}" onchange="this.value=segDisp(this.value);segData[${pi}].name=this.value;segData[${pi}]._nameCustom=true"/></td>
       <td><input class="seg-input" style="width:36px" type="number" value="${mergedLanes}" min="1" max="10" onchange="${onLanes}"/></td>
       <td><input class="seg-input" style="width:40px" type="number" value="${mergedWidth}" onchange="${onWidth}"/></td>
-      <td style="white-space:nowrap"><input class="seg-input" style="width:50px" type="number" value="${mergedLength}" onchange="${onLen}"/>${badge}</td>
+      <td style="white-space:nowrap"><input class="seg-input" style="width:50px" type="number" value="${mergedLength}" oninput="markSegManual(${ri})" onchange="${onLen};refreshSegBadge(${ri})"/>${badge}</td>
     </tr>`
   }).join('')
   renderSegConfirmBanner()
