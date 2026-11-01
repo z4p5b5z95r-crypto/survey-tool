@@ -723,6 +723,21 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .pay-pill.ok{background:#dcfce7;color:#166534}.pay-pill.warn{background:#fef3c7;color:#92400e}
 .pay-empty{padding:40px;text-align:center;color:#94a3b8}
 .pay-note{font-size:11px;color:#94a3b8;margin-top:10px;line-height:1.6}
+.pay-cell{min-width:130px}
+.pay-edit{margin-left:6px;font-size:11px;padding:1px 7px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;color:#2563eb;cursor:pointer}
+.pay-edit:hover{background:#eff6ff}
+.pay-adj{margin-top:4px;font-size:11px;color:#92400e;background:#fef3c7;border-radius:5px;padding:2px 6px;white-space:normal;text-align:left;max-width:180px;margin-left:auto;cursor:help}
+.pa-box{display:flex;flex-direction:column;gap:10px;font-size:14px}
+.pa-row{display:flex;justify-content:space-between;color:#475569}
+.pa-l{display:flex;flex-direction:column;gap:4px;font-size:13px;color:#475569;font-weight:700}
+.pa-l input,.pa-l textarea{font:inherit;font-weight:400;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;color:#0f172a}
+.pa-err{color:#dc2626;font-size:13px;min-height:1em}
+.pa-btns{display:flex;justify-content:flex-end;gap:8px}
+.pa-save{background:#2563eb;color:#fff;border:0;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer}
+.pa-save:disabled{opacity:.6}
+.pa-hist{border-top:1px solid #e2e8f0;padding-top:8px}
+.pa-ht{font-size:12px;color:#94a3b8;margin-bottom:4px}
+.pa-h{font-size:12px;color:#475569;line-height:1.6}
 .pay-rate{font-size:12px;color:#475569;margin-left:6px;white-space:nowrap}
 .pay-rate input{width:64px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;text-align:right}
 .cl-empty{padding:34px 0;text-align:center;color:#94a3b8;font-size:13px}
@@ -806,6 +821,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .cr-n{font-size:13px;font-weight:800;color:#0f172a}
 .cr-m{font-size:11px;color:#64748b;margin-top:3px;display:flex;gap:9px;flex-wrap:wrap;align-items:center}
 .cr-t{flex:none;font-size:12px;font-weight:800;border:1px solid;border-radius:20px;padding:3px 10px;white-space:nowrap}
+.cr-tp{white-space:normal;max-width:62%;text-align:right;line-height:1.5;border-radius:12px;padding:4px 12px}
+.cr-part{color:#b45309;font-weight:700}
 .cr-go{flex:none;color:#cbd5e1;font-size:16px}
 /* 矮螢幕（1366×768 這類筆電）：一格只剩約 85px，用預設尺寸連 2 個專案框都會被裁掉
    約 20px。這裡把字級與行高再收一階，讓 2 個框＋「＋N」仍然完整顯示。 */
@@ -2271,7 +2288,7 @@ let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], mea
 // 每次改版就更新這一行；登入畫面會顯示它。
 // GitHub Pages ＋ 瀏覽器快取常讓人分不清看到的是新版還是舊版，
 // 現場回報問題時先問這個號碼，可以省掉一半的猜測。
-const APP_VERSION='2026-11-02c'
+const APP_VERSION='2026-11-02e'
 ;(function showVersion(){
   const el=document.getElementById('login-version')
   if(el) el.textContent = 'build ' + APP_VERSION
@@ -2432,7 +2449,7 @@ async function cloudGet(params, timeoutMs) {
 async function cloudPost(body) {
   if (!gsUrl) throw new Error('未設定雲端')
   // 技術主管唯讀：任何寫入在送出前就擋下（後端也會擋，這裡只是讓訊息立刻出現、不必等網路）
-  if (isTechLead() && !['logoutUser', 'changeOwnPassword'].includes(body && body.action)) {
+  if (isTechLead() && !['logoutUser', 'changeOwnPassword', 'setPayAdjust'].includes(body && body.action)) {
     throw new Error('技術主管帳號為唯讀，無法新增或修改資料')
   }
   const tok = getSessionToken()
@@ -6477,6 +6494,73 @@ function _payDur(sec){
   sec=Math.round(+sec||0); const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), ss=sec%60
   return h ? `${h} 時 ${m} 分` : `${m} 分 ${ss} 秒`
 }
+function _payAdj(r){ const a=r.adjust; return (a && a.rounds!=='' && a.rounds!=null) ? +a.rounds : null }
+function _payCellHTML(r,n,pay,rate,adj){
+  const k=jsArg(r.date)+','+jsArg(r.projectId)
+  const hist=(r.adjust&&r.adjust.history||[]).map(h=>
+    `${h.at}　${h.by}：${h.rounds===''?'恢復自動':h.rounds+' 次'}（${h.reason}）`).join('\n')
+  const tag=adj!=null
+    ? `<div class="pay-adj" title="${esc('自動計算 '+r.roundsDone+' 次\n'+hist)}">已調整（自動 ${r.roundsDone} 次）<br>${esc(r.adjust.reason)}</div>`
+    : (hist?`<div class="pay-sub" title="${esc(hist)}">有調整紀錄</div>`:'')
+  return `${pay.toLocaleString()}
+    <div class="pay-sub">${n} 次 × ${rate}
+      <button class="pay-edit" onclick="openPayAdjust(${k})" title="調整這天這個專案的津貼次數">調整</button></div>${tag}`
+}
+// 調整津貼次數（共用月曆的彈窗）。原因必填；次數留空＝恢復自動計算。
+function openPayAdjust(date,pid){
+  const d=_calPayCache[_ymKey(_calYM)]; if(!d||!d.rows) return
+  const r=d.rows.find(x=>x.date===date&&x.projectId===pid); if(!r) return
+  const cur=_payAdj(r)
+  document.getElementById('cal-mtitle').textContent='調整津貼次數'
+  document.getElementById('cal-msub').textContent=`${date.replace(/-/g,'/')}　${r.projectName}`
+  const hist=(r.adjust&&r.adjust.history||[]).slice().reverse().map(h=>
+    `<div class="pa-h">${esc(h.at)}　${esc(h.by)}：<b>${h.rounds===''?'恢復自動':h.rounds+' 次'}</b>　${esc(h.reason)}</div>`).join('')
+  document.getElementById('cal-mbody').innerHTML=`
+    <div class="pa-box">
+      <div class="pa-row"><span>系統自動計算</span><b>${r.roundsDone} 次</b></div>
+      <div class="pa-row"><span>目前計津貼</span><b>${cur!=null?cur:r.roundsDone} 次${cur!=null?'（已調整）':''}</b></div>
+      <label class="pa-l">調整為幾次<input id="pa-n" type="number" min="0" max="999" step="1"
+        value="${cur!=null?cur:r.roundsDone}"></label>
+      <label class="pa-l">調整原因（必填）<textarea id="pa-why" rows="3" maxlength="300"
+        placeholder="例：第 2 次尖峰回程 GPS 中斷，現場確認有跑完"></textarea></label>
+      <div id="pa-err" class="pa-err"></div>
+      <div class="pa-btns">
+        ${cur!=null?`<button class="cal-today" onclick="savePayAdjust(${jsArg(date)},${jsArg(pid)},true)">恢復自動計算</button>`:''}
+        <button class="pa-save" onclick="savePayAdjust(${jsArg(date)},${jsArg(pid)},false)">儲存調整</button>
+      </div>
+      ${hist?`<div class="pa-hist"><div class="pa-ht">調整紀錄</div>${hist}</div>`:''}
+    </div>`
+  document.getElementById('cal-mask').classList.add('on')
+  setTimeout(()=>{ const t=document.getElementById('pa-why'); if(t) t.focus() },50)
+}
+async function savePayAdjust(date,pid,restore){
+  const err=document.getElementById('pa-err')
+  const why=(document.getElementById('pa-why').value||'').trim()
+  const nv=document.getElementById('pa-n').value
+  if(!why){ err.textContent='請填寫調整原因'; return }
+  let rounds=''
+  if(!restore){
+    if(nv===''||!/^\d+$/.test(nv)||+nv>999){ err.textContent='次數請填 0～999 的整數'; return }
+    rounds=+nv
+  }
+  err.textContent=''
+  const btns=document.querySelectorAll('.pa-btns button'); btns.forEach(b=>b.disabled=true)
+  try{
+    const a=await cloudPost({ action:'setPayAdjust', date, projectId:pid, rounds:restore?'':rounds, reason:why })
+    const d=_calPayCache[_ymKey(_calYM)]
+    const r=d&&d.rows&&d.rows.find(x=>x.date===date&&x.projectId===pid)
+    if(r){
+      const h=(r.adjust&&r.adjust.history)||[]
+      h.push({ at:a.at, rounds:a.rounds, reason:a.reason, by:a.by })
+      r.adjust={ rounds:a.rounds, reason:a.reason, by:a.by, at:a.at, history:h }
+    }
+    closeCalModal(); renderSurveyCalendar()
+    toast(restore?'已恢復自動計算':'已儲存調整')
+  }catch(e){
+    err.textContent='儲存失敗：'+e.message
+    btns.forEach(b=>b.disabled=false)
+  }
+}
 function calPayHTML(){
   const key=_ymKey(_calYM)
   const d=_calPayCache[key]
@@ -6490,8 +6574,10 @@ function calPayHTML(){
   let tKm=0, tPay=0, tR=0, tSec=0
   const body=rows.map(r=>{
     const dt=new Date(r.date+'T00:00:00')
-    const pay=(r.roundsDone||0)*rate
-    tKm+=(+r.surveyKm||0); tPay+=pay; tR+=(r.roundsDone||0); tSec+=(+r.surveySec||0)
+    const adj=_payAdj(r)                                  // 主管／技術主管調整過的次數（沒有則 null）
+    const n=adj!=null?adj:(r.roundsDone||0)
+    const pay=n*rate
+    tKm+=(+r.surveyKm||0); tPay+=pay; tR+=n; tSec+=(+r.surveySec||0)
     const pills=(r.byRoute||[]).map(x=>{
       const full=x.reqRounds ? x.roundsDone>=x.reqRounds : x.roundsPartial===0
       const tip=`${x.name}｜完成 ${x.roundsDone} 次（${x.done} 趟去回${x.partial?`、單程 ${x.partial}`:''}）`
@@ -6507,18 +6593,19 @@ function calPayHTML(){
       <td class="pay-rt">${pills}</td>
       <td class="r nw">${(+r.surveyKm||0).toLocaleString()}</td>
       <td class="r nw">${r.surveySec==null?'—':_payDur(r.surveySec)}</td>
-      <td class="r nw">${pay.toLocaleString()}<div class="pay-sub">${r.roundsDone} 次 × ${rate}</div></td>
+      <td class="r nw pay-cell">${_payCellHTML(r,n,pay,rate,adj)}</td>
     </tr>`
   }).join('')
   return `<table class="pay-tb">
     <thead><tr><th>日期</th><th>調查人員</th><th>專案</th><th>路線／里程</th><th>要求</th>
       <th>各路線完成（完成次／要求次）</th><th class="r">總里程(km)</th><th class="r">總調查時間</th><th class="r">津貼(元)</th></tr></thead>
     <tbody>${body}</tbody>
-    <tfoot><tr><td colspan="5"></td><td class="r">合計　完成 ${tR} 次</td>
+    <tfoot><tr><td colspan="5"></td><td class="r">合計　計津貼 ${tR} 次</td>
       <td class="r">${(Math.round(tKm*10)/10).toLocaleString()}</td><td class="r nw">${_payDur(tSec)}</td><td class="r">${tPay.toLocaleString()}</td></tr></tfoot>
   </table>
   <div class="pay-note">津貼＝各路線完成次數加總 × 每趟單價（路線 × 次 × 單價），跟時段數無關。
   一次完成＝這條路線 PM 設定的每個時段都有去程＋回程（不必同一人）；缺任何一個時段或只有單程，那一次算未完成、不計津貼。
+  主管、技術主管可按津貼旁的「調整」修改次數，必須填原因；調整過的會標「已調整」，滑鼠移上去可看原因與紀錄。
   總里程＝實際跑過的每個方向各算一次路線長；總調查時間＝每一趟（每個方向）的旅行時間相加，單程也算。單價存在這台電腦。滑鼠移到路線標籤上可看趟數明細。</div>`
 }
 
@@ -6651,6 +6738,32 @@ function calGoToday(){
 }
 
 // 點專案框 → 列出當天該專案調查過的路線；pid 空字串代表「顯示當天全部專案」
+// 一條路線當天各時段完成幾趟。一趟＝同一次、同一時段的去程＋回程（不必同一人）。
+// 例：上午尖峰 3趟．離峰 3趟．下午尖峰 3趟；只有單程的另外標「單程N」。
+// 後端還沒提供 combos（舊版）時退回原本的「N 趟」。
+function calRouteTripsHTML(r,col){
+  const st=`color:${col.c};background:${col.bg};border-color:${col.bd}`
+  const hasCombos=r.items.some(sv=>Array.isArray(sv.combos)&&sv.combos.length)
+  if(!hasCombos) return `<span class="cr-t" style="${st}">${r.trips} 趟</span>`
+  const rt=_calRoutes[r.routeId]||{}
+  const m={}
+  r.items.forEach(sv=>(sv.combos||[]).forEach(c=>{
+    const k=(sv.round||1)+'|'+c.peakType
+    ;(m[k]||(m[k]={pt:c.peakType,d:new Set()})).d.add(c.direction)
+  }))
+  const cnt={}
+  Object.values(m).forEach(x=>{ const c=cnt[x.pt]||(cnt[x.pt]={done:0,part:0}); x.d.size>=2?c.done++:c.part++ })
+  const mins=t=>{ const a=String(t||'').match(/(\d{1,2}):(\d{2})/); return a?(+a[1])*60+(+a[2]):9999 }
+  let pers=(rt.periods||[]).slice().sort((a,b)=>mins(a.t)-mins(b.t))
+  if(!pers.length) pers=Object.keys(cnt).map(k=>({k,n:k}))
+  Object.keys(cnt).forEach(k=>{ if(!pers.some(p=>p.k===k)) pers.push({k,n:k}) })   // 資料裡有、設定裡沒有的時段也列出來
+  const txt=pers.map(p=>{
+    const c=cnt[p.k]||{done:0,part:0}
+    return `${esc(p.n)} ${c.done}趟${c.part?`<span class="cr-part">（單程${c.part}）</span>`:''}`
+  }).join('．')
+  return `<span class="cr-t cr-tp" style="${st}">${txt}</span>`
+}
+
 function openCalDay(dateStr, pid){
   const gs=calGroups(dateStr).filter(g=>!pid||g.id===pid)
   if(!gs.length) return
@@ -6669,7 +6782,7 @@ function openCalDay(dateStr, pid){
             ${surveyors?`<span>👷 ${esc(surveyors)}</span>`:''}${wx?`<span>${wx}</span>`:''}
             ${svDateFlagBadge(sv,{block:false})||''}</div>
         </div>
-        <span class="cr-t" style="color:${col.c};background:${col.bg};border-color:${col.bd}">${r.trips} 趟</span>
+        ${calRouteTripsHTML(r,col)}
         <span class="cr-go">›</span>
       </div>`
     }).join('')
