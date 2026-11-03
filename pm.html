@@ -307,6 +307,8 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .proj-group-name{font-size:14.5px;font-weight:800;color:#0f172a;flex:1;line-height:1.3}
 .proj-group-rename{flex-shrink:0;background:none;border:none;font-size:12px;padding:2px 4px;cursor:pointer;opacity:.55}
 .proj-group-rename:hover{opacity:1}
+/* 改計畫名稱的筆：收合時不顯示，免得被誤會成「修改路線」；展開後才出現 */
+.proj-group:not(.open) .proj-group-rename{display:none}
 .proj-group-count{font-size:11px;color:#94a3b8;font-weight:700;white-space:nowrap}
 /* ── 專案統計列（C 版）──────────────────────────────────────
    標題列只放名稱＋工具按鈕，統計獨立成一條三格的列。
@@ -2288,7 +2290,7 @@ let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], mea
 // 每次改版就更新這一行；登入畫面會顯示它。
 // GitHub Pages ＋ 瀏覽器快取常讓人分不清看到的是新版還是舊版，
 // 現場回報問題時先問這個號碼，可以省掉一半的猜測。
-const APP_VERSION='2026-11-02e'
+const APP_VERSION='2026-11-03a'
 ;(function showVersion(){
   const el=document.getElementById('login-version')
   if(el) el.textContent = 'build ' + APP_VERSION
@@ -4838,7 +4840,7 @@ function renderProjects(filter='') {
           : proj.region ? `<span class="rg-tag">${esc(proj.region)}</span>`
           : proj.cloudId ? `<span class="rg-tag unset" title="尚未設定執行區域，技術主管看不到這個專案。請 admin 在管理後台「專案資料」補設。">未設定區域</span>`
           : ''}</span>
-        <button class="proj-group-rename" title="重新命名" onclick="event.stopPropagation();renameProject('${pid}')">✏️</button>
+        <button class="proj-group-rename" title="修改計畫名稱" onclick="event.stopPropagation();renameProject('${pid}')">✏️</button>
         <svg class="proj-group-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="ph-bar">
