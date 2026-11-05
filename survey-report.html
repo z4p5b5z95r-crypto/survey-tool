@@ -1370,6 +1370,96 @@ function _dedupeDelays(t){
   if(t.runS!=null && +t.travelS>0) t.runS=Math.min(+t.travelS,(+t.runS||0)+roadX+intX)
   t._dupDelaysRemoved=drop.size
 }
+// ── 節點通過時間校正（依 GPS 軌跡）────────────────────────────────
+// 現場 App 舊版的漏判：兩節點很近時下一個節點被 3 秒鎖擋掉，要等車子開過「再下一個」節點
+// 80 公尺後才補記，而且補記用的是當下時間——節點時間整個往後挪，
+// 結果是：前一段把中間的紅燈吃進去（旅行時間暴增），後面幾段只剩幾秒（算出 128、166 km/h）。
+// 這裡用 GPS 軌跡找出每個節點「實際最接近的那一刻」，差超過 15 秒才採用。
+// 起點不動。終點也會校正：連環漏判時最後一個節點永遠觸發不了，調查是事後手動結束的，
+// 終點之後的停等（例如下一個路口的紅燈）也被算進來——校正後把那段時間與延滯一併扣掉。
+// 需要軌跡，所以輕量資料到齊前不會動作。
+function _healNodeTimes(t, r){
+  if(!t || t._healChecked) return false
+  const trk=(Array.isArray(t.gpsTrack)?t.gpsTrack:[])
+  if(trk.length<5) return false          // 還沒有軌跡（輕量資料），等完整版再做
+  t._healChecked=true
+  const tr=trk.map(p=>({lat:+p.lat,lng:+p.lng,t:new Date(p.ts).getTime()})).filter(p=>p.t>0&&isFinite(p.lat)&&isFinite(p.lng))
+  const ts=(t.nodeTimestamps||[]).map(x=>x?new Date(x).getTime():NaN)
+  if(tr.length<5||ts.length<3||ts.some(x=>!(x>0))) return false
+  const all=(r&&r.nodes)||[], gh=_ghostIdxSet(r||{}), real=all.filter((n,i)=>!gh.has(i))
+  let nodes = ts.length===all.length ? all : ts.length===real.length ? real : null
+  if(!nodes) return false
+  if(t.direction==='return') nodes=[...nodes].reverse()
+  const dist=(a,b)=>{ const R=6371000,dLa=(b.lat-a.lat)*Math.PI/180,dLo=(b.lng-a.lng)*Math.PI/180
+    const h=Math.sin(dLa/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLo/2)**2
+    return 2*R*Math.atan2(Math.sqrt(h),Math.sqrt(1-h)) }
+  const out=ts.slice(), endT=ts[ts.length-1], last=ts.length-1
+  let changed=false
+  for(let i=1;i<=last;i++){
+    const n=nodes[i]; if(!n||!isFinite(+n.lat)) continue
+    const nn={lat:+n.lat,lng:+n.lng}
+    // 上一個節點之後，第一次進入節點 50 公尺內的那一段，取其中最近的一點
+    let best=null, bd=Infinity, inRun=false
+    for(const p of tr){
+      if(p.t<=out[i-1] || (i<last ? p.t>=endT : p.t>endT)) continue
+      const d=dist(p,nn)
+      if(d<50){ inRun=true; if(d<bd){ bd=d; best=p.t } }
+      else if(inRun) break
+    }
+    if(best && Math.abs(best-ts[i])>15000){ out[i]=best; changed=true }
+  }
+  for(let i=1;i<out.length;i++) if(!(out[i]>out[i-1])) return false   // 校正後順序不對就整個放棄
+  if(!changed) return false
+  t._origNodeTimestamps=t.nodeTimestamps
+  t.nodeTimestamps=out.map(x=>new Date(x).toISOString())
+  t._nodeHealed=true
+  // 終點提前了：終點之後才開始的延滯不屬於這一趟，旅行時間也扣掉多出來的那段
+  if(out[last]<endT){
+    const cut=Math.round((endT-out[last])/1000)
+    let roadX=0,intX=0
+    const keep=[]
+    ;(Array.isArray(t.delayLog)?t.delayLog:[]).forEach(e=>{
+      const st=new Date(e.startedAt).getTime()
+      if(st>=out[last]){
+        const dur=+e.durationS||0
+        const isRoad = e.group ? e.group==='road' : ROAD_DELAYS.some(x=>x.cause===e.cause)
+        const b = isRoad ? (t.roadDelays||(t.roadDelays={})) : (t.intDelays||(t.intDelays={}))
+        b[e.cause]=Math.max(0,(+b[e.cause]||0)-dur); if(!b[e.cause]) delete b[e.cause]
+        if(isRoad) roadX+=dur; else intX+=dur
+      }else keep.push(e)
+    })
+    t.delayLog=keep
+    if(t.roadTotalS!=null) t.roadTotalS=Math.max(0,(+t.roadTotalS||0)-roadX)
+    if(t.intTotalS!=null)  t.intTotalS =Math.max(0,(+t.intTotalS||0)-intX)
+    t.totalDelayS=Math.max(0,(+t.totalDelayS||0)-roadX-intX)
+    t.travelS=Math.max(0,(+t.travelS||0)-cut)
+    t.runS=Math.max(0,t.travelS-t.totalDelayS)
+    t.endTime=new Date(out[last]).toISOString()
+  }
+  // 各段時間重算：旅行＝相鄰節點時間差；行駛＝旅行－落在這段的延滯
+  if(nodes===all && !gh.size){
+    const log=Array.isArray(t.delayLog)?t.delayLog:[]
+    const seg=[]
+    for(let k=0;k<out.length-1;k++){
+      const tv=Math.round((out[k+1]-out[k])/1000)
+      const dl=log.reduce((a,e)=>{ const st=new Date(e.startedAt).getTime(); return (st>=out[k]&&st<out[k+1])?a+(+e.durationS||0):a },0)
+      seg.push({travelS:tv, runS:Math.max(0,tv-dl)})
+    }
+    t.segTimes = t.direction==='return' ? seg.reverse() : seg
+  }else{
+    t.segTimes=[]   // 有假節點時讓 _segTimesFor 依新的節點時間自行換算
+  }
+  return true
+}
+// 目前這批調查逐趟做一次（每趟只做一次）。有任何一趟被校正就回傳 true。
+function _healAllNodeTimes(){
+  let any=false
+  ;(surveys||[]).forEach(sv=>{
+    const r=routeForSurvey(sv)||route
+    ;(sv.trips||[]).forEach(t=>{ if(_healNodeTimes(t,r)) any=true })
+  })
+  return any
+}
 function _healTrip(t){
   if(!t) return t
   _dedupeDelays(t)
@@ -1822,6 +1912,7 @@ function calcAverages(){
   //   route.periods 還沒到位時就算好（只有離峰/尖峰 4 組），之後再也沒重算，
   //   於是第三個時段永遠算不出平均值——統計表整欄變「—」、完成組合顯示 2/4。
   rebuildComboKeys()
+  _healAllNodeTimes()   // 有完整軌跡的趟次先校正節點時間，再算平均
   _pickStatsRoute()   // 先決定統計用哪一版路線（之後 _mergeGhostSegs/_segTimesFor 都會用這一版）
   avgTrips = {}   // 換路線／換時段後，舊的組合鍵不能留著
   COMBO_KEYS.forEach(combo=>{
@@ -2421,6 +2512,8 @@ function toastSR(msg){
 }
 
 function renderComboRecords(combo){
+  // 完整資料（含軌跡）剛到：先校正節點時間；有變動就連統計表一起重算重畫
+  if(_healAllNodeTimes()){ calcAverages(); renderPage(); return }
   const [pt, dir] = parseCombo(combo)
   const el = document.getElementById('combo-records')
   // 有選定日期、而且這一天確實有紀錄時，才顯示「刪除整天」

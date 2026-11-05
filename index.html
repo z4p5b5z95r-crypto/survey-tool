@@ -5320,15 +5320,16 @@ function checkNodeProximity(lat,lng){
 
   if(prev===null) return   // first GPS reading: just initialize side
   if(prev===-1&&side===1){ // crossed from before → past (forward crossing)
-    if(!nodeAutoLock){
-      nodeAutoLock=true
-      setTimeout(()=>{nodeAutoLock=false},3000)  // always reset, even if recordNode throws
-      // 這裡原本會先響一聲，但緊接著 recordNode() 就會唸「通過節點」，
-      // 兩個聲音疊在同一瞬間反而互相搶。統一交給 recordNode 的語音。
-      try{ recordNode(true) }catch(e){ console.error('recordNode err',e) }
-      // 正常通過起點了，把警示橫幅收掉（沒亮過也不影響）
-      {const b=$('start-past-bar'); if(b) b.style.display='none'}
-    }
+    // ⚠️ 以前這裡有一個 3 秒的 nodeAutoLock：記完一個節點後 3 秒內任何穿越都不算。
+    //    但記錄後 currentNodeIdx 已經換到下一個節點，同一個節點根本不可能重複記錄，
+    //    這個鎖只會擋到「下一個」節點。兩節點很近（實際案例：楊梅交流道→裕成路只有 21 公尺）時，
+    //    車子 3 秒內就穿過了下一條感應線，被鎖擋掉，而線的狀態已經被更新成「線後」，
+    //    之後再也不會觸發；要等漏判保險在 80 公尺外才補記，時間晚了一分多鐘，
+    //    中間停等的紅燈就被算到前一段。所以感應線穿越不再上鎖。
+    try{ recordNode(true) }catch(e){ console.error('recordNode err',e) }
+    // 正常通過起點了，把警示橫幅收掉（沒亮過也不影響）
+    {const b=$('start-past-bar'); if(b) b.style.display='none'}
+    _primeNextNode(lat,lng)
     return
   }
 
@@ -5348,11 +5349,55 @@ function checkNodeProximity(lat,lng){
       _missGuardArmed=false
       nodeAutoLock=true
       setTimeout(()=>{nodeAutoLock=false},3000)
-      try{ recordNode(true) }catch(e){ console.error('recordNode err',e) }
+      // 補記的時間不能用「現在」——現在車子已經過了下一個節點 80 公尺以上，
+      // 用現在會把中間的停等（紅燈）全部算到前一段。改用 GPS 軌跡裡
+      // 「最接近這個節點的那一刻」當通過時間。
+      const at=_closestPassTime(nextNode)
+      try{ recordNode(true, at) }catch(e){ console.error('recordNode err',e) }
+      _primeNextNode(lat,lng)
       return
     }
   }
   _missGuardArmed=false
+}
+// 記完一個節點後，馬上用目前位置把「下一個節點」的線前／線後狀態定好。
+// 不先定，下一次定位才初始化——如果兩個節點近到那時已經過線，就永遠等不到「線前→線後」。
+// 已經在線後而且距離很近（< 40 公尺）＝兩個節點幾乎同時通過，直接記錄。
+function _primeNextNode(lat,lng){
+  const ordered=getOrderedNodes()
+  const n=ordered[currentNodeIdx], dir=nodeDirections[currentNodeIdx]
+  if(!n||!dir) return
+  const dot=(lat-n.lat)*dir.dlat+((lng-n.lng)*dir.cosLat)*dir.dlng
+  if(dot>=0){
+    // 已經在這個節點的線後：
+    //  · 很近（< 40 m）＝兩個節點幾乎同時通過，用現在的時間
+    //  · 較遠但 GPS 軌跡確實經過它（60 m 內）＝其實早就通過了，用軌跡上最接近它的時刻
+    // ⚠️ 不處理的話會「連環漏判」：這個節點起始狀態就是線後，永遠等不到穿越，
+    //    只能靠漏判保險在「再下一個」節點 80 m 外補記；每個節點都晚一個節點，
+    //    最後一個節點沒有下一個可以觸發 → 過了終點調查也不會結束（實際案例）。
+    const near=haversine(lat,lng,n.lat,n.lng)<40
+    const at=near?null:_closestPassTime(n)
+    if(near || at){
+      try{ recordNode(true, at) }catch(e){ console.error('recordNode err',e) }
+      _primeNextNode(lat,lng)
+      return
+    }
+  }
+  nodeLineSide[currentNodeIdx]=dot>=0?1:-1
+}
+// 在這一段的 GPS 軌跡裡找最接近某節點的時刻（漏判補記用）
+function _closestPassTime(node){
+  const tr=(cur&&cur.gpsTrack)||[]
+  const since=nodeTimestamps.length?new Date(nodeTimestamps[nodeTimestamps.length-1]).getTime():0
+  let best=null, bd=Infinity
+  for(let i=tr.length-1;i>=0;i--){
+    const p=tr[i], t=new Date(p.ts).getTime()
+    if(!(t>0)) continue
+    if(t<since) break
+    const d=haversine(p.lat,p.lng,node.lat,node.lng)
+    if(d<bd){ bd=d; best=t }
+  }
+  return (best && bd<60) ? new Date(best) : null
 }
 function manualRecordNode(){
   if(currentNodeIdx>=getNodeNames().length) return
@@ -5383,10 +5428,12 @@ async function waitAudioReady(maxMs){
   }
   return audioCtx.state==='running'
 }
-function recordNode(auto){
+function recordNode(auto, at){
   const names=getNodeNames()
   if(currentNodeIdx>=names.length) return
-  const now=new Date()
+  // at：補記時用的實際通過時刻（不能早於上一個節點）
+  const lastTs=nodeTimestamps.length?new Date(nodeTimestamps[nodeTimestamps.length-1]).getTime():0
+  const now=(at instanceof Date && at.getTime()>lastTs && at.getTime()<=Date.now()) ? at : new Date()
   nodeTimestamps.push(now)
 
   // ── First node: start the clock ──
