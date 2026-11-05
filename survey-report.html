@@ -1336,8 +1336,43 @@ function _normalizeRoute(rt){
 // 兩個欄位都是錯的，那一趟在報告裡永遠配不到任何組合、整筆消失。
 // 這裡在讀進來的當下就地修正：direction 只要長得像「代碼_bound/return」就重新拆一次。
 // （現場 App 已經修好不會再寫錯；這段是救已經存進去的舊資料。）
+// 同一段停等被記成兩筆延滯（現場 App 舊版：按了紅燈後又在補登清單再選一次）：
+// 時間重疊一半以上的就只留一筆，優先留現場即時按的那筆、補登的拿掉，
+// 並把多算的秒數從延滯合計扣回、加回行駛時間。不動到時間沒有重疊的正常紀錄。
+// 結果：路段延滯不會再超過該路段的旅行時間、行駛時間不會被扣成 0。
+function _dedupeDelays(t){
+  const log=Array.isArray(t.delayLog)?t.delayLog:null
+  if(!log||log.length<2) return
+  const iv=e=>{ const a=new Date(e.startedAt).getTime(); if(!(a>0)) return null
+    const b=e.endedAt?new Date(e.endedAt).getTime():a+(+e.durationS||0)*1000; return [a,Math.max(a,b)] }
+  const order=log.map((e,i)=>({e,i,r:iv(e)})).sort((x,y)=>(!!x.e._backfilled-!!y.e._backfilled)||((x.r?x.r[0]:0)-(y.r?y.r[0]:0)))
+  const kept=[], drop=new Set()
+  order.forEach(o=>{
+    if(!o.r){ kept.push(o); return }
+    const len=o.r[1]-o.r[0]
+    const ov=kept.reduce((t2,k)=>k.r?t2+Math.max(0,Math.min(o.r[1],k.r[1])-Math.max(o.r[0],k.r[0])):t2,0)
+    if(len>0 && ov>=len*0.5) drop.add(o.i); else kept.push(o)
+  })
+  if(!drop.size) return
+  let roadX=0,intX=0
+  log.forEach((e,i)=>{
+    if(!drop.has(i)) return
+    const dur=+e.durationS||0
+    const isRoad = e.group ? e.group==='road' : ROAD_DELAYS.some(x=>x.cause===e.cause)
+    const b = isRoad ? (t.roadDelays||(t.roadDelays={})) : (t.intDelays||(t.intDelays={}))
+    b[e.cause]=Math.max(0,(+b[e.cause]||0)-dur); if(!b[e.cause]) delete b[e.cause]
+    if(isRoad) roadX+=dur; else intX+=dur
+  })
+  t.delayLog=log.filter((e,i)=>!drop.has(i))
+  if(t.roadTotalS!=null) t.roadTotalS=Math.max(0,(+t.roadTotalS||0)-roadX)
+  if(t.intTotalS!=null)  t.intTotalS =Math.max(0,(+t.intTotalS||0)-intX)
+  if(t.totalDelayS!=null) t.totalDelayS=Math.max(0,(+t.totalDelayS||0)-roadX-intX)
+  if(t.runS!=null && +t.travelS>0) t.runS=Math.min(+t.travelS,(+t.runS||0)+roadX+intX)
+  t._dupDelaysRemoved=drop.size
+}
 function _healTrip(t){
   if(!t) return t
+  _dedupeDelays(t)
   const d = String(t.direction||'')
   if(d==='bound' || d==='return') return t
   const m = d.match(/^(.+)_(bound|return)$/)
@@ -1787,13 +1822,14 @@ function calcAverages(){
   //   route.periods 還沒到位時就算好（只有離峰/尖峰 4 組），之後再也沒重算，
   //   於是第三個時段永遠算不出平均值——統計表整欄變「—」、完成組合顯示 2/4。
   rebuildComboKeys()
+  _pickStatsRoute()   // 先決定統計用哪一版路線（之後 _mergeGhostSegs/_segTimesFor 都會用這一版）
   avgTrips = {}   // 換路線／換時段後，舊的組合鍵不能留著
   COMBO_KEYS.forEach(combo=>{
     const [peakType, direction] = parseCombo(combo)
     // 先依「回合」去重——同一回合若因重測產生多筆紀錄，只取最新一筆代表該回合，
     // 這樣「全部平均」才是「每回合各一票」的平均，不會被某回合的重複紀錄拉偏權重。
     const byRound = {}
-    surveys.forEach(sv=>{
+    _statsSurveys().forEach(sv=>{
       const t = sv.trips?.find(t=>t.peakType===peakType && t.direction===direction)
       if(!t) return
       const rnd = +sv.round||1
@@ -1862,7 +1898,7 @@ function renderPage(){
       else {
         const dateRange = _filterDate || (surveys.length ? surveys.map(s=>s.date).filter(Boolean).join('、') : '—')
         const weathers = [...new Set(surveys.map(s=>s.weather).filter(Boolean))].join('/')
-        hs.textContent = `${route.routeFromTo||''}　${dateRange}　${weathers||'—'}　${route.totalLength}m`
+        hs.textContent = `${_rt().routeFromTo||''}　${dateRange}　${weathers||'—'}　${_rt().totalLength}m`
       }
     } }
   renderRoundFilter()
@@ -1871,7 +1907,7 @@ function renderPage(){
   const totalTrips = surveys.reduce((a,s)=>a+(s.trips?.length||0),0)
   const completedCombos = COMBO_KEYS.filter(k=>avgTrips[k]).length
   document.getElementById('stat-cards').innerHTML = `
-    <div class="card"><div class="val">${route.totalLength}m</div><div class="lbl">路線全長</div></div>
+    <div class="card"><div class="val">${_rt().totalLength}m</div><div class="lbl">路線全長</div></div>
     <div class="card"><div class="val">${_mergeGhostSegs().length}</div><div class="lbl">路段數</div></div>
     <div class="card"><div class="val">${surveys.length}</div><div class="lbl">調查次數</div></div>
     <div class="card"><div class="val">${totalTrips}</div><div class="lbl">總旅次數</div></div>
@@ -1883,6 +1919,13 @@ function renderPage(){
   `
   renderOffTimeDetail()
   renderOffTimeSwitch()
+  { // 這批調查用了不只一個路線版本：統計表只用其中筆數最多的那一版，提醒一下
+    const box=document.getElementById('offtime-detail')
+    if(box && _statsOther>0) box.insertAdjacentHTML('beforebegin',
+      `<div id="ver-mix-note" style="margin:8px 0;padding:8px 12px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:13px">
+       ⚠️ 這天有 ${_statsOther} 筆調查用的是不同版本的路線（路線在調查期間被修改過），統計表只採用筆數最多的那一版，其餘未納入平均。</div>`)
+    if(_statsOther===0){ const o=document.getElementById('ver-mix-note'); if(o) o.remove() }
+  }
   renderTravelTable()
   renderSpeedTable()
   renderDelayTable()
@@ -1949,7 +1992,7 @@ function renderTravelTable(){
 //     或存檔當下那一格沒算出來），報告就整段顯示「—」，合計也跟著少算。
 function _segTimesFor(trip){
   const segs    = _mergeGhostSegs()
-  const rawSegs = route.segments||[]
+  const rawSegs = _rt().segments||[]
   const src     = Array.isArray(trip?.segTimes) ? trip.segTimes : []
   const nodeTs  = (trip?.nodeTimestamps||[]).map(t=>t?new Date(t):null)
   const isReturn= trip?.direction==='return'
@@ -1995,6 +2038,24 @@ function _segTimesFor(trip){
 //（跨多筆的彙總混用不同版本沒有意義）。
 let _rtCtx=null
 const _rvCache=new WeakMap()
+function _geoSig(r){ return JSON.stringify((r.nodes||[]).map(n=>[+(+n.lat).toFixed(5),+(+n.lng).toFixed(5)]))+'|'+(r.segments||[]).length }
+// 依「節點座標＋路段數」把調查分組，取筆數最多的那一版（同票取最新那筆所屬的版本）。
+// 其他版本的調查不混進平均——不同版本的路段不同，硬平均會對錯路段。
+function _pickStatsRoute(){
+  _statsRoute=null; _statsSet=null; _statsOther=0
+  if(!route||!surveys||!surveys.length) return
+  const groups=new Map()
+  surveys.forEach(sv=>{
+    const r=routeForSurvey(sv)||route, k=_geoSig(r)
+    const g=groups.get(k)||{r,list:[],latest:0}
+    g.list.push(sv); g.latest=Math.max(g.latest,new Date(sv.submittedAt||sv.date||0).getTime()||0)
+    groups.set(k,g)
+  })
+  const best=[...groups.values()].sort((a,b)=>(b.list.length-a.list.length)||(b.latest-a.latest))[0]
+  if(_geoSig(best.r)!==_geoSig(route)) _statsRoute=best.r
+  if(groups.size>1){ _statsSet=new Set(best.list); _statsOther=surveys.length-best.list.length }
+}
+function _statsSurveys(){ return _statsSet ? surveys.filter(sv=>_statsSet.has(sv)) : surveys }
 function routeForSurvey(sv){
   if(!sv||!sv.routeVersion) return null
   if(_rvCache.has(sv)) return _rvCache.get(sv)
@@ -2008,16 +2069,23 @@ function routeForSurvey(sv){
     segments:         _tryParseSR(v.segments, []),
     ghostNodeIndices: _tryParseSR(v.ghostNodeIndices, [])
   }
+  // 舊版後端封存時，totalLength 記到的是「改過之後」的值（封存寫在改欄位之後的 bug）。
+  // 跟這一版路段長度加總差太多（>2%）就不信它，改用路段加總。
+  { const sum=(r.segments||[]).reduce((t,sg)=>t+(+sg.length||0),0)
+    if(sum>0 && Math.abs(sum-(+r.totalLength||0))/sum>0.02) r.totalLength=Math.round(sum) }
   // 版本壞掉或空的就別用，退回目前設定，至少畫得出東西
   const ok=Array.isArray(r.nodes)&&r.nodes.length>=2
   _rvCache.set(sv, ok?r:null)
   return ok?r:null
 }
-function _rt(){ return _rtCtx||route }
+// 統計表／平均值用的路線版本：取「這批調查實際用的那一版」（見 _pickStatsRoute）。
+// 以前統計表一律用目前設定，路線被改過（或被誤蓋）後，實測秒數會被塞進別的路段名稱底下。
+let _statsRoute=null, _statsSet=null, _statsOther=0
+function _rt(){ return _rtCtx||_statsRoute||route }
 function _routeOf(sv){ return routeForSurvey(sv)||route }
 function _withRoute(sv, fn){
   const prev=_rtCtx
-  _rtCtx=routeForSurvey(sv)
+  _rtCtx=routeForSurvey(sv)||route      // 沒有封存版本＝調查後沒改過，用目前設定
   try{ return fn() } finally{ _rtCtx=prev }
 }
 
@@ -2191,8 +2259,8 @@ function renderDelayTable(){
   const subSec = (label,pick) => sub(label+' (秒)', trips.map(t=>S(pick(t))))
   const gap = () => `<tr class="dt-gap"><td colspan="${SPAN}"></td></tr>`
 
-  html += r('平均總旅行速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.travelS)))
-  html += r('平均總行駛速率 (km/h)', trips.map(t=>spd(route.totalLength,t?.runS)))
+  html += r('平均總旅行速率 (km/h)', trips.map(t=>spd(_rt().totalLength,t?.travelS)))
+  html += r('平均總行駛速率 (km/h)', trips.map(t=>spd(_rt().totalLength,t?.runS)))
 
   // ── ① 行駛與延滯的秒數 ──
   html += grp('總旅行時間（秒）')
@@ -2946,7 +3014,7 @@ async function downloadSGS(){
       if(!trip) return
       tripIdx[combo]++
       const sheetName = buildTripSheetName(combo, tripIdx[combo])
-      XLSX.utils.book_append_sheet(wb, buildTripSheet(trip, sv, combo), sheetName)
+      XLSX.utils.book_append_sheet(wb, _withRoute(sv,()=>buildTripSheet(trip, sv, combo)), sheetName)   // 每一趟用它當時的路線版本
     })
   })
 
@@ -2969,8 +3037,8 @@ function buildTimeSheet(){
   // Excel 沒有分頁問題，所有時段一次列完就好。
   const PDS=PERIODS_ALL()
   const T4=[]; PDS.forEach(p=>{ T4.push(avgTrips[p.k+'_bound']); T4.push(avgTrips[p.k+'_return']) })
-  const TL=route.totalLength||0
-  const info=`路線：${route.routeName}　起迄：${route.routeFromTo}　全長：${TL}m`
+  const TL=_rt().totalLength||0
+  const info=`路線：${_rt().routeName}　起迄：${_rt().routeFromTo}　全長：${TL}m`
 
   // header rows (match PDF two-row header)
   const _blk=lb=>PDS.flatMap(p=>[`${p.n} ${lb}`,''])
@@ -3003,8 +3071,8 @@ function buildSpeedSheet(){
   const segs=_mergeGhostSegs()
   const PDS=PERIODS_ALL()
   const T4=[]; PDS.forEach(p=>{ T4.push(avgTrips[p.k+'_bound']); T4.push(avgTrips[p.k+'_return']) })
-  const TL=route.totalLength||0
-  const info=`路線：${route.routeName}　起迄：${route.routeFromTo}　全長：${TL}m`
+  const TL=_rt().totalLength||0
+  const info=`路線：${_rt().routeName}　起迄：${_rt().routeFromTo}　全長：${TL}m`
 
   const _blk=lb=>PDS.flatMap(p=>[`${p.n} ${lb}`,''])
   const _dir=()=>PDS.flatMap(()=>['去程','回程'])
@@ -3056,8 +3124,8 @@ function buildDelaySheet(){
     [`路線：${route.routeName}`],
     [],
     ['指標', ...hdr],
-    ['平均總旅行速率 (km/h)', ...trips.map(t=>spd(route.totalLength,t?.travelS))],
-    ['平均總行駛速率 (km/h)', ...trips.map(t=>spd(route.totalLength,t?.runS))],
+    ['平均總旅行速率 (km/h)', ...trips.map(t=>spd(_rt().totalLength,t?.travelS))],
+    ['平均總行駛速率 (km/h)', ...trips.map(t=>spd(_rt().totalLength,t?.runS))],
     ['行駛時間 (秒)', ...trips.map(t=>v(t,'runS'))],
     ['行駛時間 (%)', ...trips.map(t=>pct(t,'runS'))],
     ['路段延滯 (秒)', ...trips.map(t=>v(t,'roadTotalS'))],
@@ -3206,11 +3274,11 @@ function buildTripSheet(trip, survey, combo){
     ['起點','','終點','','','時','分','秒','時','分','秒','','','','',''],
     // ⚠️ 這裡以前用 `trip.roadTotalS||''`，路段延滯剛好是 0 時就被印成空白格
     //    （截圖裡 N 欄空白就是這個）。0 是有意義的數值，必須印出來。
-    [startNode.name,'',endNode.name,'',route.totalLength,
+    [startNode.name,'',endNode.name,'',_rt().totalLength,
      sH,sM,sS,eH,eM,eS,
      num(trip.travelS), num(intTot), num(roadTot),
      num(trip.travelS!=null ? Math.max(0, trip.travelS-denom) : null),
-     spd(route.totalLength, trip.travelS)],
+     spd(_rt().totalLength, trip.travelS)],
     [],
     ['經過路口','','時刻','','',
      '路段延滯(秒)','','','','','',
@@ -3248,7 +3316,7 @@ function downloadCSV(){
         rows.push([si+1, sv.surveyor||'', sv.date||'', sv.weather||'',
           PERIOD_NAME(t.peakType), t.direction==='bound'?'去程':'回程',
           t.travelS||0, t.runS||0, t.intTotalS||0, t.roadTotalS||0,
-          spd(route.totalLength, t.travelS)])
+          spd(_rt().totalLength, t.travelS)])
       })
     })
     const csv = rows.map(r=>r.join(',')).join('\n')
@@ -3434,8 +3502,8 @@ function downloadSGSPdf(returnOnly){
   }
 
   const off = route.offPeakLabel||'14:00~16:00', pk = route.peakLabel||'17:00~19:00'
-  const rawSegs = route.segments||[], TL = route.totalLength||0
-  const nodes = route.nodes||[]
+  const rawSegs = _rt().segments||[], TL = _rt().totalLength||0
+  const nodes = _rt().nodes||[]
   // 假節點判定統一走 _ghostIdxSet()，不要在這裡另外寫一份——
   // 三處規則各自演化的結果，就是地圖節點數和這張表的路段數對不起來。
   const segs=(function(){
