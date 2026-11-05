@@ -1382,10 +1382,13 @@ function _healNodeTimes(t, r){
   if(!t || t._healChecked) return false
   const trk=(Array.isArray(t.gpsTrack)?t.gpsTrack:[])
   if(trk.length<5) return false          // 還沒有軌跡（輕量資料），等完整版再做
-  t._healChecked=true
-  const tr=trk.map(p=>({lat:+p.lat,lng:+p.lng,t:new Date(p.ts).getTime()})).filter(p=>p.t>0&&isFinite(p.lat)&&isFinite(p.lng))
+  // 上傳時軌跡被壓縮過，時間存在 t（毫秒）；本機／舊資料才是 ts（ISO 字串）
+  const _pt=p=>{ const v=(p.t!=null)?p.t:(p.ts!=null?p.ts:p.timestamp); return typeof v==='number'?v:new Date(v).getTime() }
+  const tr=trk.map(p=>({lat:+p.lat,lng:+p.lng,t:_pt(p)})).filter(p=>p.t>0&&isFinite(p.lat)&&isFinite(p.lng))
   const ts=(t.nodeTimestamps||[]).map(x=>x?new Date(x).getTime():NaN)
-  if(tr.length<5||ts.length<3||ts.some(x=>!(x>0))) return false
+  if(tr.length<5) return false            // 軌跡沒有時間資訊，無法校正（下次完整資料到了再試）
+  t._healChecked=true
+  if(ts.length<3||ts.some(x=>!(x>0))) return false
   const all=(r&&r.nodes)||[], gh=_ghostIdxSet(r||{}), real=all.filter((n,i)=>!gh.has(i))
   let nodes = ts.length===all.length ? all : ts.length===real.length ? real : null
   if(!nodes) return false
@@ -1435,6 +1438,9 @@ function _healNodeTimes(t, r){
     t.travelS=Math.max(0,(+t.travelS||0)-cut)
     t.runS=Math.max(0,t.travelS-t.totalDelayS)
     t.endTime=new Date(out[last]).toISOString()
+    // 地圖也一起修：終點之後的 GPS 軌跡不畫（延滯標記已隨 delayLog 拿掉）
+    t._origGpsTrack=t.gpsTrack
+    t.gpsTrack=trk.filter(p=>{ const v=_pt(p); return !(v>out[last]+2000) })
   }
   // 各段時間重算：旅行＝相鄰節點時間差；行駛＝旅行－落在這段的延滯
   if(nodes===all && !gh.size){
