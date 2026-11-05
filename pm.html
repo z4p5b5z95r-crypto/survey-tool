@@ -720,6 +720,7 @@ body{font-family:-apple-system,'PingFang TC','Helvetica Neue',sans-serif;color:#
 .pay-tb .r{text-align:right}.pay-tb .nw{white-space:nowrap}
 .pay-tb .pay-ppl{min-width:96px}.pay-tb .pay-pj{min-width:130px}.pay-tb .pay-rt{min-width:280px}
 .pay-sub{font-size:11px;color:#94a3b8;margin-top:2px}
+.pay-tb .pay-pd{font-size:12px;color:#475569;line-height:1.6}
 .pay-pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:6px;margin:0 4px 4px 0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:top}
 .pay-pill b{font-weight:600}
 .pay-pill.ok{background:#dcfce7;color:#166534}.pay-pill.warn{background:#fef3c7;color:#92400e}
@@ -2239,7 +2240,7 @@ function _syncHistoryBtns(){
   if(u) u.disabled=_undoHistory.length===0
   if(r) r.disabled=_redoHistory.length===0
 }
-let _dirty=false,_loadingTask=false
+let _dirty=false,_loadingTask=false,_editorTaskId=null,_loadSeq=0
 function pushHistory(){
   if(_suppressHistory) return   // ignore calls during rebuild
   _dirty=true
@@ -2290,7 +2291,7 @@ let measuring=false, measurePts=[], measurePolyline=null, measureMarkers=[], mea
 // 每次改版就更新這一行；登入畫面會顯示它。
 // GitHub Pages ＋ 瀏覽器快取常讓人分不清看到的是新版還是舊版，
 // 現場回報問題時先問這個號碼，可以省掉一半的猜測。
-const APP_VERSION='2026-11-03a'
+const APP_VERSION='2026-11-05b'
 ;(function showVersion(){
   const el=document.getElementById('login-version')
   if(el) el.textContent = 'build ' + APP_VERSION
@@ -3804,12 +3805,20 @@ async function ensureProjectCloudSynced(proj) {
   return proj.cloudId||null
 }
 async function saveTask(silent) {
+  // 路線還在載入中（節點一個一個加進來）就存檔，存下去的會是半套資料
+  if(_loadingTask){ if(!silent) toast('⏳ 路線還在載入中，請稍候再儲存'); return false }
+  // 安全網：編輯器裡的內容必須屬於 currentTaskId 這條路線，對不上就不存
+  if(currentTaskId && _editorTaskId && _editorTaskId!==currentTaskId){
+    toast('⚠️ 編輯中的路線與要儲存的路線不一致，已停止儲存。請回到列表重新開啟路線')
+    return false
+  }
   const cfg=buildConfig()
   if(!cfg.rn){toast('請先填寫路線名稱');return false}
   if(nodes.length<2){toast('請至少放置 2 個節點');return false}
   let existingTask=currentTaskId?savedTasks.find(t=>t.id===currentTaskId):null
   const id=existingTask?existingTask.id:Date.now().toString(36)
   currentTaskId=id
+  _editorTaskId=id
   // 這條路線要歸屬哪個專案：優先採用 savedTasks 目前記錄的最新歸屬（例如編輯畫面開著的期間，
   // 有人在列表頁用「搬移」把這條路線移到別的專案了），避免存檔時用編輯畫面剛開啟當下記住的
   // _currentProjectId 把剛才的搬移結果蓋回去；只有全新路線或找不到有效歸屬時才用 _currentProjectId
@@ -3845,7 +3854,10 @@ async function saveTask(silent) {
       const payload=buildRoutePayload(cfg, taskObj.cloudId, routeOwner, projectCloudId)
       const result=await cloudPost(payload)
       const taskIdx=savedTasks.findIndex(t=>t.id===id)
-      if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;savedTasks[taskIdx].cloudProjectId=projectCloudId;currentTaskId=id;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
+      // ⚠️ 這裡以前還寫了 currentTaskId=id。存到雲端要好幾秒，這段期間 PM 若已經點開別條路線，
+      //    這一行會把「目前編輯中的路線」改回剛存的那條——畫面是 B、系統卻以為在編 A，
+      //    下一次存檔就把 B 的名稱、起訖、節點整包寫進 A（實際發生：梅獅路被蓋成台一省道）。
+      if(taskIdx>=0){savedTasks[taskIdx].cloudId=result.id;savedTasks[taskIdx].cloudProjectId=projectCloudId;localStorage.setItem('pm_tasks',JSON.stringify(savedTasks))}
       updateCloudDot('ok')
       if(!silent) toast('✅ 任務已儲存並同步至雲端')
       return true
@@ -3904,6 +3916,8 @@ function newTask(projectId) {
   // 從專案列表頁按「新建路線」（還沒開啟任何路線）不用跳這個確認
   if(_inEditView && _dirty && !confirm('清除目前設定，開始新建路線？'))return
   resetEditHistory()      // 新建路線一樣從乾淨的歷史開始
+  ++_loadSeq; _loadingTask=false   // 若還有路線在載入，讓它停下來
+  _editorTaskId=null
   currentTaskId=null
   _currentProjectId=projectId||null
   if(_currentProjectId)_openProjectId=_currentProjectId
@@ -3946,6 +3960,10 @@ async function loadTask(id) {
   }
   resetEditHistory()      // 這一次編輯重新開始算，不接續上一條路線的歷史
   _timeTouched=true       // 既有路線：當初存檔時就設定過時段了，直接算完成
+  // 連點兩條路線時，前一條的載入（節點逐一加入，要等 OSRM）還沒跑完。
+  // 用序號讓舊的那次自己停下來，不要把兩條路線的節點混在一起。
+  const mySeq=++_loadSeq
+  _editorTaskId=id
   currentTaskId=id
   _currentProjectId=task.projectId||null
   if(_currentProjectId)_openProjectId=_currentProjectId
@@ -3976,7 +3994,11 @@ async function loadTask(id) {
   //    現在：有存 dm（手動）標記就照標記；舊資料沒有標記，就看長度是否等於路線量出來的長度。
   segData=cfg.sg?cfg.sg.map((s,i)=>({name:s.n,lanes:s.l,width:s.w,length:s.d,_auto:_segLenIsAuto(s,i,cfg.nd),waypoints:(s.wp||[]).map(w=>({lat:w.a,lng:w.o})),mode:s.m||'driving',_latlngs:s.ll||null})):[]
   _loadingTask=true
-  if(cfg.nd){for(const n of cfg.nd)await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||20,n.gh||false)}
+  if(cfg.nd){for(const n of cfg.nd){
+    if(mySeq!==_loadSeq) return          // 已經改開別條路線了，這次載入作廢
+    await addNode(n.a,n.o,n.n||n.r1||'節點',n.r||15,n.n2||'',n.pg||null,n.la??null,n.ll||20,n.gh||false)
+  }}
+  if(mySeq!==_loadSeq) return
   _loadingTask=false
   // 載入的是已存在的路線，節點都是既有資料（不是剛自動產生的），視為已確認過
   _segsConfirmedSig=_nodeSig()
@@ -6489,8 +6511,13 @@ function _payLoad(key){
     .finally(()=>{ delete _calPayPending[key]; if(_calView==='pay' && _ymKey(_calYM)===key) renderSurveyCalendar() })
 }
 function _payReqText(r){
-  return `每路線 ${esc(String(r.requiredPerRoute??''))} 次`+(r.periodCount!==''&&r.periodCount!=null
-    ? `<div class="pay-sub">每次＝${esc(String(r.periodCount))}時段各去回</div>` : '')
+  return `每路線 ${esc(String(r.requiredPerRoute??''))} 次`
+}
+// PM 設定的時段名稱（依開始時間排），一個時段一行
+function _payPeriodsText(r){
+  const ps=(r.periodList&&r.periodList.length)?r.periodList:null
+  if(!ps) return r.periodCount!==''&&r.periodCount!=null ? `${esc(String(r.periodCount))} 個時段` : '—'
+  return ps.map(n=>`<div>${esc(n)}</div>`).join('')
 }
 function _payDur(sec){
   sec=Math.round(+sec||0); const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), ss=sec%60
@@ -6591,6 +6618,7 @@ function calPayHTML(){
       <td class="pay-ppl">${esc((r.surveyors||[]).join('、')||'（未填）')}</td>
       <td class="pay-pj">${esc(r.projectName||'')}</td>
       <td class="nw">${r.projectRouteCount} 條<div class="pay-sub">${r.projectLengthKm} km</div></td>
+      <td class="nw pay-pd">${_payPeriodsText(r)}</td>
       <td class="nw">${_payReqText(r)}</td>
       <td class="pay-rt">${pills}</td>
       <td class="r nw">${(+r.surveyKm||0).toLocaleString()}</td>
@@ -6599,10 +6627,10 @@ function calPayHTML(){
     </tr>`
   }).join('')
   return `<table class="pay-tb">
-    <thead><tr><th>日期</th><th>調查人員</th><th>專案</th><th>路線／里程</th><th>要求</th>
+    <thead><tr><th>日期</th><th>調查人員</th><th>專案</th><th>路線</th><th>時段</th><th>趟次</th>
       <th>各路線完成（完成次／要求次）</th><th class="r">總里程(km)</th><th class="r">總調查時間</th><th class="r">津貼(元)</th></tr></thead>
     <tbody>${body}</tbody>
-    <tfoot><tr><td colspan="5"></td><td class="r">合計　計津貼 ${tR} 次</td>
+    <tfoot><tr><td colspan="6"></td><td class="r">合計　計津貼 ${tR} 次</td>
       <td class="r">${(Math.round(tKm*10)/10).toLocaleString()}</td><td class="r nw">${_payDur(tSec)}</td><td class="r">${tPay.toLocaleString()}</td></tr></tfoot>
   </table>
   <div class="pay-note">津貼＝各路線完成次數加總 × 每趟單價（路線 × 次 × 單價），跟時段數無關。
