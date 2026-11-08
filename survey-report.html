@@ -2018,10 +2018,10 @@ function renderPage(){
   renderOffTimeSwitch()
   { // 這批調查用了不只一個路線版本：統計表只用其中筆數最多的那一版，提醒一下
     const box=document.getElementById('offtime-detail')
+    { const o=document.getElementById('ver-mix-note'); if(o) o.remove() }   // 先拿掉舊的，免得每重畫一次就多一條
     if(box && _statsOther>0) box.insertAdjacentHTML('beforebegin',
       `<div id="ver-mix-note" style="margin:8px 0;padding:8px 12px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:13px">
-       ⚠️ 這天有 ${_statsOther} 筆調查用的是不同版本的路線（路線在調查期間被修改過），統計表只採用筆數最多的那一版，其餘未納入平均。</div>`)
-    if(_statsOther===0){ const o=document.getElementById('ver-mix-note'); if(o) o.remove() }
+       ⚠️ 這天有 ${_statsOther} 筆調查的路段跟其他筆不一樣（調查期間路線的節點被增減），路段數不同、對不起來，無法放進同一張平均表。請確認路線設定。</div>`)
   }
   renderTravelTable()
   renderSpeedTable()
@@ -2135,7 +2135,16 @@ function _segTimesFor(trip){
 //（跨多筆的彙總混用不同版本沒有意義）。
 let _rtCtx=null
 const _rvCache=new WeakMap()
-function _geoSig(r){ return JSON.stringify((r.nodes||[]).map(n=>[+(+n.lat).toFixed(5),+(+n.lng).toFixed(5)]))+'|'+(r.segments||[]).length }
+// 統計表要的只是「路段對得起來」：真實節點數一樣，第 N 段就對第 N 段，全部納入平均。
+// 以前連節點座標都比，PM 微調一下節點位置或感應線角度就被當成不同版本，
+// 大部分調查被排除在平均之外——那是錯的，平均一定要納入所有能對齊的調查。
+function _geoSig(r){
+  try{
+    const gh=_ghostIdxSet(r)
+    const real=(r.nodes||[]).filter((n,i)=>!gh.has(i))
+    return String(real.length)   // 節點數一樣＝路段一一對得起來，就全部納入平均（名稱改過也算）
+  }catch(e){ return String((r.nodes||[]).length) }
+}
 // 依「節點座標＋路段數」把調查分組，取筆數最多的那一版（同票取最新那筆所屬的版本）。
 // 其他版本的調查不混進平均——不同版本的路段不同，硬平均會對錯路段。
 function _pickStatsRoute(){
@@ -2148,8 +2157,12 @@ function _pickStatsRoute(){
     g.list.push(sv); g.latest=Math.max(g.latest,new Date(sv.submittedAt||sv.date||0).getTime()||0)
     groups.set(k,g)
   })
-  const best=[...groups.values()].sort((a,b)=>(b.list.length-a.list.length)||(b.latest-a.latest))[0]
-  if(_geoSig(best.r)!==_geoSig(route)) _statsRoute=best.r
+  // 目前的路線設定若跟某一組對得起來，優先用目前設定（名稱、長度是最新的）
+  const curK=_geoSig(route)
+  const best = groups.get(curK) && groups.get(curK).list.length*2 >= surveys.length
+    ? groups.get(curK)
+    : [...groups.values()].sort((a,b)=>(b.list.length-a.list.length)||(b.latest-a.latest))[0]
+  if(_geoSig(best.r)!==curK) _statsRoute=best.r
   if(groups.size>1){ _statsSet=new Set(best.list); _statsOther=surveys.length-best.list.length }
 }
 function _statsSurveys(){ return _statsSet ? surveys.filter(sv=>_statsSet.has(sv)) : surveys }
@@ -3556,6 +3569,31 @@ async function downloadRawTimeline(){
       })
     })
 
+    // ── 診斷用：每趟的完整 GPS 軌跡＋節點對照（原始記錄時間 vs 依軌跡校正後時間）──
+    {
+      const gRows=[['調查次','時期','方向','序號','時刻','時刻(毫秒)','緯度','經度']]
+      const nRows=[['調查次','時期','方向','節點序','節點名稱','節點緯度','節點經度','原始記錄時刻','報告採用時刻','是否校正','最近軌跡點距離(m)','最近軌跡點時刻']]
+      const dist=(a,b)=>{ const R=6371000,dLa=(b.lat-a.lat)*Math.PI/180,dLo=(b.lng-a.lng)*Math.PI/180
+        const h=Math.sin(dLa/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLo/2)**2
+        return 2*R*Math.atan2(Math.sqrt(h),Math.sqrt(1-h)) }
+      surveys.forEach((sv,si)=>_withRoute(sv,()=>{
+        ;(sv.trips||[]).forEach(trip=>{
+          const peakL=PERIOD_NAME(trip.peakType), dirL=trip.direction==='bound'?'去程':'回程'
+          const trk=(trip._origGpsTrack||trip.gpsTrack||[])
+          trk.forEach((p,i)=>{ const ms=_ptTime(p); gRows.push([si+1,peakL,dirL,i+1,hmsStr(ms),ms,+p.lat,+p.lng]) })
+          const nodes=_realNodes(), order=trip.direction==='return'?[...nodes].reverse():nodes
+          const orig=trip._origNodeTimestamps||trip.nodeTimestamps||[], now=trip.nodeTimestamps||[]
+          order.forEach((nd,i)=>{
+            let bd=Infinity, bt=null
+            trk.forEach(p=>{ const d=dist({lat:+p.lat,lng:+p.lng},{lat:+nd.lat,lng:+nd.lng}); if(d<bd){bd=d;bt=_ptTime(p)} })
+            nRows.push([si+1,peakL,dirL,i+1,nd.name||'',+nd.lat,+nd.lng,hmsStr(orig[i]),hmsStr(now[i]),trip._nodeHealed&&orig[i]!==now[i]?'是':'',
+              isFinite(bd)?Math.round(bd):'',hmsStr(bt)])
+          })
+        })
+      }))
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(nRows),'節點對照')
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(gRows),'GPS軌跡')
+    }
     XLSX.writeFile(wb,`${route.routeName}_時序原始資料.xlsx`)
   })
 }
